@@ -1,4 +1,6 @@
-[gd_scene format=3 uid="uid://blankmap00"]
+[gd_scene load_steps=2 format=3 uid="uid://blankmap00"]
+
+[ext_resource type="Script" path="res://scripts/map_pan_controller.gd" id="1_map_pan"]
 
 [node name="BlankMapRoot" type="Control"]
 anchor_left = 0.0
@@ -8,12 +10,108 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 layout_mode = 1
+script = ExtResource("1_map_pan")
+mouse_filter = 2
+clip_contents = true
 
-[node name="BlankMap" type="ColorRect" parent="."]
+[node name="PanContent" type="Control" parent="."]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = 0.0
+offset_bottom = 0.0
+grow_horizontal = 2
+grow_vertical = 2
+layout_mode = 1
+mouse_filter = 2
+
+[node name="BlankMap" type="ColorRect" parent="PanContent"]
+layout_direction = 0
+offset_left = -1500.0
+offset_top = -1200.0
+offset_right = 4500.0
+offset_bottom = 4800.0
+color = Color(0.91, 0.9, 0.85, 1)
+
+[node name="Boundary" type="ColorRect" parent="PanContent"]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 layout_direction = 0
-color = Color(0.91, 0.9, 0.85, 1)
+offset_left = 0.0
+offset_top = 0.0
+offset_right = 3000.0
+offset_bottom = 2000.0
+scale = Vector2(1, 1)
+color = Color(0.6, 0.6, 0.6, 0.25)
+
+[node name="BoundaryTop" type="ColorRect" parent="PanContent"]
+offset_left = -25.0
+offset_top = -25.0
+offset_right = 3025.0
+offset_bottom = -20.0
+color = Color(0.3, 0.3, 0.3, 1)
+
+[node name="BoundaryBottom" type="ColorRect" parent="PanContent"]
+offset_left = -25.0
+offset_top = 2025.0
+offset_right = 3025.0
+offset_bottom = 2030.0
+color = Color(0.3, 0.3, 0.3, 1)
+
+[node name="BoundaryLeft" type="ColorRect" parent="PanContent"]
+offset_left = -25.0
+offset_top = -25.0
+offset_right = -20.0
+offset_bottom = 2030.0
+color = Color(0.3, 0.3, 0.3, 1)
+
+[node name="BoundaryRight" type="ColorRect" parent="PanContent"]
+offset_left = 3025.0
+offset_top = -25.0
+offset_right = 3030.0
+offset_bottom = 2030.0
+color = Color(0.3, 0.3, 0.3, 1)
+
+[node name="MarkA" type="ColorRect" parent="PanContent"]
+offset_left = 200.0
+offset_top = 160.0
+offset_right = 320.0
+offset_bottom = 280.0
+color = Color(0.75, 0.75, 0.75, 1)
+
+[node name="MarkB" type="ColorRect" parent="PanContent"]
+offset_left = 1200.0
+offset_top = 500.0
+offset_right = 1320.0
+offset_bottom = 620.0
+color = Color(0.72, 0.72, 0.72, 1)
+
+[node name="MarkC" type="ColorRect" parent="PanContent"]
+offset_left = 2000.0
+offset_top = 1400.0
+offset_right = 2160.0
+offset_bottom = 1530.0
+color = Color(0.78, 0.78, 0.78, 1)
+
+[node name="MarkD" type="ColorRect" parent="PanContent"]
+offset_left = 900.0
+offset_top = 1600.0
+offset_right = 1080.0
+offset_bottom = 1720.0
+color = Color(0.74, 0.74, 0.74, 1)
+
+[node name="MarkE" type="ColorRect" parent="PanContent"]
+offset_left = 1700.0
+offset_top = 1000.0
+offset_right = 1840.0
+offset_bottom = 1130.0
+color = Color(0.7, 0.7, 0.7, 1)
+
+[node name="CrossCenter" type="Label" parent="PanContent"]
+offset_left = 1480.0
+offset_top = 980.0
+text = "Center"
+scale = Vector2(1, 1)
