@@ -1,10 +1,20 @@
 ; Engine configuration file.
-; It's best to keep this file controlled as plain text.
+; It's best edited using the editor UI and not directly,
+; since the parameters that go here are not all obvious.
+;
+; Format:
+;   [section] ; section goes between []
+;   param=value ; assign values to parameters
+
+config_version=5
 
 [application]
+
 config/name="TXWZS-P0-00-BASELINE"
 run/main_scene="res://scenes/blank_map.tscn"
+config/features=PackedStringArray("4.5")
 run/disable_stdout_capture=false
 
 [rendering]
+
 textures/vram_compression/import_etc2_astc=true
