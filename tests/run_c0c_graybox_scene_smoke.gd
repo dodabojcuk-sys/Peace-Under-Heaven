@@ -34,8 +34,9 @@ func _run() -> void:
 	)
 	_check(
 		not scene.city_scene.visible
+			and not scene.city_ui.visible
 			and scene.city_scene.process_mode == Node.PROCESS_MODE_DISABLED,
-		"战斗期间城市画面隐藏且输入处理禁用"
+		"战斗期间城市及 CanvasLayer 隐藏且输入处理禁用"
 	)
 	_check(
 		scene.request.phase == BattleRequest.PHASE_RESERVED,

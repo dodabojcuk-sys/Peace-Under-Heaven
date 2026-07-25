@@ -1,6 +1,6 @@
 # C0 COMBAT CONTRACT TEST MATRIX
 
-状态：`PROPOSED / AWAITING USER DECISION`
+状态：`IMPLEMENTED / AUTOMATED PASS / USER EXPERIENCE GATE PENDING`
 
 本矩阵定义 C0 实现的自动验收边界。它不能替代用户对战斗手感、可读性和是否好玩的实体判断。
 
@@ -133,3 +133,21 @@ C0 实现后至少模拟：
 - 返回城市后兵力和首通变化是否可理解。
 
 只有最后一组需要用户判断“是否好玩／是否易懂”，自动测试不得代替。
+
+## 8. 2026-07-26 实际执行结果
+
+实现 runner：
+
+- `run_c0a_battle_transaction_smoke.gd`：预留生命周期、战前取消、兵力不可复制、快照和小队拆分。
+- `run_c0b_deterministic_battle_smoke.gd`：五个日期快照、命令边界、胜利／失败／撤退、将领被动和 100 次确定性重放。
+- `run_c0c_graybox_scene_smoke.gd`：独立场景、路线切换、真实 session、临时状态不污染城市。
+- `run_c0d_result_writeback_smoke.gd`：结果 modal、首次奖励、重复确认／返回、历史重打和非法事务无部分写入。
+- `run_c0e_combat_contract_smoke.gd`：胜败撤退写回、双路线差异和不同画面采样频率下结果一致。
+
+上述 runner 及既有 P0/P1 runner 全部通过。Godot 4.5.1 主场景 headless smoke、editor scan、资源引用检查、场景唯一性检查和 `git diff --check` 通过。
+
+边界：
+
+- 自动 runner 证明契约、事务和确定性，不证明操作节奏好玩；
+- AI 非 headless smoke 只证明独立灰盒可操作、结果可见，不代替用户实体体验；
+- P1-E 正式军令台出征串联和 P1-F 平衡模拟仍未执行。

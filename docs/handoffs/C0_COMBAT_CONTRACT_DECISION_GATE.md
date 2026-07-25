@@ -1,6 +1,8 @@
 # C0 COMBAT CONTRACT DECISION GATE
 
-状态：`AWAITING USER DECISION`
+状态：`ACCEPTED / IMPLEMENTED`
+
+用户已接受 `MINIMUM_REAL_COMBAT_CONTRACT_V0`、`FIRST_BATTLE_GRAYBOX_RULES_V0` 和测试矩阵，并确认首通奖励为木材 30、粮食 20 的首轮可调基线。实现结果与当前体验门禁见 `C0_REAL_COMBAT_GRAYBOX_CLOSEOUT.md`。
 
 ## 结论
 
@@ -105,7 +107,7 @@ P1-A 至 P1-D 已形成战前建设与备战层，但当前仓库没有真实战
 
 `/tmp/TXWZS_C0_P1_AD_visual_smoke_2026-07-26.png`
 
-## 待用户接受的校准点
+## 已接受的 V0 校准点
 
 规则主案使用：
 
@@ -117,12 +119,12 @@ P1-A 至 P1-D 已形成战前建设与备战层，但当前仓库没有真实战
 - `RETREAT` 速度 1.25、承伤 1.15；
 - 180 秒未突破判失败，幸存者返回。
 
-首通奖励独立候选为木材 30、粮食 20；它仍是 `CANDIDATE_AWAITING_USER_CONFIRMATION`，当前没有写入权威内容定义。
+首通奖励为木材 30、粮食 20，只在首次胜利确认时应用一次。它是首轮可调基线，不是最终平衡。
 
-## 下一步门禁
+## 已完成的决策门禁
 
-用户当前只需决定：
+用户已对下列问题作出接受决定：
 
-> 是否接受 `MINIMUM_REAL_COMBAT_CONTRACT_V0` 和 `FIRST_BATTLE_GRAYBOX_RULES_V0`（包括把木材 30、粮食 20 作为首轮可调首通奖励候选），授权进入 C0 灰盒实现？
+> 接受 `MINIMUM_REAL_COMBAT_CONTRACT_V0` 和 `FIRST_BATTLE_GRAYBOX_RULES_V0`，并授权进入 C0 灰盒实现。
 
-接受后建议使用 Terra 高连续实现。实现完成并通过自动测试后，必须返回用户进行真实战场命令、节奏、可读性和结果理解的实体体验门禁。正式 UI 设计仍放在灰盒可玩之后。
+C0 实现和自动测试完成后返回用户进行真实战场命令、节奏、双路线意义、可读性和结果理解的实体体验门禁。正式 UI 设计仍放在灰盒可玩之后。

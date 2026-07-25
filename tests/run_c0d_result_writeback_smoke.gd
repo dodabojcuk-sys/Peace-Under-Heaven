@@ -94,7 +94,7 @@ func _check_victory_confirmation_and_return() -> void:
 		"重复确认返回同一摘要且不重复修改兵力或资源"
 	)
 
-	var return_contract := scene.request_return_to_city()
+	var return_contract := scene.coordinator.request_return_to_city()
 	_check(
 		return_contract != null
 			and not scene.complete_return_for_test(
@@ -102,21 +102,25 @@ func _check_victory_confirmation_and_return() -> void:
 			),
 		"返回城市在至少一个输入保护帧前拒绝恢复"
 	)
+	scene.request_return_to_city()
+	await process_frame
+	await process_frame
 	_check(
-		scene.complete_return_for_test(
-			return_contract.city_input_restore_frame
-		)
+		not scene.get_node("UI/RootPanel").visible
 			and scene.complete_return_for_test(
 				return_contract.city_input_restore_frame
 			),
-		"达到保护帧后返回成功且重复返回幂等"
+		"异步达到保护帧后返回成功且重复返回幂等"
 	)
 	_check(
 		scene.city_scene.visible
 			and scene.city_scene.process_mode
 				== Node.PROCESS_MODE_INHERIT
+			and scene.city_camera.enabled
+			and scene.get_viewport().get_camera_2d()
+				== scene.city_camera
 			and not scene.get_node("UI/RootPanel").visible,
-		"返回后恢复城市画面与输入并隐藏战斗 UI"
+		"返回后恢复城市画面、Camera2D 与输入并隐藏战斗 UI"
 	)
 
 	await _check_historical_replay_without_reward(

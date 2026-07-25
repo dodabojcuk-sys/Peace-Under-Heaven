@@ -1,6 +1,6 @@
 # FIRST BATTLE GRAYBOX RULES V0
 
-状态：`PROPOSED / AWAITING USER DECISION`
+状态：`ACCEPTED / C0 GRAYBOX IMPLEMENTED`
 
 目的：给首个真实战斗灰盒提供一套可执行、无隐藏随机数的 V0 规则。它是校准起点，不是最终平衡。
 
@@ -199,9 +199,9 @@ player_personnel_damage =
 
 C0 不承诺三种策略已经平衡。后续实现必须先用确定性模拟找出至少一个合理胜利窗口，再由用户判断节奏和可读性。
 
-## 9. 首通奖励候选
+## 9. 首通奖励 V0 基线
 
-当前 `P1_FIRST_MAP_VERTICAL_SLICE_V0` 没有冻结首通奖励内容。提出独立候选：
+用户已确认以下数值作为 C0/P1 首轮可调基线：
 
 ```text
 first_clear_key = "first_map.main_assault.v0"
@@ -211,13 +211,13 @@ first_clear_key = "first_map.main_assault.v0"
 
 处理规则：
 
-- 这是 `CANDIDATE_AWAITING_USER_CONFIRMATION`，在用户接受前不得写入权威内容定义；
+- 只在首次胜利确认时应用一次；
 - 奖励遵守当前容量上限；
 - 结果摘要必须分别显示计划奖励、实际入账和容量溢出；
 - ledger 先检查、一次应用、再写入 key，重复结果不再领取；
-- 自动测试可使用独立 fixture 验证幂等性，不能把 fixture 伪装成已接受数值。
+- 自动测试使用独立 fixture 验证幂等性，但不能替代用户对奖励节奏的体验判断。
 
-候选量级约等于部分早期建造或短期维护，不引入新资源类型，也不决定未来关卡奖励体系。
+该量级约等于部分早期建造或短期维护，不引入新资源类型，也不决定未来关卡奖励体系；它不是最终平衡。
 
 ## 10. 扩展点
 
@@ -242,6 +242,6 @@ first_clear_key = "first_map.main_assault.v0"
 - 正门 40%／侧门 60% 守军分配；
 - 三种命令倍率；
 - 供给不足倍率；
-- 首通奖励候选。
+- 首通奖励 V0 基线。
 
 调整这些值必须有模拟或实体测试证据。改变胜负条件、命令集合、权威所有权或兵力事务边界需要重新经过用户方向门禁。

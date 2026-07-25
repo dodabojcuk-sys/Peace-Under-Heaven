@@ -38,6 +38,8 @@ const DEBUG_PLAYER_COUNT := 50
 
 var city_scene: Node2D
 var city_controller: Node
+var city_ui: CanvasLayer
+var city_camera: Camera2D
 var request: BattleRequest
 var _squad_ui: Dictionary = {}
 var _squad_markers: Dictionary = {}
@@ -140,13 +142,22 @@ func complete_return_for_test(current_frame: int) -> bool:
 	result_panel.visible = false
 	result_input_blocker.visible = false
 	$UI/RootPanel.visible = false
+	city_ui.visible = true
 	city_scene.visible = true
 	city_scene.process_mode = Node.PROCESS_MODE_INHERIT
+	city_camera.enabled = true
+	city_camera.make_current()
 	return true
 
 
 func _complete_return_after_input_guard() -> void:
-	await get_tree().process_frame
+	var return_to_city := coordinator.return_contract
+	while (
+		return_to_city != null
+		and Engine.get_process_frames()
+			< return_to_city.city_input_restore_frame
+	):
+		await get_tree().process_frame
 	complete_return_for_test(Engine.get_process_frames())
 
 
@@ -154,7 +165,11 @@ func _create_city_fixture() -> void:
 	city_scene = CITY_SCENE.instantiate()
 	city_container.add_child(city_scene)
 	city_controller = city_scene.get_node("ConstructionController")
+	city_ui = city_scene.get_node("UI")
+	city_camera = city_scene.get_node("Camera2D")
 	city_controller.infantry_count = DEBUG_PLAYER_COUNT
+	city_ui.visible = false
+	city_camera.enabled = false
 	city_scene.visible = false
 	city_scene.process_mode = Node.PROCESS_MODE_DISABLED
 	coordinator.configure(city_controller)
