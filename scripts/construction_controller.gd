@@ -43,6 +43,7 @@ const PLACED_BUILDING_OUTLINE := Color(0.2, 0.25, 0.27, 1.0)
 @onready var city_bar: Control = $"../UI/Shell/CityBar"
 @onready var minimap_placeholder: Control = $"../UI/Shell/MinimapPlaceholder"
 @onready var context_bar: Control = $"../UI/Shell/ContextBar"
+@onready var building_detail_panel: Control = $"../UI/Shell/BuildingDetailPanel"
 
 var state := ConstructionState.IDLE
 var preview_origin_cell := Vector2i.ZERO
@@ -226,6 +227,7 @@ func _get_ui_occlusion_controls() -> Array[Control]:
 		city_bar,
 		minimap_placeholder,
 		context_bar,
+		building_detail_panel,
 	]
 
 
@@ -245,8 +247,13 @@ func _create_placed_building(placement_id: int, origin_cell: Vector2i) -> void:
 	var building := Node2D.new()
 	building.name = "TestBuilding%03d" % placement_id
 	building.position = cell_to_map_local(origin_cell)
+	building.set_meta("placement_id", placement_id)
 	building.set_meta("origin_cell", origin_cell)
 	building.set_meta("footprint_cells", TEST_BUILDING_FOOTPRINT)
+	building.set_meta("selection_bounds", Rect2(Vector2.ZERO, TEST_BUILDING_WORLD_SIZE))
+	building.set_meta("display_name", "测试建筑")
+	building.set_meta("building_type", "中性测试建筑")
+	building.set_meta("prototype_status", "原型 / 运行中")
 
 	var body := Polygon2D.new()
 	body.name = "Body"

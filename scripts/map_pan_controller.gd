@@ -9,6 +9,7 @@ const ZOOM_STEP := 0.1
 @onready var camera: Camera2D = $Camera2D
 @onready var map_board: Control = $MapWorld/MapBoard
 @onready var construction_controller: Node = $ConstructionController
+@onready var building_selection_controller: Node = $BuildingSelectionController
 
 var active_drag_button: int = -1
 var last_pointer_screen := Vector2.ZERO
@@ -27,7 +28,18 @@ func _input(event: InputEvent) -> void:
 		_handle_construction_input(event)
 		return
 
+	if event is InputEventKey:
+		if event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+			building_selection_controller.clear_selection()
+			get_viewport().set_input_as_handled()
+		return
+
 	if event is InputEventMouseButton:
+		if (
+			event.pressed
+			and building_selection_controller.is_detail_panel_point(event.position)
+		):
+			return
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_handle_zoom(event)
 		else:
@@ -79,7 +91,14 @@ func _handle_drag_button(event: InputEventMouseButton) -> void:
 		pending_drag_delta = Vector2.ZERO
 		is_dragging = false
 	elif event.button_index == active_drag_button:
+		var is_map_click := (
+			event.button_index == MOUSE_BUTTON_LEFT
+			and not is_dragging
+			and pending_drag_delta.length() < DRAG_THRESHOLD
+		)
 		_stop_drag()
+		if is_map_click:
+			building_selection_controller.handle_map_click(event.position)
 
 
 func _handle_drag_motion(event: InputEventMouseMotion) -> void:
@@ -133,6 +152,7 @@ func _stop_drag() -> void:
 
 func _on_construction_placing_started() -> void:
 	_stop_drag()
+	building_selection_controller.clear_selection()
 
 
 func _clamp_camera() -> void:
