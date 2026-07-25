@@ -2,7 +2,7 @@
 
 ## 当前阶段
 
-- `P1_CONTINUOUS_IMPLEMENTATION_BLOCKED_AT_P1_E_COMBAT_CONTRACT_GATE`
+- `C0_MINIMUM_REAL_COMBAT_CONTRACT_V0_AWAITING_USER_DECISION`
 
 ## 验收状态
 
@@ -38,6 +38,9 @@
 - P1-D 已实现第一时代步兵、每日维护、次日训练、一个将领槽、三个将领原型、三个首图科技和一次紧急动员。
 - P1-E 在真实战斗／结果契约门禁停止：仓库没有战斗场景、结果回调、胜负执行器、奖励执行器或场景切换契约。
 - 未用假按钮、固定成功或把平衡代理升级为第二套运行时胜负真相；P1-F 完整闭环模拟和 AI 玩家路径尚未执行。
+- C0 已完成最小真实战斗契约、首战灰盒规则和测试矩阵文档草案；当前仅等待用户方向门禁，尚未实现运行时代码。
+- C0 草案采用最多三支步兵小队、两条进攻路线、前进／坚守／撤退和确定性固定时间步；它明确淘汰“预先计算结果再播放”和纯战力自动结算。
+- 首通奖励的木材 30、粮食 20 仅是待用户确认的独立候选，尚未写入权威内容定义。
 
 ## P1 实施状态
 
@@ -45,6 +48,10 @@
 - 首城闭环研究：`docs/design/P1_00_FIRST_CITY_GAMEPLAY_LOOP_RESEARCH.md`。
 - 首图纵向切片：`docs/design/P1_FIRST_MAP_VERTICAL_SLICE_V0.md`。
 - 通用内容语法与关卡管线：`docs/architecture/CONTENT_DEFINITION_AND_LEVEL_PIPELINE_V0.md`。
+- C0 战斗事务契约：`docs/architecture/MINIMUM_REAL_COMBAT_CONTRACT_V0.md`。
+- C0 首战灰盒规则：`docs/design/FIRST_BATTLE_GRAYBOX_RULES_V0.md`。
+- C0 测试矩阵：`docs/testing/C0_COMBAT_CONTRACT_TEST_MATRIX.md`。
+- C0 决策门禁：`docs/handoffs/C0_COMBAT_CONTRACT_DECISION_GATE.md`。
 - 首个技术切口已确定：伐木场接入城主府道路网络，从下一日开始产生木材。
 - 完整首图循环为：建设与接路 → 木材／粮食 → 募兵／科技／防御 → 日期推进 → 敌军骚扰和增强 → 提前或延后进攻 → 极限日停止推进。
 - V0 数值是首轮校准值，真人测试后允许约 `±15%` 调整，不是永久平衡或正式存档承诺。
@@ -164,6 +171,20 @@
 - `P1_FIRST_MAP_VERTICAL_SLICE_V0` 中的确定性战备公式只被授权用于自动平衡代理，文档同时明确它不是永久战斗公式。
 - 因此 P1-E 未创建 `LevelDefinition`、攻击按钮、固定成功结果或奖励状态；继续前需要用户单独批准最小真实战斗／结果契约，或提供可复用的既有契约。
 - 告示板仍不存在，未新增、重命名或伪装告示板，也未实现历战入口。
+
+## C0 最小真实战斗契约草案
+
+- P1-E 和 P1-F 继续暂停；C0 当前是文档决策门禁，不是运行时完成状态。
+- 当前城市状态继续由 `ConstructionController` 单一持有；草案中的 `CombatTransactionCoordinator` 只管理一个临时战斗事务，不是第二套城市或国家 `WorldState`。
+- 出征兵力采用活动预留：战斗期间从可用兵力中排除，但只有结果确认时才按实际伤亡修改城市总兵力。
+- `BattleRequest`、双方不可变快照、`BattleSession`、`BattleOrder`、`BattleResult` 和 `BattleResultApplier` 组成单向事务。
+- 胜利、失败和撤退都产生正式结果；幸存兵力、伤亡、首通和奖励通过稳定结果 ID 只应用一次。
+- 战场临时路线、城门和小队不得进入城市 placement 或 occupied cells。
+- 首战规则草案为两条路线、最多三支步兵小队、前进／坚守／撤退、0.25 秒固定 tick 和无隐藏随机数的聚合生命演算。
+- 先锋官和守备官只使用 P1-D 已有攻击／防御被动；辎重官不新增战斗效果，继续只影响城市维护。
+- 当前没有正式存档，草案只承诺同一进程内的原子性和幂等性；跨进程恢复若需要存档迁移，将触发正式停止条件。
+- 本轮没有创建战斗入口、战斗场景、结果页、胜负执行器或奖励运行时代码。
+- Godot 4.5.1 非 headless 启动未输出脚本、场景或资源错误；截图确认城市灰盒和军令台表面存在，但因桌面已有同名旧调试窗口，截图不作为全部 P1-A～P1-D 控件实体可操作的证明。
 
 ## 尺寸与导航
 
