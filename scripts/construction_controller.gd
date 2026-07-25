@@ -59,6 +59,11 @@ const BASE_RECRUITMENT_CAP := 50
 const BASE_TRAINING_BATCH := 5
 const EMERGENCY_MOBILIZATION_FOOD_COST := 30
 const EMERGENCY_MOBILIZATION_INFANTRY := 5
+const BATTLE_PHASE_RESERVED := &"RESERVED"
+const BATTLE_PHASE_ACTIVE := &"ACTIVE"
+const BATTLE_PHASE_RESULT_PENDING := &"RESULT_PENDING"
+const BATTLE_PHASE_APPLIED := &"APPLIED"
+const BATTLE_PHASE_CANCELLED := &"CANCELLED"
 const TEST_BUILDING_FOOTPRINT := Vector2i(2, 2)
 const TEST_BUILDING_WORLD_SIZE := Vector2(80.0, 80.0)
 const PRESET_BUILDING_DEFINITIONS := [
@@ -201,6 +206,12 @@ var _next_placement_id := 1
 var _detail_panel_active := false
 var _selected_definition: BuildingDefinition
 var _readiness_checkpoint: Dictionary = {}
+var _active_battle_reservation: Dictionary = {}
+var _closed_battle_transactions: Dictionary = {}
+var _committed_battle_result_ids: Dictionary = {}
+var _first_clear_keys: Dictionary = {}
+var _last_battle_result_summary: Dictionary = {}
+var _next_battle_transaction_sequence := 1
 
 
 func _ready() -> void:
@@ -251,7 +262,7 @@ func is_choosing_template() -> bool:
 
 
 func open_construction_menu() -> void:
-	if is_choosing_template():
+	if is_choosing_template() or is_city_action_locked_for_battle():
 		return
 	state = ConstructionState.CHOOSING_TEMPLATE
 	_selected_definition = null
@@ -273,6 +284,8 @@ func begin_placing_definition(
 	definition_id: StringName,
 	screen_position: Vector2
 ) -> bool:
+	if is_city_action_locked_for_battle():
+		return false
 	var definition := get_definition(definition_id)
 	if definition == null:
 		return false
@@ -368,6 +381,8 @@ func place_definition_at_cell(
 	origin_cell: Vector2i,
 	charge_cost := true
 ) -> int:
+	if is_city_action_locked_for_battle():
+		return -1
 	var definition := get_definition(definition_id)
 	if definition == null:
 		return -1
@@ -441,6 +456,8 @@ func _create_runtime_building(origin_cell: Vector2i) -> int:
 
 
 func advance_day() -> bool:
+	if is_city_action_locked_for_battle():
+		return false
 	if current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day:
 		last_daily_report = "已到第 12 日：不能继续结束本日"
 		_refresh_city_ui()
@@ -551,11 +568,111 @@ func get_city_state() -> Dictionary:
 		"city_defense": get_city_defense(),
 		"enemy_count": enemy_count,
 		"enemy_fortification": enemy_fortification,
+		"available_infantry_count": get_available_infantry_count(),
+		"active_battle_reservation": _active_battle_reservation.duplicate(true),
+		"committed_battle_result_ids": _committed_battle_result_ids.keys(),
+		"first_clear_keys": _first_clear_keys.keys(),
+		"last_battle_result_summary": _last_battle_result_summary.duplicate(true),
 		"checkpoint_available": not _readiness_checkpoint.is_empty(),
 		"can_advance_day": current_day < FIRST_MAP_THREAT_SCHEDULE.max_day,
 		"last_daily_report": last_daily_report,
 		"last_daily_breakdown": last_daily_breakdown.duplicate(true),
 	}
+
+
+func is_city_action_locked_for_battle() -> bool:
+	return not _active_battle_reservation.is_empty()
+
+
+func get_available_infantry_count() -> int:
+	return maxi(
+		infantry_count - int(
+			_active_battle_reservation.get("committed_count", 0)
+		),
+		0
+	)
+
+
+func get_active_battle_reservation() -> Dictionary:
+	return _active_battle_reservation.duplicate(true)
+
+
+func get_closed_battle_transaction_phase(
+	transaction_id: StringName
+) -> StringName:
+	return StringName(_closed_battle_transactions.get(transaction_id, &""))
+
+
+func reserve_battle_force(committed_count: int) -> StringName:
+	if (
+		not _active_battle_reservation.is_empty()
+		or committed_count <= 0
+		or committed_count > get_available_infantry_count()
+		or committed_count > get_effective_command_limit()
+	):
+		return &""
+	var transaction_id := StringName(
+		"battle-%06d" % _next_battle_transaction_sequence
+	)
+	_next_battle_transaction_sequence += 1
+	_active_battle_reservation = {
+		"transaction_id": transaction_id,
+		"committed_count": committed_count,
+		"phase": BATTLE_PHASE_RESERVED,
+	}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return transaction_id
+
+
+func activate_battle_reservation(transaction_id: StringName) -> bool:
+	return _transition_battle_reservation(
+		transaction_id,
+		BATTLE_PHASE_RESERVED,
+		BATTLE_PHASE_ACTIVE
+	)
+
+
+func mark_battle_result_pending(transaction_id: StringName) -> bool:
+	return _transition_battle_reservation(
+		transaction_id,
+		BATTLE_PHASE_ACTIVE,
+		BATTLE_PHASE_RESULT_PENDING
+	)
+
+
+func cancel_battle_reservation(transaction_id: StringName) -> bool:
+	if (
+		_active_battle_reservation.is_empty()
+		or StringName(_active_battle_reservation.transaction_id)
+			!= transaction_id
+		or StringName(_active_battle_reservation.phase)
+			!= BATTLE_PHASE_RESERVED
+	):
+		return false
+	_closed_battle_transactions[transaction_id] = BATTLE_PHASE_CANCELLED
+	_active_battle_reservation = {}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
+
+
+func _transition_battle_reservation(
+	transaction_id: StringName,
+	expected_phase: StringName,
+	next_phase: StringName
+) -> bool:
+	if (
+		_active_battle_reservation.is_empty()
+		or StringName(_active_battle_reservation.transaction_id)
+			!= transaction_id
+		or StringName(_active_battle_reservation.phase) != expected_phase
+	):
+		return false
+	_active_battle_reservation.phase = next_phase
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
 
 
 func get_last_daily_breakdown() -> Dictionary:
@@ -577,6 +694,8 @@ func get_selected_general() -> GeneralArchetype:
 
 
 func select_general(general_id: StringName) -> bool:
+	if is_city_action_locked_for_battle():
+		return false
 	if general_id != &"" and not _generals_by_id.has(general_id):
 		return false
 	selected_general_id = general_id
@@ -606,11 +725,13 @@ func can_queue_training() -> bool:
 	var command_limit := get_effective_command_limit()
 	var food_cost := batch_size * INFANTRY_ROLE.recruit_food_per_unit
 	return (
+		not is_city_action_locked_for_battle()
+		and
 		current_day < FIRST_MAP_THREAT_SCHEDULE.max_day
 		and training_queued_count == 0
 		and last_training_order_day != current_day
-		and infantry_count + batch_size <= recruitment_cap
-		and infantry_count + batch_size <= command_limit
+		and get_available_infantry_count() + batch_size <= recruitment_cap
+		and get_available_infantry_count() + batch_size <= command_limit
 		and food >= food_cost
 	)
 
@@ -651,6 +772,8 @@ func has_tech(tech_id: StringName) -> bool:
 
 
 func can_research_tech(tech_id: StringName) -> bool:
+	if is_city_action_locked_for_battle():
+		return false
 	var tech := get_tech_definition(tech_id)
 	if tech == null or has_tech(tech_id) or tech_points < tech.cost:
 		return false
@@ -691,6 +814,8 @@ func get_infantry_defense_multiplier() -> float:
 
 func emergency_mobilization() -> bool:
 	if (
+		is_city_action_locked_for_battle()
+		or
 		current_day != FIRST_MAP_THREAT_SCHEDULE.max_day
 		or emergency_mobilization_used
 		or food < EMERGENCY_MOBILIZATION_FOOD_COST
@@ -762,7 +887,10 @@ func has_readiness_checkpoint() -> bool:
 
 
 func restore_readiness_checkpoint() -> bool:
-	if _readiness_checkpoint.is_empty():
+	if (
+		_readiness_checkpoint.is_empty()
+		or is_city_action_locked_for_battle()
+	):
 		return false
 	_clear_runtime_placements()
 	current_day = int(_readiness_checkpoint.day)
@@ -811,6 +939,8 @@ func restore_readiness_checkpoint() -> bool:
 
 
 func restart_first_map() -> bool:
+	if is_city_action_locked_for_battle():
+		return false
 	_clear_runtime_placements()
 	current_day = 1
 	wood = 100
@@ -1104,6 +1234,8 @@ func get_connected_road_cells() -> Dictionary:
 
 
 func remove_placed_building(placement_id: int) -> bool:
+	if is_city_action_locked_for_battle():
+		return false
 	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if (
 		record.is_empty()

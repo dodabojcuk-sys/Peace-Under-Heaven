@@ -1,0 +1,97 @@
+class_name CombatTransactionCoordinator
+extends Node
+
+
+const DEFAULT_LEVEL_ID := &"first_map.main_assault.v0"
+
+var city_controller: Node
+var active_request: BattleRequest
+
+
+func configure(city_controller_value: Node) -> void:
+	city_controller = city_controller_value
+
+
+func create_request(
+	committed_total: int,
+	level_id := DEFAULT_LEVEL_ID
+) -> BattleRequest:
+	if city_controller == null or active_request != null:
+		return null
+	var transaction_id: StringName = (
+		city_controller.reserve_battle_force(committed_total)
+	)
+	if transaction_id == &"":
+		return null
+	var unit_role: UnitRole = city_controller.get_unit_role()
+	var tech_ids: Array[StringName] = (
+		city_controller.researched_tech_ids.duplicate()
+	)
+	var committed_snapshot := CommittedForceSnapshot.create_default(
+		transaction_id,
+		committed_total,
+		unit_role,
+		city_controller.selected_general_id,
+		tech_ids,
+		city_controller.get_infantry_attack_multiplier(),
+		city_controller.get_infantry_defense_multiplier(),
+		city_controller.supply_shortage
+	)
+	var enemy_snapshot := EnemyForceSnapshot.create(
+		transaction_id,
+		city_controller.current_day,
+		city_controller.enemy_count,
+		city_controller.enemy_fortification
+	)
+	var request := BattleRequest.new(
+		transaction_id,
+		level_id,
+		city_controller.current_day,
+		committed_snapshot,
+		enemy_snapshot
+	)
+	if not request.is_valid():
+		city_controller.cancel_battle_reservation(transaction_id)
+		return null
+	active_request = request
+	return active_request
+
+
+func activate_request() -> bool:
+	if (
+		active_request == null
+		or active_request.phase != BattleRequest.PHASE_RESERVED
+		or not city_controller.activate_battle_reservation(
+			active_request.transaction_id
+		)
+	):
+		return false
+	active_request.phase = BattleRequest.PHASE_ACTIVE
+	return true
+
+
+func cancel_request() -> bool:
+	if (
+		active_request == null
+		or active_request.phase != BattleRequest.PHASE_RESERVED
+		or not city_controller.cancel_battle_reservation(
+			active_request.transaction_id
+		)
+	):
+		return false
+	active_request.phase = BattleRequest.PHASE_CANCELLED
+	active_request = null
+	return true
+
+
+func mark_result_pending() -> bool:
+	if (
+		active_request == null
+		or active_request.phase != BattleRequest.PHASE_ACTIVE
+		or not city_controller.mark_battle_result_pending(
+			active_request.transaction_id
+		)
+	):
+		return false
+	active_request.phase = BattleRequest.PHASE_RESULT_PENDING
+	return true
