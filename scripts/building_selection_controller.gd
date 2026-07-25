@@ -33,6 +33,7 @@ const SELECTION_OUTLINE_MARGIN := 4.0
 )
 @onready var top_status_bar: Control = $"../UI/Shell/TopStatusBar"
 @onready var city_bar: Control = $"../UI/Shell/CityBar"
+@onready var city_bar_toggle: Control = $"../UI/Shell/CityBarToggle"
 @onready var minimap_placeholder: Control = $"../UI/Shell/MinimapPlaceholder"
 
 var state := SelectionState.NONE
@@ -270,6 +271,7 @@ func _get_ui_occlusion_controls() -> Array[Control]:
 	return [
 		top_status_bar,
 		city_bar,
+		city_bar_toggle,
 		minimap_placeholder,
 		detail_panel,
 	]

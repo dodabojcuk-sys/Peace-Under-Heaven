@@ -150,6 +150,7 @@ const PRESET_BUILDING_DEFINITIONS := [
 @onready var pause_button: Button = $"../UI/Shell/TopStatusBar/PauseButton"
 @onready var alert_summary: Label = $"../UI/Shell/TopStatusBar/AlertSummary"
 @onready var city_bar: Control = $"../UI/Shell/CityBar"
+@onready var city_bar_toggle: Button = $"../UI/Shell/CityBarToggle"
 @onready var army_status: Label = $"../UI/Shell/CityBar/ArmyStatus"
 @onready var recruit_button: Button = $"../UI/Shell/CityBar/RecruitButton"
 @onready var general_option: OptionButton = $"../UI/Shell/CityBar/GeneralOption"
@@ -345,6 +346,7 @@ func is_construction_ui_point(screen_position: Vector2) -> bool:
 		construction_entry_panel,
 		construction_menu,
 		pause_button,
+		city_bar_toggle,
 	]:
 		if (
 			ui_control.is_visible_in_tree()
@@ -1651,6 +1653,7 @@ func _get_ui_occlusion_controls() -> Array[Control]:
 	return [
 		top_status_bar,
 		city_bar,
+		city_bar_toggle,
 		minimap_placeholder,
 		building_detail_panel,
 		construction_entry_panel,

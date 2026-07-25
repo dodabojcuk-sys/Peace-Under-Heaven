@@ -520,12 +520,28 @@ theme_override_font_sizes/font_size = 13
 text = "预警  无"
 
 [node name="CityBar" type="Panel" parent="UI/Shell"]
+visible = false
 layout_mode = 0
 offset_top = 48.0
 offset_right = 152.0
 offset_bottom = 648.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_city_bar")
+
+[node name="CityBarToggle" type="Button" parent="UI/Shell"]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 56.0
+offset_right = 64.0
+offset_bottom = 88.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "展开"
 
 [node name="Title" type="Label" parent="UI/Shell/CityBar"]
 layout_mode = 0

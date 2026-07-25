@@ -10,11 +10,15 @@ const ZOOM_STEP := 0.1
 @onready var map_board: Control = $MapWorld/MapBoard
 @onready var construction_controller: Node = $ConstructionController
 @onready var building_selection_controller: Node = $BuildingSelectionController
+@onready var top_status_bar: Control = $UI/Shell/TopStatusBar
+@onready var city_bar: Control = $UI/Shell/CityBar
+@onready var city_bar_toggle: Button = $UI/Shell/CityBarToggle
 
 var active_drag_button: int = -1
 var last_pointer_screen := Vector2.ZERO
 var pending_drag_delta := Vector2.ZERO
 var is_dragging := false
+var city_bar_expanded := false
 
 
 func _ready() -> void:
@@ -23,6 +27,8 @@ func _ready() -> void:
 		_on_construction_interaction_started
 	)
 	construction_controller.placing_started.connect(_on_construction_placing_started)
+	city_bar_toggle.pressed.connect(toggle_city_bar)
+	set_city_bar_expanded(false)
 	call_deferred("_initialize_camera")
 
 
@@ -30,10 +36,7 @@ func _input(event: InputEvent) -> void:
 	if (
 		event is InputEventMouseButton
 		and event.pressed
-		and (
-			building_selection_controller.is_detail_panel_point(event.position)
-			or construction_controller.is_construction_ui_point(event.position)
-		)
+		and building_selection_controller.is_screen_point_blocked(event.position)
 	):
 		return
 
@@ -151,7 +154,7 @@ func _handle_zoom(event: InputEventMouseButton) -> void:
 func _initialize_camera() -> void:
 	camera.enabled = true
 	camera.zoom = Vector2.ONE
-	camera.position = map_board.size * 0.5
+	center_world_position_in_safe_area(map_board.size * 0.5)
 	_clamp_camera()
 
 
@@ -171,19 +174,87 @@ func _on_construction_interaction_started() -> void:
 	building_selection_controller.clear_selection()
 
 
+func toggle_city_bar() -> void:
+	set_city_bar_expanded(not city_bar_expanded)
+
+
+func set_city_bar_expanded(expanded: bool) -> void:
+	var old_safe_rect := get_navigation_safe_rect()
+	city_bar_expanded = expanded
+	city_bar.visible = city_bar_expanded
+	city_bar_toggle.text = "收起" if city_bar_expanded else "展开"
+	city_bar_toggle.position.x = 160.0 if city_bar_expanded else 8.0
+	if not is_node_ready():
+		return
+	var new_safe_rect := get_navigation_safe_rect()
+	camera.position += (
+		old_safe_rect.get_center() - new_safe_rect.get_center()
+	) / camera.zoom.x
+	_clamp_camera()
+
+
+func is_city_bar_expanded() -> bool:
+	return city_bar_expanded
+
+
+func get_navigation_safe_rect() -> Rect2:
+	var viewport_rect := get_viewport_rect()
+	var left := viewport_rect.position.x
+	var top := viewport_rect.position.y
+	if top_status_bar.is_visible_in_tree():
+		top = maxf(top, top_status_bar.get_global_rect().end.y)
+	if city_bar_expanded and city_bar.is_visible_in_tree():
+		left = maxf(left, city_bar.get_global_rect().end.x)
+	return Rect2(
+		Vector2(left, top),
+		Vector2(viewport_rect.end.x - left, viewport_rect.end.y - top)
+	)
+
+
+func center_world_position_in_safe_area(world_position: Vector2) -> void:
+	var viewport_center := get_viewport_rect().get_center()
+	var safe_center := get_navigation_safe_rect().get_center()
+	camera.position = world_position - (
+		(safe_center - viewport_center) / camera.zoom.x
+	)
+
+
+func focus_world_rect_in_safe_area(
+	world_rect: Rect2,
+	fit_zoom := false
+) -> void:
+	if fit_zoom and world_rect.size.x > 0.0 and world_rect.size.y > 0.0:
+		var safe_size := get_navigation_safe_rect().size
+		var fit_scale := minf(
+			safe_size.x / world_rect.size.x,
+			safe_size.y / world_rect.size.y
+		)
+		var target_zoom := clampf(fit_scale, MIN_ZOOM, MAX_ZOOM)
+		camera.zoom = Vector2.ONE * target_zoom
+	center_world_position_in_safe_area(world_rect.get_center())
+	_clamp_camera()
+
+
 func _clamp_camera() -> void:
 	var map_size := map_board.size
-	var viewport_size := get_viewport_rect().size
-	var visible_half_size := viewport_size / (2.0 * camera.zoom.x)
-	var minimum := visible_half_size
-	var maximum := map_size - visible_half_size
+	var viewport_rect := get_viewport_rect()
+	var viewport_center := viewport_rect.get_center()
+	var safe_rect := get_navigation_safe_rect()
+	var minimum := (viewport_center - safe_rect.position) / camera.zoom.x
+	var maximum := map_size - (safe_rect.end - viewport_center) / camera.zoom.x
 
 	if minimum.x > maximum.x:
-		camera.position.x = map_size.x * 0.5
+		camera.position.x = (
+			map_size.x * 0.5
+			- (safe_rect.get_center().x - viewport_center.x) / camera.zoom.x
+		)
 	else:
 		camera.position.x = clampf(camera.position.x, minimum.x, maximum.x)
 
 	if minimum.y > maximum.y:
-		camera.position.y = map_size.y * 0.5
+		camera.position.y = (
+			map_size.y * 0.5
+			- (safe_rect.get_center().y - viewport_center.y) / camera.zoom.x
+		)
 	else:
 		camera.position.y = clampf(camera.position.y, minimum.y, maximum.y)
