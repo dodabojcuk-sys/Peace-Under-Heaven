@@ -1,4 +1,4 @@
-[gd_scene load_steps=12 format=3 uid="uid://blankmap00"]
+[gd_scene load_steps=11 format=3 uid="uid://blankmap00"]
 
 [ext_resource type="Script" path="res://scripts/map_pan_controller.gd" id="1_map_pan"]
 [ext_resource type="Script" path="res://scripts/construction_controller.gd" id="2_construction"]
@@ -47,18 +47,6 @@ border_width_top = 2
 border_width_right = 2
 border_width_bottom = 2
 border_color = Color(0.286275, 0.27451, 0.254902, 1)
-
-[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_context_bar"]
-bg_color = Color(0.901961, 0.886275, 0.85098, 1)
-border_width_left = 1
-border_width_top = 1
-border_width_right = 1
-border_width_bottom = 1
-border_color = Color(0.552941, 0.533333, 0.498039, 1)
-corner_radius_top_left = 4
-corner_radius_top_right = 4
-corner_radius_bottom_right = 4
-corner_radius_bottom_left = 4
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_disabled_action"]
 bg_color = Color(0.835294, 0.815686, 0.776471, 1)
@@ -595,6 +583,105 @@ offset_bottom = 79.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_minimap_viewport")
 
+[node name="ConstructionEntryPanel" type="Panel" parent="UI/Shell"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -176.0
+offset_top = 176.0
+offset_right = -16.0
+offset_bottom = 228.0
+grow_horizontal = 0
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_detail_panel")
+
+[node name="BuildEntryButton" type="Button" parent="UI/Shell/ConstructionEntryPanel"]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 152.0
+offset_bottom = 44.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "建造"
+
+[node name="BuildModeStatus" type="Label" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 0
+offset_left = 8.0
+offset_top = 6.0
+offset_right = 152.0
+offset_bottom = 46.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 11
+text = "建造中：测试建筑
+右键 / Esc 取消"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ConstructionMenu" type="Panel" parent="UI/Shell"]
+visible = false
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -196.0
+offset_top = 236.0
+offset_right = -16.0
+offset_bottom = 354.0
+grow_horizontal = 0
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_detail_panel")
+
+[node name="Title" type="Label" parent="UI/Shell/ConstructionMenu"]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 12.0
+offset_right = 130.0
+offset_bottom = 34.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+text = "选择建筑"
+
+[node name="CloseButton" type="Button" parent="UI/Shell/ConstructionMenu"]
+layout_mode = 0
+offset_left = 140.0
+offset_top = 8.0
+offset_right = 172.0
+offset_bottom = 40.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "×"
+
+[node name="TestBuildingButton" type="Button" parent="UI/Shell/ConstructionMenu"]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 52.0
+offset_right = 166.0
+offset_bottom = 102.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "测试建筑
+3 × 2"
+
 [node name="BuildingDetailPanel" type="Panel" parent="UI/Shell"]
 visible = false
 layout_mode = 1
@@ -699,12 +786,24 @@ theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
 theme_override_font_sizes/font_size = 13
 text = "状态：原型 / 运行中"
 
+[node name="Description" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 278.0
+offset_right = 260.0
+offset_bottom = 308.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.454902, 0.439216, 0.407843, 1)
+theme_override_font_sizes/font_size = 11
+text = "用于验证建造、选择与安全移除闭环"
+autowrap_mode = 2
+
 [node name="RemoveButton" type="Button" parent="UI/Shell/BuildingDetailPanel"]
 layout_mode = 0
 offset_left = 20.0
-offset_top = 304.0
+offset_top = 314.0
 offset_right = 260.0
-offset_bottom = 336.0
+offset_bottom = 346.0
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_colors/font_color = Color(0.364706, 0.24, 0.2, 1)
@@ -780,95 +879,3 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
 theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
 text = "取消"
-
-[node name="ContextBar" type="Panel" parent="UI/Shell"]
-layout_mode = 0
-offset_left = 360.0
-offset_top = 588.0
-offset_right = 944.0
-offset_bottom = 632.0
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_context_bar")
-
-[node name="SelectionStatus" type="Label" parent="UI/Shell/ContextBar"]
-layout_mode = 0
-offset_left = 15.0
-offset_top = 11.0
-offset_right = 100.0
-offset_bottom = 29.0
-mouse_filter = 2
-theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
-theme_override_font_sizes/font_size = 12
-text = "未选择目标"
-
-[node name="Divider" type="ColorRect" parent="UI/Shell/ContextBar"]
-layout_mode = 0
-offset_left = 147.0
-offset_top = 9.0
-offset_right = 148.0
-offset_bottom = 33.0
-mouse_filter = 2
-color = Color(0.65098, 0.631373, 0.596078, 1)
-
-[node name="TemporaryBuildButton" type="Button" parent="UI/Shell/ContextBar"]
-layout_mode = 0
-offset_left = 171.0
-offset_top = 7.0
-offset_right = 263.0
-offset_bottom = 35.0
-focus_mode = 0
-mouse_default_cursor_shape = 2
-theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
-theme_override_colors/font_hover_color = Color(0.286275, 0.27451, 0.254902, 1)
-theme_override_colors/font_pressed_color = Color(0.286275, 0.27451, 0.254902, 1)
-theme_override_font_sizes/font_size = 11
-theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
-theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
-theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
-text = "建造"
-
-[node name="DispatchDisabled" type="Panel" parent="UI/Shell/ContextBar"]
-layout_mode = 0
-offset_left = 275.0
-offset_top = 7.0
-offset_right = 367.0
-offset_bottom = 35.0
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_disabled_action")
-
-[node name="Label" type="Label" parent="UI/Shell/ContextBar/DispatchDisabled"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_colors/font_color = Color(0.513725, 0.494118, 0.458824, 1)
-theme_override_font_sizes/font_size = 11
-text = "派遣"
-horizontal_alignment = 1
-vertical_alignment = 1
-
-[node name="ManageDisabled" type="Panel" parent="UI/Shell/ContextBar"]
-layout_mode = 0
-offset_left = 379.0
-offset_top = 7.0
-offset_right = 471.0
-offset_bottom = 35.0
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_disabled_action")
-
-[node name="Label" type="Label" parent="UI/Shell/ContextBar/ManageDisabled"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_colors/font_color = Color(0.513725, 0.494118, 0.458824, 1)
-theme_override_font_sizes/font_size = 11
-text = "管理"
-horizontal_alignment = 1
-vertical_alignment = 1

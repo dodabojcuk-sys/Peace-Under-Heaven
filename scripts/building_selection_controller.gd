@@ -10,7 +10,6 @@ enum SelectionState {
 const SELECTION_OUTLINE_MARGIN := 4.0
 
 @onready var map_world: Node2D = $"../MapWorld"
-@onready var placed_buildings: Node2D = $"../MapWorld/ConstructionLayer/PlacedBuildings"
 @onready var selection_outline: Line2D = $"../MapWorld/ConstructionLayer/SelectionOutline"
 @onready var construction_controller: Node = $"../ConstructionController"
 @onready var detail_panel: Panel = $"../UI/Shell/BuildingDetailPanel"
@@ -20,6 +19,7 @@ const SELECTION_OUTLINE_MARGIN := 4.0
 @onready var grid_position: Label = $"../UI/Shell/BuildingDetailPanel/GridPosition"
 @onready var footprint: Label = $"../UI/Shell/BuildingDetailPanel/Footprint"
 @onready var prototype_status: Label = $"../UI/Shell/BuildingDetailPanel/PrototypeStatus"
+@onready var description: Label = $"../UI/Shell/BuildingDetailPanel/Description"
 @onready var close_button: Button = $"../UI/Shell/BuildingDetailPanel/CloseButton"
 @onready var remove_button: Button = $"../UI/Shell/BuildingDetailPanel/RemoveButton"
 @onready var removal_confirmation: Control = (
@@ -34,7 +34,6 @@ const SELECTION_OUTLINE_MARGIN := 4.0
 @onready var top_status_bar: Control = $"../UI/Shell/TopStatusBar"
 @onready var city_bar: Control = $"../UI/Shell/CityBar"
 @onready var minimap_placeholder: Control = $"../UI/Shell/MinimapPlaceholder"
-@onready var context_bar: Control = $"../UI/Shell/ContextBar"
 
 var state := SelectionState.NONE
 var selected_placement_id := -1
@@ -62,19 +61,26 @@ func handle_map_click(screen_position: Vector2) -> void:
 
 func select_placement(placement_id: int) -> void:
 	var record: Dictionary = construction_controller.get_building_record(placement_id)
-	var building: Node2D = construction_controller.get_building_node(placement_id)
-	if record.is_empty() or building == null or not building.is_inside_tree():
+	var building: CanvasItem = construction_controller.get_building_node(placement_id)
+	if (
+		record.is_empty()
+		or not bool(record.get("selectable", false))
+		or building == null
+		or not building.is_inside_tree()
+	):
 		clear_selection()
 		return
 
+	construction_controller.cancel_build_interaction()
 	selected_placement_id = placement_id
 	state = SelectionState.SELECTED
 	_refresh_selection_outline(record, building)
 	_refresh_detail_panel(record)
 	_show_selected_presentation()
+	construction_controller.set_detail_panel_active(true)
 
 
-func select_building(building: Node2D) -> void:
+func select_building(building: CanvasItem) -> void:
 	select_placement(construction_controller.get_placement_id_for_node(building))
 
 
@@ -84,6 +90,7 @@ func clear_selection() -> void:
 	selection_outline.visible = false
 	detail_panel.visible = false
 	removal_confirmation.visible = false
+	construction_controller.set_detail_panel_active(false)
 
 
 func has_selection() -> bool:
@@ -100,7 +107,10 @@ func is_awaiting_removal_confirmation() -> bool:
 
 
 func request_removal_confirmation() -> void:
-	if not has_selection():
+	var record: Dictionary = construction_controller.get_building_record(
+		selected_placement_id
+	)
+	if not has_selection() or not bool(record.get("removable", false)):
 		clear_selection()
 		return
 	state = SelectionState.REMOVE_CONFIRM
@@ -143,29 +153,33 @@ func get_placement_id_at_screen_position(screen_position: Vector2) -> int:
 	)
 	var map_global_position := map_world.to_global(map_local_position)
 
-	for index in range(placed_buildings.get_child_count() - 1, -1, -1):
-		var building := placed_buildings.get_child(index) as Node2D
-		if building == null:
-			continue
-		var placement_id: int = construction_controller.get_placement_id_for_node(
-			building
-		)
-		if placement_id < 0:
-			continue
+	var placement_ids: Array[int] = construction_controller.get_placement_ids()
+	for index in range(placement_ids.size() - 1, -1, -1):
+		var placement_id: int = placement_ids[index]
 		var record: Dictionary = construction_controller.get_building_record(
 			placement_id
 		)
-		if record.is_empty():
+		var building: CanvasItem = construction_controller.get_building_node(
+			placement_id
+		)
+		if (
+			record.is_empty()
+			or not bool(record.get("selectable", false))
+			or building == null
+		):
 			continue
 		var selection_bounds: Rect2 = record.selection_bounds
-		var building_local_position := building.to_local(map_global_position)
+		var building_local_position := (
+			building.get_global_transform().affine_inverse()
+			* map_global_position
+		)
 		if selection_bounds.has_point(building_local_position):
 			return placement_id
 
 	return -1
 
 
-func get_building_at_screen_position(screen_position: Vector2) -> Node2D:
+func get_building_at_screen_position(screen_position: Vector2) -> CanvasItem:
 	return construction_controller.get_building_node(
 		get_placement_id_at_screen_position(screen_position)
 	)
@@ -179,6 +193,8 @@ func is_detail_panel_point(screen_position: Vector2) -> bool:
 
 
 func is_screen_point_blocked(screen_position: Vector2) -> bool:
+	if construction_controller.is_construction_ui_point(screen_position):
+		return true
 	for ui_control in _get_ui_occlusion_controls():
 		if (
 			ui_control.is_visible_in_tree()
@@ -188,7 +204,10 @@ func is_screen_point_blocked(screen_position: Vector2) -> bool:
 	return false
 
 
-func _refresh_selection_outline(record: Dictionary, building: Node2D) -> void:
+func _refresh_selection_outline(
+	record: Dictionary,
+	building: CanvasItem
+) -> void:
 	var selection_bounds: Rect2 = record.selection_bounds
 	var expanded_bounds := selection_bounds.grow(SELECTION_OUTLINE_MARGIN)
 	selection_outline.points = PackedVector2Array([
@@ -198,7 +217,7 @@ func _refresh_selection_outline(record: Dictionary, building: Node2D) -> void:
 		Vector2(expanded_bounds.position.x, expanded_bounds.end.y),
 		expanded_bounds.position,
 	])
-	selection_outline.global_transform = building.global_transform
+	selection_outline.global_transform = building.get_global_transform()
 	selection_outline.visible = true
 
 
@@ -210,12 +229,18 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 	grid_position.text = "网格位置：(%d, %d)" % [origin_cell.x, origin_cell.y]
 	footprint.text = "占地：%d × %d" % [footprint_cells.x, footprint_cells.y]
 	prototype_status.text = "状态：%s" % str(record.prototype_status)
+	description.text = str(record.description)
+	remove_button.visible = bool(record.get("removable", false))
 
 
 func _show_selected_presentation() -> void:
 	panel_title.text = "已选择目标"
 	for control in _get_detail_controls():
 		control.visible = true
+	var record: Dictionary = construction_controller.get_building_record(
+		selected_placement_id
+	)
+	remove_button.visible = bool(record.get("removable", false))
 	removal_confirmation.visible = false
 	detail_panel.visible = true
 
@@ -235,6 +260,7 @@ func _get_detail_controls() -> Array[Control]:
 		grid_position,
 		footprint,
 		prototype_status,
+		description,
 		remove_button,
 	]
 
@@ -244,7 +270,6 @@ func _get_ui_occlusion_controls() -> Array[Control]:
 		top_status_bar,
 		city_bar,
 		minimap_placeholder,
-		context_bar,
 		detail_panel,
 	]
 

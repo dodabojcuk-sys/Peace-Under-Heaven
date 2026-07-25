@@ -29,9 +29,17 @@ func _run() -> void:
 	var placed_buildings: Node2D = scene.get_node(
 		"MapWorld/ConstructionLayer/PlacedBuildings"
 	)
-	var build_button: Button = scene.get_node(
-		"UI/Shell/ContextBar/TemporaryBuildButton"
+	var build_entry_button: Button = scene.get_node(
+		"UI/Shell/ConstructionEntryPanel/BuildEntryButton"
 	)
+	var construction_menu: Control = scene.get_node(
+		"UI/Shell/ConstructionMenu"
+	)
+	var build_template_button: Button = scene.get_node(
+		"UI/Shell/ConstructionMenu/TestBuildingButton"
+	)
+	var initial_building_count: int = controller.get_building_count()
+	var initial_occupied_count: int = controller.occupied_cells.size()
 
 	_check(scene.find_children("MapWorld", "Node2D", true, false).size() == 1,
 		"场景只有一套 MapWorld")
@@ -42,10 +50,15 @@ func _run() -> void:
 		"测试建筑占地为 3 x 2")
 	_check(controller.get_footprint_cells(Vector2i(10, 10)).size() == 6,
 		"3 x 2 占地包含六个格")
-	_check(build_button.mouse_filter == Control.MOUSE_FILTER_STOP,
-		"只有临时建造按钮主动接收 UI 鼠标事件")
-	build_button.emit_signal("pressed")
-	_check(controller.is_placing(), "临时建造按钮信号进入 placing")
+	_check(initial_building_count == 6, "启动时注册六个固定预置建筑")
+	_check(initial_occupied_count > 0, "固定预置建筑写入世界格占用")
+	_check(build_entry_button.mouse_filter == Control.MOUSE_FILTER_STOP,
+		"右侧建造入口主动接收 UI 鼠标事件")
+	build_entry_button.emit_signal("pressed")
+	_check(controller.is_choosing_template(), "右侧建造入口打开模板列表")
+	_check(construction_menu.visible, "模板列表显示当前测试建筑")
+	build_template_button.emit_signal("pressed")
+	_check(controller.is_placing(), "测试建筑模板进入原 placing")
 	controller.cancel_placing()
 
 	var reference_map_position := Vector2(1320.0, 920.0)
@@ -75,26 +88,29 @@ func _run() -> void:
 	_check(controller.preview_valid, "安全区域预览有效")
 	var first_origin: Vector2i = controller.preview_origin_cell
 	_check(controller.confirm_current_preview(), "第一次有效放置成功")
-	_check(controller.occupied_cells.size() == 6, "首次放置占用六个格")
-	_check(controller.get_building_count() == 1, "首次放置写入一条权威内存记录")
+	_check(controller.occupied_cells.size() == initial_occupied_count + 6,
+		"首次放置在固定占用基线上增加六个格")
+	_check(controller.get_building_count() == initial_building_count + 1,
+		"首次放置在统一权威记录中增加一条运行时记录")
 	_check(placed_buildings.get_child_count() == 1, "首次放置创建一个世界节点")
 	_check(controller.preview_origin_cell == first_origin,
 		"确认使用当前可见预览的同一网格 intent")
 	_check(not controller.preview_valid, "已占用位置的预览变为无效")
 	_check(not controller.confirm_current_preview(), "重复覆盖已占用格被拒绝")
-	_check(controller.occupied_cells.size() == 6,
+	_check(controller.occupied_cells.size() == initial_occupied_count + 6,
 		"无效确认不改变 occupied_cells")
 
 	controller.cancel_placing()
 	_check(not controller.is_placing(), "取消后回到 idle")
 	_check(not preview.visible, "取消后预览消失")
-	_check(controller.get_building_count() == 1, "取消不删除已放置建筑")
+	_check(controller.get_building_count() == initial_building_count + 1,
+		"取消不删除已放置建筑")
 
 	var ui_overlap_points := {
 		"TopStatusBar": Vector2(600.0, 55.0),
 		"CityBar": Vector2(100.0, 300.0),
 		"MinimapPlaceholder": Vector2(1050.0, 115.0),
-		"ContextBar": Vector2(650.0, 585.0),
+		"ConstructionEntryPanel": Vector2(1050.0, 205.0),
 	}
 	for ui_name in ui_overlap_points:
 		controller.begin_placing(ui_overlap_points[ui_name])
@@ -104,9 +120,9 @@ func _run() -> void:
 		_check(not controller.confirm_current_preview(),
 			"%s 下方左键确认不会放置" % ui_name)
 		controller.cancel_placing()
-	_check(controller.get_building_count() == 1,
+	_check(controller.get_building_count() == initial_building_count + 1,
 		"所有 UI 遮挡无效确认均不改变权威记录")
-	_check(controller.occupied_cells.size() == 6,
+	_check(controller.occupied_cells.size() == initial_occupied_count + 6,
 		"所有 UI 遮挡无效确认均不改变 occupied_cells")
 
 	controller.begin_placing(ui_overlap_points.CityBar)

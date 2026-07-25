@@ -19,27 +19,38 @@ var is_dragging := false
 
 func _ready() -> void:
 	get_viewport().size_changed.connect(_clamp_camera)
+	construction_controller.construction_interaction_started.connect(
+		_on_construction_interaction_started
+	)
 	construction_controller.placing_started.connect(_on_construction_placing_started)
 	call_deferred("_initialize_camera")
 
 
 func _input(event: InputEvent) -> void:
+	if (
+		event is InputEventMouseButton
+		and event.pressed
+		and (
+			building_selection_controller.is_detail_panel_point(event.position)
+			or construction_controller.is_construction_ui_point(event.position)
+		)
+	):
+		return
+
 	if construction_controller.is_placing():
 		_handle_construction_input(event)
 		return
 
 	if event is InputEventKey:
 		if event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
-			if building_selection_controller.handle_escape():
+			if (
+				construction_controller.handle_escape()
+				or building_selection_controller.handle_escape()
+			):
 				get_viewport().set_input_as_handled()
 			return
 
 	if event is InputEventMouseButton:
-		if (
-			event.pressed
-			and building_selection_controller.is_detail_panel_point(event.position)
-		):
-			return
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_handle_zoom(event)
 		else:
@@ -151,6 +162,11 @@ func _stop_drag() -> void:
 
 
 func _on_construction_placing_started() -> void:
+	_stop_drag()
+	building_selection_controller.clear_selection()
+
+
+func _on_construction_interaction_started() -> void:
 	_stop_drag()
 	building_selection_controller.clear_selection()
 

@@ -2,15 +2,19 @@ extends Node
 
 
 signal placing_started
+signal construction_interaction_started
 signal building_removed(placement_id: int)
 
 enum ConstructionState {
 	IDLE,
+	CHOOSING_TEMPLATE,
 	PLACING,
 }
 
 const GRID_SIZE := 40.0
 const GRID_ORIGIN := Vector2.ZERO
+const PLACEMENT_KIND_FIXED := &"fixed"
+const PLACEMENT_KIND_PLACED := &"placed"
 const TEST_BUILDING_FOOTPRINT := Vector2i(3, 2)
 const TEST_BUILDING_WORLD_SIZE := Vector2(
 	TEST_BUILDING_FOOTPRINT.x * GRID_SIZE,
@@ -23,6 +27,44 @@ const PREVIEW_VALID_OUTLINE := Color(0.12, 0.34, 0.2, 1.0)
 const PREVIEW_INVALID_OUTLINE := Color(0.42, 0.12, 0.1, 1.0)
 const PLACED_BUILDING_COLOR := Color(0.42, 0.5, 0.52, 1.0)
 const PLACED_BUILDING_OUTLINE := Color(0.2, 0.25, 0.27, 1.0)
+const PRESET_BUILDING_DEFINITIONS := [
+	{
+		"node_path": "../MapWorld/Manor",
+		"template_id": &"manor",
+		"display_name": "城主府 L1",
+		"description": "城市行政中枢（灰盒占位）",
+	},
+	{
+		"node_path": "../MapWorld/Barracks",
+		"template_id": &"barracks",
+		"display_name": "兵营 L1",
+		"description": "军事训练设施（灰盒占位）",
+	},
+	{
+		"node_path": "../MapWorld/Granary",
+		"template_id": &"granary",
+		"display_name": "粮仓 L2",
+		"description": "城市粮食储备（灰盒占位）",
+	},
+	{
+		"node_path": "../MapWorld/Academy",
+		"template_id": &"academy",
+		"display_name": "学院 L1",
+		"description": "研究与教育设施（灰盒占位）",
+	},
+	{
+		"node_path": "../MapWorld/CityGate",
+		"template_id": &"city_gate",
+		"display_name": "城门 L1",
+		"description": "城市出入口（灰盒占位）",
+	},
+	{
+		"node_path": "../MapWorld/CommandPlatform",
+		"template_id": &"command_platform",
+		"display_name": "军令台 L1",
+		"description": "军事命令设施（功能尚未接入）",
+	},
+]
 
 @onready var map_world: Node2D = $"../MapWorld"
 @onready var map_board: Control = $"../MapWorld/MapBoard"
@@ -37,13 +79,27 @@ const PLACED_BUILDING_OUTLINE := Color(0.2, 0.25, 0.27, 1.0)
 @onready var preview_label: Label = (
 	$"../MapWorld/ConstructionLayer/ConstructionPreview/Label"
 )
-@onready var build_button: Button = (
-	$"../UI/Shell/ContextBar/TemporaryBuildButton"
+@onready var construction_entry_panel: Control = (
+	$"../UI/Shell/ConstructionEntryPanel"
+)
+@onready var build_entry_button: Button = (
+	$"../UI/Shell/ConstructionEntryPanel/BuildEntryButton"
+)
+@onready var build_mode_status: Label = (
+	$"../UI/Shell/ConstructionEntryPanel/BuildModeStatus"
+)
+@onready var construction_menu: Control = (
+	$"../UI/Shell/ConstructionMenu"
+)
+@onready var build_template_button: Button = (
+	$"../UI/Shell/ConstructionMenu/TestBuildingButton"
+)
+@onready var close_construction_menu_button: Button = (
+	$"../UI/Shell/ConstructionMenu/CloseButton"
 )
 @onready var top_status_bar: Control = $"../UI/Shell/TopStatusBar"
 @onready var city_bar: Control = $"../UI/Shell/CityBar"
 @onready var minimap_placeholder: Control = $"../UI/Shell/MinimapPlaceholder"
-@onready var context_bar: Control = $"../UI/Shell/ContextBar"
 @onready var building_detail_panel: Control = $"../UI/Shell/BuildingDetailPanel"
 
 var state := ConstructionState.IDLE
@@ -54,15 +110,36 @@ var occupied_cells: Dictionary = {}
 var building_records_by_id: Dictionary = {}
 var placement_order: Array[int] = []
 var _next_placement_id := 1
+var _detail_panel_active := false
 
 
 func _ready() -> void:
-	build_button.pressed.connect(_on_build_button_pressed)
+	_register_preset_buildings()
+	build_entry_button.pressed.connect(_on_build_entry_pressed)
+	build_template_button.pressed.connect(_on_build_template_pressed)
+	close_construction_menu_button.pressed.connect(cancel_build_interaction)
 	construction_preview.visible = false
+	_sync_construction_ui()
 
 
 func is_placing() -> bool:
 	return state == ConstructionState.PLACING
+
+
+func is_choosing_template() -> bool:
+	return state == ConstructionState.CHOOSING_TEMPLATE
+
+
+func open_construction_menu() -> void:
+	if is_choosing_template():
+		return
+
+	state = ConstructionState.CHOOSING_TEMPLATE
+	construction_preview.visible = false
+	preview_valid = false
+	preview_invalid_reason = ""
+	_sync_construction_ui()
+	construction_interaction_started.emit()
 
 
 func begin_placing(screen_position: Vector2) -> void:
@@ -72,6 +149,7 @@ func begin_placing(screen_position: Vector2) -> void:
 
 	state = ConstructionState.PLACING
 	construction_preview.visible = true
+	_sync_construction_ui()
 	update_preview(screen_position)
 	placing_started.emit()
 
@@ -84,6 +162,40 @@ func cancel_placing() -> void:
 	construction_preview.visible = false
 	preview_valid = false
 	preview_invalid_reason = ""
+	_sync_construction_ui()
+
+
+func cancel_build_interaction() -> void:
+	if state == ConstructionState.IDLE:
+		return
+
+	state = ConstructionState.IDLE
+	construction_preview.visible = false
+	preview_valid = false
+	preview_invalid_reason = ""
+	_sync_construction_ui()
+
+
+func handle_escape() -> bool:
+	if not is_choosing_template():
+		return false
+	cancel_build_interaction()
+	return true
+
+
+func set_detail_panel_active(active: bool) -> void:
+	_detail_panel_active = active
+	_sync_construction_ui()
+
+
+func is_construction_ui_point(screen_position: Vector2) -> bool:
+	for ui_control in [construction_entry_panel, construction_menu]:
+		if (
+			ui_control.is_visible_in_tree()
+			and ui_control.get_global_rect().has_point(screen_position)
+		):
+			return true
+	return false
 
 
 func update_preview(screen_position: Vector2) -> void:
@@ -110,20 +222,24 @@ func get_building_count() -> int:
 	return building_records_by_id.size()
 
 
+func get_placement_ids() -> Array[int]:
+	return placement_order.duplicate()
+
+
 func get_building_record(placement_id: int) -> Dictionary:
 	var record: Dictionary = building_records_by_id.get(placement_id, {})
 	return record.duplicate(true) if not record.is_empty() else {}
 
 
-func get_building_node(placement_id: int) -> Node2D:
+func get_building_node(placement_id: int) -> CanvasItem:
 	var record: Dictionary = building_records_by_id.get(placement_id, {})
 	if record.is_empty():
 		return null
-	var building := record.get("node") as Node2D
+	var building := record.get("node") as CanvasItem
 	return building if is_instance_valid(building) else null
 
 
-func get_placement_id_for_node(building: Node2D) -> int:
+func get_placement_id_for_node(building: CanvasItem) -> int:
 	if not is_instance_valid(building) or not building.has_meta("placement_id"):
 		return -1
 	var placement_id := int(building.get_meta("placement_id"))
@@ -135,7 +251,11 @@ func get_placement_id_for_node(building: Node2D) -> int:
 
 func remove_placed_building(placement_id: int) -> bool:
 	var record: Dictionary = building_records_by_id.get(placement_id, {})
-	if record.is_empty():
+	if (
+		record.is_empty()
+		or record.get("placement_kind") != PLACEMENT_KIND_PLACED
+		or not bool(record.get("removable", false))
+	):
 		return false
 
 	var building := record.get("node") as Node2D
@@ -228,7 +348,11 @@ func get_footprint_screen_rect(origin_cell: Vector2i) -> Rect2:
 	return Rect2(minimum, maximum - minimum)
 
 
-func _on_build_button_pressed() -> void:
+func _on_build_entry_pressed() -> void:
+	open_construction_menu()
+
+
+func _on_build_template_pressed() -> void:
 	begin_placing(get_viewport().get_mouse_position())
 
 
@@ -272,8 +396,9 @@ func _get_ui_occlusion_controls() -> Array[Control]:
 		top_status_bar,
 		city_bar,
 		minimap_placeholder,
-		context_bar,
 		building_detail_panel,
+		construction_entry_panel,
+		construction_menu,
 	]
 
 
@@ -297,20 +422,24 @@ func _create_runtime_building(origin_cell: Vector2i) -> int:
 		if occupied_cells.has(cell):
 			return -1
 
-	var placement_id := _next_placement_id
-	_next_placement_id += 1
+	var placement_id := _allocate_placement_id()
 	var building := _create_placed_building_node(placement_id, origin_cell)
 	var record := {
 		"placement_id": placement_id,
+		"placement_kind": PLACEMENT_KIND_PLACED,
 		"template_id": &"test_building",
 		"display_name": "测试建筑",
 		"building_type": "中性测试建筑",
+		"description": "用于验证建造、选择与安全移除闭环",
 		"origin_cell": origin_cell,
 		"footprint": TEST_BUILDING_FOOTPRINT,
 		"occupied_footprint_cells": footprint_cells.duplicate(),
 		"selection_bounds": Rect2(Vector2.ZERO, TEST_BUILDING_WORLD_SIZE),
 		"lifecycle_state": &"running",
 		"prototype_status": "原型 / 运行中",
+		"selectable": true,
+		"removable": true,
+		"movable": false,
 		"node": building,
 	}
 	building_records_by_id[placement_id] = record
@@ -367,7 +496,10 @@ func _release_runtime_record(
 	require_complete_ownership: bool
 ) -> bool:
 	var record: Dictionary = building_records_by_id.get(placement_id, {})
-	if record.is_empty():
+	if (
+		record.is_empty()
+		or record.get("placement_kind") != PLACEMENT_KIND_PLACED
+	):
 		return false
 
 	var footprint_cells: Array = record.get("occupied_footprint_cells", [])
@@ -405,6 +537,95 @@ func _on_runtime_building_tree_exited(
 		)
 		return
 	_release_runtime_record(placement_id, false)
+
+
+func _register_preset_buildings() -> void:
+	for definition in PRESET_BUILDING_DEFINITIONS:
+		var building := get_node(str(definition.node_path)) as Control
+		if building == null:
+			push_error("Missing preset building: %s" % definition.node_path)
+			continue
+		_register_fixed_building(building, definition)
+
+
+func _register_fixed_building(
+	building: Control,
+	definition: Dictionary
+) -> void:
+	var map_rect := Rect2(building.position, building.size)
+	var footprint_cells := _get_cells_intersecting_map_rect(map_rect)
+	for cell in footprint_cells:
+		if occupied_cells.has(cell):
+			push_error(
+				"Preset building %s overlaps placement %s at %s"
+				% [building.name, occupied_cells[cell], cell]
+			)
+			return
+
+	var origin_cell := Vector2i(
+		floori(map_rect.position.x / GRID_SIZE),
+		floori(map_rect.position.y / GRID_SIZE)
+	)
+	var footprint_end := Vector2i(
+		ceili(map_rect.end.x / GRID_SIZE),
+		ceili(map_rect.end.y / GRID_SIZE)
+	)
+	var placement_id := _allocate_placement_id()
+	var record := {
+		"placement_id": placement_id,
+		"placement_kind": PLACEMENT_KIND_FIXED,
+		"template_id": definition.template_id,
+		"display_name": definition.display_name,
+		"building_type": "固定预置建筑",
+		"description": definition.description,
+		"origin_cell": origin_cell,
+		"footprint": footprint_end - origin_cell,
+		"occupied_footprint_cells": footprint_cells.duplicate(),
+		"selection_bounds": Rect2(Vector2.ZERO, building.size),
+		"lifecycle_state": &"fixed",
+		"prototype_status": "固定 / 可选择",
+		"selectable": true,
+		"removable": false,
+		"movable": false,
+		"node": building,
+	}
+	building.set_meta("placement_id", placement_id)
+	building_records_by_id[placement_id] = record
+	placement_order.append(placement_id)
+	for cell in footprint_cells:
+		occupied_cells[cell] = placement_id
+
+
+func _get_cells_intersecting_map_rect(map_rect: Rect2) -> Array[Vector2i]:
+	var start_cell := Vector2i(
+		floori(map_rect.position.x / GRID_SIZE),
+		floori(map_rect.position.y / GRID_SIZE)
+	)
+	var end_cell := Vector2i(
+		ceili(map_rect.end.x / GRID_SIZE),
+		ceili(map_rect.end.y / GRID_SIZE)
+	)
+	var cells: Array[Vector2i] = []
+	for y in range(start_cell.y, end_cell.y):
+		for x in range(start_cell.x, end_cell.x):
+			cells.append(Vector2i(x, y))
+	return cells
+
+
+func _allocate_placement_id() -> int:
+	var placement_id := _next_placement_id
+	_next_placement_id += 1
+	return placement_id
+
+
+func _sync_construction_ui() -> void:
+	construction_entry_panel.visible = not _detail_panel_active
+	build_entry_button.visible = state != ConstructionState.PLACING
+	build_mode_status.visible = state == ConstructionState.PLACING
+	construction_menu.visible = (
+		not _detail_panel_active
+		and state == ConstructionState.CHOOSING_TEMPLATE
+	)
 
 
 func _building_polygon() -> PackedVector2Array:

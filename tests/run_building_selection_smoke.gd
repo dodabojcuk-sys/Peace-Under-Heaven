@@ -36,7 +36,9 @@ func _run() -> void:
 	var detail_panel: Panel = scene.get_node("UI/Shell/BuildingDetailPanel")
 	var close_button: Button = detail_panel.get_node("CloseButton")
 	var minimap: Control = scene.get_node("UI/Shell/MinimapPlaceholder")
-	var context_bar: Control = scene.get_node("UI/Shell/ContextBar")
+	var construction_entry: Control = scene.get_node(
+		"UI/Shell/ConstructionEntryPanel"
+	)
 
 	_check(scene.find_children("MapWorld", "Node2D", true, false).size() == 1,
 		"场景只有一套 MapWorld")
@@ -55,8 +57,8 @@ func _run() -> void:
 		"详情面板尺寸为 280 x 360")
 	_check(not panel_rect.intersects(minimap.get_global_rect()),
 		"详情面板不与小地图重叠")
-	_check(not panel_rect.intersects(context_bar.get_global_rect()),
-		"详情面板不与底部操作栏重叠")
+	_check(construction_entry.visible, "初始显示右侧建造入口")
+	_check(not scene.has_node("UI/Shell/ContextBar"), "底部操作栏已经移除")
 
 	var first_placement_id: int = construction._create_runtime_building(
 		Vector2i(25, 15)
@@ -78,6 +80,7 @@ func _run() -> void:
 	_check(selection.selected_placement_id == first_placement_id,
 		"小于 8 px 的左键单击按 placement id 选中建筑")
 	_check(detail_panel.visible, "选中建筑后显示详情面板")
+	_check(not construction_entry.visible, "选中建筑时右侧建造入口让位给详情")
 	_check(selection_outline.visible, "选中建筑后显示琥珀色描边")
 	_check(selection_outline.global_position.is_equal_approx(first_building.global_position),
 		"选择描边与选中建筑世界位置对齐")
