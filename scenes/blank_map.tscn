@@ -1,6 +1,7 @@
-[gd_scene load_steps=9 format=3 uid="uid://blankmap00"]
+[gd_scene load_steps=10 format=3 uid="uid://blankmap00"]
 
 [ext_resource type="Script" path="res://scripts/map_pan_controller.gd" id="1_map_pan"]
+[ext_resource type="Script" path="res://scripts/construction_controller.gd" id="2_construction"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top_bar"]
 bg_color = Color(0.847059, 0.831373, 0.796078, 1)
@@ -78,6 +79,9 @@ script = ExtResource("1_map_pan")
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(1100, 700)
 enabled = true
+
+[node name="ConstructionController" type="Node" parent="."]
+script = ExtResource("2_construction")
 
 [node name="MapBoard" type="ColorRect" parent="MapWorld"]
 layout_mode = 0
@@ -370,6 +374,34 @@ offset_right = 54.0
 offset_bottom = 96.0
 color = Color(0.92, 1, 0.96, 1)
 
+[node name="ConstructionLayer" type="Node2D" parent="MapWorld"]
+z_index = 10
+
+[node name="PlacedBuildings" type="Node2D" parent="MapWorld/ConstructionLayer"]
+
+[node name="ConstructionPreview" type="Node2D" parent="MapWorld/ConstructionLayer"]
+visible = false
+
+[node name="Body" type="Polygon2D" parent="MapWorld/ConstructionLayer/ConstructionPreview"]
+polygon = PackedVector2Array(0, 0, 120, 0, 120, 80, 0, 80)
+color = Color(0.31, 0.62, 0.43, 0.72)
+
+[node name="Outline" type="Line2D" parent="MapWorld/ConstructionLayer/ConstructionPreview"]
+points = PackedVector2Array(0, 0, 120, 0, 120, 80, 0, 80, 0, 0)
+width = 3.0
+default_color = Color(0.12, 0.34, 0.2, 1)
+
+[node name="Label" type="Label" parent="MapWorld/ConstructionLayer/ConstructionPreview"]
+offset_right = 120.0
+offset_bottom = 80.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.96, 0.98, 0.94, 1)
+theme_override_font_sizes/font_size = 13
+text = "测试建筑
+可放置"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="UI" type="CanvasLayer" parent="."]
 
 [node name="Shell" type="Control" parent="UI"]
@@ -569,28 +601,22 @@ offset_bottom = 33.0
 mouse_filter = 2
 color = Color(0.65098, 0.631373, 0.596078, 1)
 
-[node name="ViewDisabled" type="Panel" parent="UI/Shell/ContextBar"]
+[node name="TemporaryBuildButton" type="Button" parent="UI/Shell/ContextBar"]
 layout_mode = 0
 offset_left = 171.0
 offset_top = 7.0
 offset_right = 263.0
 offset_bottom = 35.0
-mouse_filter = 2
-theme_override_styles/panel = SubResource("StyleBoxFlat_disabled_action")
-
-[node name="Label" type="Label" parent="UI/Shell/ContextBar/ViewDisabled"]
-layout_mode = 1
-anchors_preset = 15
-anchor_right = 1.0
-anchor_bottom = 1.0
-grow_horizontal = 2
-grow_vertical = 2
-mouse_filter = 2
-theme_override_colors/font_color = Color(0.513725, 0.494118, 0.458824, 1)
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_colors/font_hover_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_colors/font_pressed_color = Color(0.286275, 0.27451, 0.254902, 1)
 theme_override_font_sizes/font_size = 11
-text = "查看"
-horizontal_alignment = 1
-vertical_alignment = 1
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "建造"
 
 [node name="DispatchDisabled" type="Panel" parent="UI/Shell/ContextBar"]
 layout_mode = 0

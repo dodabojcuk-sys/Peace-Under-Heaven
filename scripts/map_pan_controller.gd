@@ -8,6 +8,7 @@ const ZOOM_STEP := 0.1
 
 @onready var camera: Camera2D = $Camera2D
 @onready var map_board: Control = $MapWorld/MapBoard
+@onready var construction_controller: Node = $ConstructionController
 
 var active_drag_button: int = -1
 var last_pointer_screen := Vector2.ZERO
@@ -17,10 +18,15 @@ var is_dragging := false
 
 func _ready() -> void:
 	get_viewport().size_changed.connect(_clamp_camera)
+	construction_controller.placing_started.connect(_on_construction_placing_started)
 	call_deferred("_initialize_camera")
 
 
 func _input(event: InputEvent) -> void:
+	if construction_controller.is_placing():
+		_handle_construction_input(event)
+		return
+
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_handle_zoom(event)
@@ -28,6 +34,33 @@ func _input(event: InputEvent) -> void:
 			_handle_drag_button(event)
 	elif event is InputEventMouseMotion:
 		_handle_drag_motion(event)
+
+
+func _handle_construction_input(event: InputEvent) -> void:
+	if event is InputEventKey:
+		if event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+			construction_controller.cancel_placing()
+			_stop_drag()
+			get_viewport().set_input_as_handled()
+		return
+
+	if event is InputEventMouseButton:
+		if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
+			_handle_zoom(event)
+			construction_controller.update_preview(event.position)
+		elif event.button_index == MOUSE_BUTTON_MIDDLE:
+			_handle_drag_button(event)
+			construction_controller.update_preview(event.position)
+		elif event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+			construction_controller.cancel_placing()
+			_stop_drag()
+			get_viewport().set_input_as_handled()
+		elif event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
+			construction_controller.confirm_current_preview()
+			get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion:
+		_handle_drag_motion(event)
+		construction_controller.update_preview(event.position)
 
 
 func _handle_drag_button(event: InputEventMouseButton) -> void:
@@ -96,6 +129,10 @@ func _stop_drag() -> void:
 	active_drag_button = -1
 	pending_drag_delta = Vector2.ZERO
 	is_dragging = false
+
+
+func _on_construction_placing_started() -> void:
+	_stop_drag()
 
 
 func _clamp_camera() -> void:
