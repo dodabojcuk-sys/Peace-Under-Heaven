@@ -94,7 +94,8 @@ func _run() -> void:
 		_check(building.get_meta_list() == [&"placement_id"],
 			"固定节点 metadata 只保留 placement_id")
 		for cell in record.occupied_footprint_cells:
-			_check(construction.occupied_cells.get(cell) == fixed_id,
+			_check(
+				construction.get_occupied_placement_id(cell) == fixed_id,
 				"固定建筑占用格归对应 placement_id")
 
 	camera.zoom = Vector2.ONE

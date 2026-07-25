@@ -199,7 +199,7 @@ func _run() -> void:
 	selection.clear_selection()
 	var restored_validation: Dictionary = construction.evaluate_origin_cell(panel_origin)
 	_check(restored_validation.valid, "面板隐藏后同一区域恢复建造有效性")
-	_check(not construction.occupied_cells.has(panel_origin),
+	_check(not construction.is_cell_occupied(panel_origin),
 		"详情面板遮挡不写入 occupied_cells")
 
 	var camera_before_restored_wheel := camera.position

@@ -39,7 +39,7 @@ func _run() -> void:
 		"UI/Shell/ConstructionMenu/TestBuildingButton"
 	)
 	var initial_building_count: int = controller.get_building_count()
-	var initial_occupied_count: int = controller.occupied_cells.size()
+	var initial_occupied_count: int = controller.get_occupied_cell_count()
 
 	_check(scene.find_children("MapWorld", "Node2D", true, false).size() == 1,
 		"场景只有一套 MapWorld")
@@ -88,7 +88,7 @@ func _run() -> void:
 	_check(controller.preview_valid, "安全区域预览有效")
 	var first_origin: Vector2i = controller.preview_origin_cell
 	_check(controller.confirm_current_preview(), "第一次有效放置成功")
-	_check(controller.occupied_cells.size() == initial_occupied_count + 6,
+	_check(controller.get_occupied_cell_count() == initial_occupied_count + 6,
 		"首次放置在固定占用基线上增加六个格")
 	_check(controller.get_building_count() == initial_building_count + 1,
 		"首次放置在统一权威记录中增加一条运行时记录")
@@ -97,7 +97,7 @@ func _run() -> void:
 		"确认使用当前可见预览的同一网格 intent")
 	_check(not controller.preview_valid, "已占用位置的预览变为无效")
 	_check(not controller.confirm_current_preview(), "重复覆盖已占用格被拒绝")
-	_check(controller.occupied_cells.size() == initial_occupied_count + 6,
+	_check(controller.get_occupied_cell_count() == initial_occupied_count + 6,
 		"无效确认不改变 occupied_cells")
 
 	controller.cancel_placing()
@@ -122,12 +122,12 @@ func _run() -> void:
 		controller.cancel_placing()
 	_check(controller.get_building_count() == initial_building_count + 1,
 		"所有 UI 遮挡无效确认均不改变权威记录")
-	_check(controller.occupied_cells.size() == initial_occupied_count + 6,
+	_check(controller.get_occupied_cell_count() == initial_occupied_count + 6,
 		"所有 UI 遮挡无效确认均不改变 occupied_cells")
 
 	controller.begin_placing(ui_overlap_points.CityBar)
 	var occluded_cell: Vector2i = controller.preview_origin_cell
-	_check(not controller.occupied_cells.has(occluded_cell),
+	_check(not controller.is_cell_occupied(occluded_cell),
 		"UI 遮挡不会把世界格写入 occupied_cells")
 
 	camera.position.x -= 320.0

@@ -49,7 +49,7 @@ func _run() -> void:
 
 	var baseline_ids: Array[int] = construction.get_placement_ids()
 	var baseline_building_count: int = construction.get_building_count()
-	var baseline_occupied_count: int = construction.occupied_cells.size()
+	var baseline_occupied_count: int = construction.get_occupied_cell_count()
 	var first_origin := Vector2i(25, 15)
 	var second_origin := Vector2i(30, 18)
 	var first_id: int = construction._create_runtime_building(first_origin)
@@ -64,11 +64,12 @@ func _run() -> void:
 	_check(construction.get_building_count() == baseline_building_count + 2,
 		"两栋运行时建筑各增加一条权威记录")
 	_check(
-		construction.placement_order == baseline_ids + [first_id, second_id],
+		construction.get_placement_ids() == baseline_ids + [first_id, second_id],
 		"权威顺序索引保留固定建筑并追加运行时 placement id"
 	)
 	_check(placed_buildings.get_child_count() == 2, "两条记录对应两个世界节点")
-	_check(construction.occupied_cells.size() == baseline_occupied_count + 12,
+	_check(
+		construction.get_occupied_cell_count() == baseline_occupied_count + 12,
 		"两栋建筑在固定占用基线上增加十二个世界格")
 	_check(first_node.get_meta_list() == [&"placement_id"],
 		"建筑节点 metadata 只保留 placement_id")
@@ -77,10 +78,10 @@ func _run() -> void:
 	_check(first_record.footprint == Vector2i(3, 2), "权威记录保存 3 x 2 占地")
 
 	for cell in first_record.occupied_footprint_cells:
-		_check(construction.occupied_cells.get(cell) == first_id,
+		_check(construction.get_occupied_placement_id(cell) == first_id,
 			"第一栋建筑占用格归第一 placement id")
 	for cell in second_record.occupied_footprint_cells:
-		_check(construction.occupied_cells.get(cell) == second_id,
+		_check(construction.get_occupied_placement_id(cell) == second_id,
 			"第二栋建筑占用格归第二 placement id")
 
 	selection.select_placement(first_id)
@@ -100,7 +101,8 @@ func _run() -> void:
 		"进入确认不会删除权威记录")
 	_check(is_instance_valid(first_node) and first_node.is_inside_tree(),
 		"进入确认不会删除世界节点")
-	_check(construction.occupied_cells.size() == baseline_occupied_count + 12,
+	_check(
+		construction.get_occupied_cell_count() == baseline_occupied_count + 12,
 		"进入确认不会释放占用格")
 	_check(confirmation.visible and not remove_button.visible,
 		"确认状态只显示确认内容")
@@ -113,7 +115,8 @@ func _run() -> void:
 	_check(remove_button.visible and not confirmation.visible,
 		"取消确认恢复原详情操作")
 	_check(construction.get_building_count() == baseline_building_count + 2
-		and construction.occupied_cells.size() == baseline_occupied_count + 12,
+		and construction.get_occupied_cell_count()
+			== baseline_occupied_count + 12,
 		"取消确认不改变记录和占用")
 
 	remove_button.emit_signal("pressed")
@@ -154,7 +157,8 @@ func _run() -> void:
 	_check(not selection.has_selection() and not detail_panel.visible,
 		"关闭按钮只清除选择和面板")
 	_check(construction.get_building_count() == baseline_building_count + 2
-		and construction.occupied_cells.size() == baseline_occupied_count + 12,
+		and construction.get_occupied_cell_count()
+			== baseline_occupied_count + 12,
 		"关闭面板不移除建筑或释放占用格")
 	selection.select_placement(first_id)
 
@@ -173,14 +177,14 @@ func _run() -> void:
 	_check(not is_instance_valid(first_node), "确认移除释放目标世界节点")
 	_check(
 		construction.get_building_count() == baseline_building_count + 1
-		and construction.placement_order == baseline_ids + [second_id],
+		and construction.get_placement_ids() == baseline_ids + [second_id],
 		"确认移除保留固定建筑、另一条运行时记录和顺序"
 	)
 	for cell in first_cells:
-		_check(not construction.occupied_cells.has(cell),
+		_check(not construction.is_cell_occupied(cell),
 			"确认移除释放目标 footprint 占用格")
 	for cell in second_record.occupied_footprint_cells:
-		_check(construction.occupied_cells.get(cell) == second_id,
+		_check(construction.get_occupied_placement_id(cell) == second_id,
 			"确认移除不影响另一栋建筑占用格")
 	_check(not selection.has_selection(), "确认移除清除 selected_placement_id")
 	_check(not detail_panel.visible and not selection_outline.visible,
@@ -188,7 +192,8 @@ func _run() -> void:
 	_check(not construction.remove_placed_building(first_id),
 		"重复移除不存在的 placement id 安全返回 false")
 	_check(construction.get_building_count() == baseline_building_count + 1
-		and construction.occupied_cells.size() == baseline_occupied_count + 6,
+		and construction.get_occupied_cell_count()
+			== baseline_occupied_count + 6,
 		"重复移除不产生二次变化")
 
 	camera.zoom = Vector2.ONE
@@ -204,11 +209,12 @@ func _run() -> void:
 		"既有建造入口重新指向原 footprint")
 	_check(construction.preview_valid, "移除后原位置恢复可建")
 	_check(construction.confirm_current_preview(), "既有建造流程可在原位置重建")
-	var rebuilt_id: int = construction.placement_order.back()
+	var rebuilt_id: int = construction.get_placement_ids().back()
 	_check(rebuilt_id == second_id + 1 and rebuilt_id != first_id,
 		"原位重建获得新的单调递增 placement id")
 	_check(construction.get_building_count() == baseline_building_count + 2
-		and construction.occupied_cells.size() == baseline_occupied_count + 12,
+		and construction.get_occupied_cell_count()
+			== baseline_occupied_count + 12,
 		"原位重建恢复一条记录、一个节点和六个占用格")
 	construction.cancel_placing()
 
@@ -230,7 +236,7 @@ func _run() -> void:
 	_check(construction.get_building_record(rebuilt_id).is_empty(),
 		"意外 tree_exited 幂等清理权威记录")
 	for cell in rebuilt_record.occupied_footprint_cells:
-		_check(not construction.occupied_cells.has(cell),
+		_check(not construction.is_cell_occupied(cell),
 			"意外 tree_exited 清理仍属于该 id 的占用格")
 	_check(not selection.has_selection()
 		and not detail_panel.visible

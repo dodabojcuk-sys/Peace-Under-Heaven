@@ -106,9 +106,9 @@ var state := ConstructionState.IDLE
 var preview_origin_cell := Vector2i.ZERO
 var preview_valid := false
 var preview_invalid_reason := ""
-var occupied_cells: Dictionary = {}
-var building_records_by_id: Dictionary = {}
-var placement_order: Array[int] = []
+var _occupied_cells: Dictionary = {}
+var _building_records_by_id: Dictionary = {}
+var _placement_order: Array[int] = []
 var _next_placement_id := 1
 var _detail_panel_active := false
 
@@ -219,20 +219,32 @@ func confirm_current_preview() -> bool:
 
 
 func get_building_count() -> int:
-	return building_records_by_id.size()
+	return _building_records_by_id.size()
 
 
 func get_placement_ids() -> Array[int]:
-	return placement_order.duplicate()
+	return _placement_order.duplicate()
+
+
+func get_occupied_cell_count() -> int:
+	return _occupied_cells.size()
+
+
+func get_occupied_placement_id(cell: Vector2i) -> int:
+	return int(_occupied_cells.get(cell, -1))
+
+
+func is_cell_occupied(cell: Vector2i) -> bool:
+	return _occupied_cells.has(cell)
 
 
 func get_building_record(placement_id: int) -> Dictionary:
-	var record: Dictionary = building_records_by_id.get(placement_id, {})
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	return record.duplicate(true) if not record.is_empty() else {}
 
 
 func get_building_node(placement_id: int) -> CanvasItem:
-	var record: Dictionary = building_records_by_id.get(placement_id, {})
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if record.is_empty():
 		return null
 	var building := record.get("node") as CanvasItem
@@ -243,14 +255,14 @@ func get_placement_id_for_node(building: CanvasItem) -> int:
 	if not is_instance_valid(building) or not building.has_meta("placement_id"):
 		return -1
 	var placement_id := int(building.get_meta("placement_id"))
-	var record: Dictionary = building_records_by_id.get(placement_id, {})
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if record.is_empty() or record.get("node") != building:
 		return -1
 	return placement_id
 
 
 func remove_placed_building(placement_id: int) -> bool:
-	var record: Dictionary = building_records_by_id.get(placement_id, {})
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if (
 		record.is_empty()
 		or record.get("placement_kind") != PLACEMENT_KIND_PLACED
@@ -268,7 +280,7 @@ func remove_placed_building(placement_id: int) -> bool:
 
 	var footprint_cells: Array = record.get("occupied_footprint_cells", [])
 	for cell in footprint_cells:
-		if occupied_cells.get(cell, -1) != placement_id:
+		if _occupied_cells.get(cell, -1) != placement_id:
 			push_error(
 				"Cannot remove placement %d: occupancy ownership mismatch at %s"
 				% [placement_id, cell]
@@ -314,7 +326,7 @@ func evaluate_origin_cell(origin_cell: Vector2i) -> Dictionary:
 		return _validation_result(false, "超出地图")
 
 	for cell in footprint_cells:
-		if occupied_cells.has(cell):
+		if _occupied_cells.has(cell):
 			return _validation_result(false, "位置已占用")
 
 	var screen_rect := get_footprint_screen_rect(origin_cell)
@@ -419,7 +431,7 @@ func _create_runtime_building(origin_cell: Vector2i) -> int:
 	if not _footprint_is_inside_map(origin_cell):
 		return -1
 	for cell in footprint_cells:
-		if occupied_cells.has(cell):
+		if _occupied_cells.has(cell):
 			return -1
 
 	var placement_id := _allocate_placement_id()
@@ -442,10 +454,10 @@ func _create_runtime_building(origin_cell: Vector2i) -> int:
 		"movable": false,
 		"node": building,
 	}
-	building_records_by_id[placement_id] = record
-	placement_order.append(placement_id)
+	_building_records_by_id[placement_id] = record
+	_placement_order.append(placement_id)
 	for cell in footprint_cells:
-		occupied_cells[cell] = placement_id
+		_occupied_cells[cell] = placement_id
 	building.tree_exited.connect(
 		_on_runtime_building_tree_exited.bind(placement_id, building),
 		CONNECT_ONE_SHOT
@@ -495,7 +507,7 @@ func _release_runtime_record(
 	placement_id: int,
 	require_complete_ownership: bool
 ) -> bool:
-	var record: Dictionary = building_records_by_id.get(placement_id, {})
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if (
 		record.is_empty()
 		or record.get("placement_kind") != PLACEMENT_KIND_PLACED
@@ -505,20 +517,20 @@ func _release_runtime_record(
 	var footprint_cells: Array = record.get("occupied_footprint_cells", [])
 	if require_complete_ownership:
 		for cell in footprint_cells:
-			if occupied_cells.get(cell, -1) != placement_id:
+			if _occupied_cells.get(cell, -1) != placement_id:
 				return false
 
 	for cell in footprint_cells:
-		if occupied_cells.get(cell, -1) == placement_id:
-			occupied_cells.erase(cell)
+		if _occupied_cells.get(cell, -1) == placement_id:
+			_occupied_cells.erase(cell)
 		elif not require_complete_ownership:
 			push_error(
 				"Placement %d exited with occupancy mismatch at %s"
 				% [placement_id, cell]
 			)
 
-	building_records_by_id.erase(placement_id)
-	placement_order.erase(placement_id)
+	_building_records_by_id.erase(placement_id)
+	_placement_order.erase(placement_id)
 	building_removed.emit(placement_id)
 	return true
 
@@ -527,7 +539,7 @@ func _on_runtime_building_tree_exited(
 	placement_id: int,
 	building: Node2D
 ) -> void:
-	var record: Dictionary = building_records_by_id.get(placement_id, {})
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if record.is_empty():
 		return
 	if record.get("node") != building:
@@ -555,10 +567,10 @@ func _register_fixed_building(
 	var map_rect := Rect2(building.position, building.size)
 	var footprint_cells := _get_cells_intersecting_map_rect(map_rect)
 	for cell in footprint_cells:
-		if occupied_cells.has(cell):
+		if _occupied_cells.has(cell):
 			push_error(
 				"Preset building %s overlaps placement %s at %s"
-				% [building.name, occupied_cells[cell], cell]
+				% [building.name, _occupied_cells[cell], cell]
 			)
 			return
 
@@ -590,10 +602,10 @@ func _register_fixed_building(
 		"node": building,
 	}
 	building.set_meta("placement_id", placement_id)
-	building_records_by_id[placement_id] = record
-	placement_order.append(placement_id)
+	_building_records_by_id[placement_id] = record
+	_placement_order.append(placement_id)
 	for cell in footprint_cells:
-		occupied_cells[cell] = placement_id
+		_occupied_cells[cell] = placement_id
 
 
 func _get_cells_intersecting_map_rect(map_rect: Rect2) -> Array[Vector2i]:
