@@ -6,6 +6,7 @@ const DEFAULT_LEVEL_ID := &"first_map.main_assault.v0"
 
 var city_controller: Node
 var active_request: BattleRequest
+var active_session: BattleSession
 
 
 func configure(city_controller_value: Node) -> void:
@@ -68,6 +69,60 @@ func activate_request() -> bool:
 		return false
 	active_request.phase = BattleRequest.PHASE_ACTIVE
 	return true
+
+
+func set_squad_route(
+	squad_id: int,
+	route_id: StringName
+) -> bool:
+	if (
+		active_request == null
+		or active_request.phase != BattleRequest.PHASE_RESERVED
+		or route_id not in [
+			CommittedForceSnapshot.FRONT_ROUTE,
+			CommittedForceSnapshot.SIDE_ROUTE,
+		]
+	):
+		return false
+	for squad in active_request.committed_force.squads:
+		if int(squad.squad_id) == squad_id:
+			squad.route_id = route_id
+			return true
+	return false
+
+
+func create_session() -> BattleSession:
+	if (
+		active_request == null
+		or active_request.phase != BattleRequest.PHASE_ACTIVE
+		or active_session != null
+	):
+		return null
+	var session := BattleSession.new(active_request)
+	if session.request == null:
+		return null
+	active_session = session
+	return active_session
+
+
+func advance_battle_tick() -> BattleResult:
+	if active_session == null or active_session.completed:
+		return active_session.result if active_session != null else null
+	active_session.step_tick()
+	if active_session.completed:
+		if not mark_result_pending():
+			return null
+		return active_session.result
+	return null
+
+
+func issue_order(
+	squad_id: int,
+	command: BattleOrder.Command
+) -> BattleOrder:
+	if active_session == null:
+		return null
+	return active_session.issue_order(squad_id, command)
 
 
 func cancel_request() -> bool:
