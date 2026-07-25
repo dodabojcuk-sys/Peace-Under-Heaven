@@ -59,6 +59,7 @@ const BASE_RECRUITMENT_CAP := 50
 const BASE_TRAINING_BATCH := 5
 const EMERGENCY_MOBILIZATION_FOOD_COST := 30
 const EMERGENCY_MOBILIZATION_INFANTRY := 5
+const SECONDS_PER_DAY := 60.0
 const BATTLE_PHASE_RESERVED := &"RESERVED"
 const BATTLE_PHASE_ACTIVE := &"ACTIVE"
 const BATTLE_PHASE_RESULT_PENDING := &"RESULT_PENDING"
@@ -146,7 +147,7 @@ const PRESET_BUILDING_DEFINITIONS := [
 @onready var resource_summary: Label = $"../UI/Shell/TopStatusBar/ResourceSummary"
 @onready var time_summary: Label = $"../UI/Shell/TopStatusBar/TimeSummary"
 @onready var daily_report: Label = $"../UI/Shell/TopStatusBar/DailyReport"
-@onready var end_day_button: Button = $"../UI/Shell/TopStatusBar/EndDayButton"
+@onready var pause_button: Button = $"../UI/Shell/TopStatusBar/PauseButton"
 @onready var alert_summary: Label = $"../UI/Shell/TopStatusBar/AlertSummary"
 @onready var city_bar: Control = $"../UI/Shell/CityBar"
 @onready var army_status: Label = $"../UI/Shell/CityBar/ArmyStatus"
@@ -185,6 +186,8 @@ var emergency_mobilization_used := false
 var enemy_count := 32
 var enemy_fortification := 0
 var last_daily_report := "尚未结算"
+var city_time_paused := false
+var day_elapsed_seconds := 0.0
 var last_daily_breakdown := {
 	"maintenance_food": 0,
 	"maintenance_required": 0,
@@ -239,7 +242,7 @@ func _ready() -> void:
 		_on_definition_button_pressed.bind(WATCHTOWER_DEFINITION.definition_id)
 	)
 	close_construction_menu_button.pressed.connect(cancel_build_interaction)
-	end_day_button.pressed.connect(advance_day)
+	pause_button.pressed.connect(toggle_city_time_paused)
 	recruit_button.pressed.connect(queue_training)
 	general_option.item_selected.connect(_on_general_selected)
 	tech_option.item_selected.connect(_on_tech_selected)
@@ -251,6 +254,10 @@ func _ready() -> void:
 	_update_threat_for_current_day(false)
 	_sync_construction_ui()
 	_refresh_city_ui()
+
+
+func _process(delta: float) -> void:
+	advance_city_time(delta)
 
 
 func is_placing() -> bool:
@@ -337,7 +344,7 @@ func is_construction_ui_point(screen_position: Vector2) -> bool:
 	for ui_control in [
 		construction_entry_panel,
 		construction_menu,
-		end_day_button,
+		pause_button,
 	]:
 		if (
 			ui_control.is_visible_in_tree()
@@ -455,11 +462,71 @@ func _create_runtime_building(origin_cell: Vector2i) -> int:
 	)
 
 
-func advance_day() -> bool:
+func advance_city_time(simulation_delta: float) -> int:
+	if (
+		simulation_delta <= 0.0
+		or city_time_paused
+		or current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
+	):
+		return 0
+
+	var remaining_seconds := simulation_delta
+	var advanced_days := 0
+	while (
+		remaining_seconds > 0.0
+		and current_day < FIRST_MAP_THREAT_SCHEDULE.max_day
+	):
+		var seconds_until_boundary := maxf(
+			SECONDS_PER_DAY - day_elapsed_seconds,
+			0.0
+		)
+		if remaining_seconds < seconds_until_boundary:
+			day_elapsed_seconds += remaining_seconds
+			remaining_seconds = 0.0
+			break
+
+		remaining_seconds -= seconds_until_boundary
+		day_elapsed_seconds = 0.0
+		if not _advance_day_boundary():
+			day_elapsed_seconds = SECONDS_PER_DAY
+			break
+		advanced_days += 1
+
+	_refresh_time_ui()
+	return advanced_days
+
+
+func advance_city_time_for_test(simulation_delta: float) -> int:
+	return advance_city_time(simulation_delta)
+
+
+func set_city_time_paused(paused: bool) -> void:
+	if city_time_paused == paused:
+		return
+	city_time_paused = paused
+	_refresh_time_ui()
+	city_state_changed.emit()
+
+
+func toggle_city_time_paused() -> void:
+	set_city_time_paused(not city_time_paused)
+
+
+func is_city_time_paused() -> bool:
+	return city_time_paused
+
+
+func get_day_progress_ratio() -> float:
+	if current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day:
+		return 1.0
+	return clampf(day_elapsed_seconds / SECONDS_PER_DAY, 0.0, 1.0)
+
+
+func _advance_day_boundary() -> bool:
 	if is_city_action_locked_for_battle():
 		return false
 	if current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day:
-		last_daily_report = "已到第 12 日：不能继续结束本日"
+		last_daily_report = "已到第 12 日：最终战备"
 		_refresh_city_ui()
 		return false
 	current_day += 1
@@ -574,7 +641,10 @@ func get_city_state() -> Dictionary:
 		"first_clear_keys": _first_clear_keys.keys(),
 		"last_battle_result_summary": _last_battle_result_summary.duplicate(true),
 		"checkpoint_available": not _readiness_checkpoint.is_empty(),
-		"can_advance_day": current_day < FIRST_MAP_THREAT_SCHEDULE.max_day,
+		"city_time_paused": city_time_paused,
+		"day_elapsed_seconds": day_elapsed_seconds,
+		"day_progress_ratio": get_day_progress_ratio(),
+		"seconds_per_day": SECONDS_PER_DAY,
 		"last_daily_report": last_daily_report,
 		"last_daily_breakdown": last_daily_breakdown.duplicate(true),
 	}
@@ -1027,6 +1097,9 @@ func restore_readiness_checkpoint() -> bool:
 	emergency_mobilization_used = bool(
 		_readiness_checkpoint.emergency_mobilization_used
 	)
+	day_elapsed_seconds = float(
+		_readiness_checkpoint.get("day_elapsed_seconds", 0.0)
+	)
 	for placement in _readiness_checkpoint.placements:
 		var placement_id := place_definition_at_cell(
 			StringName(placement.definition_id),
@@ -1064,6 +1137,7 @@ func restart_first_map() -> bool:
 	researched_tech_ids.clear()
 	supply_shortage = false
 	emergency_mobilization_used = false
+	day_elapsed_seconds = 0.0
 	_readiness_checkpoint = {}
 	last_daily_breakdown = {
 		"maintenance_food": 0,
@@ -1180,6 +1254,7 @@ func _capture_readiness_checkpoint() -> void:
 		"researched_tech_ids": researched_tech_ids.duplicate(),
 		"supply_shortage": supply_shortage,
 		"emergency_mobilization_used": emergency_mobilization_used,
+		"day_elapsed_seconds": day_elapsed_seconds,
 		"placements": placements,
 	}
 
@@ -1890,7 +1965,7 @@ func _refresh_city_ui() -> void:
 		food,
 		get_resource_capacity(&"food"),
 	]
-	time_summary.text = "第 %d 日" % current_day
+	_refresh_time_ui()
 	daily_report.text = last_daily_report
 	var threat_state := get_threat_state()
 	alert_summary.text = "敌军 %d · 工事 %d" % [
@@ -1941,9 +2016,6 @@ func _refresh_city_ui() -> void:
 		research_button.disabled = not can_research_tech(
 			selected_tech_id
 		)
-	end_day_button.disabled = (
-		current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
-	)
 	emergency_mobilization_button.visible = (
 		current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
 	)
@@ -1958,6 +2030,19 @@ func _refresh_city_ui() -> void:
 	restart_map_button.visible = (
 		current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
 	)
+
+
+func _refresh_time_ui() -> void:
+	if current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day:
+		time_summary.text = "第 %d 日 · 最终战备" % current_day
+	else:
+		var elapsed_seconds := floori(day_elapsed_seconds)
+		time_summary.text = "第 %d 日 · %02d:%02d" % [
+			current_day,
+			elapsed_seconds / 60,
+			elapsed_seconds % 60,
+		]
+	pause_button.text = "继续" if city_time_paused else "暂停"
 
 
 func _enforce_resource_capacity() -> void:
