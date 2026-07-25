@@ -30,9 +30,9 @@ func _input(event: InputEvent) -> void:
 
 	if event is InputEventKey:
 		if event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
-			building_selection_controller.clear_selection()
-			get_viewport().set_input_as_handled()
-		return
+			if building_selection_controller.handle_escape():
+				get_viewport().set_input_as_handled()
+			return
 
 	if event is InputEventMouseButton:
 		if (

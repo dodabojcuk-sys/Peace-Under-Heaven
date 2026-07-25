@@ -76,7 +76,7 @@ func _run() -> void:
 	var first_origin: Vector2i = controller.preview_origin_cell
 	_check(controller.confirm_current_preview(), "第一次有效放置成功")
 	_check(controller.occupied_cells.size() == 6, "首次放置占用六个格")
-	_check(controller.placements.size() == 1, "首次放置写入一条内存记录")
+	_check(controller.get_building_count() == 1, "首次放置写入一条权威内存记录")
 	_check(placed_buildings.get_child_count() == 1, "首次放置创建一个世界节点")
 	_check(controller.preview_origin_cell == first_origin,
 		"确认使用当前可见预览的同一网格 intent")
@@ -88,7 +88,7 @@ func _run() -> void:
 	controller.cancel_placing()
 	_check(not controller.is_placing(), "取消后回到 idle")
 	_check(not preview.visible, "取消后预览消失")
-	_check(controller.placements.size() == 1, "取消不删除已放置建筑")
+	_check(controller.get_building_count() == 1, "取消不删除已放置建筑")
 
 	var ui_overlap_points := {
 		"TopStatusBar": Vector2(600.0, 55.0),
@@ -104,8 +104,8 @@ func _run() -> void:
 		_check(not controller.confirm_current_preview(),
 			"%s 下方左键确认不会放置" % ui_name)
 		controller.cancel_placing()
-	_check(controller.placements.size() == 1,
-		"所有 UI 遮挡无效确认均不改变 placements")
+	_check(controller.get_building_count() == 1,
+		"所有 UI 遮挡无效确认均不改变权威记录")
 	_check(controller.occupied_cells.size() == 6,
 		"所有 UI 遮挡无效确认均不改变 occupied_cells")
 
@@ -149,13 +149,13 @@ func _run() -> void:
 	controller.begin_placing(Vector2(860.0, 500.0))
 	_check(controller.preview_valid, "左键路由测试位置有效")
 	var placing_left_camera_position := camera.position
-	var placement_count_before_left: int = controller.placements.size()
+	var placement_count_before_left: int = controller.get_building_count()
 	var placing_left_press := InputEventMouseButton.new()
 	placing_left_press.button_index = MOUSE_BUTTON_LEFT
 	placing_left_press.pressed = true
 	placing_left_press.position = Vector2(860.0, 500.0)
 	scene._input(placing_left_press)
-	_check(controller.placements.size() == placement_count_before_left + 1,
+	_check(controller.get_building_count() == placement_count_before_left + 1,
 		"placing 左键通过唯一输入入口确认放置")
 	_check(camera.position.is_equal_approx(placing_left_camera_position),
 		"placing 左键不移动 Camera2D")

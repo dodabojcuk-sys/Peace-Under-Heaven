@@ -58,17 +58,25 @@ func _run() -> void:
 	_check(not panel_rect.intersects(context_bar.get_global_rect()),
 		"详情面板不与底部操作栏重叠")
 
-	construction._create_placed_building(101, Vector2i(25, 15))
-	construction._create_placed_building(102, Vector2i(30, 18))
+	var first_placement_id: int = construction._create_runtime_building(
+		Vector2i(25, 15)
+	)
+	var second_placement_id: int = construction._create_runtime_building(
+		Vector2i(30, 18)
+	)
 	_check(placed_buildings.get_child_count() == 2, "测试创建两栋已放置建筑")
-	var first_building := placed_buildings.get_child(0) as Node2D
-	var second_building := placed_buildings.get_child(1) as Node2D
+	var first_building: Node2D = construction.get_building_node(first_placement_id)
+	var second_building: Node2D = construction.get_building_node(second_placement_id)
 	var first_body := first_building.get_node("Body") as Polygon2D
 	var original_body_color := first_body.color
 
-	var first_center := _building_screen_center(construction, first_building)
+	var first_center := _building_screen_center(
+		construction,
+		first_placement_id
+	)
 	_click_via_root(scene, first_center)
-	_check(selection.selected_building == first_building, "小于 8 px 的左键单击选中建筑")
+	_check(selection.selected_placement_id == first_placement_id,
+		"小于 8 px 的左键单击按 placement id 选中建筑")
 	_check(detail_panel.visible, "选中建筑后显示详情面板")
 	_check(selection_outline.visible, "选中建筑后显示琥珀色描边")
 	_check(selection_outline.global_position.is_equal_approx(first_building.global_position),
@@ -88,9 +96,13 @@ func _run() -> void:
 	_check(detail_panel.get_node("PrototypeStatus").text == "状态：原型 / 运行中",
 		"面板显示原型运行状态")
 
-	var second_center := _building_screen_center(construction, second_building)
+	var second_center := _building_screen_center(
+		construction,
+		second_placement_id
+	)
 	_click_via_root(scene, second_center)
-	_check(selection.selected_building == second_building, "单击另一建筑切换选择")
+	_check(selection.selected_placement_id == second_placement_id,
+		"单击另一建筑切换选择")
 	_check(detail_panel.get_node("GridPosition").text == "网格位置：(30, 18)",
 		"切换选择后面板字段刷新")
 
@@ -99,7 +111,7 @@ func _run() -> void:
 	_check(not detail_panel.visible and not selection_outline.visible,
 		"空白取消同时隐藏面板和描边")
 
-	first_center = _building_screen_center(construction, first_building)
+	first_center = _building_screen_center(construction, first_placement_id)
 	_click_via_root(scene, first_center)
 	var escape_event := InputEventKey.new()
 	escape_event.keycode = KEY_ESCAPE
@@ -113,14 +125,14 @@ func _run() -> void:
 
 	_click_via_root(scene, first_center)
 	selection.handle_map_click(Vector2(20.0, 20.0))
-	_check(selection.selected_building == first_building,
+	_check(selection.selected_placement_id == first_placement_id,
 		"常驻 UI 区域单击不穿透且不取消选择")
 
 	var camera_before_drag := camera.position
 	_drag_via_root(scene, first_center, first_center + Vector2(12.0, 0.0))
 	_check(not camera.position.is_equal_approx(camera_before_drag),
 		"达到 8 px 后仍执行原左键 Camera2D 拖动")
-	_check(selection.selected_building == first_building,
+	_check(selection.selected_placement_id == first_placement_id,
 		"超过阈值的拖动不切换或取消选择")
 	_check(scene.active_drag_button == -1, "拖动释放后立即停止")
 
@@ -128,20 +140,21 @@ func _run() -> void:
 	var wheel_on_map := _wheel_event(MOUSE_BUTTON_WHEEL_UP, Vector2(700.0, 450.0))
 	scene._input(wheel_on_map)
 	_check(camera.zoom.x > zoom_before, "地图区域滚轮缩放仍有效")
-	_check(selection.selected_building == first_building, "缩放保留当前选择")
+	_check(selection.selected_placement_id == first_placement_id,
+		"缩放保留当前选择")
 
 	for zoom_value in [0.6, 1.0, 1.6]:
 		camera.zoom = Vector2.ONE * zoom_value
 		camera.position = Vector2(1100.0, 700.0)
 		await process_frame
-		first_center = _building_screen_center(construction, first_building)
+		first_center = _building_screen_center(construction, first_placement_id)
 		_check(selection.get_building_at_screen_position(first_center) == first_building,
 			"zoom %.1f 下命中真实世界建筑" % zoom_value)
 
 	camera.zoom = Vector2.ONE
 	camera.position = Vector2(980.0, 620.0)
 	await process_frame
-	first_center = _building_screen_center(construction, first_building)
+	first_center = _building_screen_center(construction, first_placement_id)
 	_check(selection.get_building_at_screen_position(first_center) == first_building,
 		"相机位移后仍命中正确世界建筑")
 	selection.select_building(first_building)
@@ -167,7 +180,7 @@ func _run() -> void:
 		"面板区域左中右键不移动地图")
 	_check(is_equal_approx(camera.zoom.x, zoom_before_panel_input),
 		"面板区域滚轮不缩放地图")
-	_check(selection.selected_building == first_building,
+	_check(selection.selected_placement_id == first_placement_id,
 		"面板空白单击不取消选择")
 
 	camera.zoom = Vector2.ONE
@@ -196,7 +209,7 @@ func _run() -> void:
 	camera.zoom = Vector2.ONE
 	camera.position = Vector2(1100.0, 700.0)
 	await process_frame
-	first_center = _building_screen_center(construction, first_building)
+	first_center = _building_screen_center(construction, first_placement_id)
 	_click_via_root(scene, first_center)
 	_check(selection.has_selection(), "进入建造前存在选中建筑")
 	construction.begin_placing(Vector2(700.0, 500.0))
@@ -204,13 +217,13 @@ func _run() -> void:
 	_check(not selection.has_selection(), "进入 placing 清除当前选择")
 	_check(not detail_panel.visible and not selection_outline.visible,
 		"进入 placing 隐藏面板和描边")
-	var placement_count_before: int = construction.placements.size()
+	var placement_count_before: int = construction.get_building_count()
 	var placing_left := InputEventMouseButton.new()
 	placing_left.button_index = MOUSE_BUTTON_LEFT
 	placing_left.pressed = true
 	placing_left.position = Vector2(700.0, 500.0)
 	scene._input(placing_left)
-	_check(construction.placements.size() == placement_count_before + 1,
+	_check(construction.get_building_count() == placement_count_before + 1,
 		"placing 左键仍只确认有效建造")
 	_check(not selection.has_selection(), "placing 左键不会同时选择建筑")
 	construction.cancel_placing()
@@ -220,6 +233,8 @@ func _run() -> void:
 	second_building.queue_free()
 	await process_frame
 	_check(not selection.has_selection(), "选中建筑移出场景时安全清除引用")
+	_check(construction.get_building_record(second_placement_id).is_empty(),
+		"建筑意外离树时清除权威记录")
 	_check(not detail_panel.visible and not selection_outline.visible,
 		"选中建筑移除后隐藏面板和描边")
 
@@ -228,8 +243,10 @@ func _run() -> void:
 	_finish()
 
 
-func _building_screen_center(construction: Node, building: Node2D) -> Vector2:
-	var selection_bounds: Rect2 = building.get_meta("selection_bounds")
+func _building_screen_center(construction: Node, placement_id: int) -> Vector2:
+	var record: Dictionary = construction.get_building_record(placement_id)
+	var building: Node2D = record.node
+	var selection_bounds: Rect2 = record.selection_bounds
 	var map_local_center := building.position + selection_bounds.get_center()
 	return construction.map_local_to_screen(map_local_center)
 

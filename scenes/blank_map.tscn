@@ -699,6 +699,88 @@ theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
 theme_override_font_sizes/font_size = 13
 text = "状态：原型 / 运行中"
 
+[node name="RemoveButton" type="Button" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 304.0
+offset_right = 260.0
+offset_bottom = 336.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.364706, 0.24, 0.2, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "移除建筑（原型）"
+
+[node name="RemovalConfirmation" type="Control" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="ConfirmationMessage" type="Label" parent="UI/Shell/BuildingDetailPanel/RemovalConfirmation"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 88.0
+offset_right = 260.0
+offset_bottom = 142.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 15
+text = "确认移除当前测试建筑？"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ConfirmationNote" type="Label" parent="UI/Shell/BuildingDetailPanel/RemovalConfirmation"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 154.0
+offset_right = 260.0
+offset_bottom = 204.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.454902, 0.439216, 0.407843, 1)
+theme_override_font_sizes/font_size = 12
+text = "确认后立即移除并释放占用格。
+本原型不提供撤销。"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ConfirmRemoveButton" type="Button" parent="UI/Shell/BuildingDetailPanel/RemovalConfirmation"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 230.0
+offset_right = 132.0
+offset_bottom = 264.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.364706, 0.24, 0.2, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "确认移除"
+
+[node name="CancelRemoveButton" type="Button" parent="UI/Shell/BuildingDetailPanel/RemovalConfirmation"]
+layout_mode = 0
+offset_left = 148.0
+offset_top = 230.0
+offset_right = 260.0
+offset_bottom = 264.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "取消"
+
 [node name="ContextBar" type="Panel" parent="UI/Shell"]
 layout_mode = 0
 offset_left = 360.0

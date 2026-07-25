@@ -2,6 +2,7 @@ extends Node
 
 
 signal placing_started
+signal building_removed(placement_id: int)
 
 enum ConstructionState {
 	IDLE,
@@ -50,7 +51,8 @@ var preview_origin_cell := Vector2i.ZERO
 var preview_valid := false
 var preview_invalid_reason := ""
 var occupied_cells: Dictionary = {}
-var placements: Array[Dictionary] = []
+var building_records_by_id: Dictionary = {}
+var placement_order: Array[int] = []
 var _next_placement_id := 1
 
 
@@ -97,20 +99,64 @@ func confirm_current_preview() -> bool:
 	if not is_placing() or not preview_valid:
 		return false
 
-	var placement_id := _next_placement_id
-	_next_placement_id += 1
-	var origin_cell := preview_origin_cell
-	var footprint_cells := get_footprint_cells(origin_cell)
-	for cell in footprint_cells:
-		occupied_cells[cell] = placement_id
-
-	placements.append({
-		"id": placement_id,
-		"origin_cell": origin_cell,
-		"footprint_cells": footprint_cells.duplicate(),
-	})
-	_create_placed_building(placement_id, origin_cell)
+	var placement_id := _create_runtime_building(preview_origin_cell)
+	if placement_id < 0:
+		return false
 	_refresh_preview_for_current_cell()
+	return true
+
+
+func get_building_count() -> int:
+	return building_records_by_id.size()
+
+
+func get_building_record(placement_id: int) -> Dictionary:
+	var record: Dictionary = building_records_by_id.get(placement_id, {})
+	return record.duplicate(true) if not record.is_empty() else {}
+
+
+func get_building_node(placement_id: int) -> Node2D:
+	var record: Dictionary = building_records_by_id.get(placement_id, {})
+	if record.is_empty():
+		return null
+	var building := record.get("node") as Node2D
+	return building if is_instance_valid(building) else null
+
+
+func get_placement_id_for_node(building: Node2D) -> int:
+	if not is_instance_valid(building) or not building.has_meta("placement_id"):
+		return -1
+	var placement_id := int(building.get_meta("placement_id"))
+	var record: Dictionary = building_records_by_id.get(placement_id, {})
+	if record.is_empty() or record.get("node") != building:
+		return -1
+	return placement_id
+
+
+func remove_placed_building(placement_id: int) -> bool:
+	var record: Dictionary = building_records_by_id.get(placement_id, {})
+	if record.is_empty():
+		return false
+
+	var building := record.get("node") as Node2D
+	if (
+		not is_instance_valid(building)
+		or not building.is_inside_tree()
+		or building.get_parent() != placed_buildings
+	):
+		return false
+
+	var footprint_cells: Array = record.get("occupied_footprint_cells", [])
+	for cell in footprint_cells:
+		if occupied_cells.get(cell, -1) != placement_id:
+			push_error(
+				"Cannot remove placement %d: occupancy ownership mismatch at %s"
+				% [placement_id, cell]
+			)
+			return false
+
+	_release_runtime_record(placement_id, true)
+	building.queue_free()
 	return true
 
 
@@ -243,17 +289,49 @@ func _validation_result(
 	}
 
 
-func _create_placed_building(placement_id: int, origin_cell: Vector2i) -> void:
+func _create_runtime_building(origin_cell: Vector2i) -> int:
+	var footprint_cells := get_footprint_cells(origin_cell)
+	if not _footprint_is_inside_map(origin_cell):
+		return -1
+	for cell in footprint_cells:
+		if occupied_cells.has(cell):
+			return -1
+
+	var placement_id := _next_placement_id
+	_next_placement_id += 1
+	var building := _create_placed_building_node(placement_id, origin_cell)
+	var record := {
+		"placement_id": placement_id,
+		"template_id": &"test_building",
+		"display_name": "测试建筑",
+		"building_type": "中性测试建筑",
+		"origin_cell": origin_cell,
+		"footprint": TEST_BUILDING_FOOTPRINT,
+		"occupied_footprint_cells": footprint_cells.duplicate(),
+		"selection_bounds": Rect2(Vector2.ZERO, TEST_BUILDING_WORLD_SIZE),
+		"lifecycle_state": &"running",
+		"prototype_status": "原型 / 运行中",
+		"node": building,
+	}
+	building_records_by_id[placement_id] = record
+	placement_order.append(placement_id)
+	for cell in footprint_cells:
+		occupied_cells[cell] = placement_id
+	building.tree_exited.connect(
+		_on_runtime_building_tree_exited.bind(placement_id, building),
+		CONNECT_ONE_SHOT
+	)
+	return placement_id
+
+
+func _create_placed_building_node(
+	placement_id: int,
+	origin_cell: Vector2i
+) -> Node2D:
 	var building := Node2D.new()
 	building.name = "TestBuilding%03d" % placement_id
 	building.position = cell_to_map_local(origin_cell)
 	building.set_meta("placement_id", placement_id)
-	building.set_meta("origin_cell", origin_cell)
-	building.set_meta("footprint_cells", TEST_BUILDING_FOOTPRINT)
-	building.set_meta("selection_bounds", Rect2(Vector2.ZERO, TEST_BUILDING_WORLD_SIZE))
-	building.set_meta("display_name", "测试建筑")
-	building.set_meta("building_type", "中性测试建筑")
-	building.set_meta("prototype_status", "原型 / 运行中")
 
 	var body := Polygon2D.new()
 	body.name = "Body"
@@ -281,6 +359,52 @@ func _create_placed_building(placement_id: int, origin_cell: Vector2i) -> void:
 	building.add_child(label)
 
 	placed_buildings.add_child(building)
+	return building
+
+
+func _release_runtime_record(
+	placement_id: int,
+	require_complete_ownership: bool
+) -> bool:
+	var record: Dictionary = building_records_by_id.get(placement_id, {})
+	if record.is_empty():
+		return false
+
+	var footprint_cells: Array = record.get("occupied_footprint_cells", [])
+	if require_complete_ownership:
+		for cell in footprint_cells:
+			if occupied_cells.get(cell, -1) != placement_id:
+				return false
+
+	for cell in footprint_cells:
+		if occupied_cells.get(cell, -1) == placement_id:
+			occupied_cells.erase(cell)
+		elif not require_complete_ownership:
+			push_error(
+				"Placement %d exited with occupancy mismatch at %s"
+				% [placement_id, cell]
+			)
+
+	building_records_by_id.erase(placement_id)
+	placement_order.erase(placement_id)
+	building_removed.emit(placement_id)
+	return true
+
+
+func _on_runtime_building_tree_exited(
+	placement_id: int,
+	building: Node2D
+) -> void:
+	var record: Dictionary = building_records_by_id.get(placement_id, {})
+	if record.is_empty():
+		return
+	if record.get("node") != building:
+		push_error(
+			"Placement %d tree exit did not match its authoritative node"
+			% placement_id
+		)
+		return
+	_release_runtime_record(placement_id, false)
 
 
 func _building_polygon() -> PackedVector2Array:
