@@ -87,18 +87,19 @@ func _run() -> void:
 	_check(construction.wood == wood_before + 18, "次日结算 18 木材")
 	_check(construction.food == food_before + 22, "次日结算 22 粮食")
 	_check(construction.tech_points == 1, "学院每日增加 1 科技点")
-	_check(
-		first_breakdown.keys() == [
-			"maintenance_food",
-			"training_completed",
-			"wood_income",
-			"food_income",
-			"research_income",
-			"event_wood_loss",
-			"event_food_loss",
-		],
-		"每日明细使用固定结算字段"
-	)
+	for required_key in [
+		"maintenance_food",
+		"training_completed",
+		"wood_income",
+		"food_income",
+		"research_income",
+		"event_wood_loss",
+		"event_food_loss",
+	]:
+		_check(
+			first_breakdown.has(required_key),
+			"每日明细包含固定字段 %s" % required_key
+		)
 	_check(
 		first_breakdown.maintenance_food == 0
 			and first_breakdown.training_completed == 0
@@ -165,8 +166,10 @@ func _run() -> void:
 	construction.food = 270
 	construction.advance_day()
 	_check(
-		construction.wood == 280 and construction.food == 280,
-		"扩容后的产出仍按新容量封顶"
+		construction.wood == 280
+			and construction.food == 268
+			and construction.get_last_daily_breakdown().event_food_loss == 12,
+		"扩容先封顶生产，再按固定顺序结算第 5 日骚扰"
 	)
 	_check(construction.remove_placed_building(warehouse_id), "仓库沿用安全移除")
 	_check(

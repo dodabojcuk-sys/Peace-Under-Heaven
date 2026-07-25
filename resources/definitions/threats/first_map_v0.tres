@@ -1,0 +1,55 @@
+[gd_resource type="Resource" script_class="ThreatSchedule" load_steps=8 format=3]
+
+[ext_resource type="Script" path="res://scripts/content/threat_schedule.gd" id="1_schedule"]
+[ext_resource type="Script" path="res://scripts/content/threat_event_definition.gd" id="2_event"]
+
+[sub_resource type="Resource" id="ThreatEvent_day1"]
+script = ExtResource("2_event")
+day = 1
+enemy_count = 32
+public_preview = "敌军 32；可以提前进攻"
+
+[sub_resource type="Resource" id="ThreatEvent_day5"]
+script = ExtResource("2_event")
+day = 5
+enemy_count = 40
+event_type = &"food_harassment"
+defense_threshold = 20
+adequate_food_loss = 4
+insufficient_food_loss = 12
+public_preview = "第 5 日骚扰；城防 20 可降低粮食损失"
+
+[sub_resource type="Resource" id="ThreatEvent_day8"]
+script = ExtResource("2_event")
+day = 8
+enemy_count = 48
+fortification_level = 1
+event_type = &"production_disruption"
+defense_threshold = 24
+production_stop_days = 1
+public_preview = "第 8 日压力；城防不足会使一座生产建筑停产一日"
+
+[sub_resource type="Resource" id="ThreatEvent_day10"]
+script = ExtResource("2_event")
+day = 10
+enemy_count = 56
+fortification_level = 2
+event_type = &"food_harassment"
+defense_threshold = 30
+adequate_food_loss = 6
+insufficient_food_loss = 18
+public_preview = "第 10 日再次骚扰；敌军工事提升至 2 级"
+
+[sub_resource type="Resource" id="ThreatEvent_day12"]
+script = ExtResource("2_event")
+day = 12
+enemy_count = 64
+fortification_level = 2
+event_type = &"day_limit"
+public_preview = "第 12 日进入最终战备；不能继续结束本日"
+
+[resource]
+script = ExtResource("1_schedule")
+schedule_id = &"threat.first_map.v0"
+max_day = 12
+events = Array[ExtResource("2_event")]([SubResource("ThreatEvent_day1"), SubResource("ThreatEvent_day5"), SubResource("ThreatEvent_day8"), SubResource("ThreatEvent_day10"), SubResource("ThreatEvent_day12")])

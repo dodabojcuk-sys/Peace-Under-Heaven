@@ -36,6 +36,12 @@ const FARM_DEFINITION: BuildingDefinition = preload(
 const WAREHOUSE_DEFINITION: BuildingDefinition = preload(
 	"res://resources/definitions/buildings/warehouse.tres"
 )
+const WATCHTOWER_DEFINITION: BuildingDefinition = preload(
+	"res://resources/definitions/buildings/watchtower.tres"
+)
+const FIRST_MAP_THREAT_SCHEDULE: ThreatSchedule = preload(
+	"res://resources/definitions/threats/first_map_v0.tres"
+)
 const TEST_BUILDING_FOOTPRINT := Vector2i(2, 2)
 const TEST_BUILDING_WORLD_SIZE := Vector2(80.0, 80.0)
 const PRESET_BUILDING_DEFINITIONS := [
@@ -108,6 +114,9 @@ const PRESET_BUILDING_DEFINITIONS := [
 @onready var warehouse_button: Button = (
 	$"../UI/Shell/ConstructionMenu/WarehouseButton"
 )
+@onready var watchtower_button: Button = (
+	$"../UI/Shell/ConstructionMenu/WatchtowerButton"
+)
 @onready var close_construction_menu_button: Button = (
 	$"../UI/Shell/ConstructionMenu/CloseButton"
 )
@@ -116,7 +125,13 @@ const PRESET_BUILDING_DEFINITIONS := [
 @onready var time_summary: Label = $"../UI/Shell/TopStatusBar/TimeSummary"
 @onready var daily_report: Label = $"../UI/Shell/TopStatusBar/DailyReport"
 @onready var end_day_button: Button = $"../UI/Shell/TopStatusBar/EndDayButton"
+@onready var alert_summary: Label = $"../UI/Shell/TopStatusBar/AlertSummary"
 @onready var city_bar: Control = $"../UI/Shell/CityBar"
+@onready var threat_detail: Label = $"../UI/Shell/CityBar/ThreatDetail"
+@onready var restore_checkpoint_button: Button = (
+	$"../UI/Shell/CityBar/RestoreCheckpointButton"
+)
+@onready var restart_map_button: Button = $"../UI/Shell/CityBar/RestartMapButton"
 @onready var minimap_placeholder: Control = $"../UI/Shell/MinimapPlaceholder"
 @onready var building_detail_panel: Control = $"../UI/Shell/BuildingDetailPanel"
 
@@ -128,6 +143,8 @@ var current_day := 1
 var wood := 100
 var food := 80
 var tech_points := 0
+var enemy_count := 32
+var enemy_fortification := 0
 var last_daily_report := "尚未结算"
 var last_daily_breakdown := {
 	"maintenance_food": 0,
@@ -137,6 +154,7 @@ var last_daily_breakdown := {
 	"research_income": 0,
 	"event_wood_loss": 0,
 	"event_food_loss": 0,
+	"stopped_placement_id": -1,
 }
 var _occupied_cells: Dictionary = {}
 var _building_records_by_id: Dictionary = {}
@@ -145,6 +163,7 @@ var _definitions_by_id: Dictionary = {}
 var _next_placement_id := 1
 var _detail_panel_active := false
 var _selected_definition: BuildingDefinition
+var _readiness_checkpoint: Dictionary = {}
 
 
 func _ready() -> void:
@@ -152,6 +171,7 @@ func _ready() -> void:
 	_register_definition(LOGGING_CAMP_DEFINITION)
 	_register_definition(FARM_DEFINITION)
 	_register_definition(WAREHOUSE_DEFINITION)
+	_register_definition(WATCHTOWER_DEFINITION)
 	_register_preset_buildings()
 	build_entry_button.pressed.connect(_on_build_entry_pressed)
 	road_button.pressed.connect(
@@ -166,9 +186,15 @@ func _ready() -> void:
 	warehouse_button.pressed.connect(
 		_on_definition_button_pressed.bind(WAREHOUSE_DEFINITION.definition_id)
 	)
+	watchtower_button.pressed.connect(
+		_on_definition_button_pressed.bind(WATCHTOWER_DEFINITION.definition_id)
+	)
 	close_construction_menu_button.pressed.connect(cancel_build_interaction)
 	end_day_button.pressed.connect(advance_day)
+	restore_checkpoint_button.pressed.connect(restore_readiness_checkpoint)
+	restart_map_button.pressed.connect(restart_first_map)
 	construction_preview.visible = false
+	_update_threat_for_current_day(false)
 	_sync_construction_ui()
 	_refresh_city_ui()
 
@@ -305,7 +331,8 @@ func place_definition_at_cell(
 	var validation := evaluate_origin_cell_for_definition(
 		origin_cell,
 		definition,
-		false
+		false,
+		charge_cost
 	)
 	if not bool(validation.valid):
 		return -1
@@ -371,6 +398,10 @@ func _create_runtime_building(origin_cell: Vector2i) -> int:
 
 
 func advance_day() -> bool:
+	if current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day:
+		last_daily_report = "已到第 12 日：不能继续结束本日"
+		_refresh_city_ui()
+		return false
 	current_day += 1
 	var wood_income := 0
 	var food_income := 0
@@ -404,11 +435,13 @@ func advance_day() -> bool:
 		"research_income": 1,
 		"event_wood_loss": 0,
 		"event_food_loss": 0,
+		"stopped_placement_id": -1,
 	}
-	last_daily_report = "入 木%d 粮%d｜维0｜损0｜研+1" % [
-		accepted_wood,
-		accepted_food,
-	]
+	_update_threat_for_current_day(true)
+	_clear_expired_production_stops()
+	if current_day == 9:
+		_capture_readiness_checkpoint()
+	_rebuild_daily_report()
 	if accepted_wood < wood_income or accepted_food < food_income:
 		last_daily_report += "（容量封顶）"
 	_refresh_city_ui()
@@ -424,6 +457,11 @@ func get_city_state() -> Dictionary:
 		"tech_points": tech_points,
 		"wood_capacity": get_resource_capacity(&"wood"),
 		"food_capacity": get_resource_capacity(&"food"),
+		"city_defense": get_city_defense(),
+		"enemy_count": enemy_count,
+		"enemy_fortification": enemy_fortification,
+		"checkpoint_available": not _readiness_checkpoint.is_empty(),
+		"can_advance_day": current_day < FIRST_MAP_THREAT_SCHEDULE.max_day,
 		"last_daily_report": last_daily_report,
 		"last_daily_breakdown": last_daily_breakdown.duplicate(true),
 	}
@@ -431,6 +469,38 @@ func get_city_state() -> Dictionary:
 
 func get_last_daily_breakdown() -> Dictionary:
 	return last_daily_breakdown.duplicate(true)
+
+
+func get_city_defense() -> int:
+	var defense := 10
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if record.is_empty():
+			continue
+		var definition := get_definition(record.definition_id)
+		if definition == null:
+			continue
+		var defense_capability := definition.get_capability(&"defense")
+		if defense_capability != null:
+			defense += defense_capability.amount
+	return defense
+
+
+func get_threat_state() -> Dictionary:
+	var next_event := FIRST_MAP_THREAT_SCHEDULE.get_next_pressure_event(
+		current_day
+	)
+	return {
+		"day": current_day,
+		"enemy_count": enemy_count,
+		"fortification_level": enemy_fortification,
+		"city_defense": get_city_defense(),
+		"next_pressure_day": next_event.day if next_event != null else -1,
+		"next_pressure_preview": (
+			next_event.public_preview if next_event != null else "已进入最终战备"
+		),
+		"max_day": FIRST_MAP_THREAT_SCHEDULE.max_day,
+	}
 
 
 func get_resource_capacity(resource_id: StringName) -> int:
@@ -452,6 +522,176 @@ func get_resource_capacity(resource_id: StringName) -> int:
 		):
 			capacity += storage.amount
 	return capacity
+
+
+func has_readiness_checkpoint() -> bool:
+	return not _readiness_checkpoint.is_empty()
+
+
+func restore_readiness_checkpoint() -> bool:
+	if _readiness_checkpoint.is_empty():
+		return false
+	_clear_runtime_placements()
+	current_day = int(_readiness_checkpoint.day)
+	wood = int(_readiness_checkpoint.wood)
+	food = int(_readiness_checkpoint.food)
+	tech_points = int(_readiness_checkpoint.tech_points)
+	for placement in _readiness_checkpoint.placements:
+		var placement_id := place_definition_at_cell(
+			StringName(placement.definition_id),
+			Vector2i(placement.origin_cell),
+			false
+		)
+		if placement_id < 0:
+			push_error("Readiness checkpoint placement restore failed")
+			return false
+		var record: Dictionary = _building_records_by_id[placement_id]
+		record.built_day = int(placement.built_day)
+		record.disabled_until_day = int(placement.disabled_until_day)
+	_update_threat_for_current_day(false)
+	last_daily_report = "已恢复第 9 日自动战备检查点"
+	_enforce_resource_capacity()
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
+
+
+func restart_first_map() -> bool:
+	_clear_runtime_placements()
+	current_day = 1
+	wood = 100
+	food = 80
+	tech_points = 0
+	_readiness_checkpoint = {}
+	last_daily_breakdown = {
+		"maintenance_food": 0,
+		"training_completed": 0,
+		"wood_income": 0,
+		"food_income": 0,
+		"research_income": 0,
+		"event_wood_loss": 0,
+		"event_food_loss": 0,
+		"stopped_placement_id": -1,
+	}
+	last_daily_report = "首图已重开"
+	_update_threat_for_current_day(false)
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
+
+
+func _update_threat_for_current_day(apply_event: bool) -> void:
+	var threat_event := FIRST_MAP_THREAT_SCHEDULE.get_event_for_day(
+		current_day
+	)
+	if threat_event == null:
+		return
+	enemy_count = threat_event.enemy_count
+	enemy_fortification = threat_event.fortification_level
+	if apply_event and threat_event.day == current_day:
+		_apply_threat_event(threat_event)
+
+
+func _apply_threat_event(threat_event: ThreatEventDefinition) -> void:
+	if threat_event.event_type == &"food_harassment":
+		var loss := (
+			threat_event.adequate_food_loss
+			if get_city_defense() >= threat_event.defense_threshold
+			else threat_event.insufficient_food_loss
+		)
+		var actual_loss := mini(loss, food)
+		food -= actual_loss
+		last_daily_breakdown.event_food_loss = actual_loss
+	elif (
+		threat_event.event_type == &"production_disruption"
+		and get_city_defense() < threat_event.defense_threshold
+	):
+		var target_id := _select_production_disruption_target()
+		if target_id >= 0:
+			var record: Dictionary = _building_records_by_id[target_id]
+			record.disabled_until_day = (
+				current_day + threat_event.production_stop_days
+			)
+			last_daily_breakdown.stopped_placement_id = target_id
+
+
+func _select_production_disruption_target() -> int:
+	var selected_id := -1
+	var selected_yield := -1
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if record.is_empty() or not is_building_operational(placement_id):
+			continue
+		var definition := get_definition(record.definition_id)
+		if definition == null:
+			continue
+		var production := definition.get_capability(&"production")
+		if production == null:
+			continue
+		if (
+			production.amount > selected_yield
+			or (
+				production.amount == selected_yield
+				and (selected_id < 0 or placement_id < selected_id)
+			)
+		):
+			selected_yield = production.amount
+			selected_id = placement_id
+	return selected_id
+
+
+func _clear_expired_production_stops() -> void:
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if (
+			not record.is_empty()
+			and int(record.disabled_until_day) > 0
+			and int(record.disabled_until_day) <= current_day
+		):
+			record.disabled_until_day = 0
+
+
+func _capture_readiness_checkpoint() -> void:
+	var placements: Array[Dictionary] = []
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if record.is_empty() or record.placement_kind == PLACEMENT_KIND_FIXED:
+			continue
+		placements.append({
+			"definition_id": record.definition_id,
+			"origin_cell": record.origin_cell,
+			"built_day": record.built_day,
+			"disabled_until_day": record.disabled_until_day,
+		})
+	_readiness_checkpoint = {
+		"day": current_day,
+		"wood": wood,
+		"food": food,
+		"tech_points": tech_points,
+		"placements": placements,
+	}
+
+
+func _clear_runtime_placements() -> void:
+	var runtime_ids: Array[int] = []
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if not record.is_empty() and record.placement_kind != PLACEMENT_KIND_FIXED:
+			runtime_ids.append(placement_id)
+	for placement_id in runtime_ids:
+		remove_placed_building(placement_id)
+
+
+func _rebuild_daily_report() -> void:
+	last_daily_report = "入 木%d 粮%d｜维%d｜损%d｜研+%d" % [
+		int(last_daily_breakdown.wood_income),
+		int(last_daily_breakdown.food_income),
+		int(last_daily_breakdown.maintenance_food),
+		int(last_daily_breakdown.event_food_loss),
+		int(last_daily_breakdown.research_income),
+	]
+	if int(last_daily_breakdown.stopped_placement_id) >= 0:
+		last_daily_report += "｜生产受扰"
 
 
 func get_definition(definition_id: StringName) -> BuildingDefinition:
@@ -525,6 +765,13 @@ func get_operational_status(placement_id: int) -> Dictionary:
 		if connected_roads.has(road_cell):
 			return {"state": &"connected", "label": "已接入城市路网"}
 		return {"state": &"isolated", "label": "未接入城主府道路根格"}
+	if int(record.disabled_until_day) >= current_day:
+		return {
+			"state": &"event_disabled",
+			"label": "停产至第 %d 日结算后" % int(
+				record.disabled_until_day
+			),
+		}
 	if bool(record.requires_road) and not is_building_connected_to_road(
 		placement_id
 	):
@@ -675,7 +922,8 @@ func evaluate_origin_cell(origin_cell: Vector2i) -> Dictionary:
 func evaluate_origin_cell_for_definition(
 	origin_cell: Vector2i,
 	definition: BuildingDefinition,
-	check_ui := true
+	check_ui := true,
+	check_resources := true
 ) -> Dictionary:
 	if definition == null:
 		return _validation_result(false, "缺少建筑定义")
@@ -703,7 +951,7 @@ func evaluate_origin_cell_for_definition(
 				).intersects(screen_rect)
 			):
 				return _validation_result(false, "被界面遮挡", screen_rect)
-	if not _can_pay_definition(definition):
+	if check_resources and not _can_pay_definition(definition):
 		return _validation_result(
 			false,
 			"木材不足（需要 %d）" % definition.wood_cost,
@@ -1018,6 +1266,7 @@ func _base_record() -> Dictionary:
 		"requires_road": false,
 		"road_anchor_offsets": [],
 		"built_day": 0,
+		"disabled_until_day": 0,
 		"node": null,
 	}
 
@@ -1074,6 +1323,30 @@ func _refresh_city_ui() -> void:
 	]
 	time_summary.text = "第 %d 日" % current_day
 	daily_report.text = last_daily_report
+	var threat_state := get_threat_state()
+	alert_summary.text = "敌军 %d · 工事 %d" % [
+		enemy_count,
+		enemy_fortification,
+	]
+	threat_detail.text = (
+		"城防 %d\n当前敌军 %d · 工事 %d\n%s"
+		% [
+			get_city_defense(),
+			enemy_count,
+			enemy_fortification,
+			str(threat_state.next_pressure_preview),
+		]
+	)
+	end_day_button.disabled = (
+		current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
+	)
+	restore_checkpoint_button.visible = (
+		current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
+		and has_readiness_checkpoint()
+	)
+	restart_map_button.visible = (
+		current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
+	)
 
 
 func _enforce_resource_capacity() -> void:
