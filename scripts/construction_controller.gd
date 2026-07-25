@@ -42,6 +42,23 @@ const WATCHTOWER_DEFINITION: BuildingDefinition = preload(
 const FIRST_MAP_THREAT_SCHEDULE: ThreatSchedule = preload(
 	"res://resources/definitions/threats/first_map_v0.tres"
 )
+const INFANTRY_ROLE: UnitRole = preload(
+	"res://resources/definitions/units/infantry_basic.tres"
+)
+const GENERAL_DEFINITIONS: Array[GeneralArchetype] = [
+	preload("res://resources/definitions/generals/vanguard.tres"),
+	preload("res://resources/definitions/generals/defender.tres"),
+	preload("res://resources/definitions/generals/quartermaster.tres"),
+]
+const TECH_DEFINITIONS: Array[TechNode] = [
+	preload("res://resources/definitions/tech/stone_tools.tres"),
+	preload("res://resources/definitions/tech/formation_drill.tres"),
+	preload("res://resources/definitions/tech/rotational_recruitment.tres"),
+]
+const BASE_RECRUITMENT_CAP := 50
+const BASE_TRAINING_BATCH := 5
+const EMERGENCY_MOBILIZATION_FOOD_COST := 30
+const EMERGENCY_MOBILIZATION_INFANTRY := 5
 const TEST_BUILDING_FOOTPRINT := Vector2i(2, 2)
 const TEST_BUILDING_WORLD_SIZE := Vector2(80.0, 80.0)
 const PRESET_BUILDING_DEFINITIONS := [
@@ -127,6 +144,14 @@ const PRESET_BUILDING_DEFINITIONS := [
 @onready var end_day_button: Button = $"../UI/Shell/TopStatusBar/EndDayButton"
 @onready var alert_summary: Label = $"../UI/Shell/TopStatusBar/AlertSummary"
 @onready var city_bar: Control = $"../UI/Shell/CityBar"
+@onready var army_status: Label = $"../UI/Shell/CityBar/ArmyStatus"
+@onready var recruit_button: Button = $"../UI/Shell/CityBar/RecruitButton"
+@onready var general_option: OptionButton = $"../UI/Shell/CityBar/GeneralOption"
+@onready var tech_option: OptionButton = $"../UI/Shell/CityBar/TechOption"
+@onready var research_button: Button = $"../UI/Shell/CityBar/ResearchButton"
+@onready var emergency_mobilization_button: Button = (
+	$"../UI/Shell/CityBar/EmergencyMobilizationButton"
+)
 @onready var threat_detail: Label = $"../UI/Shell/CityBar/ThreatDetail"
 @onready var restore_checkpoint_button: Button = (
 	$"../UI/Shell/CityBar/RestoreCheckpointButton"
@@ -143,11 +168,21 @@ var current_day := 1
 var wood := 100
 var food := 80
 var tech_points := 0
+var infantry_count := 20
+var recruitment_cap := BASE_RECRUITMENT_CAP
+var selected_general_id: StringName = &""
+var training_queued_count := 0
+var training_complete_day := 0
+var last_training_order_day := 0
+var researched_tech_ids: Array[StringName] = []
+var supply_shortage := false
+var emergency_mobilization_used := false
 var enemy_count := 32
 var enemy_fortification := 0
 var last_daily_report := "尚未结算"
 var last_daily_breakdown := {
 	"maintenance_food": 0,
+	"maintenance_required": 0,
 	"training_completed": 0,
 	"wood_income": 0,
 	"food_income": 0,
@@ -160,6 +195,8 @@ var _occupied_cells: Dictionary = {}
 var _building_records_by_id: Dictionary = {}
 var _placement_order: Array[int] = []
 var _definitions_by_id: Dictionary = {}
+var _generals_by_id: Dictionary = {}
+var _tech_by_id: Dictionary = {}
 var _next_placement_id := 1
 var _detail_panel_active := false
 var _selected_definition: BuildingDefinition
@@ -172,6 +209,7 @@ func _ready() -> void:
 	_register_definition(FARM_DEFINITION)
 	_register_definition(WAREHOUSE_DEFINITION)
 	_register_definition(WATCHTOWER_DEFINITION)
+	_register_strategy_definitions()
 	_register_preset_buildings()
 	build_entry_button.pressed.connect(_on_build_entry_pressed)
 	road_button.pressed.connect(
@@ -191,6 +229,11 @@ func _ready() -> void:
 	)
 	close_construction_menu_button.pressed.connect(cancel_build_interaction)
 	end_day_button.pressed.connect(advance_day)
+	recruit_button.pressed.connect(queue_training)
+	general_option.item_selected.connect(_on_general_selected)
+	tech_option.item_selected.connect(_on_tech_selected)
+	research_button.pressed.connect(_on_research_pressed)
+	emergency_mobilization_button.pressed.connect(emergency_mobilization)
 	restore_checkpoint_button.pressed.connect(restore_readiness_checkpoint)
 	restart_map_button.pressed.connect(restart_first_map)
 	construction_preview.visible = false
@@ -403,6 +446,11 @@ func advance_day() -> bool:
 		_refresh_city_ui()
 		return false
 	current_day += 1
+	var maintenance_required := get_maintenance_food_cost()
+	var maintenance_paid := mini(food, maintenance_required)
+	food -= maintenance_paid
+	supply_shortage = maintenance_paid < maintenance_required
+	var training_completed := _complete_training_for_current_day()
 	var wood_income := 0
 	var food_income := 0
 	for placement_id in _placement_order:
@@ -415,10 +463,14 @@ func advance_day() -> bool:
 		var production := definition.get_capability(&"production")
 		if production == null:
 			continue
+		var production_amount := _get_production_amount(
+			definition,
+			production
+		)
 		if production.resource_id == &"wood":
-			wood_income += production.amount
+			wood_income += production_amount
 		elif production.resource_id == &"food":
-			food_income += production.amount
+			food_income += production_amount
 
 	var wood_capacity := get_resource_capacity(&"wood")
 	var food_capacity := get_resource_capacity(&"food")
@@ -428,8 +480,9 @@ func advance_day() -> bool:
 	food += accepted_food
 	tech_points += 1
 	last_daily_breakdown = {
-		"maintenance_food": 0,
-		"training_completed": 0,
+		"maintenance_food": maintenance_paid,
+		"maintenance_required": maintenance_required,
+		"training_completed": training_completed,
 		"wood_income": accepted_wood,
 		"food_income": accepted_food,
 		"research_income": 1,
@@ -449,12 +502,50 @@ func advance_day() -> bool:
 	return true
 
 
+func _complete_training_for_current_day() -> int:
+	if (
+		training_queued_count <= 0
+		or training_complete_day > current_day
+	):
+		return 0
+	var completed := training_queued_count
+	infantry_count += completed
+	training_queued_count = 0
+	training_complete_day = 0
+	return completed
+
+
+func _get_production_amount(
+	definition: BuildingDefinition,
+	production: BuildingCapability
+) -> int:
+	var amount := production.amount
+	if (
+		definition.definition_id == LOGGING_CAMP_DEFINITION.definition_id
+		and has_tech(&"tech.stone_tools")
+	):
+		var stone_tools := get_tech_definition(&"tech.stone_tools")
+		amount = roundi(
+			float(amount) * (1.0 + stone_tools.effect_amount)
+		)
+	return amount
+
+
 func get_city_state() -> Dictionary:
 	return {
 		"day": current_day,
 		"wood": wood,
 		"food": food,
 		"tech_points": tech_points,
+		"infantry_count": infantry_count,
+		"recruitment_cap": recruitment_cap,
+		"effective_command_limit": get_effective_command_limit(),
+		"selected_general_id": selected_general_id,
+		"training_queued_count": training_queued_count,
+		"training_complete_day": training_complete_day,
+		"researched_tech_ids": researched_tech_ids.duplicate(),
+		"supply_shortage": supply_shortage,
+		"emergency_mobilization_used": emergency_mobilization_used,
 		"wood_capacity": get_resource_capacity(&"wood"),
 		"food_capacity": get_resource_capacity(&"food"),
 		"city_defense": get_city_defense(),
@@ -469,6 +560,148 @@ func get_city_state() -> Dictionary:
 
 func get_last_daily_breakdown() -> Dictionary:
 	return last_daily_breakdown.duplicate(true)
+
+
+func get_unit_role() -> UnitRole:
+	return INFANTRY_ROLE
+
+
+func get_general_definition(
+	general_id: StringName
+) -> GeneralArchetype:
+	return _generals_by_id.get(general_id) as GeneralArchetype
+
+
+func get_selected_general() -> GeneralArchetype:
+	return get_general_definition(selected_general_id)
+
+
+func select_general(general_id: StringName) -> bool:
+	if general_id != &"" and not _generals_by_id.has(general_id):
+		return false
+	selected_general_id = general_id
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
+
+
+func get_effective_command_limit() -> int:
+	var general := get_selected_general()
+	return (
+		general.command_limit
+		if general != null
+		else recruitment_cap
+	)
+
+
+func get_training_batch_size() -> int:
+	var rotational := get_tech_definition(&"tech.rotational_recruitment")
+	if rotational != null and has_tech(rotational.tech_id):
+		return roundi(rotational.effect_amount)
+	return BASE_TRAINING_BATCH
+
+
+func can_queue_training() -> bool:
+	var batch_size := get_training_batch_size()
+	var command_limit := get_effective_command_limit()
+	var food_cost := batch_size * INFANTRY_ROLE.recruit_food_per_unit
+	return (
+		current_day < FIRST_MAP_THREAT_SCHEDULE.max_day
+		and training_queued_count == 0
+		and last_training_order_day != current_day
+		and infantry_count + batch_size <= recruitment_cap
+		and infantry_count + batch_size <= command_limit
+		and food >= food_cost
+	)
+
+
+func queue_training() -> bool:
+	if not can_queue_training():
+		return false
+	var batch_size := get_training_batch_size()
+	food -= batch_size * INFANTRY_ROLE.recruit_food_per_unit
+	training_queued_count = batch_size
+	training_complete_day = current_day + 1
+	last_training_order_day = current_day
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
+
+
+func get_maintenance_food_cost() -> int:
+	var cost := ceili(
+		float(infantry_count)
+		/ float(INFANTRY_ROLE.maintenance_units_per_food)
+	)
+	var general := get_selected_general()
+	if (
+		general != null
+		and general.modifier_type == &"maintenance_reduction"
+	):
+		cost = ceili(float(cost) * (1.0 - general.modifier_amount))
+	return cost
+
+
+func get_tech_definition(tech_id: StringName) -> TechNode:
+	return _tech_by_id.get(tech_id) as TechNode
+
+
+func has_tech(tech_id: StringName) -> bool:
+	return tech_id in researched_tech_ids
+
+
+func can_research_tech(tech_id: StringName) -> bool:
+	var tech := get_tech_definition(tech_id)
+	if tech == null or has_tech(tech_id) or tech_points < tech.cost:
+		return false
+	for prerequisite_id in tech.prerequisite_ids:
+		if not has_tech(prerequisite_id):
+			return false
+	return true
+
+
+func research_tech(tech_id: StringName) -> bool:
+	if not can_research_tech(tech_id):
+		return false
+	var tech := get_tech_definition(tech_id)
+	tech_points -= tech.cost
+	researched_tech_ids.append(tech_id)
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
+
+
+func get_infantry_attack_multiplier() -> float:
+	var multiplier := 1.0
+	var general := get_selected_general()
+	if general != null and general.modifier_type == &"infantry_attack":
+		multiplier *= 1.0 + general.modifier_amount
+	var formation := get_tech_definition(&"tech.formation_drill")
+	if formation != null and has_tech(formation.tech_id):
+		multiplier *= 1.0 + formation.effect_amount
+	return multiplier
+
+
+func get_infantry_defense_multiplier() -> float:
+	var general := get_selected_general()
+	if general != null and general.modifier_type == &"infantry_defense":
+		return 1.0 + general.modifier_amount
+	return 1.0
+
+
+func emergency_mobilization() -> bool:
+	if (
+		current_day != FIRST_MAP_THREAT_SCHEDULE.max_day
+		or emergency_mobilization_used
+		or food < EMERGENCY_MOBILIZATION_FOOD_COST
+	):
+		return false
+	food -= EMERGENCY_MOBILIZATION_FOOD_COST
+	infantry_count += EMERGENCY_MOBILIZATION_INFANTRY
+	emergency_mobilization_used = true
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
 
 
 func get_city_defense() -> int:
@@ -536,6 +769,27 @@ func restore_readiness_checkpoint() -> bool:
 	wood = int(_readiness_checkpoint.wood)
 	food = int(_readiness_checkpoint.food)
 	tech_points = int(_readiness_checkpoint.tech_points)
+	infantry_count = int(_readiness_checkpoint.infantry_count)
+	recruitment_cap = int(_readiness_checkpoint.recruitment_cap)
+	selected_general_id = StringName(
+		_readiness_checkpoint.selected_general_id
+	)
+	training_queued_count = int(
+		_readiness_checkpoint.training_queued_count
+	)
+	training_complete_day = int(
+		_readiness_checkpoint.training_complete_day
+	)
+	last_training_order_day = int(
+		_readiness_checkpoint.last_training_order_day
+	)
+	researched_tech_ids.assign(
+		_readiness_checkpoint.researched_tech_ids
+	)
+	supply_shortage = bool(_readiness_checkpoint.supply_shortage)
+	emergency_mobilization_used = bool(
+		_readiness_checkpoint.emergency_mobilization_used
+	)
 	for placement in _readiness_checkpoint.placements:
 		var placement_id := place_definition_at_cell(
 			StringName(placement.definition_id),
@@ -562,9 +816,19 @@ func restart_first_map() -> bool:
 	wood = 100
 	food = 80
 	tech_points = 0
+	infantry_count = 20
+	recruitment_cap = BASE_RECRUITMENT_CAP
+	selected_general_id = &""
+	training_queued_count = 0
+	training_complete_day = 0
+	last_training_order_day = 0
+	researched_tech_ids.clear()
+	supply_shortage = false
+	emergency_mobilization_used = false
 	_readiness_checkpoint = {}
 	last_daily_breakdown = {
 		"maintenance_food": 0,
+		"maintenance_required": 0,
 		"training_completed": 0,
 		"wood_income": 0,
 		"food_income": 0,
@@ -668,6 +932,15 @@ func _capture_readiness_checkpoint() -> void:
 		"wood": wood,
 		"food": food,
 		"tech_points": tech_points,
+		"infantry_count": infantry_count,
+		"recruitment_cap": recruitment_cap,
+		"selected_general_id": selected_general_id,
+		"training_queued_count": training_queued_count,
+		"training_complete_day": training_complete_day,
+		"last_training_order_day": last_training_order_day,
+		"researched_tech_ids": researched_tech_ids.duplicate(),
+		"supply_shortage": supply_shortage,
+		"emergency_mobilization_used": emergency_mobilization_used,
 		"placements": placements,
 	}
 
@@ -1185,6 +1458,61 @@ func _register_definition(definition: BuildingDefinition) -> void:
 	_definitions_by_id[definition.definition_id] = definition
 
 
+func _register_strategy_definitions() -> void:
+	for general in GENERAL_DEFINITIONS:
+		if (
+			general == null
+			or general.archetype_id == &""
+			or _generals_by_id.has(general.archetype_id)
+		):
+			push_error("Invalid or duplicate general definition")
+			continue
+		_generals_by_id[general.archetype_id] = general
+	general_option.clear()
+	general_option.add_item("未任命")
+	general_option.set_item_metadata(0, &"")
+	for general in GENERAL_DEFINITIONS:
+		general_option.add_item(general.display_name)
+		general_option.set_item_metadata(
+			general_option.item_count - 1,
+			general.archetype_id
+		)
+
+	for tech in TECH_DEFINITIONS:
+		if (
+			tech == null
+			or tech.tech_id == &""
+			or _tech_by_id.has(tech.tech_id)
+		):
+			push_error("Invalid or duplicate tech definition")
+			continue
+		_tech_by_id[tech.tech_id] = tech
+	tech_option.clear()
+	for tech in TECH_DEFINITIONS:
+		tech_option.add_item("%s · %d" % [tech.display_name, tech.cost])
+		tech_option.set_item_metadata(
+			tech_option.item_count - 1,
+			tech.tech_id
+		)
+
+
+func _on_general_selected(index: int) -> void:
+	select_general(StringName(general_option.get_item_metadata(index)))
+
+
+func _on_research_pressed() -> void:
+	if tech_option.item_count <= 0:
+		return
+	var selected_index := tech_option.selected
+	research_tech(
+		StringName(tech_option.get_item_metadata(selected_index))
+	)
+
+
+func _on_tech_selected(_index: int) -> void:
+	_refresh_city_ui()
+
+
 func _register_preset_buildings() -> void:
 	for definition in PRESET_BUILDING_DEFINITIONS:
 		var building := get_node(str(definition.node_path)) as Control
@@ -1337,8 +1665,50 @@ func _refresh_city_ui() -> void:
 			str(threat_state.next_pressure_preview),
 		]
 	)
+	var command_limit := get_effective_command_limit()
+	var queued_text := (
+		" · 训练 +%d（第 %d 日）" % [
+			training_queued_count,
+			training_complete_day,
+		]
+		if training_queued_count > 0
+		else ""
+	)
+	army_status.text = "步兵 %d/%d · 科技 %d%s%s" % [
+		infantry_count,
+		command_limit,
+		tech_points,
+		queued_text,
+		" · 供给不足" if supply_shortage else "",
+	]
+	recruit_button.text = "征募 %d 人 · %d 粮" % [
+		get_training_batch_size(),
+		get_training_batch_size() * INFANTRY_ROLE.recruit_food_per_unit,
+	]
+	recruit_button.disabled = not can_queue_training()
+	for index in range(general_option.item_count):
+		if (
+			StringName(general_option.get_item_metadata(index))
+			== selected_general_id
+		):
+			general_option.select(index)
+			break
+	if tech_option.item_count > 0:
+		var selected_tech_id := StringName(
+			tech_option.get_item_metadata(tech_option.selected)
+		)
+		research_button.disabled = not can_research_tech(
+			selected_tech_id
+		)
 	end_day_button.disabled = (
 		current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
+	)
+	emergency_mobilization_button.visible = (
+		current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
+	)
+	emergency_mobilization_button.disabled = (
+		emergency_mobilization_used
+		or food < EMERGENCY_MOBILIZATION_FOOD_COST
 	)
 	restore_checkpoint_button.visible = (
 		current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day

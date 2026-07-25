@@ -1,0 +1,11 @@
+[gd_resource type="Resource" script_class="GeneralArchetype" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/content/general_archetype.gd" id="1_general"]
+
+[resource]
+script = ExtResource("1_general")
+archetype_id = &"general.defender"
+display_name = "守备官"
+command_limit = 45
+modifier_type = &"infantry_defense"
+modifier_amount = 0.12

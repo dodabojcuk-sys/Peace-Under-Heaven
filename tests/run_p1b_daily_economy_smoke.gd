@@ -85,7 +85,10 @@ func _run() -> void:
 	construction.advance_day()
 	var first_breakdown: Dictionary = construction.get_last_daily_breakdown()
 	_check(construction.wood == wood_before + 18, "次日结算 18 木材")
-	_check(construction.food == food_before + 22, "次日结算 22 粮食")
+	_check(
+		construction.food == food_before - 4 + 22,
+		"次日先扣 4 粮维护，再结算 22 粮食"
+	)
 	_check(construction.tech_points == 1, "学院每日增加 1 科技点")
 	for required_key in [
 		"maintenance_food",
@@ -101,7 +104,7 @@ func _run() -> void:
 			"每日明细包含固定字段 %s" % required_key
 		)
 	_check(
-		first_breakdown.maintenance_food == 0
+		first_breakdown.maintenance_food == 4
 			and first_breakdown.training_completed == 0
 			and first_breakdown.wood_income == 18
 			and first_breakdown.food_income == 22
@@ -143,8 +146,8 @@ func _run() -> void:
 		construction.wood == 160
 			and construction.food == 160
 			and capped.wood_income == 5
-			and capped.food_income == 5,
-		"资源按容量只接收可容纳部分"
+			and capped.food_income == 9,
+		"维护先扣除后，生产只接收容量可容纳部分"
 	)
 	_check(
 		construction.last_daily_report.contains("容量封顶"),

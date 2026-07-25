@@ -580,12 +580,72 @@ theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
 theme_override_font_sizes/font_size = 13
 text = "城市 03"
 
+[node name="ArmyStatus" type="Label" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 15.0
+offset_top = 212.0
+offset_right = 137.0
+offset_bottom = 238.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 10
+text = "步兵 20/50 · 科技 0"
+autowrap_mode = 2
+
+[node name="RecruitButton" type="Button" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 15.0
+offset_top = 242.0
+offset_right = 137.0
+offset_bottom = 274.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "征募 5 人 · 15 粮"
+
+[node name="GeneralOption" type="OptionButton" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 15.0
+offset_top = 278.0
+offset_right = 137.0
+offset_bottom = 310.0
+focus_mode = 0
+theme_override_font_sizes/font_size = 10
+
+[node name="TechOption" type="OptionButton" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 15.0
+offset_top = 314.0
+offset_right = 94.0
+offset_bottom = 346.0
+focus_mode = 0
+theme_override_font_sizes/font_size = 9
+
+[node name="ResearchButton" type="Button" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 98.0
+offset_top = 314.0
+offset_right = 137.0
+offset_bottom = 346.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 9
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "研究"
+
 [node name="ThreatDetail" type="Label" parent="UI/Shell/CityBar"]
 layout_mode = 0
 offset_left = 15.0
-offset_top = 350.0
+offset_top = 354.0
 offset_right = 137.0
-offset_bottom = 455.0
+offset_bottom = 438.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
 theme_override_font_sizes/font_size = 11
@@ -593,6 +653,22 @@ text = "城防 10
 当前敌军 32 · 工事 0
 第 5 日骚扰"
 autowrap_mode = 2
+
+[node name="EmergencyMobilizationButton" type="Button" parent="UI/Shell/CityBar"]
+visible = false
+layout_mode = 0
+offset_left = 15.0
+offset_top = 442.0
+offset_right = 137.0
+offset_bottom = 474.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.364706, 0.24, 0.2, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "紧急动员 · 30 粮"
 
 [node name="RestoreCheckpointButton" type="Button" parent="UI/Shell/CityBar"]
 visible = false
