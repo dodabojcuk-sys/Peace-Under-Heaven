@@ -88,16 +88,19 @@ func _run() -> void:
 	_check(selection_outline.default_color == Color(0.72, 0.56, 0.25, 1),
 		"选择描边使用独立低饱和琥珀色")
 	_check(first_body.color == original_body_color, "选择不修改建筑主体颜色")
-	_check(detail_panel.get_node("TargetName").text == "测试建筑",
-		"面板显示测试建筑名称")
-	_check(detail_panel.get_node("TargetType").text == "类型：中性测试建筑",
-		"面板显示中性测试建筑类型")
+	_check(detail_panel.get_node("TargetName").text == "伐木场",
+		"面板显示伐木场名称")
+	_check(detail_panel.get_node("TargetType").text == "类型：生产建筑",
+		"面板显示生产建筑类型")
 	_check(detail_panel.get_node("GridPosition").text == "网格位置：(25, 15)",
 		"面板显示正确网格位置")
-	_check(detail_panel.get_node("Footprint").text == "占地：3 × 2",
-		"面板显示 3 x 2 占地")
-	_check(detail_panel.get_node("PrototypeStatus").text == "状态：原型 / 运行中",
-		"面板显示原型运行状态")
+	_check(detail_panel.get_node("Footprint").text == "占地：2 × 2",
+		"面板显示 2 x 2 占地")
+	_check(
+		detail_panel.get_node("PrototypeStatus").text
+			== "状态：停用：未接入道路",
+		"面板显示未接路状态"
+	)
 
 	var second_center := _building_screen_center(
 		construction,

@@ -69,13 +69,13 @@ func _run() -> void:
 	)
 	_check(placed_buildings.get_child_count() == 2, "两条记录对应两个世界节点")
 	_check(
-		construction.get_occupied_cell_count() == baseline_occupied_count + 12,
-		"两栋建筑在固定占用基线上增加十二个世界格")
+		construction.get_occupied_cell_count() == baseline_occupied_count + 8,
+		"两栋建筑在固定占用基线上增加八个世界格")
 	_check(first_node.get_meta_list() == [&"placement_id"],
 		"建筑节点 metadata 只保留 placement_id")
 	_check(first_record.node == first_node, "权威记录持有运行时节点")
 	_check(first_record.origin_cell == first_origin, "权威记录保存网格原点")
-	_check(first_record.footprint == Vector2i(3, 2), "权威记录保存 3 x 2 占地")
+	_check(first_record.footprint == Vector2i(2, 2), "权威记录保存 2 x 2 占地")
 
 	for cell in first_record.occupied_footprint_cells:
 		_check(construction.get_occupied_placement_id(cell) == first_id,
@@ -102,7 +102,7 @@ func _run() -> void:
 	_check(is_instance_valid(first_node) and first_node.is_inside_tree(),
 		"进入确认不会删除世界节点")
 	_check(
-		construction.get_occupied_cell_count() == baseline_occupied_count + 12,
+		construction.get_occupied_cell_count() == baseline_occupied_count + 8,
 		"进入确认不会释放占用格")
 	_check(confirmation.visible and not remove_button.visible,
 		"确认状态只显示确认内容")
@@ -116,7 +116,7 @@ func _run() -> void:
 		"取消确认恢复原详情操作")
 	_check(construction.get_building_count() == baseline_building_count + 2
 		and construction.get_occupied_cell_count()
-			== baseline_occupied_count + 12,
+			== baseline_occupied_count + 8,
 		"取消确认不改变记录和占用")
 
 	remove_button.emit_signal("pressed")
@@ -158,7 +158,7 @@ func _run() -> void:
 		"关闭按钮只清除选择和面板")
 	_check(construction.get_building_count() == baseline_building_count + 2
 		and construction.get_occupied_cell_count()
-			== baseline_occupied_count + 12,
+			== baseline_occupied_count + 8,
 		"关闭面板不移除建筑或释放占用格")
 	selection.select_placement(first_id)
 
@@ -193,7 +193,7 @@ func _run() -> void:
 		"重复移除不存在的 placement id 安全返回 false")
 	_check(construction.get_building_count() == baseline_building_count + 1
 		and construction.get_occupied_cell_count()
-			== baseline_occupied_count + 6,
+			== baseline_occupied_count + 4,
 		"重复移除不产生二次变化")
 
 	camera.zoom = Vector2.ONE
@@ -214,8 +214,8 @@ func _run() -> void:
 		"原位重建获得新的单调递增 placement id")
 	_check(construction.get_building_count() == baseline_building_count + 2
 		and construction.get_occupied_cell_count()
-			== baseline_occupied_count + 12,
-		"原位重建恢复一条记录、一个节点和六个占用格")
+			== baseline_occupied_count + 8,
+		"原位重建恢复一条记录、一个节点和四个占用格")
 	construction.cancel_placing()
 
 	selection.select_placement(rebuilt_id)

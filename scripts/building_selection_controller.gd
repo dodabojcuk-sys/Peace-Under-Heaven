@@ -45,6 +45,7 @@ func _ready() -> void:
 	confirm_remove_button.pressed.connect(confirm_removal)
 	cancel_remove_button.pressed.connect(cancel_removal_confirmation)
 	construction_controller.building_removed.connect(_on_building_removed)
+	construction_controller.city_state_changed.connect(_on_city_state_changed)
 	clear_selection()
 
 
@@ -277,3 +278,19 @@ func _get_ui_occlusion_controls() -> Array[Control]:
 func _on_building_removed(placement_id: int) -> void:
 	if placement_id == selected_placement_id:
 		clear_selection()
+
+
+func _on_city_state_changed() -> void:
+	if not has_selection() or state != SelectionState.SELECTED:
+		return
+	var record: Dictionary = construction_controller.get_building_record(
+		selected_placement_id
+	)
+	var building: CanvasItem = construction_controller.get_building_node(
+		selected_placement_id
+	)
+	if record.is_empty() or building == null:
+		clear_selection()
+		return
+	_refresh_selection_outline(record, building)
+	_refresh_detail_panel(record)

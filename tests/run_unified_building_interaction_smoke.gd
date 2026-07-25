@@ -39,7 +39,7 @@ func _run() -> void:
 		"UI/Shell/ConstructionMenu"
 	)
 	var build_template_button: Button = construction_menu.get_node(
-		"TestBuildingButton"
+		"LoggingCampButton"
 	)
 	var preview: Node2D = scene.get_node(
 		"MapWorld/ConstructionLayer/ConstructionPreview"
@@ -128,8 +128,8 @@ func _run() -> void:
 	)
 	selection.select_placement(command_id)
 	_check(target_name.text == "军令台 L1", "军令台显示真实名称")
-	_check(description.text.contains("功能尚未接入"),
-		"军令台只显示中性说明，不出现假功能按钮")
+	_check(description.text.contains("不提供假入口"),
+		"军令台明确等待真实战役契约，不出现假功能按钮")
 	_check(not construction.remove_placed_building(command_id),
 		"固定军令台拒绝进入普通移除生命周期")
 	_check(not construction.get_building_record(command_id).is_empty(),
@@ -182,7 +182,7 @@ func _run() -> void:
 		"右侧建造 UI 内滚轮不缩放地图")
 
 	build_template_button.emit_signal("pressed")
-	_check(construction.is_placing(), "选择测试建筑模板进入原 placing")
+	_check(construction.is_placing(), "选择伐木场模板进入 placing")
 	_check(preview.visible, "placing 显示既有建造预览")
 	_check(not construction_menu.visible, "进入 placing 后模板列表关闭")
 	construction.cancel_placing()
@@ -222,17 +222,17 @@ func _run() -> void:
 	_check(runtime_record.placement_kind == construction.PLACEMENT_KIND_PLACED,
 		"运行时建筑使用 placed 能力记录")
 	_check(runtime_record.selectable and runtime_record.removable,
-		"运行时测试建筑可选择且可移除")
-	_check(not runtime_record.movable, "运行时测试建筑仍不可移动")
+		"运行时生产建筑可选择且可移除")
+	_check(not runtime_record.movable, "运行时生产建筑仍不可移动")
 	_check(_same_record_shape(fixed_record, runtime_record),
 		"固定与运行时建筑使用相同记录字段")
 
 	selection.select_placement(runtime_id)
-	_check(remove_button.visible, "运行时测试建筑保留安全移除入口")
+	_check(remove_button.visible, "运行时生产建筑保留安全移除入口")
 	selection.request_removal_confirmation()
 	_check(selection.is_awaiting_removal_confirmation(),
-		"运行时测试建筑仍进入 P0-05 移除确认")
-	_check(selection.confirm_removal(), "运行时测试建筑仍可安全移除")
+		"运行时生产建筑仍进入 P0-05 移除确认")
+	_check(selection.confirm_removal(), "运行时生产建筑仍可安全移除")
 	await process_frame
 	_check(construction.get_building_count() == fixed_count_before_runtime,
 		"移除运行时建筑后保留全部固定建筑")
