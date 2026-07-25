@@ -22,9 +22,18 @@ const DEBUG_PLAYER_COUNT := 50
 	$UI/RootPanel/SquadControls
 )
 @onready var marker_layer: Control = $UI/RootPanel/MarkerLayer
+@onready var result_input_blocker: ColorRect = (
+	$UI/RootPanel/ResultInputBlocker
+)
 @onready var result_panel: Panel = $UI/RootPanel/ResultPanel
 @onready var result_label: Label = (
 	$UI/RootPanel/ResultPanel/ResultLabel
+)
+@onready var confirm_button: Button = (
+	$UI/RootPanel/ResultPanel/ConfirmButton
+)
+@onready var return_button: Button = (
+	$UI/RootPanel/ResultPanel/ReturnButton
 )
 
 var city_scene: Node2D
@@ -37,6 +46,8 @@ var _squad_markers: Dictionary = {}
 func _ready() -> void:
 	tick_timer.timeout.connect(_on_tick_timeout)
 	start_button.pressed.connect(start_battle)
+	confirm_button.pressed.connect(confirm_pending_result)
+	return_button.pressed.connect(request_return_to_city)
 	_create_city_fixture()
 	_create_battle_request()
 	_create_squad_controls()
@@ -88,6 +99,55 @@ func step_battle_for_test(tick_count: int) -> BattleResult:
 		if result != null:
 			break
 	return result
+
+
+func confirm_pending_result() -> Dictionary:
+	confirm_button.disabled = true
+	var summary := coordinator.confirm_result()
+	if summary.is_empty():
+		confirm_button.disabled = false
+		return {}
+	result_label.text = (
+		"%s\n幸存 %d｜伤亡 %d\n木材 +%d｜粮食 +%d%s"
+		% [
+			str(summary.outcome),
+			int(summary.survivor_count),
+			int(summary.casualty_count),
+			int(summary.accepted_wood_reward),
+			int(summary.accepted_food_reward),
+			"\n首通奖励已结算"
+				if bool(summary.first_clear_granted)
+				else "",
+		]
+	)
+	return_button.visible = true
+	return_button.disabled = false
+	return summary
+
+
+func request_return_to_city() -> ReturnToCityContract:
+	var return_to_city := coordinator.request_return_to_city()
+	if return_to_city == null:
+		return null
+	return_button.disabled = true
+	call_deferred("_complete_return_after_input_guard")
+	return return_to_city
+
+
+func complete_return_for_test(current_frame: int) -> bool:
+	if not coordinator.complete_return_to_city(current_frame):
+		return false
+	result_panel.visible = false
+	result_input_blocker.visible = false
+	$UI/RootPanel.visible = false
+	city_scene.visible = true
+	city_scene.process_mode = Node.PROCESS_MODE_INHERIT
+	return true
+
+
+func _complete_return_after_input_guard() -> void:
+	await get_tree().process_frame
+	complete_return_for_test(Engine.get_process_frames())
 
 
 func _create_city_fixture() -> void:
@@ -334,9 +394,14 @@ func _update_marker(squad_id: int, state: Dictionary) -> void:
 
 
 func _show_pending_result(battle_result: BattleResult) -> void:
+	result_input_blocker.visible = true
 	result_panel.visible = true
+	confirm_button.visible = true
+	confirm_button.disabled = false
+	return_button.visible = false
+	return_button.disabled = true
 	result_label.text = (
-		"%s\nTick %d｜幸存 %d｜伤亡 %d\n结果待 C0-D 确认写回"
+		"%s\nTick %d｜幸存 %d｜伤亡 %d\n确认后写回城市"
 		% [
 			BattleOutcome.to_id(battle_result.outcome),
 			battle_result.finished_tick,

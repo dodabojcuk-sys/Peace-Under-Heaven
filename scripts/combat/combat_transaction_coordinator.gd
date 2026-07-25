@@ -7,10 +7,13 @@ const DEFAULT_LEVEL_ID := &"first_map.main_assault.v0"
 var city_controller: Node
 var active_request: BattleRequest
 var active_session: BattleSession
+var result_applier: BattleResultApplier
+var return_contract: ReturnToCityContract
 
 
 func configure(city_controller_value: Node) -> void:
 	city_controller = city_controller_value
+	result_applier = BattleResultApplier.new(city_controller)
 
 
 func create_request(
@@ -19,6 +22,7 @@ func create_request(
 ) -> BattleRequest:
 	if city_controller == null or active_request != null:
 		return null
+	return_contract = null
 	var transaction_id: StringName = (
 		city_controller.reserve_battle_force(committed_total)
 	)
@@ -123,6 +127,57 @@ func issue_order(
 	if active_session == null:
 		return null
 	return active_session.issue_order(squad_id, command)
+
+
+func confirm_result() -> Dictionary:
+	if (
+		active_request == null
+		or active_session == null
+		or active_session.result == null
+		or active_request.phase not in [
+			BattleRequest.PHASE_RESULT_PENDING,
+			BattleRequest.PHASE_APPLIED,
+		]
+	):
+		return {}
+	var summary := result_applier.apply(
+		active_session.result,
+		active_request
+	)
+	if summary.is_empty():
+		return {}
+	active_request.phase = BattleRequest.PHASE_APPLIED
+	return summary
+
+
+func request_return_to_city() -> ReturnToCityContract:
+	if (
+		active_request == null
+		or active_request.phase != BattleRequest.PHASE_APPLIED
+		or active_session == null
+		or active_session.result == null
+	):
+		return null
+	if return_contract == null:
+		return_contract = ReturnToCityContract.new(
+			active_request.transaction_id,
+			active_session.result.result_id,
+			Engine.get_process_frames() + 1
+		)
+	return return_contract
+
+
+func complete_return_to_city(current_frame: int) -> bool:
+	if return_contract == null:
+		return false
+	if return_contract.completed:
+		return true
+	if current_frame < return_contract.city_input_restore_frame:
+		return false
+	return_contract.completed = true
+	active_session = null
+	active_request = null
+	return true
 
 
 func cancel_request() -> bool:

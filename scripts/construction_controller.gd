@@ -603,6 +603,17 @@ func get_closed_battle_transaction_phase(
 	return StringName(_closed_battle_transactions.get(transaction_id, &""))
 
 
+func get_committed_battle_result_summary(
+	result_id: StringName
+) -> Dictionary:
+	var summary: Dictionary = _committed_battle_result_ids.get(result_id, {})
+	return summary.duplicate(true)
+
+
+func has_first_clear(first_clear_key: StringName) -> bool:
+	return _first_clear_keys.has(first_clear_key)
+
+
 func reserve_battle_force(committed_count: int) -> StringName:
 	if (
 		not _active_battle_reservation.is_empty()
@@ -673,6 +684,104 @@ func _transition_battle_reservation(
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return true
+
+
+func apply_battle_result_atomic(
+	battle_result: BattleResult,
+	request: BattleRequest
+) -> Dictionary:
+	if battle_result == null or request == null:
+		return {}
+	if _committed_battle_result_ids.has(battle_result.result_id):
+		var committed_summary := get_committed_battle_result_summary(
+			battle_result.result_id
+		)
+		if (
+			StringName(committed_summary.get("transaction_id", &""))
+				== battle_result.transaction_id
+			and request.transaction_id == battle_result.transaction_id
+		):
+			return committed_summary
+		return {}
+	if (
+		not battle_result.is_consistent()
+		or _active_battle_reservation.is_empty()
+		or StringName(_active_battle_reservation.transaction_id)
+			!= battle_result.transaction_id
+		or StringName(_active_battle_reservation.transaction_id)
+			!= request.transaction_id
+		or StringName(_active_battle_reservation.phase)
+			!= BATTLE_PHASE_RESULT_PENDING
+		or request.phase != BattleRequest.PHASE_RESULT_PENDING
+		or battle_result.level_id != request.level_id
+		or battle_result.started_day != request.created_day
+		or battle_result.committed_count
+			!= int(_active_battle_reservation.committed_count)
+		or battle_result.committed_count
+			!= request.committed_force.get_committed_total()
+		or battle_result.player_snapshot_digest
+			!= request.committed_force.get_digest()
+		or battle_result.enemy_snapshot_digest
+			!= request.enemy_force.get_digest()
+		or battle_result.enemy_casualties > request.enemy_force.enemy_count
+		or battle_result.casualty_count > infantry_count
+	):
+		return {}
+
+	var grants_first_clear := (
+		battle_result.outcome == BattleOutcome.Value.VICTORY
+		and battle_result.first_clear_key != &""
+		and not _first_clear_keys.has(battle_result.first_clear_key)
+	)
+	var planned_wood := 30 if grants_first_clear else 0
+	var planned_food := 20 if grants_first_clear else 0
+	var wood_capacity := get_resource_capacity(&"wood")
+	var food_capacity := get_resource_capacity(&"food")
+	var accepted_wood := mini(planned_wood, maxi(wood_capacity - wood, 0))
+	var accepted_food := mini(planned_food, maxi(food_capacity - food, 0))
+	var next_infantry := infantry_count - battle_result.casualty_count
+	var next_wood := wood + accepted_wood
+	var next_food := food + accepted_food
+	if next_infantry < 0:
+		return {}
+
+	var summary := {
+		"result_id": battle_result.result_id,
+		"transaction_id": battle_result.transaction_id,
+		"level_id": battle_result.level_id,
+		"outcome": BattleOutcome.to_id(battle_result.outcome),
+		"committed_count": battle_result.committed_count,
+		"survivor_count": battle_result.survivor_count,
+		"casualty_count": battle_result.casualty_count,
+		"enemy_casualties": battle_result.enemy_casualties,
+		"first_clear_granted": grants_first_clear,
+		"planned_wood_reward": planned_wood,
+		"planned_food_reward": planned_food,
+		"accepted_wood_reward": accepted_wood,
+		"accepted_food_reward": accepted_food,
+		"overflow_wood_reward": planned_wood - accepted_wood,
+		"overflow_food_reward": planned_food - accepted_food,
+		"infantry_after": next_infantry,
+		"wood_after": next_wood,
+		"food_after": next_food,
+	}
+
+	infantry_count = next_infantry
+	wood = next_wood
+	food = next_food
+	_committed_battle_result_ids[battle_result.result_id] = (
+		summary.duplicate(true)
+	)
+	if grants_first_clear:
+		_first_clear_keys[battle_result.first_clear_key] = true
+	_closed_battle_transactions[battle_result.transaction_id] = (
+		BATTLE_PHASE_APPLIED
+	)
+	_last_battle_result_summary = summary.duplicate(true)
+	_active_battle_reservation = {}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return summary.duplicate(true)
 
 
 func get_last_daily_breakdown() -> Dictionary:

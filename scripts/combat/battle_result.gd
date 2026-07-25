@@ -26,6 +26,11 @@ func is_consistent() -> bool:
 		and transaction_id != &""
 		and session_id != &""
 		and level_id != &""
+		and outcome in [
+			BattleOutcome.Value.VICTORY,
+			BattleOutcome.Value.DEFEAT,
+			BattleOutcome.Value.RETREAT,
+		]
 		and committed_count > 0
 		and survivor_count >= 0
 		and casualty_count >= 0

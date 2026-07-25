@@ -135,20 +135,44 @@ offset_bottom = 620.0
 theme_override_constants/separation = 12
 alignment = 1
 
+[node name="ResultInputBlocker" type="ColorRect" parent="UI/RootPanel"]
+visible = false
+layout_mode = 0
+offset_right = 1152.0
+offset_bottom = 648.0
+mouse_filter = 0
+color = Color(0.02, 0.025, 0.03, 0.68)
+
 [node name="ResultPanel" type="Panel" parent="UI/RootPanel"]
 visible = false
 offset_left = 396.0
-offset_top = 214.0
+offset_top = 180.0
 offset_right = 756.0
-offset_bottom = 388.0
+offset_bottom = 458.0
 mouse_filter = 0
 
 [node name="ResultLabel" type="Label" parent="UI/RootPanel/ResultPanel"]
 offset_left = 20.0
 offset_top = 24.0
 offset_right = 340.0
-offset_bottom = 150.0
+offset_bottom = 184.0
 theme_override_font_sizes/font_size = 18
 text = "RESULT_PENDING"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="ConfirmButton" type="Button" parent="UI/RootPanel/ResultPanel"]
+offset_left = 32.0
+offset_top = 210.0
+offset_right = 172.0
+offset_bottom = 254.0
+text = "确认战果"
+
+[node name="ReturnButton" type="Button" parent="UI/RootPanel/ResultPanel"]
+visible = false
+disabled = true
+offset_left = 188.0
+offset_top = 210.0
+offset_right = 328.0
+offset_bottom = 254.0
+text = "返回城市"
