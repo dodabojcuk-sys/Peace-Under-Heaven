@@ -18,6 +18,7 @@ const PLACEMENT_KIND_FIXED := &"fixed"
 const PLACEMENT_KIND_PLACED := &"placed"
 const PLACEMENT_KIND_ROAD := &"road"
 const ROAD_ROOT_CELLS: Array[Vector2i] = [Vector2i(7, 4)]
+const BASE_RESOURCE_CAPACITY := 160
 const UI_SAFETY_MARGIN := 8.0
 const PREVIEW_VALID_COLOR := Color(0.31, 0.62, 0.43, 0.72)
 const PREVIEW_INVALID_COLOR := Color(0.72, 0.31, 0.28, 0.72)
@@ -28,6 +29,12 @@ const ROAD_DEFINITION: BuildingDefinition = preload(
 )
 const LOGGING_CAMP_DEFINITION: BuildingDefinition = preload(
 	"res://resources/definitions/buildings/logging_camp.tres"
+)
+const FARM_DEFINITION: BuildingDefinition = preload(
+	"res://resources/definitions/buildings/farm.tres"
+)
+const WAREHOUSE_DEFINITION: BuildingDefinition = preload(
+	"res://resources/definitions/buildings/warehouse.tres"
 )
 const TEST_BUILDING_FOOTPRINT := Vector2i(2, 2)
 const TEST_BUILDING_WORLD_SIZE := Vector2(80.0, 80.0)
@@ -97,6 +104,10 @@ const PRESET_BUILDING_DEFINITIONS := [
 @onready var logging_camp_button: Button = (
 	$"../UI/Shell/ConstructionMenu/LoggingCampButton"
 )
+@onready var farm_button: Button = $"../UI/Shell/ConstructionMenu/FarmButton"
+@onready var warehouse_button: Button = (
+	$"../UI/Shell/ConstructionMenu/WarehouseButton"
+)
 @onready var close_construction_menu_button: Button = (
 	$"../UI/Shell/ConstructionMenu/CloseButton"
 )
@@ -115,8 +126,18 @@ var preview_valid := false
 var preview_invalid_reason := ""
 var current_day := 1
 var wood := 100
-var wood_capacity := 160
+var food := 80
+var tech_points := 0
 var last_daily_report := "尚未结算"
+var last_daily_breakdown := {
+	"maintenance_food": 0,
+	"training_completed": 0,
+	"wood_income": 0,
+	"food_income": 0,
+	"research_income": 0,
+	"event_wood_loss": 0,
+	"event_food_loss": 0,
+}
 var _occupied_cells: Dictionary = {}
 var _building_records_by_id: Dictionary = {}
 var _placement_order: Array[int] = []
@@ -129,6 +150,8 @@ var _selected_definition: BuildingDefinition
 func _ready() -> void:
 	_register_definition(ROAD_DEFINITION)
 	_register_definition(LOGGING_CAMP_DEFINITION)
+	_register_definition(FARM_DEFINITION)
+	_register_definition(WAREHOUSE_DEFINITION)
 	_register_preset_buildings()
 	build_entry_button.pressed.connect(_on_build_entry_pressed)
 	road_button.pressed.connect(
@@ -136,6 +159,12 @@ func _ready() -> void:
 	)
 	logging_camp_button.pressed.connect(
 		_on_definition_button_pressed.bind(LOGGING_CAMP_DEFINITION.definition_id)
+	)
+	farm_button.pressed.connect(
+		_on_definition_button_pressed.bind(FARM_DEFINITION.definition_id)
+	)
+	warehouse_button.pressed.connect(
+		_on_definition_button_pressed.bind(WAREHOUSE_DEFINITION.definition_id)
 	)
 	close_construction_menu_button.pressed.connect(cancel_build_interaction)
 	end_day_button.pressed.connect(advance_day)
@@ -327,6 +356,7 @@ func place_definition_at_cell(
 	)
 	if charge_cost:
 		wood -= definition.wood_cost
+		food -= definition.food_cost
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return placement_id
@@ -343,6 +373,7 @@ func _create_runtime_building(origin_cell: Vector2i) -> int:
 func advance_day() -> bool:
 	current_day += 1
 	var wood_income := 0
+	var food_income := 0
 	for placement_id in _placement_order:
 		var record: Dictionary = _building_records_by_id.get(placement_id, {})
 		if record.is_empty() or int(record.built_day) >= current_day:
@@ -351,17 +382,34 @@ func advance_day() -> bool:
 		if definition == null or not is_building_operational(placement_id):
 			continue
 		var production := definition.get_capability(&"production")
-		if production != null and production.resource_id == &"wood":
+		if production == null:
+			continue
+		if production.resource_id == &"wood":
 			wood_income += production.amount
+		elif production.resource_id == &"food":
+			food_income += production.amount
 
-	var accepted_wood := mini(wood_income, wood_capacity - wood)
+	var wood_capacity := get_resource_capacity(&"wood")
+	var food_capacity := get_resource_capacity(&"food")
+	var accepted_wood := mini(wood_income, maxi(wood_capacity - wood, 0))
+	var accepted_food := mini(food_income, maxi(food_capacity - food, 0))
 	wood += accepted_wood
-	last_daily_report = (
-		"本日木材 +%d" % accepted_wood
-		if wood_income > 0
-		else "本日无生产"
-	)
-	if accepted_wood < wood_income:
+	food += accepted_food
+	tech_points += 1
+	last_daily_breakdown = {
+		"maintenance_food": 0,
+		"training_completed": 0,
+		"wood_income": accepted_wood,
+		"food_income": accepted_food,
+		"research_income": 1,
+		"event_wood_loss": 0,
+		"event_food_loss": 0,
+	}
+	last_daily_report = "入 木%d 粮%d｜维0｜损0｜研+1" % [
+		accepted_wood,
+		accepted_food,
+	]
+	if accepted_wood < wood_income or accepted_food < food_income:
 		last_daily_report += "（容量封顶）"
 	_refresh_city_ui()
 	city_state_changed.emit()
@@ -372,9 +420,38 @@ func get_city_state() -> Dictionary:
 	return {
 		"day": current_day,
 		"wood": wood,
-		"wood_capacity": wood_capacity,
+		"food": food,
+		"tech_points": tech_points,
+		"wood_capacity": get_resource_capacity(&"wood"),
+		"food_capacity": get_resource_capacity(&"food"),
 		"last_daily_report": last_daily_report,
+		"last_daily_breakdown": last_daily_breakdown.duplicate(true),
 	}
+
+
+func get_last_daily_breakdown() -> Dictionary:
+	return last_daily_breakdown.duplicate(true)
+
+
+func get_resource_capacity(resource_id: StringName) -> int:
+	var capacity := BASE_RESOURCE_CAPACITY
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if record.is_empty():
+			continue
+		var definition := get_definition(record.definition_id)
+		if definition == null:
+			continue
+		var storage := definition.get_capability(&"storage")
+		if (
+			storage != null
+			and (
+				storage.resource_id == resource_id
+				or storage.resource_id == &"wood_food"
+			)
+		):
+			capacity += storage.amount
+	return capacity
 
 
 func get_definition(definition_id: StringName) -> BuildingDefinition:
@@ -530,6 +607,8 @@ func remove_placed_building(placement_id: int) -> bool:
 			return false
 	_release_runtime_record(placement_id, true)
 	building.queue_free()
+	_enforce_resource_capacity()
+	_refresh_city_ui()
 	city_state_changed.emit()
 	return true
 
@@ -966,7 +1045,10 @@ func _allocate_placement_id() -> int:
 
 
 func _can_pay_definition(definition: BuildingDefinition) -> bool:
-	return wood >= definition.wood_cost
+	return (
+		wood >= definition.wood_cost
+		and food >= definition.food_cost
+	)
 
 
 func _sync_construction_ui() -> void:
@@ -984,9 +1066,19 @@ func _sync_construction_ui() -> void:
 
 
 func _refresh_city_ui() -> void:
-	resource_summary.text = "木材 %d / %d" % [wood, wood_capacity]
+	resource_summary.text = "木材 %d/%d · 粮食 %d/%d" % [
+		wood,
+		get_resource_capacity(&"wood"),
+		food,
+		get_resource_capacity(&"food"),
+	]
 	time_summary.text = "第 %d 日" % current_day
 	daily_report.text = last_daily_report
+
+
+func _enforce_resource_capacity() -> void:
+	wood = mini(wood, get_resource_capacity(&"wood"))
+	food = mini(food, get_resource_capacity(&"food"))
 
 
 func _definition_world_size(definition: BuildingDefinition) -> Vector2:

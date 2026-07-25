@@ -435,12 +435,12 @@ theme_override_styles/panel = SubResource("StyleBoxFlat_top_bar")
 layout_mode = 0
 offset_left = 15.0
 offset_top = 12.0
-offset_right = 230.0
+offset_right = 245.0
 offset_bottom = 31.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
 theme_override_font_sizes/font_size = 13
-text = "木材 100 / 160"
+text = "木材 100/160 · 粮食 80/160"
 
 [node name="DividerOne" type="ColorRect" parent="UI/Shell/TopStatusBar"]
 layout_mode = 0
@@ -484,9 +484,9 @@ text = "第 1 日"
 
 [node name="DailyReport" type="Label" parent="UI/Shell/TopStatusBar"]
 layout_mode = 0
-offset_left = 610.0
+offset_left = 590.0
 offset_top = 12.0
-offset_right = 760.0
+offset_right = 772.0
 offset_bottom = 31.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
@@ -661,7 +661,7 @@ anchor_right = 1.0
 offset_left = -196.0
 offset_top = 236.0
 offset_right = -16.0
-offset_bottom = 414.0
+offset_bottom = 530.0
 grow_horizontal = 0
 mouse_filter = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_detail_panel")
@@ -723,6 +723,38 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
 text = "伐木场 · 40 木材
 2 × 2"
+
+[node name="FarmButton" type="Button" parent="UI/Shell/ConstructionMenu"]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 168.0
+offset_right = 166.0
+offset_bottom = 218.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "农田 · 45 木材
+2 × 2"
+
+[node name="WarehouseButton" type="Button" parent="UI/Shell/ConstructionMenu"]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 226.0
+offset_right = 166.0
+offset_bottom = 276.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "仓库 · 60 木材
+容量 +120"
 
 [node name="BuildingDetailPanel" type="Panel" parent="UI/Shell"]
 visible = false

@@ -33,7 +33,13 @@ func _run() -> void:
 		logging_definition.get_capability(&"production") is BuildingCapability,
 		"伐木场产量使用类型化 BuildingCapability"
 	)
-	_check(construction.get_definition_ids().size() == 2, "P1-A 只有两项正式定义")
+	_check(
+		construction.get_definition_ids().has(&"building.road.t1")
+			and construction.get_definition_ids().has(
+				&"building.logging_camp.t1"
+			),
+		"P1-A 道路与伐木场定义仍存在"
+	)
 
 	var isolated_road_id: int = construction.place_definition_at_cell(
 		&"building.road.t1",
