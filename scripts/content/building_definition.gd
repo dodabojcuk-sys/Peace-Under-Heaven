@@ -9,6 +9,7 @@ extends Resource
 @export var level := 1
 @export var build_days := 0
 @export var next_level_definition_id: StringName
+@export var build_catalog_visible := true
 @export var placement_kind: StringName = &"placed"
 @export var footprint := Vector2i.ONE
 @export var road_anchor_offsets: Array[Vector2i] = []

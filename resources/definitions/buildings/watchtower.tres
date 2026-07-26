@@ -17,6 +17,7 @@ building_type = "防御建筑"
 description = "城防 +10；降低公开骚扰损失"
 level = 1
 build_days = 1
+build_catalog_visible = false
 footprint = Vector2i(2, 2)
 wood_cost = 50
 capabilities = Array[ExtResource("2_capability")]([SubResource("BuildingCapability_defense")])

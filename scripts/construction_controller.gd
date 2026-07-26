@@ -2009,6 +2009,16 @@ func get_definition_ids() -> Array[StringName]:
 	return result
 
 
+func get_build_catalog_definition_ids() -> Array[StringName]:
+	var result: Array[StringName] = []
+	for definition_id in _definitions_by_id:
+		var definition := get_definition(definition_id)
+		if definition != null and definition.build_catalog_visible:
+			result.append(definition_id)
+	result.sort()
+	return result
+
+
 func get_building_count() -> int:
 	return _building_records_by_id.size()
 
@@ -2776,6 +2786,10 @@ func _refresh_construction_catalog_ui() -> void:
 	for entry in catalog_entries:
 		var button := entry[0] as Button
 		var definition := entry[1] as BuildingDefinition
+		button.visible = definition.build_catalog_visible
+		if not definition.build_catalog_visible:
+			button.disabled = true
+			continue
 		var data := get_definition_build_data(definition.definition_id)
 		var duration_compact := (
 			"即时"
