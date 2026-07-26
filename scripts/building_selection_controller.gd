@@ -9,6 +9,7 @@ enum SelectionState {
 
 const SELECTION_OUTLINE_MARGIN := 4.0
 const COMMAND_PLATFORM_TEMPLATE_ID := &"command_platform"
+const CITY_GATE_TEMPLATE_ID := &"city_gate"
 const NOTICEBOARD_TEMPLATE_ID := &"noticeboard"
 
 @onready var map_world: Node2D = $"../MapWorld"
@@ -26,6 +27,12 @@ const NOTICEBOARD_TEMPLATE_ID := &"noticeboard"
 @onready var remove_button: Button = $"../UI/Shell/BuildingDetailPanel/RemoveButton"
 @onready var first_war_actions: Control = (
 	$"../UI/Shell/BuildingDetailPanel/FirstWarActions"
+)
+@onready var city_gate_actions: Control = (
+	$"../UI/Shell/BuildingDetailPanel/CityGateActions"
+)
+@onready var enter_world_map_button: Button = (
+	$"../UI/Shell/BuildingDetailPanel/CityGateActions/EnterWorldMapButton"
 )
 @onready var removal_confirmation: Control = (
 	$"../UI/Shell/BuildingDetailPanel/RemovalConfirmation"
@@ -54,6 +61,7 @@ func _ready() -> void:
 	remove_button.pressed.connect(request_removal_confirmation)
 	confirm_remove_button.pressed.connect(confirm_removal)
 	cancel_remove_button.pressed.connect(cancel_removal_confirmation)
+	enter_world_map_button.pressed.connect(_on_enter_world_map_pressed)
 	noticeboard_close_button.pressed.connect(clear_selection)
 	construction_controller.building_removed.connect(_on_building_removed)
 	construction_controller.city_state_changed.connect(_on_city_state_changed)
@@ -108,6 +116,7 @@ func clear_selection() -> void:
 	noticeboard_panel.visible = false
 	removal_confirmation.visible = false
 	first_war_actions.visible = false
+	city_gate_actions.visible = false
 	construction_controller.set_detail_panel_active(false)
 
 
@@ -269,11 +278,16 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 	var is_command_platform := (
 		StringName(record.template_id) == COMMAND_PLATFORM_TEMPLATE_ID
 	)
+	var is_city_gate := (
+		StringName(record.template_id) == CITY_GATE_TEMPLATE_ID
+	)
 	for control in _get_standard_detail_controls():
-		control.visible = not is_command_platform
+		control.visible = not is_command_platform and not is_city_gate
 	first_war_actions.visible = is_command_platform
+	city_gate_actions.visible = is_city_gate
 	remove_button.visible = (
 		not is_command_platform
+		and not is_city_gate
 		and bool(record.get("removable", false))
 	)
 	remove_button.disabled = (
@@ -290,11 +304,16 @@ func _show_selected_presentation() -> void:
 	var is_command_platform := (
 		StringName(record.template_id) == COMMAND_PLATFORM_TEMPLATE_ID
 	)
+	var is_city_gate := (
+		StringName(record.template_id) == CITY_GATE_TEMPLATE_ID
+	)
 	for control in _get_standard_detail_controls():
-		control.visible = not is_command_platform
+		control.visible = not is_command_platform and not is_city_gate
 	first_war_actions.visible = is_command_platform
+	city_gate_actions.visible = is_city_gate
 	remove_button.visible = (
 		not is_command_platform
+		and not is_city_gate
 		and bool(record.get("removable", false))
 	)
 	removal_confirmation.visible = false
@@ -313,6 +332,7 @@ func _get_detail_controls() -> Array[Control]:
 	var controls: Array[Control] = [
 		target_name,
 		first_war_actions,
+		city_gate_actions,
 	]
 	controls.append_array(_get_standard_detail_controls())
 	return controls
@@ -362,3 +382,16 @@ func _on_city_state_changed() -> void:
 		construction_controller.show_noticeboard_panel()
 	else:
 		_refresh_detail_panel(record)
+
+
+func _on_enter_world_map_pressed() -> void:
+	if not has_selection():
+		return
+	var record: Dictionary = construction_controller.get_building_record(
+		selected_placement_id
+	)
+	if StringName(record.get("template_id", &"")) != CITY_GATE_TEMPLATE_ID:
+		return
+	var root := get_parent()
+	if root != null and root.has_method("open_campaign_world_map"):
+		root.open_campaign_world_map()

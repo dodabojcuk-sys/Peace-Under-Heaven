@@ -8,6 +8,9 @@ const ZOOM_STEP := 0.1
 
 @onready var camera: Camera2D = $Camera2D
 @onready var map_board: Control = $MapWorld/MapBoard
+@onready var city_map_world: Node2D = $MapWorld
+@onready var city_ui_shell: Control = $UI/Shell
+@onready var campaign_world_map: WorldMapController = $CampaignWorldMap
 @onready var construction_controller: Node = $ConstructionController
 @onready var building_selection_controller: Node = $BuildingSelectionController
 @onready var top_status_bar: Control = $UI/Shell/TopStatusBar
@@ -19,6 +22,9 @@ var last_pointer_screen := Vector2.ZERO
 var pending_drag_delta := Vector2.ZERO
 var is_dragging := false
 var city_bar_expanded := false
+var world_map_open := false
+var _city_camera_position := Vector2.ZERO
+var _city_camera_zoom := Vector2.ONE
 
 
 func _ready() -> void:
@@ -28,11 +34,22 @@ func _ready() -> void:
 	)
 	construction_controller.placing_started.connect(_on_construction_placing_started)
 	city_bar_toggle.pressed.connect(toggle_city_bar)
+	campaign_world_map.return_to_city_requested.connect(
+		return_from_campaign_world_map
+	)
+	campaign_world_map.noticeboard_requested.connect(
+		_on_world_map_noticeboard_requested
+	)
+	campaign_world_map.configure(construction_controller)
 	set_city_bar_expanded(false)
 	call_deferred("_initialize_camera")
 
 
 func _input(event: InputEvent) -> void:
+	if world_map_open:
+		_handle_world_map_input(event)
+		return
+
 	if (
 		event is InputEventMouseButton
 		and event.pressed
@@ -112,7 +129,10 @@ func _handle_drag_button(event: InputEventMouseButton) -> void:
 		)
 		_stop_drag()
 		if is_map_click:
-			building_selection_controller.handle_map_click(event.position)
+			if world_map_open:
+				campaign_world_map.handle_screen_click(event.position)
+			else:
+				building_selection_controller.handle_map_click(event.position)
 
 
 func _handle_drag_motion(event: InputEventMouseMotion) -> void:
@@ -199,6 +219,8 @@ func is_city_bar_expanded() -> bool:
 
 func get_navigation_safe_rect() -> Rect2:
 	var viewport_rect := get_viewport_rect()
+	if world_map_open:
+		return campaign_world_map.get_navigation_safe_rect(viewport_rect)
 	var left := viewport_rect.position.x
 	var top := viewport_rect.position.y
 	if top_status_bar.is_visible_in_tree():
@@ -258,3 +280,86 @@ func _clamp_camera() -> void:
 		)
 	else:
 		camera.position.y = clampf(camera.position.y, minimum.y, maximum.y)
+
+
+func open_campaign_world_map() -> bool:
+	if world_map_open:
+		return false
+	_stop_drag()
+	construction_controller.cancel_build_interaction()
+	building_selection_controller.clear_selection()
+	_city_camera_position = camera.position
+	_city_camera_zoom = camera.zoom
+	city_map_world.visible = false
+	city_ui_shell.visible = false
+	world_map_open = true
+	campaign_world_map.show_world_map()
+	map_board = campaign_world_map.get_map_board()
+	camera.zoom = Vector2.ONE * 0.64
+	center_world_position_in_safe_area(
+		campaign_world_map.get_overview_center()
+	)
+	_clamp_camera()
+	return true
+
+
+func return_from_campaign_world_map() -> bool:
+	if not world_map_open:
+		return false
+	_stop_drag()
+	campaign_world_map.hide_world_map()
+	world_map_open = false
+	map_board = city_map_world.get_node("MapBoard") as Control
+	city_map_world.visible = true
+	city_ui_shell.visible = true
+	camera.zoom = _city_camera_zoom
+	camera.position = _city_camera_position
+	_clamp_camera()
+	return true
+
+
+func center_world_map_on_home() -> void:
+	if not world_map_open:
+		return
+	center_world_position_in_safe_area(
+		campaign_world_map.get_home_position()
+	)
+	_clamp_camera()
+
+
+func is_campaign_world_map_open() -> bool:
+	return world_map_open
+
+
+func _handle_world_map_input(event: InputEvent) -> void:
+	if event is InputEventKey:
+		if event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+			campaign_world_map.handle_escape()
+			_stop_drag()
+			get_viewport().set_input_as_handled()
+		return
+
+	if (
+		event is InputEventMouseButton
+		and event.pressed
+		and campaign_world_map.is_screen_point_blocked(event.position)
+	):
+		return
+
+	if event is InputEventMouseButton:
+		if (
+			event.button_index == MOUSE_BUTTON_WHEEL_UP
+			or event.button_index == MOUSE_BUTTON_WHEEL_DOWN
+		):
+			_handle_zoom(event)
+		else:
+			_handle_drag_button(event)
+	elif event is InputEventMouseMotion:
+		_handle_drag_motion(event)
+
+
+func _on_world_map_noticeboard_requested() -> void:
+	if not return_from_campaign_world_map():
+		return
+	construction_controller.show_noticeboard_panel()
+	construction_controller.set_detail_panel_active(true)

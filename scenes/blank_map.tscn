@@ -1,8 +1,9 @@
-[gd_scene load_steps=11 format=3 uid="uid://blankmap00"]
+[gd_scene load_steps=12 format=3 uid="uid://blankmap00"]
 
 [ext_resource type="Script" path="res://scripts/map_pan_controller.gd" id="1_map_pan"]
 [ext_resource type="Script" path="res://scripts/construction_controller.gd" id="2_construction"]
 [ext_resource type="Script" path="res://scripts/building_selection_controller.gd" id="3_selection"]
+[ext_resource type="PackedScene" path="res://scenes/world_map_v0.tscn" id="4_world_map"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top_bar"]
 bg_color = Color(0.847059, 0.831373, 0.796078, 1)
@@ -86,6 +87,8 @@ script = ExtResource("2_construction")
 
 [node name="BuildingSelectionController" type="Node" parent="."]
 script = ExtResource("3_selection")
+
+[node name="CampaignWorldMap" parent="." instance=ExtResource("4_world_map")]
 
 [node name="MapBoard" type="ColorRect" parent="MapWorld"]
 layout_mode = 0
@@ -1208,6 +1211,43 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
 theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
 text = "确认战后摘要"
+
+[node name="CityGateActions" type="Control" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 0
+offset_left = 20.0
+offset_top = 116.0
+offset_right = 260.0
+offset_bottom = 346.0
+mouse_filter = 1
+
+[node name="MapSummary" type="Label" parent="UI/Shell/BuildingDetailPanel/CityGateActions"]
+layout_mode = 0
+offset_right = 240.0
+offset_bottom = 142.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 13
+text = "外城战役地图
+查看黑石城、北坡、河湾粮道与河湾城。
+
+本轮支持查看、路线预览和返回内城；
+尚未实现正式行军与局部战斗。"
+autowrap_mode = 2
+
+[node name="EnterWorldMapButton" type="Button" parent="UI/Shell/BuildingDetailPanel/CityGateActions"]
+layout_mode = 0
+offset_top = 164.0
+offset_right = 240.0
+offset_bottom = 202.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "进入战役地图"
 
 [node name="RemovalConfirmation" type="Control" parent="UI/Shell/BuildingDetailPanel"]
 visible = false
