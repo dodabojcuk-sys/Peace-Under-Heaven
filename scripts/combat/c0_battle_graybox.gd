@@ -2,6 +2,8 @@ class_name C0BattleGraybox
 extends Node2D
 
 
+signal formal_return_completed(summary: Dictionary)
+
 const CITY_SCENE: PackedScene = preload("res://scenes/blank_map.tscn")
 const DEBUG_PLAYER_COUNT := 50
 
@@ -41,8 +43,11 @@ var city_controller: Node
 var city_ui: CanvasLayer
 var city_camera: Camera2D
 var request: BattleRequest
+var formal_city_mode := false
+var formal_committed_count := 0
 var _squad_ui: Dictionary = {}
 var _squad_markers: Dictionary = {}
+var _confirmed_summary: Dictionary = {}
 
 
 func _ready() -> void:
@@ -50,10 +55,24 @@ func _ready() -> void:
 	start_button.pressed.connect(start_battle)
 	confirm_button.pressed.connect(confirm_pending_result)
 	return_button.pressed.connect(request_return_to_city)
-	_create_city_fixture()
+	if formal_city_mode:
+		_prepare_formal_city()
+	else:
+		_create_city_fixture()
 	_create_battle_request()
 	_create_squad_controls()
 	_refresh_battle_ui()
+
+
+func configure_formal_city(
+	city_scene_value: Node2D,
+	city_controller_value: Node,
+	committed_count: int
+) -> void:
+	formal_city_mode = true
+	city_scene = city_scene_value
+	city_controller = city_controller_value
+	formal_committed_count = committed_count
 
 
 func start_battle() -> bool:
@@ -109,12 +128,14 @@ func confirm_pending_result() -> Dictionary:
 	if summary.is_empty():
 		confirm_button.disabled = false
 		return {}
+	_confirmed_summary = summary.duplicate(true)
 	result_label.text = (
-		"%s\n幸存 %d｜伤亡 %d\n木材 +%d｜粮食 +%d%s"
+		"%s\n幸存 %d｜伤亡 %d\n粮草 -%d｜木材 +%d｜粮食 +%d%s"
 		% [
 			str(summary.outcome),
 			int(summary.survivor_count),
 			int(summary.casualty_count),
+			int(summary.get("actual_food_cost", 0)),
 			int(summary.accepted_wood_reward),
 			int(summary.accepted_food_reward),
 			"\n首通奖励已结算"
@@ -142,12 +163,27 @@ func complete_return_for_test(current_frame: int) -> bool:
 	result_panel.visible = false
 	result_input_blocker.visible = false
 	$UI/RootPanel.visible = false
-	city_ui.visible = true
-	city_scene.visible = true
-	city_scene.process_mode = Node.PROCESS_MODE_INHERIT
-	city_camera.enabled = true
-	city_camera.make_current()
+	_restore_city_presentation()
+	if formal_city_mode:
+		formal_return_completed.emit(_confirmed_summary.duplicate(true))
+		queue_free()
 	return true
+
+
+func abort_formal_entry() -> void:
+	if not formal_city_mode:
+		return
+	_restore_city_presentation()
+	queue_free()
+
+
+func _exit_tree() -> void:
+	if (
+		formal_city_mode
+		and is_instance_valid(city_scene)
+		and not city_scene.visible
+	):
+		_restore_city_presentation()
 
 
 func _complete_return_after_input_guard() -> void:
@@ -175,8 +211,39 @@ func _create_city_fixture() -> void:
 	coordinator.configure(city_controller)
 
 
+func _prepare_formal_city() -> void:
+	if city_scene == null or city_controller == null:
+		push_error("C0 formal city entry is missing the authoritative city")
+		return
+	city_ui = city_scene.get_node("UI") as CanvasLayer
+	city_camera = city_scene.get_node("Camera2D") as Camera2D
+	city_ui.visible = false
+	city_camera.enabled = false
+	city_scene.visible = false
+	city_scene.process_mode = Node.PROCESS_MODE_DISABLED
+	coordinator.configure(city_controller)
+
+
+func _restore_city_presentation() -> void:
+	if (
+		not is_instance_valid(city_scene)
+		or not is_instance_valid(city_ui)
+		or not is_instance_valid(city_camera)
+	):
+		return
+	city_ui.visible = true
+	city_scene.visible = true
+	city_scene.process_mode = Node.PROCESS_MODE_INHERIT
+	city_camera.enabled = true
+	city_camera.make_current()
+
+
 func _create_battle_request() -> void:
-	request = coordinator.create_request(DEBUG_PLAYER_COUNT)
+	request = coordinator.create_request(
+		formal_committed_count if formal_city_mode else DEBUG_PLAYER_COUNT,
+		CombatTransactionCoordinator.DEFAULT_LEVEL_ID,
+		formal_city_mode
+	)
 	if request == null:
 		push_error("C0 graybox failed to create battle request")
 

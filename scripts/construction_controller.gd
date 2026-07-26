@@ -74,6 +74,8 @@ const CITY_TIME_SPEEDS := [1.0, 2.0, 4.0]
 const FIRST_WAR_EVENT_ID := &"first_war.north_slope.v0"
 const FIRST_WAR_WARNING_DAY := 6
 const FIRST_WAR_PENDING_DAY := 7
+const FIRST_WAR_LEVEL_ID := &"first_map.main_assault.v0"
+const FIRST_WAR_RETREAT_DEFENSE_DAMAGE := 5
 const BATTLE_PHASE_RESERVED := &"RESERVED"
 const BATTLE_PHASE_ACTIVE := &"ACTIVE"
 const BATTLE_PHASE_RESULT_PENDING := &"RESULT_PENDING"
@@ -116,7 +118,7 @@ const PRESET_BUILDING_DEFINITIONS := [
 		"node_path": "../MapWorld/CommandPlatform",
 		"template_id": &"command_platform",
 		"display_name": "军令台 L1",
-		"description": "军事命令设施（真实战役契约接入前不提供假入口）",
+		"description": "北坡首战的正式城市入口",
 	},
 ]
 
@@ -183,6 +185,36 @@ const PRESET_BUILDING_DEFINITIONS := [
 @onready var restart_map_button: Button = $"../UI/Shell/CityBar/RestartMapButton"
 @onready var minimap_placeholder: Control = $"../UI/Shell/MinimapPlaceholder"
 @onready var building_detail_panel: Control = $"../UI/Shell/BuildingDetailPanel"
+@onready var first_war_actions: Control = (
+	$"../UI/Shell/BuildingDetailPanel/FirstWarActions"
+)
+@onready var first_war_intel: Label = (
+	$"../UI/Shell/BuildingDetailPanel/FirstWarActions/WarIntel"
+)
+@onready var enter_first_war_button: Button = (
+	$"../UI/Shell/BuildingDetailPanel/FirstWarActions/EnterBattleButton"
+)
+@onready var order_retreat_button: Button = (
+	$"../UI/Shell/BuildingDetailPanel/FirstWarActions/OrderRetreatButton"
+)
+@onready var retreat_confirmation: Control = (
+	$"../UI/Shell/BuildingDetailPanel/FirstWarActions/RetreatConfirmation"
+)
+@onready var confirm_retreat_button: Button = (
+	$"../UI/Shell/BuildingDetailPanel/FirstWarActions/RetreatConfirmation/ConfirmRetreatButton"
+)
+@onready var cancel_retreat_button: Button = (
+	$"../UI/Shell/BuildingDetailPanel/FirstWarActions/RetreatConfirmation/CancelRetreatButton"
+)
+@onready var first_war_result: Control = (
+	$"../UI/Shell/BuildingDetailPanel/FirstWarActions/WarResult"
+)
+@onready var first_war_result_label: Label = (
+	$"../UI/Shell/BuildingDetailPanel/FirstWarActions/WarResult/ResultLabel"
+)
+@onready var acknowledge_war_result_button: Button = (
+	$"../UI/Shell/BuildingDetailPanel/FirstWarActions/WarResult/AcknowledgeButton"
+)
 
 var state := ConstructionState.IDLE
 var preview_origin_cell := Vector2i.ZERO
@@ -210,6 +242,7 @@ var day_elapsed_seconds := 0.0
 var first_war_state := FirstWarState.PREPARATION
 var first_war_warning_count := 0
 var city_fallen := false
+var city_defense_damage := 0
 var last_daily_breakdown := {
 	"maintenance_food": 0,
 	"maintenance_required": 0,
@@ -236,6 +269,9 @@ var _closed_battle_transactions: Dictionary = {}
 var _committed_battle_result_ids: Dictionary = {}
 var _first_clear_keys: Dictionary = {}
 var _last_battle_result_summary: Dictionary = {}
+var _first_war_pending_outcome: StringName = &""
+var _first_war_result_acknowledged := false
+var _formal_battle_scene: C0BattleGraybox
 var _next_battle_transaction_sequence := 1
 
 
@@ -273,6 +309,17 @@ func _ready() -> void:
 	emergency_mobilization_button.pressed.connect(emergency_mobilization)
 	restore_checkpoint_button.pressed.connect(restore_readiness_checkpoint)
 	restart_map_button.pressed.connect(restart_first_map)
+	enter_first_war_button.pressed.connect(enter_first_war_battle)
+	order_retreat_button.pressed.connect(
+		request_first_war_retreat_confirmation
+	)
+	confirm_retreat_button.pressed.connect(confirm_first_war_retreat)
+	cancel_retreat_button.pressed.connect(
+		cancel_first_war_retreat_confirmation
+	)
+	acknowledge_war_result_button.pressed.connect(
+		acknowledge_first_war_result
+	)
 	construction_preview.visible = false
 	_configure_time_speed_options()
 	_update_threat_for_current_day(false)
@@ -599,9 +646,176 @@ func resolve_first_war_for_test(outcome: StringName) -> bool:
 		city_fallen = true
 	else:
 		return false
+	_first_war_pending_outcome = &""
+	_first_war_result_acknowledged = true
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return true
+
+
+func get_first_war_food_cost(committed_count: int) -> int:
+	if committed_count <= 0:
+		return 0
+	return ceili(
+		float(committed_count)
+		/ float(INFANTRY_ROLE.maintenance_units_per_food)
+	)
+
+
+func get_first_war_committed_count() -> int:
+	return mini(
+		get_available_infantry_count(),
+		get_effective_command_limit()
+	)
+
+
+func can_enter_first_war() -> bool:
+	return (
+		first_war_state == FirstWarState.PENDING
+		and _active_battle_reservation.is_empty()
+		and get_first_war_committed_count() > 0
+		and not is_instance_valid(_formal_battle_scene)
+	)
+
+
+func enter_first_war_battle() -> bool:
+	if not can_enter_first_war():
+		return false
+	var battle_scene := load(
+		"res://scenes/c0_battle_graybox.tscn"
+	) as PackedScene
+	if battle_scene == null:
+		return false
+	var battle := battle_scene.instantiate() as C0BattleGraybox
+	if battle == null:
+		return false
+	battle.configure_formal_city(
+		get_parent() as Node2D,
+		self,
+		get_first_war_committed_count()
+	)
+	battle.formal_return_completed.connect(_on_first_war_returned)
+	first_war_state = FirstWarState.IN_BATTLE
+	_formal_battle_scene = battle
+	get_tree().root.add_child(battle)
+	if battle.request == null:
+		_formal_battle_scene = null
+		first_war_state = FirstWarState.PENDING
+		battle.abort_formal_entry()
+		_refresh_city_ui()
+		return false
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
+
+
+func get_formal_battle_scene() -> C0BattleGraybox:
+	return _formal_battle_scene if is_instance_valid(_formal_battle_scene) else null
+
+
+func request_first_war_retreat_confirmation() -> bool:
+	if first_war_state != FirstWarState.PENDING:
+		return false
+	retreat_confirmation.visible = true
+	_refresh_first_war_ui()
+	return true
+
+
+func cancel_first_war_retreat_confirmation() -> void:
+	retreat_confirmation.visible = false
+	_refresh_first_war_ui()
+
+
+func confirm_first_war_retreat() -> bool:
+	if (
+		first_war_state != FirstWarState.PENDING
+		or not retreat_confirmation.visible
+		or get_first_war_committed_count() <= 0
+	):
+		return false
+	retreat_confirmation.visible = false
+	var coordinator := CombatTransactionCoordinator.new()
+	add_child(coordinator)
+	coordinator.configure(self)
+	first_war_state = FirstWarState.IN_BATTLE
+	var retreat_request := coordinator.create_request(
+		get_first_war_committed_count(),
+		FIRST_WAR_LEVEL_ID,
+		true
+	)
+	if retreat_request == null:
+		first_war_state = FirstWarState.PENDING
+		coordinator.queue_free()
+		_refresh_city_ui()
+		return false
+	if not coordinator.activate_request():
+		coordinator.cancel_request()
+		first_war_state = FirstWarState.PENDING
+		coordinator.queue_free()
+		_refresh_city_ui()
+		return false
+	if coordinator.create_session() == null:
+		push_error(
+			"First-war retreat session failed after reservation activation"
+		)
+		_refresh_city_ui()
+		return false
+	for squad in retreat_request.committed_force.squads:
+		coordinator.issue_order(
+			int(squad.squad_id),
+			BattleOrder.Command.RETREAT
+		)
+	var battle_result: BattleResult
+	for _tick in range(BattleSession.MAX_BATTLE_TICKS + 2):
+		battle_result = coordinator.advance_battle_tick()
+		if battle_result != null:
+			break
+	if battle_result == null:
+		push_error("First-war retreat did not produce a battle result")
+		_refresh_city_ui()
+		return false
+	var summary := coordinator.confirm_result()
+	if summary.is_empty():
+		push_error("First-war retreat result could not be applied")
+		_refresh_city_ui()
+		return false
+	coordinator.queue_free()
+	_on_first_war_returned(summary)
+	return true
+
+
+func acknowledge_first_war_result() -> bool:
+	if _first_war_result_acknowledged or _first_war_pending_outcome == &"":
+		return false
+	if _first_war_pending_outcome == &"VICTORY":
+		first_war_state = FirstWarState.RESOLVED_VICTORY
+	elif _first_war_pending_outcome == &"RETREAT":
+		first_war_state = FirstWarState.RESOLVED_RETREAT
+	elif _first_war_pending_outcome == &"DEFEAT":
+		first_war_state = FirstWarState.RESOLVED_DEFEAT
+		city_fallen = true
+	else:
+		return false
+	_first_war_result_acknowledged = true
+	first_war_result.visible = false
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
+
+
+func _on_first_war_returned(summary: Dictionary) -> void:
+	if summary.is_empty():
+		return
+	_formal_battle_scene = null
+	_first_war_result_acknowledged = false
+	if _first_war_pending_outcome == &"DEFEAT":
+		first_war_state = FirstWarState.RESOLVED_DEFEAT
+		city_fallen = true
+	else:
+		first_war_state = FirstWarState.IN_BATTLE
+	first_war_result.visible = true
+	_refresh_city_ui()
+	city_state_changed.emit()
 
 
 func get_day_progress_ratio() -> float:
@@ -733,7 +947,10 @@ func get_city_state() -> Dictionary:
 		"first_war_state": get_first_war_state_id(),
 		"first_war_warning_count": first_war_warning_count,
 		"first_war_time_blocked": is_first_war_time_blocked(),
+		"first_war_pending_outcome": _first_war_pending_outcome,
+		"first_war_result_acknowledged": _first_war_result_acknowledged,
 		"city_fallen": city_fallen,
+		"city_defense_damage": city_defense_damage,
 		"last_daily_report": last_daily_report,
 		"last_daily_breakdown": last_daily_breakdown.duplicate(true),
 	}
@@ -887,6 +1104,14 @@ func apply_battle_result_atomic(
 			!= request.enemy_force.get_digest()
 		or battle_result.enemy_casualties > request.enemy_force.enemy_count
 		or battle_result.casualty_count > infantry_count
+		or (
+			request.formal_city_entry
+			and (
+				request.level_id != FIRST_WAR_LEVEL_ID
+				or first_war_state != FirstWarState.IN_BATTLE
+				or request.city_defense_snapshot != get_city_defense()
+			)
+		)
 	):
 		return {}
 
@@ -899,11 +1124,36 @@ func apply_battle_result_atomic(
 	var planned_food := 20 if grants_first_clear else 0
 	var wood_capacity := get_resource_capacity(&"wood")
 	var food_capacity := get_resource_capacity(&"food")
+	var actual_food_cost := (
+		mini(food, request.committed_food_cost)
+		if request.formal_city_entry
+		else 0
+	)
+	var food_after_cost := food - actual_food_cost
 	var accepted_wood := mini(planned_wood, maxi(wood_capacity - wood, 0))
-	var accepted_food := mini(planned_food, maxi(food_capacity - food, 0))
+	var accepted_food := mini(
+		planned_food,
+		maxi(food_capacity - food_after_cost, 0)
+	)
 	var next_infantry := infantry_count - battle_result.casualty_count
 	var next_wood := wood + accepted_wood
-	var next_food := food + accepted_food
+	var next_food := food_after_cost + accepted_food
+	var defense_before := get_city_defense()
+	var defense_damage := 0
+	var next_enemy_count := enemy_count
+	if request.formal_city_entry:
+		if battle_result.outcome == BattleOutcome.Value.RETREAT:
+			defense_damage = mini(
+				FIRST_WAR_RETREAT_DEFENSE_DAMAGE,
+				defense_before
+			)
+		elif battle_result.outcome == BattleOutcome.Value.DEFEAT:
+			defense_damage = defense_before
+		next_enemy_count = (
+			0
+			if battle_result.outcome == BattleOutcome.Value.VICTORY
+			else maxi(enemy_count - battle_result.enemy_casualties, 0)
+		)
 	if next_infantry < 0:
 		return {}
 
@@ -923,6 +1173,15 @@ func apply_battle_result_atomic(
 		"accepted_food_reward": accepted_food,
 		"overflow_wood_reward": planned_wood - accepted_wood,
 		"overflow_food_reward": planned_food - accepted_food,
+		"formal_city_entry": request.formal_city_entry,
+		"planned_food_cost": request.committed_food_cost,
+		"actual_food_cost": actual_food_cost,
+		"food_shortage": actual_food_cost < request.committed_food_cost,
+		"city_defense_before": defense_before,
+		"city_defense_damage": defense_damage,
+		"city_defense_after": defense_before - defense_damage,
+		"enemy_count_before": enemy_count,
+		"enemy_count_after": next_enemy_count,
 		"infantry_after": next_infantry,
 		"wood_after": next_wood,
 		"food_after": next_food,
@@ -931,6 +1190,15 @@ func apply_battle_result_atomic(
 	infantry_count = next_infantry
 	wood = next_wood
 	food = next_food
+	if request.formal_city_entry:
+		city_defense_damage += defense_damage
+		enemy_count = next_enemy_count
+		_first_war_pending_outcome = BattleOutcome.to_id(
+			battle_result.outcome
+		)
+		city_fallen = (
+			battle_result.outcome == BattleOutcome.Value.DEFEAT
+		)
 	_committed_battle_result_ids[battle_result.result_id] = (
 		summary.duplicate(true)
 	)
@@ -1112,7 +1380,7 @@ func get_city_defense() -> int:
 		var defense_capability := definition.get_capability(&"defense")
 		if defense_capability != null:
 			defense += defense_capability.amount
-	return defense
+	return maxi(defense - city_defense_damage, 0)
 
 
 func get_threat_state() -> Dictionary:
@@ -1235,6 +1503,9 @@ func restart_first_map() -> bool:
 	first_war_state = FirstWarState.PREPARATION
 	first_war_warning_count = 0
 	city_fallen = false
+	city_defense_damage = 0
+	_first_war_pending_outcome = &""
+	_first_war_result_acknowledged = false
 	_readiness_checkpoint = {}
 	last_daily_breakdown = {
 		"maintenance_food": 0,
@@ -1256,6 +1527,11 @@ func restart_first_map() -> bool:
 
 
 func _update_threat_for_current_day(apply_event: bool) -> void:
+	if (
+		current_day > FIRST_WAR_PENDING_DAY
+		and _first_war_pending_outcome != &""
+	):
+		return
 	var threat_event := FIRST_MAP_THREAT_SCHEDULE.get_event_for_day(
 		current_day
 	)
@@ -2103,6 +2379,7 @@ func _refresh_city_ui() -> void:
 	daily_report.text = last_daily_report
 	var threat_state := get_threat_state()
 	alert_summary.text = _get_first_war_objective_text()
+	_refresh_first_war_ui()
 	threat_detail.text = (
 		"城防 %d\n当前敌军 %d · 工事 %d\n%s"
 		% [
@@ -2168,6 +2445,84 @@ func _refresh_city_ui() -> void:
 	_sync_construction_ui()
 
 
+func _refresh_first_war_ui() -> void:
+	var committed_count := get_first_war_committed_count()
+	var food_cost := get_first_war_food_cost(committed_count)
+	var state_text := str(get_first_war_state_id())
+	var countdown_text := ""
+	if first_war_state == FirstWarState.WARNING:
+		var remaining := ceili(
+			maxf(SECONDS_PER_DAY - day_elapsed_seconds, 0.0)
+		)
+		countdown_text = "\n距离敌袭：%02d:%02d" % [
+			remaining / 60,
+			remaining % 60,
+		]
+	first_war_intel.text = (
+		"北坡敌情 · %s%s\n敌军 %d｜工事 %d\n"
+		+ "可用步兵 %d｜粮食 %d\n预计出战粮草 %d｜城防 %d"
+	) % [
+		state_text,
+		countdown_text,
+		enemy_count,
+		enemy_fortification,
+		committed_count,
+		food,
+		food_cost,
+		get_city_defense(),
+	]
+	var awaiting_summary := (
+		_first_war_pending_outcome != &""
+		and not _first_war_result_acknowledged
+		and first_war_state in [
+			FirstWarState.IN_BATTLE,
+			FirstWarState.RESOLVED_DEFEAT,
+		]
+	)
+	first_war_intel.visible = not awaiting_summary
+	enter_first_war_button.visible = (
+		first_war_state == FirstWarState.PENDING
+		and not retreat_confirmation.visible
+		and not awaiting_summary
+	)
+	order_retreat_button.visible = enter_first_war_button.visible
+	enter_first_war_button.disabled = not can_enter_first_war()
+	order_retreat_button.disabled = (
+		first_war_state != FirstWarState.PENDING
+		or committed_count <= 0
+	)
+	if first_war_state != FirstWarState.PENDING:
+		retreat_confirmation.visible = false
+	first_war_result.visible = awaiting_summary
+	if awaiting_summary:
+		var summary := _last_battle_result_summary
+		first_war_result_label.text = (
+			"%s\n出战 %d｜幸存 %d｜损失 %d\n"
+			+ "粮草 -%d｜城防 -%d｜剩余敌军 %d"
+		) % [
+			_first_war_outcome_display_name(_first_war_pending_outcome),
+			int(summary.get("committed_count", 0)),
+			int(summary.get("survivor_count", 0)),
+			int(summary.get("casualty_count", 0)),
+			int(summary.get("actual_food_cost", 0)),
+			int(summary.get("city_defense_damage", 0)),
+			int(summary.get("enemy_count_after", enemy_count)),
+		]
+		acknowledge_war_result_button.text = (
+			"确认城市失守"
+			if _first_war_pending_outcome == &"DEFEAT"
+			else "确认战后摘要"
+		)
+
+
+func _first_war_outcome_display_name(outcome: StringName) -> String:
+	if outcome == &"VICTORY":
+		return "北坡防御战 · 胜利"
+	if outcome == &"RETREAT":
+		return "北坡防御战 · 主动撤退"
+	return "北坡防御战 · 失败 / 城市失守"
+
+
 func _refresh_time_ui() -> void:
 	var elapsed_seconds := floori(day_elapsed_seconds)
 	var time_text := "第 %d 日 · %02d:%02d" % [
@@ -2196,6 +2551,21 @@ func _refresh_time_ui() -> void:
 
 
 func _get_first_war_objective_text() -> String:
+	if (
+		_first_war_pending_outcome != &""
+		and not _first_war_result_acknowledged
+	):
+		return "战后摘要待确认 · %s" % (
+			(
+				"胜利"
+				if _first_war_pending_outcome == &"VICTORY"
+				else (
+					"主动撤退"
+					if _first_war_pending_outcome == &"RETREAT"
+					else "城市失守"
+				)
+			)
+		)
 	match first_war_state:
 		FirstWarState.PREPARATION:
 			return "目标 北坡备战 · 距敌袭 %d 日" % maxi(

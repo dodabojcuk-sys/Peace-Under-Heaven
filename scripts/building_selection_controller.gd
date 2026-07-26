@@ -8,6 +8,7 @@ enum SelectionState {
 }
 
 const SELECTION_OUTLINE_MARGIN := 4.0
+const COMMAND_PLATFORM_TEMPLATE_ID := &"command_platform"
 
 @onready var map_world: Node2D = $"../MapWorld"
 @onready var selection_outline: Line2D = $"../MapWorld/ConstructionLayer/SelectionOutline"
@@ -22,6 +23,9 @@ const SELECTION_OUTLINE_MARGIN := 4.0
 @onready var description: Label = $"../UI/Shell/BuildingDetailPanel/Description"
 @onready var close_button: Button = $"../UI/Shell/BuildingDetailPanel/CloseButton"
 @onready var remove_button: Button = $"../UI/Shell/BuildingDetailPanel/RemoveButton"
+@onready var first_war_actions: Control = (
+	$"../UI/Shell/BuildingDetailPanel/FirstWarActions"
+)
 @onready var removal_confirmation: Control = (
 	$"../UI/Shell/BuildingDetailPanel/RemovalConfirmation"
 )
@@ -92,6 +96,7 @@ func clear_selection() -> void:
 	selection_outline.visible = false
 	detail_panel.visible = false
 	removal_confirmation.visible = false
+	first_war_actions.visible = false
 	construction_controller.set_detail_panel_active(false)
 
 
@@ -237,7 +242,16 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 	footprint.text = "占地：%d × %d" % [footprint_cells.x, footprint_cells.y]
 	prototype_status.text = "状态：%s" % str(record.prototype_status)
 	description.text = str(record.description)
-	remove_button.visible = bool(record.get("removable", false))
+	var is_command_platform := (
+		StringName(record.template_id) == COMMAND_PLATFORM_TEMPLATE_ID
+	)
+	for control in _get_standard_detail_controls():
+		control.visible = not is_command_platform
+	first_war_actions.visible = is_command_platform
+	remove_button.visible = (
+		not is_command_platform
+		and bool(record.get("removable", false))
+	)
 	remove_button.disabled = (
 		construction_controller.is_city_action_locked_for_battle()
 	)
@@ -245,12 +259,20 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 
 func _show_selected_presentation() -> void:
 	panel_title.text = "已选择目标"
-	for control in _get_detail_controls():
-		control.visible = true
 	var record: Dictionary = construction_controller.get_building_record(
 		selected_placement_id
 	)
-	remove_button.visible = bool(record.get("removable", false))
+	target_name.visible = true
+	var is_command_platform := (
+		StringName(record.template_id) == COMMAND_PLATFORM_TEMPLATE_ID
+	)
+	for control in _get_standard_detail_controls():
+		control.visible = not is_command_platform
+	first_war_actions.visible = is_command_platform
+	remove_button.visible = (
+		not is_command_platform
+		and bool(record.get("removable", false))
+	)
 	removal_confirmation.visible = false
 	detail_panel.visible = true
 
@@ -264,8 +286,16 @@ func _show_removal_confirmation() -> void:
 
 
 func _get_detail_controls() -> Array[Control]:
-	return [
+	var controls: Array[Control] = [
 		target_name,
+		first_war_actions,
+	]
+	controls.append_array(_get_standard_detail_controls())
+	return controls
+
+
+func _get_standard_detail_controls() -> Array[Control]:
+	return [
 		target_type,
 		grid_position,
 		footprint,

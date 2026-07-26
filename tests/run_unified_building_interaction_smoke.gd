@@ -128,8 +128,13 @@ func _run() -> void:
 	)
 	selection.select_placement(command_id)
 	_check(target_name.text == "军令台 L1", "军令台显示真实名称")
-	_check(description.text.contains("不提供假入口"),
-		"军令台明确等待真实战役契约，不出现假功能按钮")
+	var first_war_actions: Control = detail_panel.get_node("FirstWarActions")
+	_check(
+		description.text.contains("北坡首战的正式城市入口")
+			and first_war_actions.visible
+			and not first_war_actions.get_node("EnterBattleButton").visible,
+		"军令台使用正式首战详情且备战早期不伪造可执行入口"
+	)
 	_check(not construction.remove_placed_building(command_id),
 		"固定军令台拒绝进入普通移除生命周期")
 	_check(not construction.get_building_record(command_id).is_empty(),

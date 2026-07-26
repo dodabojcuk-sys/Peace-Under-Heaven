@@ -18,7 +18,8 @@ func configure(city_controller_value: Node) -> void:
 
 func create_request(
 	committed_total: int,
-	level_id := DEFAULT_LEVEL_ID
+	level_id := DEFAULT_LEVEL_ID,
+	formal_city_entry := false
 ) -> BattleRequest:
 	if city_controller == null or active_request != null:
 		return null
@@ -32,6 +33,11 @@ func create_request(
 	var tech_ids: Array[StringName] = (
 		city_controller.researched_tech_ids.duplicate()
 	)
+	var committed_food_cost: int = (
+		city_controller.get_first_war_food_cost(committed_total)
+		if formal_city_entry
+		else 0
+	)
 	var committed_snapshot := CommittedForceSnapshot.create_default(
 		transaction_id,
 		committed_total,
@@ -40,7 +46,13 @@ func create_request(
 		tech_ids,
 		city_controller.get_infantry_attack_multiplier(),
 		city_controller.get_infantry_defense_multiplier(),
-		city_controller.supply_shortage
+		(
+			city_controller.supply_shortage
+			or (
+				formal_city_entry
+				and city_controller.food < committed_food_cost
+			)
+		)
 	)
 	var enemy_snapshot := EnemyForceSnapshot.create(
 		transaction_id,
@@ -53,7 +65,10 @@ func create_request(
 		level_id,
 		city_controller.current_day,
 		committed_snapshot,
-		enemy_snapshot
+		enemy_snapshot,
+		formal_city_entry,
+		committed_food_cost,
+		city_controller.get_city_defense()
 	)
 	if not request.is_valid():
 		city_controller.cancel_battle_reservation(transaction_id)
