@@ -91,6 +91,10 @@ func _run() -> void:
 	_check(watchtower_id > 0, "瞭望塔进入统一 placement")
 	_check(construction.get_city_defense() == 20, "瞭望塔使城防从 10 增至 20")
 
+	_check(
+		construction.resolve_first_war_for_test(&"VICTORY"),
+		"威胁日历回归通过受控测试接口越过首战门禁"
+	)
 	while construction.current_day < 8:
 		construction.advance_one_day_for_test()
 	var disruption: Dictionary = construction.get_last_daily_breakdown()

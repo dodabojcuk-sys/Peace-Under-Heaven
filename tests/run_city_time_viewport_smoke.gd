@@ -36,8 +36,8 @@ func _run() -> void:
 		"正式 UI 不存在结束本日入口"
 	)
 	_check(
-		is_equal_approx(construction.SECONDS_PER_DAY, 60.0),
-		"每日日长集中为 60 秒 V0 参数"
+		is_equal_approx(construction.SECONDS_PER_DAY, 180.0),
+		"每日日长集中为 180 秒正式首战参数"
 	)
 
 	construction.set_process(false)
@@ -128,9 +128,12 @@ func _run() -> void:
 	comparison.set_process(false)
 	construction.restart_first_map()
 	comparison.restart_first_map()
-	for _step in range(540):
+	construction.resolve_first_war_for_test(&"VICTORY")
+	comparison.resolve_first_war_for_test(&"VICTORY")
+	var nine_days_seconds: float = construction.SECONDS_PER_DAY * 9.0
+	for _step in range(int(nine_days_seconds)):
 		construction.advance_city_time_for_test(1.0)
-	comparison.advance_city_time_for_test(540.0)
+	comparison.advance_city_time_for_test(nine_days_seconds)
 	_check(
 		_city_outcome(construction) == _city_outcome(comparison),
 		"相同模拟时间在不同帧增量下得到相同日期与事件结果"
@@ -144,6 +147,7 @@ func _run() -> void:
 	)
 
 	comparison.restart_first_map()
+	comparison.resolve_first_war_for_test(&"VICTORY")
 	comparison.advance_city_time_for_test(
 		comparison.SECONDS_PER_DAY * 10.0
 	)
@@ -183,7 +187,9 @@ func _run() -> void:
 		"第 12 日只有玩家明确暂停才冻结且焦点变化不改状态"
 	)
 	comparison.set_city_time_paused(false)
-	comparison.advance_city_time_for_test(43.0)
+	comparison.advance_city_time_for_test(
+		comparison.SECONDS_PER_DAY - 17.0
+	)
 	_check(
 		comparison.current_day == 13
 			and is_zero_approx(comparison.day_elapsed_seconds)
@@ -203,20 +209,24 @@ func _run() -> void:
 
 	construction.restart_first_map()
 	comparison.restart_first_map()
-	for _step in range(810):
-		construction.advance_city_time_for_test(1.0)
-	comparison.advance_city_time_for_test(
-		comparison.SECONDS_PER_DAY * 13.5
+	construction.resolve_first_war_for_test(&"VICTORY")
+	comparison.resolve_first_war_for_test(&"VICTORY")
+	var thirteen_and_half_days: float = (
+		construction.SECONDS_PER_DAY * 13.5
 	)
+	for _step in range(int(thirteen_and_half_days)):
+		construction.advance_city_time_for_test(1.0)
+	comparison.advance_city_time_for_test(thirteen_and_half_days)
 	_check(
 		_city_outcome(construction) == _city_outcome(comparison)
 			and comparison.current_day == 14
-			and is_equal_approx(comparison.day_elapsed_seconds, 30.0)
+			and is_equal_approx(comparison.day_elapsed_seconds, 90.0)
 			and not comparison.is_city_time_paused(),
 		"大增量跨越第 12、13 日不重复结算、不丢失日期"
 	)
 
 	construction.restart_first_map()
+	construction.resolve_first_war_for_test(&"VICTORY")
 	var expected_threats := {
 		5: Vector2i(40, 0),
 		8: Vector2i(48, 1),

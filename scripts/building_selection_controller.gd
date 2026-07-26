@@ -112,7 +112,12 @@ func request_removal_confirmation() -> void:
 	var record: Dictionary = construction_controller.get_building_record(
 		selected_placement_id
 	)
-	if not has_selection() or not bool(record.get("removable", false)):
+	if construction_controller.is_city_action_locked_for_battle():
+		return
+	if (
+		not has_selection()
+		or not bool(record.get("removable", false))
+	):
 		clear_selection()
 		return
 	state = SelectionState.REMOVE_CONFIRM
@@ -233,6 +238,9 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 	prototype_status.text = "状态：%s" % str(record.prototype_status)
 	description.text = str(record.description)
 	remove_button.visible = bool(record.get("removable", false))
+	remove_button.disabled = (
+		construction_controller.is_city_action_locked_for_battle()
+	)
 
 
 func _show_selected_presentation() -> void:

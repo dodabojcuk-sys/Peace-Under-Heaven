@@ -473,9 +473,9 @@ color = Color(0.65098, 0.631373, 0.596078, 1)
 
 [node name="TimeSummary" type="Label" parent="UI/Shell/TopStatusBar"]
 layout_mode = 0
-offset_left = 493.0
+offset_left = 481.0
 offset_top = 12.0
-offset_right = 600.0
+offset_right = 574.0
 offset_bottom = 31.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
@@ -484,20 +484,34 @@ text = "第 1 日"
 
 [node name="DailyReport" type="Label" parent="UI/Shell/TopStatusBar"]
 layout_mode = 0
-offset_left = 590.0
+offset_left = 574.0
 offset_top = 12.0
-offset_right = 772.0
+offset_right = 696.0
 offset_bottom = 31.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
 theme_override_font_sizes/font_size = 12
 text = "尚未结算"
 
+[node name="TimeSpeedOption" type="OptionButton" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 704.0
+offset_top = 7.0
+offset_right = 768.0
+offset_bottom = 40.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+
 [node name="PauseButton" type="Button" parent="UI/Shell/TopStatusBar"]
 layout_mode = 0
-offset_left = 780.0
+offset_left = 776.0
 offset_top = 7.0
-offset_right = 884.0
+offset_right = 852.0
 offset_bottom = 40.0
 focus_mode = 0
 mouse_default_cursor_shape = 2
@@ -510,7 +524,7 @@ text = "暂停"
 
 [node name="AlertSummary" type="Label" parent="UI/Shell/TopStatusBar"]
 layout_mode = 0
-offset_left = 912.0
+offset_left = 864.0
 offset_top = 12.0
 offset_right = 1137.0
 offset_bottom = 31.0

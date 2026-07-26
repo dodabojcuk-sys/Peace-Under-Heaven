@@ -12,6 +12,16 @@ enum ConstructionState {
 	PLACING,
 }
 
+enum FirstWarState {
+	PREPARATION,
+	WARNING,
+	PENDING,
+	IN_BATTLE,
+	RESOLVED_VICTORY,
+	RESOLVED_RETREAT,
+	RESOLVED_DEFEAT,
+}
+
 const GRID_SIZE := 40.0
 const GRID_ORIGIN := Vector2.ZERO
 const PLACEMENT_KIND_FIXED := &"fixed"
@@ -59,7 +69,11 @@ const BASE_RECRUITMENT_CAP := 50
 const BASE_TRAINING_BATCH := 5
 const EMERGENCY_MOBILIZATION_FOOD_COST := 30
 const EMERGENCY_MOBILIZATION_INFANTRY := 5
-const SECONDS_PER_DAY := 60.0
+const SECONDS_PER_DAY := 180.0
+const CITY_TIME_SPEEDS := [1.0, 2.0, 4.0]
+const FIRST_WAR_EVENT_ID := &"first_war.north_slope.v0"
+const FIRST_WAR_WARNING_DAY := 6
+const FIRST_WAR_PENDING_DAY := 7
 const BATTLE_PHASE_RESERVED := &"RESERVED"
 const BATTLE_PHASE_ACTIVE := &"ACTIVE"
 const BATTLE_PHASE_RESULT_PENDING := &"RESULT_PENDING"
@@ -148,6 +162,9 @@ const PRESET_BUILDING_DEFINITIONS := [
 @onready var time_summary: Label = $"../UI/Shell/TopStatusBar/TimeSummary"
 @onready var daily_report: Label = $"../UI/Shell/TopStatusBar/DailyReport"
 @onready var pause_button: Button = $"../UI/Shell/TopStatusBar/PauseButton"
+@onready var time_speed_option: OptionButton = (
+	$"../UI/Shell/TopStatusBar/TimeSpeedOption"
+)
 @onready var alert_summary: Label = $"../UI/Shell/TopStatusBar/AlertSummary"
 @onready var city_bar: Control = $"../UI/Shell/CityBar"
 @onready var city_bar_toggle: Button = $"../UI/Shell/CityBarToggle"
@@ -188,7 +205,11 @@ var enemy_count := 32
 var enemy_fortification := 0
 var last_daily_report := "尚未结算"
 var city_time_paused := false
+var city_time_speed := 1.0
 var day_elapsed_seconds := 0.0
+var first_war_state := FirstWarState.PREPARATION
+var first_war_warning_count := 0
+var city_fallen := false
 var last_daily_breakdown := {
 	"maintenance_food": 0,
 	"maintenance_required": 0,
@@ -244,6 +265,7 @@ func _ready() -> void:
 	)
 	close_construction_menu_button.pressed.connect(cancel_build_interaction)
 	pause_button.pressed.connect(toggle_city_time_paused)
+	time_speed_option.item_selected.connect(_on_time_speed_selected)
 	recruit_button.pressed.connect(queue_training)
 	general_option.item_selected.connect(_on_general_selected)
 	tech_option.item_selected.connect(_on_tech_selected)
@@ -252,13 +274,15 @@ func _ready() -> void:
 	restore_checkpoint_button.pressed.connect(restore_readiness_checkpoint)
 	restart_map_button.pressed.connect(restart_first_map)
 	construction_preview.visible = false
+	_configure_time_speed_options()
 	_update_threat_for_current_day(false)
+	_update_first_war_state_for_current_day()
 	_sync_construction_ui()
 	_refresh_city_ui()
 
 
 func _process(delta: float) -> void:
-	advance_city_time(delta)
+	advance_city_time(delta * city_time_speed)
 
 
 func is_placing() -> bool:
@@ -468,6 +492,7 @@ func advance_city_time(simulation_delta: float) -> int:
 	if (
 		simulation_delta <= 0.0
 		or city_time_paused
+		or is_first_war_time_blocked()
 	):
 		return 0
 
@@ -489,6 +514,8 @@ func advance_city_time(simulation_delta: float) -> int:
 			day_elapsed_seconds = SECONDS_PER_DAY
 			break
 		advanced_days += 1
+		if is_first_war_time_blocked():
+			break
 
 	_refresh_time_ui()
 	return advanced_days
@@ -504,6 +531,8 @@ func advance_one_day_for_test() -> bool:
 
 
 func set_city_time_paused(paused: bool) -> void:
+	if is_first_war_time_blocked():
+		return
 	if city_time_paused == paused:
 		return
 	city_time_paused = paused
@@ -517,6 +546,62 @@ func toggle_city_time_paused() -> void:
 
 func is_city_time_paused() -> bool:
 	return city_time_paused
+
+
+func set_city_time_speed(speed: float) -> bool:
+	if is_first_war_time_blocked() or speed not in CITY_TIME_SPEEDS:
+		return false
+	city_time_speed = speed
+	city_time_paused = false
+	_refresh_time_ui()
+	city_state_changed.emit()
+	return true
+
+
+func get_city_time_speed() -> float:
+	return city_time_speed
+
+
+func is_first_war_time_blocked() -> bool:
+	return first_war_state in [
+		FirstWarState.PENDING,
+		FirstWarState.IN_BATTLE,
+		FirstWarState.RESOLVED_DEFEAT,
+	]
+
+
+func get_first_war_state_id() -> StringName:
+	match first_war_state:
+		FirstWarState.PREPARATION:
+			return &"PREPARATION"
+		FirstWarState.WARNING:
+			return &"WARNING"
+		FirstWarState.PENDING:
+			return &"PENDING"
+		FirstWarState.IN_BATTLE:
+			return &"IN_BATTLE"
+		FirstWarState.RESOLVED_VICTORY:
+			return &"RESOLVED_VICTORY"
+		FirstWarState.RESOLVED_RETREAT:
+			return &"RESOLVED_RETREAT"
+		FirstWarState.RESOLVED_DEFEAT:
+			return &"RESOLVED_DEFEAT"
+	return &"PREPARATION"
+
+
+func resolve_first_war_for_test(outcome: StringName) -> bool:
+	if outcome == &"VICTORY":
+		first_war_state = FirstWarState.RESOLVED_VICTORY
+	elif outcome == &"RETREAT":
+		first_war_state = FirstWarState.RESOLVED_RETREAT
+	elif outcome == &"DEFEAT":
+		first_war_state = FirstWarState.RESOLVED_DEFEAT
+		city_fallen = true
+	else:
+		return false
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
 
 
 func get_day_progress_ratio() -> float:
@@ -578,6 +663,7 @@ func _advance_day_boundary() -> bool:
 	_rebuild_daily_report()
 	if accepted_wood < wood_income or accepted_food < food_income:
 		last_daily_report += "（容量封顶）"
+	_update_first_war_state_for_current_day()
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return true
@@ -639,16 +725,25 @@ func get_city_state() -> Dictionary:
 		"last_battle_result_summary": _last_battle_result_summary.duplicate(true),
 		"checkpoint_available": not _readiness_checkpoint.is_empty(),
 		"city_time_paused": city_time_paused,
+		"city_time_speed": city_time_speed,
 		"day_elapsed_seconds": day_elapsed_seconds,
 		"day_progress_ratio": get_day_progress_ratio(),
 		"seconds_per_day": SECONDS_PER_DAY,
+		"first_war_event_id": FIRST_WAR_EVENT_ID,
+		"first_war_state": get_first_war_state_id(),
+		"first_war_warning_count": first_war_warning_count,
+		"first_war_time_blocked": is_first_war_time_blocked(),
+		"city_fallen": city_fallen,
 		"last_daily_report": last_daily_report,
 		"last_daily_breakdown": last_daily_breakdown.duplicate(true),
 	}
 
 
 func is_city_action_locked_for_battle() -> bool:
-	return not _active_battle_reservation.is_empty()
+	return (
+		not _active_battle_reservation.is_empty()
+		or is_first_war_time_blocked()
+	)
 
 
 func get_available_infantry_count() -> int:
@@ -1134,7 +1229,12 @@ func restart_first_map() -> bool:
 	researched_tech_ids.clear()
 	supply_shortage = false
 	emergency_mobilization_used = false
+	city_time_paused = false
+	city_time_speed = 1.0
 	day_elapsed_seconds = 0.0
+	first_war_state = FirstWarState.PREPARATION
+	first_war_warning_count = 0
+	city_fallen = false
 	_readiness_checkpoint = {}
 	last_daily_breakdown = {
 		"maintenance_food": 0,
@@ -1149,6 +1249,7 @@ func restart_first_map() -> bool:
 	}
 	last_daily_report = "首图已重开"
 	_update_threat_for_current_day(false)
+	_update_first_war_state_for_current_day()
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return true
@@ -1164,6 +1265,25 @@ func _update_threat_for_current_day(apply_event: bool) -> void:
 	enemy_fortification = threat_event.fortification_level
 	if apply_event and threat_event.day == current_day:
 		_apply_threat_event(threat_event)
+
+
+func _update_first_war_state_for_current_day() -> void:
+	if first_war_state in [
+		FirstWarState.RESOLVED_VICTORY,
+		FirstWarState.RESOLVED_RETREAT,
+		FirstWarState.RESOLVED_DEFEAT,
+	]:
+		return
+	if current_day >= FIRST_WAR_PENDING_DAY:
+		first_war_state = FirstWarState.PENDING
+		cancel_build_interaction()
+		return
+	if (
+		current_day >= FIRST_WAR_WARNING_DAY
+		and first_war_state == FirstWarState.PREPARATION
+	):
+		first_war_state = FirstWarState.WARNING
+		first_war_warning_count += 1
 
 
 func _apply_threat_event(threat_event: ThreatEventDefinition) -> void:
@@ -1827,6 +1947,21 @@ func _on_tech_selected(_index: int) -> void:
 	_refresh_city_ui()
 
 
+func _configure_time_speed_options() -> void:
+	time_speed_option.clear()
+	for speed in CITY_TIME_SPEEDS:
+		time_speed_option.add_item("%d×" % int(speed))
+		time_speed_option.set_item_metadata(
+			time_speed_option.item_count - 1,
+			speed
+		)
+	time_speed_option.select(0)
+
+
+func _on_time_speed_selected(index: int) -> void:
+	set_city_time_speed(float(time_speed_option.get_item_metadata(index)))
+
+
 func _register_preset_buildings() -> void:
 	for definition in PRESET_BUILDING_DEFINITIONS:
 		var building := get_node(str(definition.node_path)) as Control
@@ -1945,6 +2080,7 @@ func _can_pay_definition(definition: BuildingDefinition) -> bool:
 func _sync_construction_ui() -> void:
 	construction_entry_panel.visible = not _detail_panel_active
 	build_entry_button.visible = state != ConstructionState.PLACING
+	build_entry_button.disabled = is_city_action_locked_for_battle()
 	build_mode_status.visible = state == ConstructionState.PLACING
 	if state == ConstructionState.PLACING and _selected_definition != null:
 		build_mode_status.text = "建造中：%s\n右键 / Esc 取消" % (
@@ -1966,10 +2102,7 @@ func _refresh_city_ui() -> void:
 	_refresh_time_ui()
 	daily_report.text = last_daily_report
 	var threat_state := get_threat_state()
-	alert_summary.text = "敌军 %d · 工事 %d" % [
-		enemy_count,
-		enemy_fortification,
-	]
+	alert_summary.text = _get_first_war_objective_text()
 	threat_detail.text = (
 		"城防 %d\n当前敌军 %d · 工事 %d\n%s"
 		% [
@@ -2000,6 +2133,7 @@ func _refresh_city_ui() -> void:
 		get_training_batch_size() * INFANTRY_ROLE.recruit_food_per_unit,
 	]
 	recruit_button.disabled = not can_queue_training()
+	general_option.disabled = is_city_action_locked_for_battle()
 	for index in range(general_option.item_count):
 		if (
 			StringName(general_option.get_item_metadata(index))
@@ -2008,6 +2142,7 @@ func _refresh_city_ui() -> void:
 			general_option.select(index)
 			break
 	if tech_option.item_count > 0:
+		tech_option.disabled = is_city_action_locked_for_battle()
 		var selected_tech_id := StringName(
 			tech_option.get_item_metadata(tech_option.selected)
 		)
@@ -2018,6 +2153,8 @@ func _refresh_city_ui() -> void:
 		current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
 	)
 	emergency_mobilization_button.disabled = (
+		is_city_action_locked_for_battle()
+		or
 		emergency_mobilization_used
 		or food < EMERGENCY_MOBILIZATION_FOOD_COST
 	)
@@ -2028,6 +2165,7 @@ func _refresh_city_ui() -> void:
 	restart_map_button.visible = (
 		current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
 	)
+	_sync_construction_ui()
 
 
 func _refresh_time_ui() -> void:
@@ -2039,9 +2177,44 @@ func _refresh_time_ui() -> void:
 	]
 	if time_summary.text != time_text:
 		time_summary.text = time_text
-	var pause_text := "继续" if city_time_paused else "暂停"
+	var pause_text := (
+		"敌袭冻结"
+		if is_first_war_time_blocked()
+		else ("继续" if city_time_paused else "暂停")
+	)
 	if pause_button.text != pause_text:
 		pause_button.text = pause_text
+	pause_button.disabled = is_first_war_time_blocked()
+	time_speed_option.disabled = is_first_war_time_blocked()
+	for index in range(time_speed_option.item_count):
+		if is_equal_approx(
+			float(time_speed_option.get_item_metadata(index)),
+			city_time_speed
+		):
+			time_speed_option.select(index)
+			break
+
+
+func _get_first_war_objective_text() -> String:
+	match first_war_state:
+		FirstWarState.PREPARATION:
+			return "目标 北坡备战 · 距敌袭 %d 日" % maxi(
+				FIRST_WAR_PENDING_DAY - current_day,
+				0
+			)
+		FirstWarState.WARNING:
+			return "预警 北坡敌袭 · 第 7 日到达"
+		FirstWarState.PENDING:
+			return "敌袭待处理 · 前往军令台"
+		FirstWarState.IN_BATTLE:
+			return "北坡防御战进行中"
+		FirstWarState.RESOLVED_VICTORY:
+			return "北坡首战 · 胜利"
+		FirstWarState.RESOLVED_RETREAT:
+			return "北坡首战 · 已撤退"
+		FirstWarState.RESOLVED_DEFEAT:
+			return "城市失守"
+	return "北坡备战"
 
 
 func _enforce_resource_capacity() -> void:
