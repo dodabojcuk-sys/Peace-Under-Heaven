@@ -21,8 +21,8 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	var construction: Node = scene.get_node("ConstructionController")
-	var end_day_button: Button = scene.get_node(
-		"UI/Shell/TopStatusBar/EndDayButton"
+	var pause_button: Button = scene.get_node(
+		"UI/Shell/TopStatusBar/PauseButton"
 	)
 
 	_check(
@@ -68,7 +68,7 @@ func _run() -> void:
 	_check(logging_id > 0 and farm_id > 0, "测试生产建筑进入统一记录")
 
 	while construction.current_day < 5:
-		construction.advance_day()
+		construction.advance_one_day_for_test()
 	_check(
 		construction.enemy_count == 40
 			and construction.enemy_fortification == 0,
@@ -92,7 +92,7 @@ func _run() -> void:
 	_check(construction.get_city_defense() == 20, "瞭望塔使城防从 10 增至 20")
 
 	while construction.current_day < 8:
-		construction.advance_day()
+		construction.advance_one_day_for_test()
 	var disruption: Dictionary = construction.get_last_daily_breakdown()
 	_check(
 		construction.enemy_count == 48
@@ -109,7 +109,7 @@ func _run() -> void:
 		"受扰农田立即显示一日停产原因"
 	)
 
-	construction.advance_day()
+	construction.advance_one_day_for_test()
 	_check(construction.current_day == 9, "可以进入第 9 日")
 	_check(
 		construction.get_last_daily_breakdown().food_income == 0,
@@ -125,7 +125,7 @@ func _run() -> void:
 	var checkpoint_food: int = construction.food
 
 	while construction.current_day < 10:
-		construction.advance_day()
+		construction.advance_one_day_for_test()
 	_check(
 		construction.enemy_count == 56
 			and construction.enemy_fortification == 2,
@@ -143,14 +143,17 @@ func _run() -> void:
 	)
 	_check(post_checkpoint_id > 0, "检查点后可以继续建设")
 	while construction.current_day < 12:
-		_check(construction.advance_day(), "第 12 日前仍可推进日期")
+		_check(construction.advance_one_day_for_test(), "第 12 日前仍可推进日期")
 	_check(
 		construction.enemy_count == 64
 			and construction.enemy_fortification == 2,
 		"第 12 日敌军 64 且工事 2 级"
 	)
-	_check(end_day_button.disabled, "第 12 日结束本日按钮禁用")
-	_check(not construction.advance_day(), "第 12 日拒绝继续推进")
+	_check(pause_button.text == "暂停", "第 12 日仍只显示暂停控件")
+	_check(
+		not construction.advance_one_day_for_test(),
+		"第 12 日拒绝继续推进"
+	)
 	_check(construction.current_day == 12, "拒绝后日期保持第 12 日")
 
 	_check(construction.restore_readiness_checkpoint(), "可以恢复第 9 日战备检查点")

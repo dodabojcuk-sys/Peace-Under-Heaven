@@ -82,7 +82,7 @@ func _run() -> void:
 
 	var wood_before: int = construction.wood
 	var food_before: int = construction.food
-	construction.advance_day()
+	construction.advance_one_day_for_test()
 	var first_breakdown: Dictionary = construction.get_last_daily_breakdown()
 	_check(construction.wood == wood_before + 18, "次日结算 18 木材")
 	_check(
@@ -132,7 +132,7 @@ func _run() -> void:
 		construction.food == food_after_build,
 		"建筑完成当日不会立即发放产量"
 	)
-	construction.advance_day()
+	construction.advance_one_day_for_test()
 	_check(
 		construction.get_last_daily_breakdown().food_income == 44,
 		"下一日两座联网农田合计生产 44 粮食"
@@ -140,7 +140,7 @@ func _run() -> void:
 
 	construction.wood = 155
 	construction.food = 155
-	construction.advance_day()
+	construction.advance_one_day_for_test()
 	var capped: Dictionary = construction.get_last_daily_breakdown()
 	_check(
 		construction.wood == 160
@@ -167,7 +167,7 @@ func _run() -> void:
 	)
 	construction.wood = 270
 	construction.food = 270
-	construction.advance_day()
+	construction.advance_one_day_for_test()
 	_check(
 		construction.wood == 280
 			and construction.food == 268

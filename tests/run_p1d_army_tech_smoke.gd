@@ -50,7 +50,7 @@ func _run() -> void:
 		"基础批次 5 人并原子扣除 15 粮食"
 	)
 	_check(not construction.queue_training(), "同日拒绝第二批征募")
-	_check(construction.advance_day(), "可以推进至第 2 日")
+	_check(construction.advance_one_day_for_test(), "可以推进至第 2 日")
 	var first_settlement: Dictionary = (
 		construction.get_last_daily_breakdown()
 	)
@@ -89,7 +89,7 @@ func _run() -> void:
 			and construction.food == 40,
 		"轮训批次原子扣除 21 粮食"
 	)
-	_check(construction.advance_day(), "可以推进至第 3 日")
+	_check(construction.advance_one_day_for_test(), "可以推进至第 3 日")
 	_check(
 		construction.infantry_count == 32
 			and construction.get_last_daily_breakdown().training_completed == 7,
@@ -156,14 +156,14 @@ func _run() -> void:
 	)
 	_check(logging_id > 0, "测试伐木场可以进入统一 placement")
 	var wood_before: int = construction.wood
-	_check(construction.advance_day(), "可以推进至第 4 日")
+	_check(construction.advance_one_day_for_test(), "可以推进至第 4 日")
 	_check(
 		construction.wood - wood_before == 22,
 		"石器改良把伐木场日产从 18 提升到 22"
 	)
 	construction.food = 2
 	var infantry_before_shortage: int = construction.infantry_count
-	_check(construction.advance_day(), "可以推进至第 5 日供给结算")
+	_check(construction.advance_one_day_for_test(), "可以推进至第 5 日供给结算")
 	_check(
 		construction.supply_shortage
 			and construction.food == 0
@@ -173,7 +173,7 @@ func _run() -> void:
 		"维护不足只标记供给不足，不产生负粮或删除士兵"
 	)
 	construction.food = 10
-	_check(construction.advance_day(), "可以推进至第 6 日恢复供给")
+	_check(construction.advance_one_day_for_test(), "可以推进至第 6 日恢复供给")
 	_check(
 		not construction.supply_shortage
 			and construction.get_last_daily_breakdown().maintenance_food == 6,

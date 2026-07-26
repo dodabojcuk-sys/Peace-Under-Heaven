@@ -502,6 +502,11 @@ func advance_city_time_for_test(simulation_delta: float) -> int:
 	return advance_city_time(simulation_delta)
 
 
+func advance_one_day_for_test() -> bool:
+	day_elapsed_seconds = 0.0
+	return _advance_day_boundary()
+
+
 func set_city_time_paused(paused: bool) -> void:
 	if city_time_paused == paused:
 		return
@@ -2036,16 +2041,21 @@ func _refresh_city_ui() -> void:
 
 
 func _refresh_time_ui() -> void:
+	var time_text := ""
 	if current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day:
-		time_summary.text = "第 %d 日 · 最终战备" % current_day
+		time_text = "第 %d 日 · 最终战备" % current_day
 	else:
 		var elapsed_seconds := floori(day_elapsed_seconds)
-		time_summary.text = "第 %d 日 · %02d:%02d" % [
+		time_text = "第 %d 日 · %02d:%02d" % [
 			current_day,
 			elapsed_seconds / 60,
 			elapsed_seconds % 60,
 		]
-	pause_button.text = "继续" if city_time_paused else "暂停"
+	if time_summary.text != time_text:
+		time_summary.text = time_text
+	var pause_text := "继续" if city_time_paused else "暂停"
+	if pause_button.text != pause_text:
+		pause_button.text = pause_text
 
 
 func _enforce_resource_capacity() -> void:

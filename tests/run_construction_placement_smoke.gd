@@ -112,6 +112,8 @@ func _run() -> void:
 		"MinimapPlaceholder": Vector2(1050.0, 115.0),
 		"ConstructionEntryPanel": Vector2(1050.0, 205.0),
 	}
+	scene.set_city_bar_expanded(true)
+	await process_frame
 	for ui_name in ui_overlap_points:
 		controller.begin_placing(ui_overlap_points[ui_name])
 		_check(not controller.preview_valid, "与 %s 投影重叠时无效" % ui_name)
@@ -130,6 +132,7 @@ func _run() -> void:
 	_check(not controller.is_cell_occupied(occluded_cell),
 		"UI 遮挡不会把世界格写入 occupied_cells")
 
+	scene.set_city_bar_expanded(false)
 	camera.position.x -= 320.0
 	await process_frame
 	var occluded_cell_center: Vector2 = (

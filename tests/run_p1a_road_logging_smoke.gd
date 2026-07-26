@@ -94,7 +94,7 @@ func _run() -> void:
 	)
 
 	var wood_before_day: int = construction.wood
-	_check(construction.advance_day(), "可以推进到下一日")
+	_check(construction.advance_one_day_for_test(), "可以推进到下一日")
 	_check(
 		construction.wood == wood_before_day + 18,
 		"接通的伐木场从下一日产生 18 木材"
@@ -108,7 +108,7 @@ func _run() -> void:
 		"断路后伐木场派生为停用"
 	)
 	var wood_before_disconnected_day: int = construction.wood
-	construction.advance_day()
+	construction.advance_one_day_for_test()
 	_check(
 		construction.wood == wood_before_disconnected_day,
 		"断路期间不生产且不补发"
@@ -119,7 +119,7 @@ func _run() -> void:
 	)
 	_check(replacement_id > broken_road_id, "恢复道路获得新的单调 placement ID")
 	var wood_before_recovery_day: int = construction.wood
-	construction.advance_day()
+	construction.advance_one_day_for_test()
 	_check(
 		construction.wood == wood_before_recovery_day + 18,
 		"恢复连接后从下一次结算恢复生产"

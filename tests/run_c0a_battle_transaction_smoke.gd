@@ -68,7 +68,7 @@ func _run() -> void:
 		"活动事务期间拒绝第二次预留"
 	)
 	_check(
-		not city.advance_day()
+		not city.advance_one_day_for_test()
 			and not city.restart_first_map()
 			and not city.queue_training(),
 		"活动预留期间拒绝城市状态修改"
