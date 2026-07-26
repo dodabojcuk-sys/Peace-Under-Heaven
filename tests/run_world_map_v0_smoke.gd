@@ -71,6 +71,20 @@ func _run() -> void:
 	var snapshot := world_map.get_snapshot()
 	var nodes: Array = snapshot.get("nodes", [])
 	var roads: Array = snapshot.get("roads", [])
+	_check(
+		world_map.overview_button.text == "地图全览"
+			and world_map.home_button.text == "定位黑石城",
+		"全览与定位黑石城使用不同且准确的按钮语义"
+	)
+	_check(
+		_all_nodes_inside_safe_area(
+			world_map,
+			nodes,
+			scene.get_viewport_rect(),
+			42.0
+		),
+		"默认镜头在实际可视安全区内同时包含五个节点"
+	)
 	_check(nodes.size() == 5, "战役地图包含五个规定节点")
 	_check(roads.size() == 5, "战役地图包含五条规定道路")
 	_check(_unique_ids(nodes), "五个节点 ID 唯一")
@@ -118,6 +132,42 @@ func _run() -> void:
 			and _has_road_status(roads, &"UNSCOUTED"),
 		"道路同时覆盖畅通、危险、封锁和未侦察状态"
 	)
+	for road_encoding in [
+		{"status": &"OPEN", "pattern": &"SOLID", "symbol": "✓"},
+		{
+			"status": &"DANGEROUS",
+			"pattern": &"DASHED_WARNING",
+			"symbol": "!",
+		},
+		{
+			"status": &"BLOCKED",
+			"pattern": &"BROKEN_BLOCK",
+			"symbol": "×",
+		},
+		{
+			"status": &"UNSCOUTED",
+			"pattern": &"DOTTED_UNKNOWN",
+			"symbol": "?",
+		},
+	]:
+		var encoding := world_map.world_canvas.get_road_visual_encoding(
+			StringName(road_encoding.status)
+		)
+		_check(
+			StringName(encoding.pattern)
+				== StringName(road_encoding.pattern)
+				and str(encoding.symbol) == str(road_encoding.symbol),
+			"%s 道路具有独立于颜色的线型和符号" % str(
+				road_encoding.status
+			)
+		)
+	_check(
+		world_map.world_canvas.get_faction_symbol(&"PLAYER")
+			!= world_map.world_canvas.get_faction_symbol(&"ENEMY")
+			and world_map.world_canvas.get_faction_symbol(&"FRIENDLY")
+				!= world_map.world_canvas.get_faction_symbol(&"NEUTRAL"),
+		"玩家、敌方、友好和中立使用可读阵营符号"
+	)
 
 	var city_state_before: Dictionary = construction.get_city_state()
 	var presentation_again := model.build_snapshot(
@@ -150,6 +200,7 @@ func _run() -> void:
 	)
 
 	world_map.handle_world_click(Vector2(riverbend.position))
+	await process_frame
 	_check(
 		world_map.get_selected_kind() == &"NODE"
 			and world_map.get_selected_id() == &"riverbend_city",
@@ -160,6 +211,10 @@ func _run() -> void:
 			and world_map.panel_title.text == "河湾城"
 			and world_map.info_label.text.contains("敌方"),
 		"河湾城侧板显示类型、归属、状态和侦察边界"
+	)
+	_check(
+		_selected_anchor_is_visible(world_map, scene.get_viewport_rect()),
+		"河湾城侧板打开后选中城池保持在未遮挡区域"
 	)
 	_check(
 		world_map.set_target_node(&"riverbend_city"),
@@ -175,6 +230,15 @@ func _run() -> void:
 		str(route_preview.status).contains("尚未")
 			or str(route_preview.status).contains("封锁"),
 		"路线预览明确说明未实现正式行军或存在阻断"
+	)
+	var route_encoding := (
+		world_map.world_canvas.get_route_preview_visual_encoding()
+	)
+	_check(
+		StringName(route_encoding.pattern) == &"DOUBLE_DASHED_ARROW"
+			and str(route_encoding.label).contains("尚未出征")
+			and not bool(route_encoding.persistent),
+		"计划路线使用双层虚线箭头并明确不是正式出征"
 	)
 
 	var dangerous_road := model.get_road(
@@ -246,7 +310,21 @@ func _run() -> void:
 	).get_center()
 	_check(
 		home_screen.distance_to(safe_center) < 2.0,
-		"回到黑石城恢复合理镜头中心"
+		"定位黑石城按钮恢复合理镜头中心"
+	)
+	world_map.select_node(&"riverbend_city")
+	world_map.overview_button.emit_signal("pressed")
+	await process_frame
+	_check(
+		not world_map.side_panel.visible
+			and world_map.get_selected_kind() == &""
+			and _all_nodes_inside_safe_area(
+				world_map,
+				nodes,
+				scene.get_viewport_rect(),
+				42.0
+			),
+		"地图全览关闭侧板并恢复五节点全貌"
 	)
 
 	world_map.select_node(&"riverbend_supply_route")
@@ -313,6 +391,18 @@ func _run() -> void:
 				viewport_size.y,
 			]
 		)
+		_check(
+			_all_nodes_inside_safe_area(
+				world_map,
+				world_map.get_snapshot().get("nodes", []),
+				scene.get_viewport_rect(),
+				42.0
+			),
+			"%dx%d 默认全览包含五节点安全边距" % [
+				viewport_size.x,
+				viewport_size.y,
+			]
+		)
 		world_map.select_node(&"riverbend_city")
 		await process_frame
 		side_rect = world_map.side_panel.get_global_rect()
@@ -322,6 +412,30 @@ func _run() -> void:
 				and side_rect.position.y >= top_rect.end.y
 				and side_rect.end.y <= viewport_size.y + 0.1,
 			"%dx%d 轻量侧板在窗口内且不遮住整张地图" % [
+				viewport_size.x,
+				viewport_size.y,
+			]
+		)
+		_check(
+			_selected_anchor_is_visible(
+				world_map,
+				scene.get_viewport_rect()
+			),
+			"%dx%d 河湾城侧板不会遮住当前选择" % [
+				viewport_size.x,
+				viewport_size.y,
+			]
+		)
+		world_map.overview_button.emit_signal("pressed")
+		await process_frame
+		_check(
+			_all_nodes_inside_safe_area(
+				world_map,
+				world_map.get_snapshot().get("nodes", []),
+				scene.get_viewport_rect(),
+				42.0
+			),
+			"%dx%d 全览按钮恢复五节点全貌" % [
 				viewport_size.x,
 				viewport_size.y,
 			]
@@ -376,6 +490,44 @@ func _mission_fixture(construction: Node) -> Array[Dictionary]:
 			"state_label": "测试状态",
 		})
 	return missions
+
+
+func _all_nodes_inside_safe_area(
+	world_map: WorldMapController,
+	nodes: Array,
+	viewport_rect: Rect2,
+	margin: float
+) -> bool:
+	var safe_rect := world_map.get_navigation_safe_rect(
+		viewport_rect
+	).grow(-margin)
+	for node in nodes:
+		var screen_position := (
+			world_map.world_canvas.get_global_transform_with_canvas()
+			* Vector2(node.get("position", Vector2.ZERO))
+		)
+		if not safe_rect.has_point(screen_position):
+			return false
+	return true
+
+
+func _selected_anchor_is_visible(
+	world_map: WorldMapController,
+	viewport_rect: Rect2
+) -> bool:
+	var screen_position := (
+		world_map.world_canvas.get_global_transform_with_canvas()
+		* world_map.get_selected_anchor_world()
+	)
+	var safe_rect := world_map.get_navigation_safe_rect(
+		viewport_rect
+	).grow(-48.0)
+	return (
+		safe_rect.has_point(screen_position)
+		and not world_map.side_panel.get_global_rect().has_point(
+			screen_position
+		)
+	)
 
 
 func _placement_id_for_template(

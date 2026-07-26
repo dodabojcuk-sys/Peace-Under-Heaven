@@ -28,7 +28,7 @@ var _city_camera_zoom := Vector2.ONE
 
 
 func _ready() -> void:
-	get_viewport().size_changed.connect(_clamp_camera)
+	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	construction_controller.construction_interaction_started.connect(
 		_on_construction_interaction_started
 	)
@@ -295,11 +295,7 @@ func open_campaign_world_map() -> bool:
 	world_map_open = true
 	campaign_world_map.show_world_map()
 	map_board = campaign_world_map.get_map_board()
-	camera.zoom = Vector2.ONE * 0.64
-	center_world_position_in_safe_area(
-		campaign_world_map.get_overview_center()
-	)
-	_clamp_camera()
+	show_world_map_overview()
 	return true
 
 
@@ -327,8 +323,53 @@ func center_world_map_on_home() -> void:
 	_clamp_camera()
 
 
+func show_world_map_overview() -> void:
+	if not world_map_open:
+		return
+	campaign_world_map.clear_selection()
+	focus_world_rect_in_safe_area(
+		campaign_world_map.get_overview_bounds(),
+		true
+	)
+
+
+func ensure_world_map_position_visible(
+	world_position: Vector2,
+	screen_margin := 64.0
+) -> void:
+	if not world_map_open:
+		return
+	var safe_rect := get_navigation_safe_rect().grow(-screen_margin)
+	if safe_rect.size.x <= 0.0 or safe_rect.size.y <= 0.0:
+		return
+	var screen_position := (
+		campaign_world_map.world_canvas.get_global_transform_with_canvas()
+		* world_position
+	)
+	var desired_screen_position := Vector2(
+		clampf(
+			screen_position.x,
+			safe_rect.position.x,
+			safe_rect.end.x
+		),
+		clampf(
+			screen_position.y,
+			safe_rect.position.y,
+			safe_rect.end.y
+		)
+	)
+	camera.position -= (
+		desired_screen_position - screen_position
+	) / camera.zoom.x
+	_clamp_camera()
+
+
 func is_campaign_world_map_open() -> bool:
 	return world_map_open
+
+
+func _on_viewport_size_changed() -> void:
+	_clamp_camera()
 
 
 func _handle_world_map_input(event: InputEvent) -> void:

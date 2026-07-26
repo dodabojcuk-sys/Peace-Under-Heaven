@@ -11,6 +11,12 @@ const PresentationModel = preload(
 const NODE_HIT_RADIUS := 72.0
 const FORMATION_HIT_RADIUS := 58.0
 const ROAD_HIT_DISTANCE := 24.0
+const OVERVIEW_MARGIN_LEFT := 130.0
+const OVERVIEW_MARGIN_RIGHT := 130.0
+const OVERVIEW_MARGIN_TOP := 80.0
+const OVERVIEW_MARGIN_BOTTOM := 98.0
+const PANEL_MAP_GAP := 12.0
+const SELECTION_SCREEN_MARGIN := 68.0
 
 @onready var map_board: Control = $MapBoard
 @onready var world_canvas: WorldMapCanvas = $WorldCanvas
@@ -20,6 +26,7 @@ const ROAD_HIT_DISTANCE := 24.0
 @onready var status_summary: Label = $UI/Root/TopBar/StatusSummary
 @onready var return_button: Button = $UI/Root/TopBar/ReturnButton
 @onready var home_button: Button = $UI/Root/TopBar/HomeButton
+@onready var overview_button: Button = $UI/Root/TopBar/OverviewButton
 @onready var side_panel: Panel = $UI/Root/SidePanel
 @onready var panel_title: Label = $UI/Root/SidePanel/PanelTitle
 @onready var panel_close_button: Button = $UI/Root/SidePanel/CloseButton
@@ -51,6 +58,7 @@ var _is_open := false
 func _ready() -> void:
 	return_button.pressed.connect(_request_return_to_city)
 	home_button.pressed.connect(_request_center_home)
+	overview_button.pressed.connect(_request_overview)
 	panel_close_button.pressed.connect(clear_selection)
 	set_target_button.pressed.connect(_set_selected_node_as_target)
 	enter_city_button.pressed.connect(_enter_selected_city)
@@ -105,7 +113,23 @@ func get_map_size() -> Vector2:
 
 
 func get_overview_center() -> Vector2:
-	return Vector2(1210.0, 755.0)
+	return get_overview_bounds().get_center()
+
+
+func get_overview_bounds() -> Rect2:
+	var minimum := Vector2(INF, INF)
+	var maximum := Vector2(-INF, -INF)
+	for node in _snapshot.get("nodes", []):
+		var position := Vector2(node.get("position", Vector2.ZERO))
+		minimum.x = minf(minimum.x, position.x)
+		minimum.y = minf(minimum.y, position.y)
+		maximum.x = maxf(maximum.x, position.x)
+		maximum.y = maxf(maximum.y, position.y)
+	if not is_finite(minimum.x) or not is_finite(maximum.x):
+		return Rect2(Vector2.ZERO, get_map_size())
+	minimum -= Vector2(OVERVIEW_MARGIN_LEFT, OVERVIEW_MARGIN_TOP)
+	maximum += Vector2(OVERVIEW_MARGIN_RIGHT, OVERVIEW_MARGIN_BOTTOM)
+	return Rect2(minimum, maximum - minimum)
 
 
 func get_home_position() -> Vector2:
@@ -118,11 +142,20 @@ func get_home_position() -> Vector2:
 
 func get_navigation_safe_rect(viewport_rect: Rect2) -> Rect2:
 	var top := viewport_rect.position.y
+	var right := viewport_rect.end.x
 	if top_bar.is_visible_in_tree():
 		top = maxf(top, top_bar.get_global_rect().end.y)
+	if side_panel.is_visible_in_tree():
+		right = minf(
+			right,
+			side_panel.get_global_rect().position.x - PANEL_MAP_GAP
+		)
 	return Rect2(
 		Vector2(viewport_rect.position.x, top),
-		Vector2(viewport_rect.size.x, viewport_rect.end.y - top)
+		Vector2(
+			maxf(right - viewport_rect.position.x, 0.0),
+			viewport_rect.end.y - top
+		)
 	)
 
 
@@ -194,6 +227,7 @@ func select_node(node_id: StringName) -> bool:
 	_selected_id = node_id
 	_planned_route = {}
 	_show_node_panel(node)
+	_ensure_anchor_visible(Vector2(node.get("position", Vector2.ZERO)))
 	_refresh_canvas()
 	return true
 
@@ -220,6 +254,7 @@ func select_road(road_id: StringName) -> bool:
 	enter_city_button.visible = false
 	view_task_button.visible = false
 	side_panel.visible = true
+	_ensure_anchor_visible(_road_anchor(road))
 	_refresh_canvas()
 	return true
 
@@ -246,6 +281,9 @@ func select_formation() -> bool:
 	enter_city_button.visible = false
 	view_task_button.visible = false
 	side_panel.visible = true
+	_ensure_anchor_visible(
+		Vector2(formation.get("position", Vector2.ZERO))
+	)
 	_refresh_canvas()
 	return true
 
@@ -278,6 +316,7 @@ func set_target_node(node_id: StringName) -> bool:
 	var node := _presentation_model.get_node(_snapshot, node_id)
 	_show_node_panel(node)
 	action_hint.text = str(route.get("status", ""))
+	_ensure_anchor_visible(Vector2(node.get("position", Vector2.ZERO)))
 	_refresh_canvas()
 	return true
 
@@ -300,6 +339,20 @@ func get_planned_route() -> Dictionary:
 
 func get_map_ui_controls() -> Array[Control]:
 	return [top_bar, side_panel]
+
+
+func get_selected_anchor_world() -> Vector2:
+	match _selected_kind:
+		&"NODE":
+			var node := _presentation_model.get_node(_snapshot, _selected_id)
+			return Vector2(node.get("position", Vector2.ZERO))
+		&"ROAD":
+			var road := _presentation_model.get_road(_snapshot, _selected_id)
+			return _road_anchor(road)
+		&"FORMATION":
+			var formation: Dictionary = _snapshot.get("formation", {})
+			return Vector2(formation.get("position", Vector2.ZERO))
+	return Vector2.ZERO
 
 
 func _build_snapshot() -> void:
@@ -434,6 +487,14 @@ func _request_center_home() -> void:
 		parent.center_world_map_on_home()
 
 
+func _request_overview() -> void:
+	if not _is_open:
+		return
+	var parent := get_parent()
+	if parent != null and parent.has_method("show_world_map_overview"):
+		parent.show_world_map_overview()
+
+
 func _on_city_state_changed() -> void:
 	if not _is_open:
 		return
@@ -454,6 +515,25 @@ func _refresh_canvas() -> void:
 	world_canvas.set_snapshot(_snapshot)
 	world_canvas.set_selection(_selected_kind, _selected_id)
 	world_canvas.set_planned_route(_planned_route)
+
+
+func _ensure_anchor_visible(world_position: Vector2) -> void:
+	var parent := get_parent()
+	if (
+		parent != null
+		and parent.has_method("ensure_world_map_position_visible")
+	):
+		parent.ensure_world_map_position_visible(
+			world_position,
+			SELECTION_SCREEN_MARGIN
+		)
+
+
+func _road_anchor(road: Dictionary) -> Vector2:
+	var path: Array = road.get("path", [])
+	if path.is_empty():
+		return Vector2.ZERO
+	return Vector2(path[path.size() >> 1])
 
 
 func _node_name(node_id: StringName) -> String:
