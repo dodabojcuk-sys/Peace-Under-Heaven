@@ -50,7 +50,7 @@ func _run() -> void:
 		"伐木场占地为 2 x 2")
 	_check(controller.get_footprint_cells(Vector2i(10, 10)).size() == 4,
 		"2 x 2 占地包含四个格")
-	_check(initial_building_count == 6, "启动时注册六个固定预置建筑")
+	_check(initial_building_count == 7, "启动时注册七个固定预置建筑")
 	_check(initial_occupied_count > 0, "固定预置建筑写入世界格占用")
 	_check(build_entry_button.mouse_filter == Control.MOUSE_FILTER_STOP,
 		"右侧建造入口主动接收 UI 鼠标事件")
@@ -107,7 +107,7 @@ func _run() -> void:
 		"取消不删除已放置建筑")
 
 	var ui_overlap_points := {
-		"TopStatusBar": Vector2(600.0, 55.0),
+		"TopStatusBar": Vector2(800.0, 55.0),
 		"CityBar": Vector2(100.0, 300.0),
 		"MinimapPlaceholder": Vector2(1050.0, 115.0),
 		"ConstructionEntryPanel": Vector2(1050.0, 205.0),

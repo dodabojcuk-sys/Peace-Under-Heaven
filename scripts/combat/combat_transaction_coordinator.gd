@@ -9,6 +9,7 @@ var active_request: BattleRequest
 var active_session: BattleSession
 var result_applier: BattleResultApplier
 var return_contract: ReturnToCityContract
+var _return_completed := false
 
 
 func configure(city_controller_value: Node) -> void:
@@ -19,11 +20,13 @@ func configure(city_controller_value: Node) -> void:
 func create_request(
 	committed_total: int,
 	level_id := DEFAULT_LEVEL_ID,
-	formal_city_entry := false
+	formal_city_entry := false,
+	mission_definition: MissionDefinition = null
 ) -> BattleRequest:
 	if city_controller == null or active_request != null:
 		return null
 	return_contract = null
+	_return_completed = false
 	var transaction_id: StringName = (
 		city_controller.reserve_battle_force(committed_total)
 	)
@@ -54,11 +57,36 @@ func create_request(
 			)
 		)
 	)
-	var enemy_snapshot := EnemyForceSnapshot.create(
-		transaction_id,
-		city_controller.current_day,
-		city_controller.enemy_count,
-		city_controller.enemy_fortification
+	if mission_definition != null:
+		for index in range(committed_snapshot.squads.size()):
+			if index >= mission_definition.player_route_pattern.size():
+				break
+			committed_snapshot.squads[index].route_id = (
+				mission_definition.player_route_pattern[index]
+			)
+	var enemy_snapshot := (
+		EnemyForceSnapshot.create_for_mission(
+			transaction_id,
+			city_controller.current_day,
+			mission_definition
+		)
+		if mission_definition != null
+		else EnemyForceSnapshot.create(
+			transaction_id,
+			city_controller.current_day,
+			city_controller.enemy_count,
+			city_controller.enemy_fortification
+		)
+	)
+	var source_id := (
+		MissionDefinition.SOURCE_NOTICEBOARD
+		if mission_definition != null
+		else &"FIRST_WAR"
+	)
+	var first_clear_key := (
+		mission_definition.first_clear_key
+		if mission_definition != null
+		else BattleSession.FIRST_CLEAR_KEY
 	)
 	var request := BattleRequest.new(
 		transaction_id,
@@ -68,7 +96,12 @@ func create_request(
 		enemy_snapshot,
 		formal_city_entry,
 		committed_food_cost,
-		city_controller.get_city_defense()
+		city_controller.get_city_defense(),
+		source_id,
+		first_clear_key,
+		mission_definition.reward_wood if mission_definition != null else 30,
+		mission_definition.reward_food if mission_definition != null else 20,
+		mission_definition
 	)
 	if not request.is_valid():
 		city_controller.cancel_battle_reservation(transaction_id)
@@ -184,7 +217,7 @@ func request_return_to_city() -> ReturnToCityContract:
 
 func complete_return_to_city(current_frame: int) -> bool:
 	if return_contract == null:
-		return false
+		return _return_completed
 	if return_contract.completed:
 		return true
 	if current_frame < return_contract.city_input_restore_frame:
@@ -192,6 +225,8 @@ func complete_return_to_city(current_frame: int) -> bool:
 	return_contract.completed = true
 	active_session = null
 	active_request = null
+	_return_completed = true
+	return_contract = null
 	return true
 
 

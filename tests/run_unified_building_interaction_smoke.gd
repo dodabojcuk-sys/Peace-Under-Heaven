@@ -63,6 +63,7 @@ func _run() -> void:
 		"Academy": "学院 L1",
 		"CityGate": "城门 L1",
 		"CommandPlatform": "军令台 L1",
+		"Noticeboard": "告示板",
 	}
 	var fixed_ids: Array[int] = []
 	for placement_id in construction.get_placement_ids():
@@ -71,9 +72,9 @@ func _run() -> void:
 			fixed_ids.append(placement_id)
 
 	_check(fixed_ids.size() == expected_fixed.size(),
-		"六个预置建筑各有一条统一权威记录")
-	_check(construction.get_building_count() == 6,
-		"初始权威记录只包含六个固定建筑")
+		"七个预置建筑各有一条统一权威记录")
+	_check(construction.get_building_count() == 7,
+		"初始权威记录只包含七个固定建筑")
 
 	var seen_ids: Dictionary = {}
 	for placement_id in construction.get_placement_ids():
@@ -102,6 +103,7 @@ func _run() -> void:
 	camera.position = Vector2(576.0, 324.0)
 	await process_frame
 	for fixed_id in fixed_ids:
+		selection.clear_selection()
 		var screen_center := _building_screen_center(
 			construction,
 			fixed_id
@@ -110,6 +112,16 @@ func _run() -> void:
 		var record: Dictionary = construction.get_building_record(fixed_id)
 		_check(selection.selected_placement_id == fixed_id,
 			"%s 可通过统一点击路径选择" % record.display_name)
+		if StringName(record.template_id) == &"noticeboard":
+			_check(
+				scene.get_node("UI/Shell/NoticeboardPanel").visible,
+				"告示板选择后显示独立任务列表"
+			)
+			_check(
+				not detail_panel.visible,
+				"告示板不与军令台或通用详情面板合并"
+			)
+			continue
 		_check(detail_panel.visible, "固定建筑选择后显示右侧详情")
 		_check(target_name.text == record.display_name,
 			"详情显示固定建筑真实名称")

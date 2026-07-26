@@ -49,6 +49,36 @@ static func create(
 	return snapshot
 
 
+static func create_for_mission(
+	transaction_id_value: StringName,
+	day_value: int,
+	mission: MissionDefinition
+) -> EnemyForceSnapshot:
+	if (
+		transaction_id_value == &""
+		or day_value <= 0
+		or mission == null
+		or not mission.is_valid()
+	):
+		return null
+	var snapshot := EnemyForceSnapshot.new()
+	snapshot.transaction_id = transaction_id_value
+	snapshot.snapshot_day = day_value
+	snapshot.enemy_count = mission.get_enemy_total()
+	snapshot.fortification_level = 0
+	snapshot.route_states = {
+		FRONT_ROUTE: {
+			"enemy_members": mission.front_enemy_count,
+			"gate_hp": mission.front_gate_hp,
+		},
+		SIDE_ROUTE: {
+			"enemy_members": mission.side_enemy_count,
+			"gate_hp": mission.side_gate_hp,
+		},
+	}
+	return snapshot
+
+
 func get_digest() -> String:
 	var front: Dictionary = route_states.get(FRONT_ROUTE, {})
 	var side: Dictionary = route_states.get(SIDE_ROUTE, {})

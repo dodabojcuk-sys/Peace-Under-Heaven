@@ -9,6 +9,7 @@ enum SelectionState {
 
 const SELECTION_OUTLINE_MARGIN := 4.0
 const COMMAND_PLATFORM_TEMPLATE_ID := &"command_platform"
+const NOTICEBOARD_TEMPLATE_ID := &"noticeboard"
 
 @onready var map_world: Node2D = $"../MapWorld"
 @onready var selection_outline: Line2D = $"../MapWorld/ConstructionLayer/SelectionOutline"
@@ -39,6 +40,10 @@ const COMMAND_PLATFORM_TEMPLATE_ID := &"command_platform"
 @onready var city_bar: Control = $"../UI/Shell/CityBar"
 @onready var city_bar_toggle: Control = $"../UI/Shell/CityBarToggle"
 @onready var minimap_placeholder: Control = $"../UI/Shell/MinimapPlaceholder"
+@onready var noticeboard_panel: Panel = $"../UI/Shell/NoticeboardPanel"
+@onready var noticeboard_close_button: Button = (
+	$"../UI/Shell/NoticeboardPanel/CloseButton"
+)
 
 var state := SelectionState.NONE
 var selected_placement_id := -1
@@ -49,6 +54,7 @@ func _ready() -> void:
 	remove_button.pressed.connect(request_removal_confirmation)
 	confirm_remove_button.pressed.connect(confirm_removal)
 	cancel_remove_button.pressed.connect(cancel_removal_confirmation)
+	noticeboard_close_button.pressed.connect(clear_selection)
 	construction_controller.building_removed.connect(_on_building_removed)
 	construction_controller.city_state_changed.connect(_on_city_state_changed)
 	clear_selection()
@@ -81,8 +87,12 @@ func select_placement(placement_id: int) -> void:
 	selected_placement_id = placement_id
 	state = SelectionState.SELECTED
 	_refresh_selection_outline(record, building)
-	_refresh_detail_panel(record)
-	_show_selected_presentation()
+	if StringName(record.template_id) == NOTICEBOARD_TEMPLATE_ID:
+		detail_panel.visible = false
+		construction_controller.show_noticeboard_panel()
+	else:
+		_refresh_detail_panel(record)
+		_show_selected_presentation()
 	construction_controller.set_detail_panel_active(true)
 
 
@@ -95,6 +105,7 @@ func clear_selection() -> void:
 	state = SelectionState.NONE
 	selection_outline.visible = false
 	detail_panel.visible = false
+	noticeboard_panel.visible = false
 	removal_confirmation.visible = false
 	first_war_actions.visible = false
 	construction_controller.set_detail_panel_active(false)
@@ -153,6 +164,9 @@ func handle_escape() -> bool:
 		cancel_removal_confirmation()
 		return true
 	if has_selection():
+		clear_selection()
+		return true
+	if noticeboard_panel.visible:
 		clear_selection()
 		return true
 	return false
@@ -322,6 +336,7 @@ func _get_ui_occlusion_controls() -> Array[Control]:
 		city_bar_toggle,
 		minimap_placeholder,
 		detail_panel,
+		noticeboard_panel,
 	]
 
 
@@ -343,4 +358,7 @@ func _on_city_state_changed() -> void:
 		clear_selection()
 		return
 	_refresh_selection_outline(record, building)
-	_refresh_detail_panel(record)
+	if StringName(record.template_id) == NOTICEBOARD_TEMPLATE_ID:
+		construction_controller.show_noticeboard_panel()
+	else:
+		_refresh_detail_panel(record)

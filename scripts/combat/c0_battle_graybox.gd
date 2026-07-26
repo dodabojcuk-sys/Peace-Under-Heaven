@@ -4,6 +4,8 @@ extends Node2D
 
 signal formal_return_completed(summary: Dictionary)
 signal formal_entry_cancelled
+signal noticeboard_return_completed(mission_id: StringName, summary: Dictionary)
+signal noticeboard_entry_cancelled(mission_id: StringName)
 
 const CITY_SCENE: PackedScene = preload("res://scenes/blank_map.tscn")
 const DEBUG_PLAYER_COUNT := 50
@@ -14,6 +16,8 @@ const DEBUG_PLAYER_COUNT := 50
 @onready var city_container: Node2D = $CityContainer
 @onready var tick_timer: Timer = $TickTimer
 @onready var status_label: Label = $UI/RootPanel/StatusLabel
+@onready var title_label: Label = $UI/RootPanel/Title
+@onready var instruction_label: Label = $UI/RootPanel/Instruction
 @onready var front_state_label: Label = (
 	$UI/RootPanel/FrontLane/StateLabel
 )
@@ -59,6 +63,8 @@ var city_camera: Camera2D
 var request: BattleRequest
 var formal_city_mode := false
 var formal_committed_count := 0
+var noticeboard_mission_mode := false
+var mission_definition: MissionDefinition
 var _squad_ui: Dictionary = {}
 var _squad_markers: Dictionary = {}
 var _confirmed_summary: Dictionary = {}
@@ -115,6 +121,23 @@ func configure_formal_city(
 	city_scene = city_scene_value
 	city_controller = city_controller_value
 	formal_committed_count = committed_count
+
+
+func configure_noticeboard_mission(
+	city_scene_value: Node2D,
+	city_controller_value: Node,
+	mission_definition_value: MissionDefinition
+) -> void:
+	formal_city_mode = true
+	noticeboard_mission_mode = true
+	city_scene = city_scene_value
+	city_controller = city_controller_value
+	mission_definition = mission_definition_value
+	formal_committed_count = (
+		mission_definition.committed_count
+		if mission_definition != null
+		else 0
+	)
 
 
 func start_battle() -> bool:
@@ -195,6 +218,9 @@ func confirm_exit_as_retreat() -> bool:
 	exit_confirmation.visible = false
 	exit_input_blocker.visible = true
 
+	if not coordinator.active_session.request_forced_retreat():
+		_fail_exit_as_retreat("全军撤退状态未能建立")
+		return false
 	var battle_result := coordinator.advance_battle_tick()
 	if battle_result == null:
 		for squad in coordinator.active_session.squads:
@@ -305,7 +331,13 @@ func complete_return_for_test(current_frame: int) -> bool:
 	$UI/RootPanel.visible = false
 	_restore_city_presentation()
 	if formal_city_mode:
-		formal_return_completed.emit(_confirmed_summary.duplicate(true))
+		if noticeboard_mission_mode:
+			noticeboard_return_completed.emit(
+				mission_definition.mission_id,
+				_confirmed_summary.duplicate(true)
+			)
+		else:
+			formal_return_completed.emit(_confirmed_summary.duplicate(true))
 		queue_free()
 	return true
 
@@ -325,7 +357,12 @@ func _complete_prebattle_return_after_input_guard() -> void:
 	$UI/RootPanel.visible = false
 	_restore_city_presentation()
 	if formal_city_mode:
-		formal_entry_cancelled.emit()
+		if noticeboard_mission_mode:
+			noticeboard_entry_cancelled.emit(
+				mission_definition.mission_id
+			)
+		else:
+			formal_entry_cancelled.emit()
 		queue_free()
 
 
@@ -410,8 +447,13 @@ func _restore_city_presentation() -> void:
 func _create_battle_request() -> void:
 	request = coordinator.create_request(
 		formal_committed_count if formal_city_mode else DEBUG_PLAYER_COUNT,
-		CombatTransactionCoordinator.DEFAULT_LEVEL_ID,
-		formal_city_mode
+		(
+			mission_definition.mission_id
+			if noticeboard_mission_mode
+			else CombatTransactionCoordinator.DEFAULT_LEVEL_ID
+		),
+		formal_city_mode and not noticeboard_mission_mode,
+		mission_definition
 	)
 	if request == null:
 		push_error("C0 graybox failed to create battle request")
@@ -544,6 +586,12 @@ func _refresh_battle_ui() -> void:
 		status_label.text = "C0 Battle Graybox · 请求创建失败"
 		_refresh_exit_ui()
 		return
+	if noticeboard_mission_mode:
+		title_label.text = "C0 Battle Graybox · %s" % mission_definition.title
+		instruction_label.text = "%s｜%s" % [
+			mission_definition.objective_text,
+			_get_mission_progress_text(),
+		]
 	var tick := (
 		coordinator.active_session.current_tick
 		if coordinator.active_session != null
@@ -563,11 +611,23 @@ func _refresh_battle_ui() -> void:
 	var side := _get_display_route_state(
 		CommittedForceSnapshot.SIDE_ROUTE
 	)
-	front_state_label.text = "正门｜门 HP %d｜守军 %d" % [
+	var front_name := (
+		mission_definition.front_route_name
+		if noticeboard_mission_mode
+		else "正门"
+	)
+	var side_name := (
+		mission_definition.side_route_name
+		if noticeboard_mission_mode
+		else "侧门"
+	)
+	front_state_label.text = "%s｜障碍 HP %d｜敌人 %d" % [
+		front_name,
 		int(front.gate_hp),
 		int(front.enemy_members),
 	]
-	side_state_label.text = "侧门｜门 HP %d｜守军 %d" % [
+	side_state_label.text = "%s｜障碍 HP %d｜敌人 %d" % [
+		side_name,
 		int(side.gate_hp),
 		int(side.enemy_members),
 	]
@@ -575,10 +635,10 @@ func _refresh_battle_ui() -> void:
 		var squad_id := int(squad_snapshot.squad_id)
 		var state := _get_display_squad_state(squad_snapshot)
 		var route_name := (
-			"正门"
+			front_name
 			if StringName(state.route_id)
 				== CommittedForceSnapshot.FRONT_ROUTE
-			else "侧门"
+			else side_name
 		)
 		_squad_ui[squad_id].status.text = (
 			"小队 %d｜人数 %d｜%s"
@@ -652,9 +712,31 @@ func _get_display_squad_state(snapshot: Dictionary) -> Dictionary:
 func _update_marker(squad_id: int, state: Dictionary) -> void:
 	var route_id := StringName(state.route_id)
 	var distance := (
-		BattleSession.FRONT_DISTANCE_FIXED
-		if route_id == CommittedForceSnapshot.FRONT_ROUTE
-		else BattleSession.SIDE_DISTANCE_FIXED
+		int(
+			coordinator.active_session.get_route_state(
+				route_id
+			).get("distance_fixed", 0)
+		)
+		if coordinator.active_session != null
+		else (
+			mission_definition.front_distance_units
+				* BattleSession.DISTANCE_SCALE
+			if (
+				noticeboard_mission_mode
+				and route_id == CommittedForceSnapshot.FRONT_ROUTE
+			)
+			else (
+				mission_definition.side_distance_units
+					* BattleSession.DISTANCE_SCALE
+				if noticeboard_mission_mode
+				else (
+					BattleSession.FRONT_DISTANCE_FIXED
+					if route_id
+						== CommittedForceSnapshot.FRONT_ROUTE
+					else BattleSession.SIDE_DISTANCE_FIXED
+				)
+			)
+		)
 	)
 	var ratio := clampf(
 		float(int(state.position_fixed)) / float(distance),
@@ -667,6 +749,45 @@ func _update_marker(squad_id: int, state: Dictionary) -> void:
 		151.0 if route_id == CommittedForceSnapshot.FRONT_ROUTE else 311.0
 	) + Vector2(0.0, float((squad_id - 1) * 9))
 	marker.visible = not bool(state.exited) and int(state.alive_members) > 0
+
+
+func _get_mission_progress_text() -> String:
+	if not noticeboard_mission_mode or mission_definition == null:
+		return ""
+	var objective := (
+		coordinator.active_session.get_mission_objective_state()
+		if coordinator.active_session != null
+		else {}
+	)
+	var remaining := int(
+		objective.get(
+			"remaining_enemy_count",
+			mission_definition.get_enemy_total()
+		)
+	)
+	if mission_definition.objective_type == MissionDefinition.OBJECTIVE_PROTECT:
+		return "%s %d/%d｜剩余敌人 %d" % [
+			mission_definition.protect_target_name,
+			int(
+				objective.get(
+					"protect_target_hp",
+					mission_definition.protect_target_hp
+				)
+			),
+			mission_definition.protect_target_hp,
+			remaining,
+		]
+	if mission_definition.objective_type == MissionDefinition.OBJECTIVE_SCOUT:
+		return "%s｜%s｜剩余敌人 %d" % [
+			"已发现斥候"
+				if bool(objective.get("scout_found", false))
+				else "斥候位置未知",
+			"已到达撤离区"
+				if bool(objective.get("extraction_reached", false))
+				else "尚未撤离",
+			remaining,
+		]
+	return "剩余敌人 %d" % remaining
 
 
 func _show_pending_result(battle_result: BattleResult) -> void:

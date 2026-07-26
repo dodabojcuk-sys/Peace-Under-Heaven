@@ -378,6 +378,34 @@ offset_right = 54.0
 offset_bottom = 96.0
 color = Color(0.92, 1, 0.96, 1)
 
+[node name="Noticeboard" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_left = 900.0
+offset_top = 430.0
+offset_right = 1060.0
+offset_bottom = 550.0
+mouse_filter = 2
+color = Color(0.53, 0.43, 0.3, 1)
+
+[node name="Label" type="Label" parent="MapWorld/Noticeboard"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 22.0
+offset_right = 144.0
+offset_bottom = 55.0
+theme_override_colors/font_color = Color(1, 0.95, 0.84, 1)
+theme_override_font_sizes/font_size = 22
+text = "告示板"
+horizontal_alignment = 1
+
+[node name="LevelMark" type="ColorRect" parent="MapWorld/Noticeboard"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 86.0
+offset_right = 54.0
+offset_bottom = 96.0
+color = Color(1, 0.95, 0.84, 1)
+
 [node name="ConstructionLayer" type="Node2D" parent="MapWorld"]
 z_index = 10
 
@@ -1247,3 +1275,222 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
 theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
 text = "取消"
+
+[node name="NoticeboardPanel" type="Panel" parent="UI/Shell"]
+visible = false
+layout_mode = 0
+offset_left = 216.0
+offset_top = 64.0
+offset_right = 936.0
+offset_bottom = 584.0
+mouse_filter = 0
+
+[node name="Title" type="Label" parent="UI/Shell/NoticeboardPanel"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 18.0
+offset_right = 696.0
+offset_bottom = 52.0
+theme_override_font_sizes/font_size = 24
+text = "城内告示板"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="UI/Shell/NoticeboardPanel"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 54.0
+offset_right = 696.0
+offset_bottom = 78.0
+text = "居民委托与小型战斗 · 当前进程内记录"
+horizontal_alignment = 1
+
+[node name="CloseButton" type="Button" parent="UI/Shell/NoticeboardPanel"]
+layout_mode = 0
+offset_left = 656.0
+offset_top = 14.0
+offset_right = 704.0
+offset_bottom = 50.0
+text = "关闭"
+
+[node name="OutskirtsSweepCard" type="Panel" parent="UI/Shell/NoticeboardPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 96.0
+offset_right = 240.0
+offset_bottom = 452.0
+
+[node name="Title" type="Label" parent="UI/Shell/NoticeboardPanel/OutskirtsSweepCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 14.0
+offset_right = 208.0
+offset_bottom = 42.0
+theme_override_font_sizes/font_size = 18
+text = "城郊清剿"
+horizontal_alignment = 1
+
+[node name="Description" type="Label" parent="UI/Shell/NoticeboardPanel/OutskirtsSweepCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 54.0
+offset_right = 208.0
+offset_bottom = 108.0
+autowrap_mode = 2
+
+[node name="Objective" type="Label" parent="UI/Shell/NoticeboardPanel/OutskirtsSweepCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 120.0
+offset_right = 208.0
+offset_bottom = 174.0
+autowrap_mode = 2
+
+[node name="RiskReward" type="Label" parent="UI/Shell/NoticeboardPanel/OutskirtsSweepCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 188.0
+offset_right = 208.0
+offset_bottom = 254.0
+autowrap_mode = 2
+
+[node name="StateLabel" type="Label" parent="UI/Shell/NoticeboardPanel/OutskirtsSweepCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 272.0
+offset_right = 208.0
+offset_bottom = 302.0
+text = "AVAILABLE"
+horizontal_alignment = 1
+
+[node name="StartButton" type="Button" parent="UI/Shell/NoticeboardPanel/OutskirtsSweepCard"]
+layout_mode = 0
+offset_left = 34.0
+offset_top = 312.0
+offset_right = 186.0
+offset_bottom = 344.0
+text = "开始任务"
+
+[node name="SupplyReliefCard" type="Panel" parent="UI/Shell/NoticeboardPanel"]
+layout_mode = 0
+offset_left = 250.0
+offset_top = 96.0
+offset_right = 470.0
+offset_bottom = 452.0
+
+[node name="Title" type="Label" parent="UI/Shell/NoticeboardPanel/SupplyReliefCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 14.0
+offset_right = 208.0
+offset_bottom = 42.0
+theme_override_font_sizes/font_size = 18
+text = "粮道求援"
+horizontal_alignment = 1
+
+[node name="Description" type="Label" parent="UI/Shell/NoticeboardPanel/SupplyReliefCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 54.0
+offset_right = 208.0
+offset_bottom = 108.0
+autowrap_mode = 2
+
+[node name="Objective" type="Label" parent="UI/Shell/NoticeboardPanel/SupplyReliefCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 120.0
+offset_right = 208.0
+offset_bottom = 174.0
+autowrap_mode = 2
+
+[node name="RiskReward" type="Label" parent="UI/Shell/NoticeboardPanel/SupplyReliefCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 188.0
+offset_right = 208.0
+offset_bottom = 254.0
+autowrap_mode = 2
+
+[node name="StateLabel" type="Label" parent="UI/Shell/NoticeboardPanel/SupplyReliefCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 272.0
+offset_right = 208.0
+offset_bottom = 302.0
+text = "AVAILABLE"
+horizontal_alignment = 1
+
+[node name="StartButton" type="Button" parent="UI/Shell/NoticeboardPanel/SupplyReliefCard"]
+layout_mode = 0
+offset_left = 34.0
+offset_top = 312.0
+offset_right = 186.0
+offset_bottom = 344.0
+text = "开始任务"
+
+[node name="MissingScoutCard" type="Panel" parent="UI/Shell/NoticeboardPanel"]
+layout_mode = 0
+offset_left = 480.0
+offset_top = 96.0
+offset_right = 700.0
+offset_bottom = 452.0
+
+[node name="Title" type="Label" parent="UI/Shell/NoticeboardPanel/MissingScoutCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 14.0
+offset_right = 208.0
+offset_bottom = 42.0
+theme_override_font_sizes/font_size = 18
+text = "失踪斥候"
+horizontal_alignment = 1
+
+[node name="Description" type="Label" parent="UI/Shell/NoticeboardPanel/MissingScoutCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 54.0
+offset_right = 208.0
+offset_bottom = 108.0
+autowrap_mode = 2
+
+[node name="Objective" type="Label" parent="UI/Shell/NoticeboardPanel/MissingScoutCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 120.0
+offset_right = 208.0
+offset_bottom = 174.0
+autowrap_mode = 2
+
+[node name="RiskReward" type="Label" parent="UI/Shell/NoticeboardPanel/MissingScoutCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 188.0
+offset_right = 208.0
+offset_bottom = 254.0
+autowrap_mode = 2
+
+[node name="StateLabel" type="Label" parent="UI/Shell/NoticeboardPanel/MissingScoutCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 272.0
+offset_right = 208.0
+offset_bottom = 302.0
+text = "AVAILABLE"
+horizontal_alignment = 1
+
+[node name="StartButton" type="Button" parent="UI/Shell/NoticeboardPanel/MissingScoutCard"]
+layout_mode = 0
+offset_left = 34.0
+offset_top = 312.0
+offset_right = 186.0
+offset_bottom = 344.0
+text = "开始任务"
+
+[node name="LastResult" type="Label" parent="UI/Shell/NoticeboardPanel"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 466.0
+offset_right = 696.0
+offset_bottom = 504.0
+text = "尚无任务结果"
+horizontal_alignment = 1

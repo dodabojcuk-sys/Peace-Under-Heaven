@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="MissionDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/content/mission_definition.gd" id="1_mission"]
+
+[resource]
+script = ExtResource("1_mission")
+mission_id = &"noticeboard.missing_scout.v0"
+title = "失踪斥候"
+description = "斥候失联于两处搜索区之一，找到后必须安全撤离。"
+objective_type = &"FIND_AND_EXTRACT"
+objective_text = "搜索失踪斥候，并让至少一支有效小队撤离"
+risk_label = "中风险 · 搜索撤离"
+layout_id = &"scout_search_fork_v0"
+committed_count = 15
+player_route_pattern = Array[StringName]([&"FRONT_GATE", &"SIDE_GATE", &"FRONT_GATE"])
+front_route_name = "北侧林地"
+side_route_name = "东侧山坳"
+front_enemy_count = 5
+side_enemy_count = 5
+front_distance_units = 30
+side_distance_units = 30
+scout_route_id = &"SIDE_GATE"
+scout_search_distance_units = 22
+reward_wood = 16
+reward_food = 6
+first_clear_key = &"noticeboard.missing_scout.v0.first_clear"

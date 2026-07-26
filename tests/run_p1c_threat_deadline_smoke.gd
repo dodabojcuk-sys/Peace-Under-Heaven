@@ -207,8 +207,8 @@ func _run() -> void:
 		"重开恢复 V0 初始城市状态"
 	)
 	_check(
-		construction.get_building_count() == 6,
-		"重开只保留六个固定建筑"
+		construction.get_building_count() == 7,
+		"重开只保留七个固定建筑"
 	)
 	_check(
 		not construction.has_readiness_checkpoint(),

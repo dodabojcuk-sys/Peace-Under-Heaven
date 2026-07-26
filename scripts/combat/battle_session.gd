@@ -25,8 +25,11 @@ var routes: Dictionary = {}
 var pending_orders: Array[BattleOrder] = []
 var accepted_orders: Array[BattleOrder] = []
 var retreat_was_ordered := false
+var forced_retreat_requested := false
 var completed := false
 var result: BattleResult
+var mission_definition: MissionDefinition
+var mission_objective_state: Dictionary = {}
 
 
 func _init(request_value: BattleRequest = null) -> void:
@@ -50,8 +53,11 @@ func initialize(request_value: BattleRequest) -> bool:
 	pending_orders.clear()
 	accepted_orders.clear()
 	retreat_was_ordered = false
+	forced_retreat_requested = false
 	completed = false
 	result = null
+	mission_definition = request.mission_definition
+	mission_objective_state = {}
 	for squad_snapshot in request.committed_force.squads:
 		var initial_members := int(squad_snapshot.initial_members)
 		squads.append({
@@ -80,7 +86,9 @@ func initialize(request_value: BattleRequest) -> bool:
 			),
 			"gate_initial_hp": int(enemy_route.gate_hp),
 			"gate_hp": int(enemy_route.gate_hp),
+			"distance_fixed": _get_initial_route_distance_fixed(route_id),
 		}
+	_initialize_mission_objective_state()
 	return true
 
 
@@ -143,6 +151,18 @@ func get_route_state(route_id: StringName) -> Dictionary:
 	return route.duplicate(true)
 
 
+func get_mission_objective_state() -> Dictionary:
+	return mission_objective_state.duplicate(true)
+
+
+func request_forced_retreat() -> bool:
+	if completed or request == null:
+		return false
+	forced_retreat_requested = true
+	retreat_was_ordered = true
+	return true
+
+
 func get_orders_digest() -> String:
 	var parts: Array[String] = []
 	for order in accepted_orders:
@@ -181,6 +201,8 @@ func get_state_digest() -> String:
 				int(route.enemy_total_hp),
 			]
 		)
+	if not mission_objective_state.is_empty():
+		parts.append(str(mission_objective_state))
 	parts.append(get_orders_digest())
 	return "|".join(parts)
 
@@ -223,6 +245,7 @@ func _update_positions() -> void:
 			)
 			if int(squad.position_fixed) == 0:
 				squad.exited = true
+	_update_mission_search_progress()
 
 
 func _build_damage_intents() -> Dictionary:
@@ -313,9 +336,13 @@ func _apply_damage_intents(intents: Dictionary) -> void:
 				int(squad.total_hp) - int(player_damage[squad_id]),
 				0
 			)
+	_apply_mission_objective_damage()
 
 
 func _check_outcome() -> void:
+	if mission_definition != null:
+		_check_mission_outcome()
+		return
 	for route_id in [
 		CommittedForceSnapshot.FRONT_ROUTE,
 		CommittedForceSnapshot.SIDE_ROUTE,
@@ -369,7 +396,152 @@ func _complete(
 		request.committed_force.get_digest()
 	)
 	result.enemy_snapshot_digest = request.enemy_force.get_digest()
-	result.first_clear_key = FIRST_CLEAR_KEY
+	result.first_clear_key = request.first_clear_key
+
+
+func _initialize_mission_objective_state() -> void:
+	if mission_definition == null:
+		return
+	mission_objective_state = {
+		"objective_type": mission_definition.objective_type,
+		"remaining_enemy_count": request.enemy_force.enemy_count,
+		"protect_target_name": mission_definition.protect_target_name,
+		"protect_target_hp": mission_definition.protect_target_hp,
+		"protect_target_max_hp": mission_definition.protect_target_hp,
+		"scout_found": false,
+		"extraction_reached": false,
+	}
+
+
+func _update_mission_search_progress() -> void:
+	if (
+		mission_definition == null
+		or mission_definition.objective_type
+			!= MissionDefinition.OBJECTIVE_SCOUT
+		or bool(mission_objective_state.get("scout_found", false))
+	):
+		return
+	var search_distance := (
+		mission_definition.scout_search_distance_units * DISTANCE_SCALE
+	)
+	for squad in squads:
+		if (
+			int(squad.total_hp) > 0
+			and not bool(squad.exited)
+			and StringName(squad.route_id)
+				== mission_definition.scout_route_id
+			and int(squad.position_fixed) >= search_distance
+		):
+			mission_objective_state.scout_found = true
+			return
+
+
+func _apply_mission_objective_damage() -> void:
+	if mission_definition == null:
+		return
+	mission_objective_state.remaining_enemy_count = (
+		_get_enemy_survivor_count()
+	)
+	if (
+		mission_definition.objective_type
+			!= MissionDefinition.OBJECTIVE_PROTECT
+		or current_tick % ATTACK_INTERVAL_TICKS != 0
+	):
+		return
+	var damage := 0
+	for route_id in [
+		CommittedForceSnapshot.FRONT_ROUTE,
+		CommittedForceSnapshot.SIDE_ROUTE,
+	]:
+		var route: Dictionary = routes[route_id]
+		if (
+			int(route.enemy_total_hp) > 0
+			and not _has_frontline_squad(route_id)
+		):
+			damage += (
+				_alive_members(int(route.enemy_total_hp))
+				* mission_definition.protect_damage_per_enemy
+			)
+	mission_objective_state.protect_target_hp = maxi(
+		int(mission_objective_state.protect_target_hp) - damage,
+		0
+	)
+
+
+func _check_mission_outcome() -> void:
+	mission_objective_state.remaining_enemy_count = (
+		_get_enemy_survivor_count()
+	)
+	if (
+		mission_definition.objective_type
+			== MissionDefinition.OBJECTIVE_PROTECT
+		and int(mission_objective_state.protect_target_hp) <= 0
+	):
+		_complete(BattleOutcome.Value.DEFEAT)
+		return
+	if _get_survivor_count() == 0:
+		_complete(BattleOutcome.Value.DEFEAT)
+		return
+	if forced_retreat_requested and _all_survivors_exited():
+		_complete(BattleOutcome.Value.RETREAT)
+		return
+	if (
+		mission_definition.objective_type
+			== MissionDefinition.OBJECTIVE_ELIMINATE
+		and _get_enemy_survivor_count() == 0
+	):
+		_complete(BattleOutcome.Value.VICTORY)
+		return
+	if (
+		mission_definition.objective_type
+			== MissionDefinition.OBJECTIVE_PROTECT
+		and _get_enemy_survivor_count() == 0
+		and int(mission_objective_state.protect_target_hp) > 0
+	):
+		_complete(BattleOutcome.Value.VICTORY)
+		return
+	if (
+		mission_definition.objective_type
+			== MissionDefinition.OBJECTIVE_SCOUT
+		and bool(mission_objective_state.scout_found)
+		and _has_surviving_exited_squad()
+	):
+		mission_objective_state.extraction_reached = true
+		_complete(BattleOutcome.Value.VICTORY)
+		return
+	if retreat_was_ordered and _all_survivors_exited():
+		_complete(BattleOutcome.Value.RETREAT)
+		return
+	if current_tick >= MAX_BATTLE_TICKS:
+		_complete(BattleOutcome.Value.DEFEAT)
+
+
+func _has_frontline_squad(route_id: StringName) -> bool:
+	for squad in squads:
+		if (
+			_squad_can_fight(squad)
+			and StringName(squad.route_id) == route_id
+			and int(squad.position_fixed)
+				>= _get_route_distance_fixed(route_id)
+		):
+			return true
+	return false
+
+
+func _has_surviving_exited_squad() -> bool:
+	for squad in squads:
+		if int(squad.total_hp) > 0 and bool(squad.exited):
+			return true
+	return false
+
+
+func _get_enemy_survivor_count() -> int:
+	var survivors := 0
+	for route_id in routes:
+		survivors += _alive_members(
+			int(routes[route_id].enemy_total_hp)
+		)
+	return survivors
 
 
 func _calculate_player_damage(
@@ -470,11 +642,21 @@ func _alive_members(total_hp: int) -> int:
 
 
 func _get_route_distance_fixed(route_id: StringName) -> int:
+	return int(routes[route_id].distance_fixed)
+
+
+func _get_initial_route_distance_fixed(route_id: StringName) -> int:
+	if mission_definition == null:
+		return (
+			FRONT_DISTANCE_FIXED
+			if route_id == CommittedForceSnapshot.FRONT_ROUTE
+			else SIDE_DISTANCE_FIXED
+		)
 	return (
-		FRONT_DISTANCE_FIXED
+		mission_definition.front_distance_units
 		if route_id == CommittedForceSnapshot.FRONT_ROUTE
-		else SIDE_DISTANCE_FIXED
-	)
+		else mission_definition.side_distance_units
+	) * DISTANCE_SCALE
 
 
 func _get_incoming_basis_points(

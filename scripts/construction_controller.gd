@@ -49,6 +49,11 @@ const WAREHOUSE_DEFINITION: BuildingDefinition = preload(
 const WATCHTOWER_DEFINITION: BuildingDefinition = preload(
 	"res://resources/definitions/buildings/watchtower.tres"
 )
+const NOTICEBOARD_MISSIONS: Array[MissionDefinition] = [
+	preload("res://resources/definitions/missions/outskirts_sweep.tres"),
+	preload("res://resources/definitions/missions/supply_relief.tres"),
+	preload("res://resources/definitions/missions/missing_scout.tres"),
+]
 const FIRST_MAP_THREAT_SCHEDULE: ThreatSchedule = preload(
 	"res://resources/definitions/threats/first_map_v0.tres"
 )
@@ -131,6 +136,14 @@ const PRESET_BUILDING_DEFINITIONS := [
 		"description": "北坡首战的正式城市入口",
 		"level": 1,
 		"effect_summary": "显示敌情并处理北坡首战",
+	},
+	{
+		"node_path": "../MapWorld/Noticeboard",
+		"template_id": &"noticeboard",
+		"display_name": "告示板",
+		"description": "居民委托、小型战斗与搜索任务入口",
+		"level": 1,
+		"effect_summary": "提供三项当前进程内任务",
 	},
 ]
 
@@ -227,6 +240,13 @@ const PRESET_BUILDING_DEFINITIONS := [
 @onready var acknowledge_war_result_button: Button = (
 	$"../UI/Shell/BuildingDetailPanel/FirstWarActions/WarResult/AcknowledgeButton"
 )
+@onready var noticeboard_panel: Panel = $"../UI/Shell/NoticeboardPanel"
+@onready var noticeboard_close_button: Button = (
+	$"../UI/Shell/NoticeboardPanel/CloseButton"
+)
+@onready var noticeboard_last_result: Label = (
+	$"../UI/Shell/NoticeboardPanel/LastResult"
+)
 
 var state := ConstructionState.IDLE
 var preview_origin_cell := Vector2i.ZERO
@@ -271,6 +291,7 @@ var _occupied_cells: Dictionary = {}
 var _building_records_by_id: Dictionary = {}
 var _placement_order: Array[int] = []
 var _definitions_by_id: Dictionary = {}
+var _mission_definitions_by_id: Dictionary = {}
 var _generals_by_id: Dictionary = {}
 var _tech_by_id: Dictionary = {}
 var _next_placement_id := 1
@@ -285,6 +306,9 @@ var _last_battle_result_summary: Dictionary = {}
 var _first_war_pending_outcome: StringName = &""
 var _first_war_result_acknowledged := false
 var _formal_battle_scene: C0BattleGraybox
+var _active_noticeboard_mission_id: StringName = &""
+var _completed_noticeboard_mission_ids: Dictionary = {}
+var _noticeboard_last_result_summary: Dictionary = {}
 var _next_battle_transaction_sequence := 1
 
 
@@ -295,6 +319,7 @@ func _ready() -> void:
 	_register_definition(WAREHOUSE_DEFINITION)
 	_register_definition(WATCHTOWER_DEFINITION)
 	_register_strategy_definitions()
+	_register_noticeboard_missions()
 	_register_preset_buildings()
 	build_entry_button.pressed.connect(_on_build_entry_pressed)
 	road_button.pressed.connect(
@@ -333,6 +358,13 @@ func _ready() -> void:
 	acknowledge_war_result_button.pressed.connect(
 		acknowledge_first_war_result
 	)
+	noticeboard_close_button.pressed.connect(hide_noticeboard_panel)
+	for mission in NOTICEBOARD_MISSIONS:
+		var card := _get_noticeboard_card(mission.mission_id)
+		var start_button := card.get_node("StartButton") as Button
+		start_button.pressed.connect(
+			start_noticeboard_mission.bind(mission.mission_id)
+		)
 	construction_preview.visible = false
 	_configure_time_speed_options()
 	_update_threat_for_current_day(false)
@@ -431,6 +463,7 @@ func is_construction_ui_point(screen_position: Vector2) -> bool:
 		construction_menu,
 		pause_button,
 		city_bar_toggle,
+		noticeboard_panel,
 	]:
 		if (
 			ui_control.is_visible_in_tree()
@@ -749,6 +782,123 @@ func get_formal_battle_scene() -> C0BattleGraybox:
 	return _formal_battle_scene if is_instance_valid(_formal_battle_scene) else null
 
 
+func get_noticeboard_mission_ids() -> Array[StringName]:
+	var result: Array[StringName] = []
+	for mission in NOTICEBOARD_MISSIONS:
+		result.append(mission.mission_id)
+	return result
+
+
+func get_noticeboard_mission_definition(
+	mission_id: StringName
+) -> MissionDefinition:
+	return _mission_definitions_by_id.get(mission_id) as MissionDefinition
+
+
+func get_noticeboard_mission_state(mission_id: StringName) -> StringName:
+	if mission_id == _active_noticeboard_mission_id:
+		return &"IN_PROGRESS"
+	if _completed_noticeboard_mission_ids.has(mission_id):
+		return &"COMPLETED"
+	if _mission_definitions_by_id.has(mission_id):
+		return &"AVAILABLE"
+	return &"LOCKED"
+
+
+func get_active_noticeboard_mission_id() -> StringName:
+	return _active_noticeboard_mission_id
+
+
+func show_noticeboard_panel() -> void:
+	noticeboard_panel.visible = true
+	_refresh_noticeboard_ui()
+	set_detail_panel_active(true)
+
+
+func hide_noticeboard_panel() -> void:
+	noticeboard_panel.visible = false
+	set_detail_panel_active(false)
+
+
+func can_start_noticeboard_mission(mission_id: StringName) -> bool:
+	var mission := get_noticeboard_mission_definition(mission_id)
+	return (
+		mission != null
+		and mission.is_valid()
+		and _active_noticeboard_mission_id == &""
+		and not is_city_action_locked_for_battle()
+		and not is_instance_valid(_formal_battle_scene)
+		and mini(
+			mission.committed_count,
+			get_effective_command_limit()
+		) <= get_available_infantry_count()
+	)
+
+
+func start_noticeboard_mission(mission_id: StringName) -> bool:
+	if not can_start_noticeboard_mission(mission_id):
+		return false
+	var mission := get_noticeboard_mission_definition(mission_id)
+	var battle_scene := load(
+		"res://scenes/c0_battle_graybox.tscn"
+	) as PackedScene
+	if battle_scene == null:
+		return false
+	var battle := battle_scene.instantiate() as C0BattleGraybox
+	if battle == null:
+		return false
+	battle.configure_noticeboard_mission(
+		get_parent() as Node2D,
+		self,
+		mission
+	)
+	battle.noticeboard_return_completed.connect(
+		_on_noticeboard_mission_returned
+	)
+	battle.noticeboard_entry_cancelled.connect(
+		_on_noticeboard_mission_entry_cancelled
+	)
+	_active_noticeboard_mission_id = mission_id
+	_formal_battle_scene = battle
+	get_tree().root.add_child(battle)
+	if battle.request == null:
+		_formal_battle_scene = null
+		_active_noticeboard_mission_id = &""
+		battle.abort_formal_entry()
+		_refresh_noticeboard_ui()
+		return false
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
+
+
+func _on_noticeboard_mission_returned(
+	mission_id: StringName,
+	summary: Dictionary
+) -> void:
+	_formal_battle_scene = null
+	if mission_id != _active_noticeboard_mission_id or summary.is_empty():
+		return
+	_active_noticeboard_mission_id = &""
+	_noticeboard_last_result_summary = summary.duplicate(true)
+	noticeboard_panel.visible = true
+	_refresh_noticeboard_ui()
+	_refresh_city_ui()
+	city_state_changed.emit()
+
+
+func _on_noticeboard_mission_entry_cancelled(
+	mission_id: StringName
+) -> void:
+	_formal_battle_scene = null
+	if mission_id == _active_noticeboard_mission_id:
+		_active_noticeboard_mission_id = &""
+	noticeboard_panel.visible = true
+	_refresh_noticeboard_ui()
+	_refresh_city_ui()
+	city_state_changed.emit()
+
+
 func request_first_war_retreat_confirmation() -> bool:
 	if first_war_state != FirstWarState.PENDING:
 		return false
@@ -1007,6 +1157,11 @@ func get_city_state() -> Dictionary:
 		"committed_battle_result_ids": _committed_battle_result_ids.keys(),
 		"first_clear_keys": _first_clear_keys.keys(),
 		"last_battle_result_summary": _last_battle_result_summary.duplicate(true),
+		"noticeboard_mission_states": _get_noticeboard_mission_states(),
+		"active_noticeboard_mission_id": _active_noticeboard_mission_id,
+		"noticeboard_last_result_summary": (
+			_noticeboard_last_result_summary.duplicate(true)
+		),
 		"checkpoint_available": not _readiness_checkpoint.is_empty(),
 		"city_time_paused": city_time_paused,
 		"city_time_speed": city_time_speed,
@@ -1182,6 +1337,14 @@ func apply_battle_result_atomic(
 				or request.city_defense_snapshot != get_city_defense()
 			)
 		)
+		or (
+			request.is_noticeboard_mission()
+			and (
+				_active_noticeboard_mission_id != request.level_id
+				or get_noticeboard_mission_definition(request.level_id)
+					!= request.mission_definition
+			)
+		)
 	):
 		return {}
 
@@ -1190,8 +1353,8 @@ func apply_battle_result_atomic(
 		and battle_result.first_clear_key != &""
 		and not _first_clear_keys.has(battle_result.first_clear_key)
 	)
-	var planned_wood := 30 if grants_first_clear else 0
-	var planned_food := 20 if grants_first_clear else 0
+	var planned_wood := request.reward_wood if grants_first_clear else 0
+	var planned_food := request.reward_food if grants_first_clear else 0
 	var wood_capacity := get_resource_capacity(&"wood")
 	var food_capacity := get_resource_capacity(&"food")
 	var actual_food_cost := (
@@ -1244,6 +1407,12 @@ func apply_battle_result_atomic(
 		"overflow_wood_reward": planned_wood - accepted_wood,
 		"overflow_food_reward": planned_food - accepted_food,
 		"formal_city_entry": request.formal_city_entry,
+		"source_id": request.source_id,
+		"mission_id": (
+			request.mission_definition.mission_id
+			if request.mission_definition != null
+			else &""
+		),
 		"planned_food_cost": request.committed_food_cost,
 		"actual_food_cost": actual_food_cost,
 		"food_shortage": actual_food_cost < request.committed_food_cost,
@@ -1274,6 +1443,11 @@ func apply_battle_result_atomic(
 	)
 	if grants_first_clear:
 		_first_clear_keys[battle_result.first_clear_key] = true
+	if (
+		request.is_noticeboard_mission()
+		and battle_result.outcome == BattleOutcome.Value.VICTORY
+	):
+		_completed_noticeboard_mission_ids[request.level_id] = true
 	_closed_battle_transactions[battle_result.transaction_id] = (
 		BATTLE_PHASE_APPLIED
 	)
@@ -2627,6 +2801,72 @@ func _on_time_speed_selected(index: int) -> void:
 	set_city_time_speed(float(time_speed_option.get_item_metadata(index)))
 
 
+func _register_noticeboard_missions() -> void:
+	for mission in NOTICEBOARD_MISSIONS:
+		if mission == null or not mission.is_valid():
+			push_error("Invalid noticeboard mission definition")
+			continue
+		if _mission_definitions_by_id.has(mission.mission_id):
+			push_error(
+				"Duplicate noticeboard mission id: %s"
+				% mission.mission_id
+			)
+			continue
+		_mission_definitions_by_id[mission.mission_id] = mission
+
+
+func _get_noticeboard_card(mission_id: StringName) -> Panel:
+	var card_name: String = str({
+		&"noticeboard.outskirts_sweep.v0": "OutskirtsSweepCard",
+		&"noticeboard.supply_relief.v0": "SupplyReliefCard",
+		&"noticeboard.missing_scout.v0": "MissingScoutCard",
+	}.get(mission_id, ""))
+	if card_name.is_empty():
+		return null
+	return noticeboard_panel.get_node(card_name) as Panel
+
+
+func _get_noticeboard_mission_states() -> Dictionary:
+	var states := {}
+	for mission in NOTICEBOARD_MISSIONS:
+		states[mission.mission_id] = get_noticeboard_mission_state(
+			mission.mission_id
+		)
+	return states
+
+
+func _refresh_noticeboard_ui() -> void:
+	for mission in NOTICEBOARD_MISSIONS:
+		var card := _get_noticeboard_card(mission.mission_id)
+		if card == null:
+			continue
+		(card.get_node("Title") as Label).text = mission.title
+		(card.get_node("Description") as Label).text = mission.description
+		(card.get_node("Objective") as Label).text = (
+			"目标：%s" % mission.objective_text
+		)
+		(card.get_node("RiskReward") as Label).text = (
+			"风险：%s\n首胜奖励：%s"
+			% [mission.risk_label, mission.get_reward_text()]
+		)
+		var state_id := get_noticeboard_mission_state(mission.mission_id)
+		(card.get_node("StateLabel") as Label).text = str(state_id)
+		var start_button := card.get_node("StartButton") as Button
+		start_button.text = (
+			"再次挑战" if state_id == &"COMPLETED" else "开始任务"
+		)
+		start_button.disabled = not can_start_noticeboard_mission(
+			mission.mission_id
+		)
+	if _noticeboard_last_result_summary.is_empty():
+		noticeboard_last_result.text = "尚无任务结果"
+	else:
+		noticeboard_last_result.text = "最近结果：%s · %s" % [
+			str(_noticeboard_last_result_summary.get("mission_id", &"")),
+			str(_noticeboard_last_result_summary.get("outcome", &"")),
+		]
+
+
 func _register_preset_buildings() -> void:
 	for definition in PRESET_BUILDING_DEFINITIONS:
 		var building := get_node(str(definition.node_path)) as Control
@@ -2899,6 +3139,7 @@ func _refresh_city_ui() -> void:
 	restart_map_button.visible = (
 		current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
 	)
+	_refresh_noticeboard_ui()
 	_refresh_construction_catalog_ui()
 	_sync_construction_ui()
 

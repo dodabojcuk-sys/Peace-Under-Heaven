@@ -17,6 +17,11 @@ var enemy_force: EnemyForceSnapshot
 var formal_city_entry: bool
 var committed_food_cost: int
 var city_defense_snapshot: int
+var source_id: StringName
+var first_clear_key: StringName
+var reward_wood: int
+var reward_food: int
+var mission_definition: MissionDefinition
 
 
 func _init(
@@ -27,7 +32,12 @@ func _init(
 	enemy_force_value: EnemyForceSnapshot = null,
 	formal_city_entry_value := false,
 	committed_food_cost_value := 0,
-	city_defense_snapshot_value := 0
+	city_defense_snapshot_value := 0,
+	source_id_value: StringName = &"FIRST_WAR",
+	first_clear_key_value: StringName = &"first_map.main_assault.v0",
+	reward_wood_value := 30,
+	reward_food_value := 20,
+	mission_definition_value: MissionDefinition = null
 ) -> void:
 	transaction_id = transaction_id_value
 	level_id = level_id_value
@@ -38,6 +48,11 @@ func _init(
 	formal_city_entry = formal_city_entry_value
 	committed_food_cost = committed_food_cost_value
 	city_defense_snapshot = city_defense_snapshot_value
+	source_id = source_id_value
+	first_clear_key = first_clear_key_value
+	reward_wood = reward_wood_value
+	reward_food = reward_food_value
+	mission_definition = mission_definition_value
 
 
 func is_valid() -> bool:
@@ -51,4 +66,23 @@ func is_valid() -> bool:
 		and enemy_force.transaction_id == transaction_id
 		and committed_food_cost >= 0
 		and city_defense_snapshot >= 0
+		and source_id in [&"FIRST_WAR", MissionDefinition.SOURCE_NOTICEBOARD]
+		and first_clear_key != &""
+		and reward_wood >= 0
+		and reward_food >= 0
+		and (
+			source_id != MissionDefinition.SOURCE_NOTICEBOARD
+			or (
+				mission_definition != null
+				and mission_definition.is_valid()
+				and mission_definition.mission_id == level_id
+			)
+		)
+	)
+
+
+func is_noticeboard_mission() -> bool:
+	return (
+		source_id == MissionDefinition.SOURCE_NOTICEBOARD
+		and mission_definition != null
 	)
