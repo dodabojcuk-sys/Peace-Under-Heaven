@@ -122,6 +122,9 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	var comparison: Node = comparison_scene.get_node("ConstructionController")
+	var comparison_time_summary: Label = comparison_scene.get_node(
+		"UI/Shell/TopStatusBar/TimeSummary"
+	)
 	comparison.set_process(false)
 	construction.restart_first_map()
 	comparison.restart_first_map()
@@ -142,14 +145,75 @@ func _run() -> void:
 
 	comparison.restart_first_map()
 	comparison.advance_city_time_for_test(
-		comparison.SECONDS_PER_DAY * 20.0
+		comparison.SECONDS_PER_DAY * 10.0
 	)
+	_check(
+		comparison.current_day == 11
+			and not comparison.is_city_time_paused(),
+		"运行状态可以正常到达第 11 日"
+	)
+	comparison.advance_city_time_for_test(comparison.SECONDS_PER_DAY)
 	_check(
 		comparison.current_day == 12
 			and comparison.enemy_count == 64
 			and comparison.enemy_fortification == 2
-			and comparison.tech_points == 11,
-		"超大增量在第 12 日准确停止且不重复结算"
+			and comparison.tech_points == 11
+			and not comparison.is_city_time_paused(),
+		"从第 11 日进入第 12 日不会自动暂停"
+	)
+	comparison.advance_city_time_for_test(17.0)
+	_check(
+		comparison.current_day == 12
+			and is_equal_approx(comparison.day_elapsed_seconds, 17.0)
+			and is_equal_approx(
+				comparison.get_day_progress_ratio(),
+				17.0 / comparison.SECONDS_PER_DAY
+			)
+			and comparison_time_summary.text == "第 12 日 · 00:17",
+		"第 12 日当天进度继续积累且时间进度不被内容边界封顶"
+	)
+	comparison.set_city_time_paused(true)
+	comparison.advance_city_time_for_test(100.0)
+	comparison_scene.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	comparison_scene.notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+	_check(
+		comparison.current_day == 12
+			and is_equal_approx(comparison.day_elapsed_seconds, 17.0)
+			and comparison.is_city_time_paused(),
+		"第 12 日只有玩家明确暂停才冻结且焦点变化不改状态"
+	)
+	comparison.set_city_time_paused(false)
+	comparison.advance_city_time_for_test(43.0)
+	_check(
+		comparison.current_day == 13
+			and is_zero_approx(comparison.day_elapsed_seconds)
+			and not comparison.is_city_time_paused()
+			and comparison.tech_points == 12,
+		"继续后从第 12 日原进度恢复并自动进入第 13 日"
+	)
+	_check(
+		comparison.enemy_count == 64
+			and comparison.enemy_fortification == 2
+			and comparison.get_last_daily_breakdown().event_food_loss == 0
+			and int(
+				comparison.get_last_daily_breakdown().stopped_placement_id
+			) < 0,
+		"第 13 日不重复触发第 12 日特殊事件"
+	)
+
+	construction.restart_first_map()
+	comparison.restart_first_map()
+	for _step in range(810):
+		construction.advance_city_time_for_test(1.0)
+	comparison.advance_city_time_for_test(
+		comparison.SECONDS_PER_DAY * 13.5
+	)
+	_check(
+		_city_outcome(construction) == _city_outcome(comparison)
+			and comparison.current_day == 14
+			and is_equal_approx(comparison.day_elapsed_seconds, 30.0)
+			and not comparison.is_city_time_paused(),
+		"大增量跨越第 12、13 日不重复结算、不丢失日期"
 	)
 
 	construction.restart_first_map()
@@ -291,6 +355,8 @@ func _city_outcome(construction: Node) -> Dictionary:
 		"tech_points": construction.tech_points,
 		"enemy_count": construction.enemy_count,
 		"enemy_fortification": construction.enemy_fortification,
+		"day_elapsed_seconds": construction.day_elapsed_seconds,
+		"city_time_paused": construction.is_city_time_paused(),
 		"last_daily_breakdown": (
 			construction.get_last_daily_breakdown()
 		),

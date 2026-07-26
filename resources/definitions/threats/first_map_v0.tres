@@ -45,8 +45,8 @@ script = ExtResource("2_event")
 day = 12
 enemy_count = 64
 fortification_level = 2
-event_type = &"day_limit"
-public_preview = "第 12 日进入最终战备；不能继续结束本日"
+event_type = &"final_readiness"
+public_preview = "第 12 日进入最终战备；此后暂无新增特殊事件"
 
 [resource]
 script = ExtResource("1_schedule")

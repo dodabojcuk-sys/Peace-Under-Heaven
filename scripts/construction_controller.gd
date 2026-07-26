@@ -468,16 +468,12 @@ func advance_city_time(simulation_delta: float) -> int:
 	if (
 		simulation_delta <= 0.0
 		or city_time_paused
-		or current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
 	):
 		return 0
 
 	var remaining_seconds := simulation_delta
 	var advanced_days := 0
-	while (
-		remaining_seconds > 0.0
-		and current_day < FIRST_MAP_THREAT_SCHEDULE.max_day
-	):
+	while remaining_seconds > 0.0:
 		var seconds_until_boundary := maxf(
 			SECONDS_PER_DAY - day_elapsed_seconds,
 			0.0
@@ -524,17 +520,11 @@ func is_city_time_paused() -> bool:
 
 
 func get_day_progress_ratio() -> float:
-	if current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day:
-		return 1.0
 	return clampf(day_elapsed_seconds / SECONDS_PER_DAY, 0.0, 1.0)
 
 
 func _advance_day_boundary() -> bool:
 	if is_city_action_locked_for_battle():
-		return false
-	if current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day:
-		last_daily_report = "已到第 12 日：最终战备"
-		_refresh_city_ui()
 		return false
 	current_day += 1
 	var maintenance_required := get_maintenance_food_cost()
@@ -2041,16 +2031,12 @@ func _refresh_city_ui() -> void:
 
 
 func _refresh_time_ui() -> void:
-	var time_text := ""
-	if current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day:
-		time_text = "第 %d 日 · 最终战备" % current_day
-	else:
-		var elapsed_seconds := floori(day_elapsed_seconds)
-		time_text = "第 %d 日 · %02d:%02d" % [
-			current_day,
-			elapsed_seconds / 60,
-			elapsed_seconds % 60,
-		]
+	var elapsed_seconds := floori(day_elapsed_seconds)
+	var time_text := "第 %d 日 · %02d:%02d" % [
+		current_day,
+		elapsed_seconds / 60,
+		elapsed_seconds % 60,
+	]
 	if time_summary.text != time_text:
 		time_summary.text = time_text
 	var pause_text := "继续" if city_time_paused else "暂停"

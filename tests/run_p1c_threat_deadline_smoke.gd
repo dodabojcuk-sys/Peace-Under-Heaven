@@ -31,7 +31,7 @@ func _run() -> void:
 	)
 	_check(
 		construction.FIRST_MAP_THREAT_SCHEDULE.max_day == 12,
-		"极限日期固定为第 12 日"
+		"最后一个已定义特殊威胁日期为第 12 日"
 	)
 	_check(
 		construction.get_threat_state().enemy_count == 32
@@ -151,10 +151,28 @@ func _run() -> void:
 	)
 	_check(pause_button.text == "暂停", "第 12 日仍只显示暂停控件")
 	_check(
-		not construction.advance_one_day_for_test(),
-		"第 12 日拒绝继续推进"
+		not construction.is_city_time_paused(),
+		"进入第 12 日不会改变玩家暂停状态"
 	)
-	_check(construction.current_day == 12, "拒绝后日期保持第 12 日")
+	var tech_before_day_13: int = construction.tech_points
+	_check(
+		construction.advance_one_day_for_test(),
+		"第 12 日之后仍可执行通用日界线"
+	)
+	_check(
+		construction.current_day == 13
+			and construction.tech_points == tech_before_day_13 + 1,
+		"第 13 日继续通用城市结算"
+	)
+	_check(
+		construction.enemy_count == 64
+			and construction.enemy_fortification == 2
+			and construction.get_last_daily_breakdown().event_food_loss == 0
+			and int(
+				construction.get_last_daily_breakdown().stopped_placement_id
+			) < 0,
+		"第 13 日保持第 12 日威胁快照且不重复特殊事件"
+	)
 
 	_check(construction.restore_readiness_checkpoint(), "可以恢复第 9 日战备检查点")
 	_check(
