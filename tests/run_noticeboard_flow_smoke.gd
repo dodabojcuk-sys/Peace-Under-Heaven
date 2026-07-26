@@ -62,6 +62,10 @@ func _check_noticeboard_entry_and_cards() -> void:
 				),
 			"%s 卡片显示真实目标和奖励" % mission.title
 		)
+		_check(
+			(card.get_node("StateLabel") as Label).text == "可接受",
+			"%s 卡片状态使用中文，不暴露 AVAILABLE" % mission.title
+		)
 
 
 func _check_prebattle_return() -> void:
@@ -145,6 +149,15 @@ func _check_victory_writeback_and_replay() -> void:
 		construction.get_noticeboard_mission_state(mission_id)
 			== &"COMPLETED",
 		"返回后任务列表刷新为 COMPLETED"
+	)
+	construction._refresh_noticeboard_ui()
+	_check(
+		construction.noticeboard_last_result.text.contains("城郊清剿")
+			and construction.noticeboard_last_result.text.contains("胜利")
+			and not construction.noticeboard_last_result.text.contains(
+				"noticeboard."
+			),
+		"返回摘要显示中文任务名和结果，不暴露 mission_id"
 	)
 
 	_check(construction.start_noticeboard_mission(mission_id), "已完成任务可重玩")

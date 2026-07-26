@@ -21,15 +21,71 @@ const DEBUG_PLAYER_COUNT := 50
 @onready var front_state_label: Label = (
 	$UI/RootPanel/FrontLane/StateLabel
 )
+@onready var front_route_name_label: Label = (
+	$UI/RootPanel/FrontLane/RouteName
+)
+@onready var front_enemy_marker: Panel = (
+	$UI/RootPanel/FrontLane/EnemyMarker
+)
+@onready var front_enemy_count_label: Label = (
+	$UI/RootPanel/FrontLane/EnemyMarker/Count
+)
+@onready var front_gate: ColorRect = $UI/RootPanel/FrontLane/FrontGate
 @onready var side_state_label: Label = (
 	$UI/RootPanel/SideLane/StateLabel
 )
+@onready var side_route_name_label: Label = (
+	$UI/RootPanel/SideLane/RouteName
+)
+@onready var side_enemy_marker: Panel = (
+	$UI/RootPanel/SideLane/EnemyMarker
+)
+@onready var side_enemy_count_label: Label = (
+	$UI/RootPanel/SideLane/EnemyMarker/Count
+)
+@onready var side_gate: ColorRect = $UI/RootPanel/SideLane/SideGate
 @onready var start_button: Button = $UI/RootPanel/StartButton
 @onready var exit_button: Button = $UI/RootPanel/ExitButton
 @onready var squad_controls: HBoxContainer = (
 	$UI/RootPanel/SquadControls
 )
 @onready var marker_layer: Control = $UI/RootPanel/MarkerLayer
+@onready var wagon_panel: Panel = (
+	$UI/RootPanel/MissionObjectLayer/Wagon
+)
+@onready var wagon_label: Label = (
+	$UI/RootPanel/MissionObjectLayer/Wagon/Label
+)
+@onready var wagon_health: ProgressBar = (
+	$UI/RootPanel/MissionObjectLayer/Wagon/Health
+)
+@onready var front_search_zone: Panel = (
+	$UI/RootPanel/MissionObjectLayer/FrontSearchZone
+)
+@onready var side_search_zone: Panel = (
+	$UI/RootPanel/MissionObjectLayer/SideSearchZone
+)
+@onready var extraction_zone: Panel = (
+	$UI/RootPanel/MissionObjectLayer/ExtractionZone
+)
+@onready var selected_squad_title: Label = (
+	$UI/RootPanel/SelectedSquadPanel/Title
+)
+@onready var selected_squad_state: Label = (
+	$UI/RootPanel/SelectedSquadPanel/State
+)
+@onready var selected_advance_button: Button = (
+	$UI/RootPanel/SelectedSquadPanel/AdvanceButton
+)
+@onready var selected_hold_button: Button = (
+	$UI/RootPanel/SelectedSquadPanel/HoldButton
+)
+@onready var selected_retreat_button: Button = (
+	$UI/RootPanel/SelectedSquadPanel/RetreatButton
+)
+@onready var recent_actions_label: Label = (
+	$UI/RootPanel/SelectedSquadPanel/RecentActions
+)
 @onready var exit_input_blocker: ColorRect = (
 	$UI/RootPanel/ExitInputBlocker
 )
@@ -71,6 +127,9 @@ var _confirmed_summary: Dictionary = {}
 var _exit_in_progress := false
 var _return_requested := false
 var _resume_timer_after_exit_cancel := false
+var _selected_squad_id := -1
+var _presentation_snapshot: Dictionary = {}
+var _recent_actions: Array[String] = []
 
 
 func _ready() -> void:
@@ -81,12 +140,22 @@ func _ready() -> void:
 	exit_confirm_button.pressed.connect(confirm_exit_as_retreat)
 	confirm_button.pressed.connect(confirm_pending_result)
 	return_button.pressed.connect(request_return_to_city)
+	selected_advance_button.pressed.connect(
+		_issue_selected_order.bind(BattleOrder.Command.ADVANCE)
+	)
+	selected_hold_button.pressed.connect(
+		_issue_selected_order.bind(BattleOrder.Command.HOLD)
+	)
+	selected_retreat_button.pressed.connect(
+		_issue_selected_order.bind(BattleOrder.Command.RETREAT)
+	)
 	if formal_city_mode:
 		_prepare_formal_city()
 	else:
 		_create_city_fixture()
 	_create_battle_request()
 	_create_squad_controls()
+	_append_recent_action("选择小队，安排战前路线")
 	_refresh_battle_ui()
 
 
@@ -151,7 +220,7 @@ func start_battle() -> bool:
 	start_button.disabled = true
 	for squad_id in _squad_ui:
 		_squad_ui[squad_id].route_button.disabled = true
-		_set_command_buttons_disabled(int(squad_id), false)
+	_append_recent_action("战斗开始，小队命令将在下一战斗刻生效")
 	tick_timer.start()
 	_refresh_battle_ui()
 	return true
@@ -181,6 +250,7 @@ func open_exit_confirmation() -> bool:
 	tick_timer.stop()
 	exit_input_blocker.visible = true
 	exit_confirmation.visible = true
+	_set_selected_commands_disabled(true)
 	_refresh_exit_ui()
 	return true
 
@@ -197,7 +267,7 @@ func cancel_exit_confirmation() -> bool:
 	):
 		tick_timer.start()
 	_resume_timer_after_exit_cancel = false
-	_refresh_exit_ui()
+	_refresh_battle_ui()
 	return true
 
 
@@ -258,6 +328,13 @@ func set_squad_route(
 ) -> bool:
 	if not coordinator.set_squad_route(squad_id, route_id):
 		return false
+	_append_recent_action(
+		"%s改为部署至%s"
+		% [
+			BattlePresentationModel.squad_name(squad_id),
+			_get_route_name(route_id),
+		]
+	)
 	_refresh_battle_ui()
 	return true
 
@@ -268,6 +345,13 @@ func issue_squad_order(
 ) -> BattleOrder:
 	var order := coordinator.issue_order(squad_id, command)
 	if order != null:
+		_append_recent_action(
+			"%s：%s命令已提交"
+			% [
+				BattlePresentationModel.squad_name(squad_id),
+				BattlePresentationModel.command_text(command),
+			]
+		)
 		_refresh_battle_ui()
 	return order
 
@@ -292,7 +376,7 @@ func confirm_pending_result() -> Dictionary:
 	result_label.text = (
 		"%s\n幸存 %d｜伤亡 %d\n粮草 -%d｜木材 +%d｜粮食 +%d%s"
 		% [
-			str(summary.outcome),
+			_outcome_id_text(StringName(summary.outcome)),
 			int(summary.survivor_count),
 			int(summary.casualty_count),
 			int(summary.get("actual_food_cost", 0)),
@@ -466,12 +550,20 @@ func _create_squad_controls() -> void:
 		var squad_id := int(squad_snapshot.squad_id)
 		var panel := VBoxContainer.new()
 		panel.name = "Squad%d" % squad_id
-		panel.custom_minimum_size = Vector2(340.0, 104.0)
+		panel.custom_minimum_size = Vector2(134.0, 148.0)
 		squad_controls.add_child(panel)
+
+		var select_button := Button.new()
+		select_button.name = "SelectButton"
+		select_button.text = BattlePresentationModel.squad_name(squad_id)
+		select_button.pressed.connect(select_squad.bind(squad_id))
+		panel.add_child(select_button)
 
 		var status := Label.new()
 		status.name = "Status"
 		status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		status.custom_minimum_size = Vector2(130.0, 48.0)
 		panel.add_child(status)
 
 		var route_button := Button.new()
@@ -479,70 +571,21 @@ func _create_squad_controls() -> void:
 		route_button.pressed.connect(_on_route_button_pressed.bind(squad_id))
 		panel.add_child(route_button)
 
-		var actions := HBoxContainer.new()
-		actions.name = "Actions"
-		actions.alignment = BoxContainer.ALIGNMENT_CENTER
-		panel.add_child(actions)
-		var advance_button := _add_command_button(
-			actions,
-			"AdvanceButton",
-			"前进",
-			squad_id,
-			BattleOrder.Command.ADVANCE
-		)
-		var hold_button := _add_command_button(
-			actions,
-			"HoldButton",
-			"坚守",
-			squad_id,
-			BattleOrder.Command.HOLD
-		)
-		var retreat_button := _add_command_button(
-			actions,
-			"RetreatButton",
-			"撤退",
-			squad_id,
-			BattleOrder.Command.RETREAT
-		)
 		_squad_ui[squad_id] = {
 			"status": status,
 			"route_button": route_button,
-			"advance_button": advance_button,
-			"hold_button": hold_button,
-			"retreat_button": retreat_button,
+			"select_button": select_button,
 		}
-		_set_command_buttons_disabled(squad_id, true)
 
-		var marker := ColorRect.new()
+		var marker := Button.new()
 		marker.name = "SquadMarker%d" % squad_id
-		marker.size = Vector2(26.0, 26.0)
-		marker.color = Color(0.77, 0.67, 0.38, 1.0)
-		marker.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		var marker_text := Label.new()
-		marker_text.text = str(squad_id)
-		marker_text.size = marker.size
-		marker_text.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		marker_text.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-		marker_text.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		marker.add_child(marker_text)
+		marker.size = Vector2(76.0, 50.0)
+		marker.text = BattlePresentationModel.squad_name(squad_id)
+		marker.pressed.connect(select_squad.bind(squad_id))
 		marker_layer.add_child(marker)
 		_squad_markers[squad_id] = marker
-
-
-func _add_command_button(
-	parent: HBoxContainer,
-	node_name: String,
-	text_value: String,
-	squad_id: int,
-	command: BattleOrder.Command
-) -> Button:
-	var button := Button.new()
-	button.name = node_name
-	button.text = text_value
-	button.custom_minimum_size = Vector2(92.0, 32.0)
-	button.pressed.connect(_on_command_button_pressed.bind(squad_id, command))
-	parent.add_child(button)
-	return button
+		if _selected_squad_id < 0:
+			_selected_squad_id = squad_id
 
 
 func _on_route_button_pressed(squad_id: int) -> void:
@@ -561,11 +604,24 @@ func _on_route_button_pressed(squad_id: int) -> void:
 		return
 
 
-func _on_command_button_pressed(
-	squad_id: int,
-	command: BattleOrder.Command
-) -> void:
-	issue_squad_order(squad_id, command)
+func select_squad(squad_id: int) -> bool:
+	if not _squad_ui.has(squad_id):
+		return false
+	_selected_squad_id = squad_id
+	_refresh_battle_ui()
+	return true
+
+
+func _issue_selected_order(command: BattleOrder.Command) -> void:
+	if (
+		_selected_squad_id < 0
+		or _exit_in_progress
+		or exit_confirmation.visible
+		or request == null
+		or request.phase != BattleRequest.PHASE_ACTIVE
+	):
+		return
+	issue_squad_order(_selected_squad_id, command)
 
 
 func _on_tick_timeout() -> void:
@@ -583,71 +639,67 @@ func _advance_one_tick() -> BattleResult:
 
 func _refresh_battle_ui() -> void:
 	if request == null:
-		status_label.text = "C0 Battle Graybox · 请求创建失败"
+		status_label.text = "战斗请求创建失败"
 		_refresh_exit_ui()
 		return
-	if noticeboard_mission_mode:
-		title_label.text = "C0 Battle Graybox · %s" % mission_definition.title
-		instruction_label.text = "%s｜%s" % [
-			mission_definition.objective_text,
-			_get_mission_progress_text(),
-		]
-	var tick := (
-		coordinator.active_session.current_tick
-		if coordinator.active_session != null
-		else 0
+	var next_snapshot := BattlePresentationModel.build_snapshot(
+		request,
+		coordinator.active_session,
+		mission_definition,
+		_selected_squad_id
 	)
-	status_label.text = (
-		"C0 Battle Graybox · %s · Tick %d · %.2fs"
-		% [
-			str(request.phase),
-			tick,
-			float(tick * BattleSession.TICK_MILLISECONDS) / 1000.0,
-		]
-	)
-	var front := _get_display_route_state(
-		CommittedForceSnapshot.FRONT_ROUTE
-	)
-	var side := _get_display_route_state(
-		CommittedForceSnapshot.SIDE_ROUTE
-	)
-	var front_name := (
-		mission_definition.front_route_name
-		if noticeboard_mission_mode
-		else "正门"
-	)
-	var side_name := (
-		mission_definition.side_route_name
-		if noticeboard_mission_mode
-		else "侧门"
-	)
-	front_state_label.text = "%s｜障碍 HP %d｜敌人 %d" % [
-		front_name,
-		int(front.gate_hp),
-		int(front.enemy_members),
+	_capture_presentation_changes(_presentation_snapshot, next_snapshot)
+	_presentation_snapshot = next_snapshot
+	title_label.text = "C0 Battle Graybox · %s" % str(next_snapshot.title)
+	status_label.text = "%s · 第 %d 战斗刻 · %.1f 秒" % [
+		str(next_snapshot.phase_text),
+		int(next_snapshot.tick),
+		float(next_snapshot.elapsed_seconds),
 	]
-	side_state_label.text = "%s｜障碍 HP %d｜敌人 %d" % [
-		side_name,
-		int(side.gate_hp),
-		int(side.enemy_members),
+	instruction_label.text = "目标：%s｜%s" % [
+		str(next_snapshot.objective_text),
+		str(next_snapshot.objective.progress_text),
 	]
-	for squad_snapshot in request.committed_force.squads:
-		var squad_id := int(squad_snapshot.squad_id)
-		var state := _get_display_squad_state(squad_snapshot)
-		var route_name := (
-			front_name
-			if StringName(state.route_id)
-				== CommittedForceSnapshot.FRONT_ROUTE
-			else side_name
+	var routes: Array = next_snapshot.routes
+	_refresh_route_ui(
+		routes[0],
+		front_route_name_label,
+		front_state_label,
+		front_enemy_marker,
+		front_enemy_count_label,
+		front_gate,
+		next_snapshot.objective
+	)
+	_refresh_route_ui(
+		routes[1],
+		side_route_name_label,
+		side_state_label,
+		side_enemy_marker,
+		side_enemy_count_label,
+		side_gate,
+		next_snapshot.objective
+	)
+	for state in next_snapshot.squads:
+		var squad_id := int(state.squad_id)
+		_squad_ui[squad_id].status.text = "%d/%d 人\n%s" % [
+			int(state.alive_members),
+			int(state.initial_members),
+			str(state.state_text),
+		]
+		_squad_ui[squad_id].route_button.text = str(state.route_name)
+		_squad_ui[squad_id].route_button.visible = (
+			request.phase == BattleRequest.PHASE_RESERVED
 		)
-		_squad_ui[squad_id].status.text = (
-			"小队 %d｜人数 %d｜%s"
-			% [squad_id, int(state.alive_members), str(state.command_name)]
+		_squad_ui[squad_id].select_button.text = (
+			"▶ %s" % str(state.name)
+			if bool(state.selected)
+			else str(state.name)
 		)
-		_squad_ui[squad_id].route_button.text = "路线：%s（战前可切换）" % (
-			route_name
-		)
-		_update_marker(squad_id, state)
+		_update_marker(state)
+	_refresh_selected_squad(next_snapshot)
+	_refresh_mission_objects(next_snapshot.objective)
+	start_button.visible = request.phase == BattleRequest.PHASE_RESERVED
+	_refresh_recent_actions()
 	_refresh_exit_ui()
 
 
@@ -674,120 +726,284 @@ func _refresh_exit_ui() -> void:
 	)
 
 
-func _get_display_route_state(route_id: StringName) -> Dictionary:
-	if coordinator.active_session == null:
-		var initial: Dictionary = request.enemy_force.route_states[route_id]
-		return {
-			"gate_hp": int(initial.gate_hp),
-			"enemy_members": int(initial.enemy_members),
-		}
-	var route := coordinator.active_session.get_route_state(route_id)
-	return {
-		"gate_hp": int(route.gate_hp),
-		"enemy_members": _alive_members_for_ui(int(route.enemy_total_hp)),
-	}
-
-
-func _get_display_squad_state(snapshot: Dictionary) -> Dictionary:
-	if coordinator.active_session == null:
-		return {
-			"route_id": StringName(snapshot.route_id),
-			"alive_members": int(snapshot.initial_members),
-			"position_fixed": 0,
-			"command_name": "待命",
-			"exited": false,
-		}
-	var state := coordinator.active_session.get_squad_state(
-		int(snapshot.squad_id)
-	)
-	return {
-		"route_id": StringName(state.route_id),
-		"alive_members": _alive_members_for_ui(int(state.total_hp)),
-		"position_fixed": int(state.position_fixed),
-		"command_name": _command_name(int(state.active_order)),
-		"exited": bool(state.exited),
-	}
-
-
-func _update_marker(squad_id: int, state: Dictionary) -> void:
-	var route_id := StringName(state.route_id)
-	var distance := (
-		int(
-			coordinator.active_session.get_route_state(
-				route_id
-			).get("distance_fixed", 0)
+func _refresh_route_ui(
+	route: Dictionary,
+	name_label: Label,
+	state_label: Label,
+	enemy_marker: Panel,
+	enemy_count_label: Label,
+	gate: ColorRect,
+	objective: Dictionary
+) -> void:
+	name_label.text = str(route.name)
+	var threatens_wagon := (
+		bool(objective.get("show_wagon", false))
+		and str(route.name) in Array(
+			objective.get("attacking_routes", [])
 		)
-		if coordinator.active_session != null
-		else (
-			mission_definition.front_distance_units
-				* BattleSession.DISTANCE_SCALE
-			if (
-				noticeboard_mission_mode
-				and route_id == CommittedForceSnapshot.FRONT_ROUTE
-			)
+	)
+	enemy_count_label.text = "敌军 %d\n%s" % [
+		int(route.enemy_count),
+		(
+			"已肃清"
+			if int(route.enemy_count) <= 0
 			else (
-				mission_definition.side_distance_units
-					* BattleSession.DISTANCE_SCALE
-				if noticeboard_mission_mode
+				"攻击粮车"
+				if threatens_wagon
 				else (
-					BattleSession.FRONT_DISTANCE_FIXED
-					if route_id
-						== CommittedForceSnapshot.FRONT_ROUTE
-					else BattleSession.SIDE_DISTANCE_FIXED
+					"接战中"
+					if not Array(route.engaged_squad_ids).is_empty()
+					else "据守"
 				)
 			)
+		),
+	]
+	enemy_marker.visible = int(route.enemy_count) > 0
+	gate.visible = bool(route.has_obstacle) and int(route.gate_hp) > 0
+	state_label.text = (
+		"%s · 障碍 %d/%d"
+		% [
+			str(route.enemy_status),
+			int(route.gate_hp),
+			int(route.gate_max_hp),
+		]
+		if bool(route.has_obstacle)
+		else (
+			"正在威胁粮车"
+			if threatens_wagon
+			else str(route.enemy_status)
 		)
 	)
-	var ratio := clampf(
-		float(int(state.position_fixed)) / float(distance),
-		0.0,
-		1.0
+
+
+func _update_marker(state: Dictionary) -> void:
+	var squad_id := int(state.squad_id)
+	var marker := _squad_markers[squad_id] as Button
+	var lane := (
+		$UI/RootPanel/FrontLane as ColorRect
+		if StringName(state.route_id)
+			== CommittedForceSnapshot.FRONT_ROUTE
+		else $UI/RootPanel/SideLane as ColorRect
 	)
-	var marker := _squad_markers[squad_id] as ColorRect
+	var position_ratio := float(state.position_ratio)
+	var formation_offset := (
+		float((squad_id - 1) * 68)
+		if position_ratio <= 0.02
+		else 0.0
+	)
+	var travel_width := maxf(lane.size.x - 210.0, 240.0)
 	marker.position = Vector2(
-		190.0 + 730.0 * ratio,
-		151.0 if route_id == CommittedForceSnapshot.FRONT_ROUTE else 311.0
-	) + Vector2(0.0, float((squad_id - 1) * 9))
-	marker.visible = not bool(state.exited) and int(state.alive_members) > 0
+		lane.position.x + 8.0 + travel_width * position_ratio
+			+ formation_offset,
+		lane.position.y + 10.0
+	)
+	marker.text = "%s\n%d/%d" % [
+		str(state.name),
+		int(state.alive_members),
+		int(state.initial_members),
+	]
+	marker.modulate = (
+		Color(1.0, 0.84, 0.43, 1.0)
+		if bool(state.selected)
+		else Color(0.82, 0.86, 0.78, 1.0)
+	)
+	marker.visible = int(state.alive_members) > 0 and str(state.state_text) != "已撤离"
 
 
-func _get_mission_progress_text() -> String:
-	if not noticeboard_mission_mode or mission_definition == null:
-		return ""
-	var objective := (
-		coordinator.active_session.get_mission_objective_state()
-		if coordinator.active_session != null
-		else {}
-	)
-	var remaining := int(
-		objective.get(
-			"remaining_enemy_count",
-			mission_definition.get_enemy_total()
-		)
-	)
-	if mission_definition.objective_type == MissionDefinition.OBJECTIVE_PROTECT:
-		return "%s %d/%d｜剩余敌人 %d" % [
-			mission_definition.protect_target_name,
-			int(
-				objective.get(
-					"protect_target_hp",
-					mission_definition.protect_target_hp
+func _refresh_selected_squad(snapshot: Dictionary) -> void:
+	var selected: Dictionary = {}
+	for state in snapshot.squads:
+		if int(state.squad_id) == _selected_squad_id:
+			selected = state
+			break
+	if selected.is_empty():
+		selected_squad_title.text = "当前小队：未选择"
+		selected_squad_state.text = "点击战场中的小队标记"
+		_set_selected_commands_disabled(true)
+		return
+	selected_squad_title.text = "当前小队：%s" % str(selected.name)
+	selected_squad_state.text = "%s｜%d/%d 人\n%s｜命令：%s" % [
+		str(selected.route_name),
+		int(selected.alive_members),
+		int(selected.initial_members),
+		str(selected.state_text),
+		str(selected.command_text),
+	]
+	_set_selected_commands_disabled(not bool(selected.command_enabled))
+
+
+func _refresh_mission_objects(objective: Dictionary) -> void:
+	wagon_panel.visible = bool(objective.get("show_wagon", false))
+	front_search_zone.visible = false
+	side_search_zone.visible = false
+	extraction_zone.visible = false
+	if wagon_panel.visible:
+		var hp := int(objective.get("wagon_hp", 0))
+		var max_hp := maxi(int(objective.get("wagon_max_hp", 1)), 1)
+		wagon_label.text = "%s %d/%d%s" % [
+			str(objective.get("wagon_name", "护送目标")),
+			hp,
+			max_hp,
+			(
+				" · 已被摧毁"
+				if bool(objective.get("failed", false))
+				else (
+					" · 遭受威胁"
+					if bool(objective.get("wagon_danger", false))
+					else " · 安全"
 				)
 			),
-			mission_definition.protect_target_hp,
-			remaining,
 		]
-	if mission_definition.objective_type == MissionDefinition.OBJECTIVE_SCOUT:
-		return "%s｜%s｜剩余敌人 %d" % [
-			"已发现斥候"
-				if bool(objective.get("scout_found", false))
-				else "斥候位置未知",
-			"已到达撤离区"
-				if bool(objective.get("extraction_reached", false))
-				else "尚未撤离",
-			remaining,
-		]
-	return "剩余敌人 %d" % remaining
+		wagon_health.max_value = max_hp
+		wagon_health.value = hp
+	if bool(objective.get("show_search", false)):
+		front_search_zone.visible = true
+		side_search_zone.visible = true
+		extraction_zone.visible = true
+		var zones: Array = objective.get("search_zones", [])
+		for zone in zones:
+			var panel := (
+				front_search_zone
+				if StringName(zone.route_id)
+					== CommittedForceSnapshot.FRONT_ROUTE
+				else side_search_zone
+			)
+			var label := panel.get_node("Label") as Label
+			label.text = str(zone.label)
+		extraction_zone.get_node("Label").text = (
+			"已安全撤离"
+			if bool(objective.get("extraction_reached", false))
+			else "安全撤离区"
+		)
+
+
+func _set_selected_commands_disabled(disabled: bool) -> void:
+	selected_advance_button.disabled = disabled
+	selected_hold_button.disabled = disabled
+	selected_retreat_button.disabled = disabled
+
+
+func _capture_presentation_changes(
+	previous: Dictionary,
+	current: Dictionary
+) -> void:
+	if previous.is_empty() or current.is_empty():
+		return
+	var previous_routes := _index_by(previous.routes, "route_id")
+	for route in current.routes:
+		var before: Dictionary = previous_routes.get(route.route_id, {})
+		if (
+			not before.is_empty()
+			and int(before.enemy_count) != int(route.enemy_count)
+		):
+			_append_recent_action(
+				"%s敌军：%d → %d"
+				% [
+					str(route.name),
+					int(before.enemy_count),
+					int(route.enemy_count),
+				]
+			)
+		if (
+			not before.is_empty()
+			and int(before.gate_hp) != int(route.gate_hp)
+		):
+			_append_recent_action(
+				"%s障碍：%d → %d"
+				% [
+					str(route.name),
+					int(before.gate_hp),
+					int(route.gate_hp),
+				]
+			)
+	var previous_squads := _index_by(previous.squads, "squad_id")
+	for squad in current.squads:
+		var before_squad: Dictionary = previous_squads.get(
+			squad.squad_id,
+			{}
+		)
+		if (
+			not before_squad.is_empty()
+			and int(before_squad.alive_members)
+				!= int(squad.alive_members)
+		):
+			_append_recent_action(
+				"%s兵力：%d → %d"
+				% [
+					str(squad.name),
+					int(before_squad.alive_members),
+					int(squad.alive_members),
+				]
+			)
+		if (
+			not before_squad.is_empty()
+			and str(before_squad.state_text) != str(squad.state_text)
+			and str(squad.state_text) in [
+				"接敌中",
+				"已撤离",
+				"失去战斗能力",
+			]
+		):
+			_append_recent_action(
+				"%s：%s" % [str(squad.name), str(squad.state_text)]
+			)
+	var before_objective: Dictionary = previous.objective
+	var current_objective: Dictionary = current.objective
+	if (
+		bool(current_objective.get("show_wagon", false))
+		and int(before_objective.get("wagon_hp", -1))
+			!= int(current_objective.get("wagon_hp", -1))
+	):
+		_append_recent_action(
+			"粮车受损：%d → %d"
+			% [
+				int(before_objective.get("wagon_hp", 0)),
+				int(current_objective.get("wagon_hp", 0)),
+			]
+		)
+	if (
+		not bool(before_objective.get("scout_found", false))
+		and bool(current_objective.get("scout_found", false))
+	):
+		_append_recent_action("已找到失踪斥候，立即向撤离区返回")
+
+
+func _index_by(items: Array, key: String) -> Dictionary:
+	var indexed := {}
+	for item in items:
+		indexed[item.get(key)] = item
+	return indexed
+
+
+func _append_recent_action(message: String) -> void:
+	if message.is_empty():
+		return
+	if not _recent_actions.is_empty() and _recent_actions[-1] == message:
+		return
+	_recent_actions.append(message)
+	while _recent_actions.size() > 3:
+		_recent_actions.pop_front()
+
+
+func _refresh_recent_actions() -> void:
+	var lines: Array[String] = ["最近战况"]
+	for message in _recent_actions:
+		lines.append("· %s" % message)
+	recent_actions_label.text = "\n".join(lines)
+
+
+func _get_route_name(route_id: StringName) -> String:
+	if mission_definition != null:
+		return (
+			mission_definition.front_route_name
+			if route_id == CommittedForceSnapshot.FRONT_ROUTE
+			else mission_definition.side_route_name
+		)
+	return (
+		"正门路线"
+		if route_id == CommittedForceSnapshot.FRONT_ROUTE
+		else "侧门路线"
+	)
 
 
 func _show_pending_result(battle_result: BattleResult) -> void:
@@ -800,42 +1016,30 @@ func _show_pending_result(battle_result: BattleResult) -> void:
 	return_button.visible = false
 	return_button.disabled = true
 	result_label.text = (
-		"%s\nTick %d｜幸存 %d｜伤亡 %d\n确认后写回城市"
+		"%s\n第 %d 战斗刻｜幸存 %d｜伤亡 %d\n确认后写回城市"
 		% [
-			BattleOutcome.to_id(battle_result.outcome),
+			_outcome_text(battle_result.outcome),
 			battle_result.finished_tick,
 			battle_result.survivor_count,
 			battle_result.casualty_count,
 		]
 	)
-	for squad_id in _squad_ui:
-		_set_command_buttons_disabled(int(squad_id), true)
+	_append_recent_action("战斗结束：%s" % _outcome_text(battle_result.outcome))
+	_set_selected_commands_disabled(true)
 	_refresh_exit_ui()
 
 
-func _set_command_buttons_disabled(squad_id: int, disabled: bool) -> void:
-	if not _squad_ui.has(squad_id):
-		return
-	for key in [
-		"advance_button",
-		"hold_button",
-		"retreat_button",
-	]:
-		_squad_ui[squad_id][key].disabled = disabled
+func _outcome_text(outcome: BattleOutcome.Value) -> String:
+	if outcome == BattleOutcome.Value.VICTORY:
+		return "胜利"
+	if outcome == BattleOutcome.Value.RETREAT:
+		return "主动撤退"
+	return "失败"
 
 
-func _alive_members_for_ui(total_hp: int) -> int:
-	if total_hp <= 0:
-		return 0
-	@warning_ignore("integer_division")
-	return (
-		total_hp + request.committed_force.hp_per_member - 1
-	) / request.committed_force.hp_per_member
-
-
-func _command_name(command: BattleOrder.Command) -> String:
-	if command == BattleOrder.Command.ADVANCE:
-		return "前进"
-	if command == BattleOrder.Command.RETREAT:
-		return "撤退"
-	return "坚守"
+func _outcome_id_text(outcome: StringName) -> String:
+	if outcome == &"VICTORY":
+		return "胜利"
+	if outcome == &"RETREAT":
+		return "主动撤退"
+	return "失败"

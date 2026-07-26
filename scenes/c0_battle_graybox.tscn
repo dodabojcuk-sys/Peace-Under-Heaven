@@ -17,145 +17,389 @@ wait_time = 0.25
 [node name="UI" type="CanvasLayer" parent="."]
 
 [node name="RootPanel" type="ColorRect" parent="UI"]
-offset_right = 1152.0
-offset_bottom = 648.0
-color = Color(0.12, 0.13, 0.14, 1)
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+color = Color(0.105, 0.115, 0.12, 1)
+
+[node name="TopBar" type="ColorRect" parent="UI/RootPanel"]
+layout_mode = 0
+anchor_right = 1.0
+offset_bottom = 102.0
+color = Color(0.145, 0.155, 0.155, 1)
 
 [node name="Title" type="Label" parent="UI/RootPanel"]
 offset_left = 24.0
-offset_top = 16.0
-offset_right = 1128.0
-offset_bottom = 52.0
-theme_override_colors/font_color = Color(0.92, 0.79, 0.45, 1)
-theme_override_font_sizes/font_size = 26
-text = "C0 Battle Graybox"
-horizontal_alignment = 1
+offset_top = 12.0
+offset_right = 840.0
+offset_bottom = 44.0
+theme_override_colors/font_color = Color(0.93, 0.82, 0.55, 1)
+theme_override_font_sizes/font_size = 24
+text = "北坡防御战"
 
 [node name="ExitButton" type="Button" parent="UI/RootPanel"]
-offset_left = 988.0
-offset_top = 16.0
-offset_right = 1128.0
-offset_bottom = 52.0
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -164.0
+offset_top = 14.0
+offset_right = -24.0
+offset_bottom = 50.0
 text = "返回内城"
 
 [node name="StatusLabel" type="Label" parent="UI/RootPanel"]
 offset_left = 24.0
-offset_top = 58.0
-offset_right = 1128.0
-offset_bottom = 88.0
-theme_override_colors/font_color = Color(0.82, 0.84, 0.84, 1)
+offset_top = 48.0
+offset_right = 430.0
+offset_bottom = 76.0
+theme_override_colors/font_color = Color(0.88, 0.89, 0.86, 1)
 theme_override_font_sizes/font_size = 15
-text = "C0 Battle Graybox · RESERVED"
-horizontal_alignment = 1
+text = "战前部署"
 
 [node name="Instruction" type="Label" parent="UI/RootPanel"]
+offset_left = 442.0
+offset_top = 48.0
+anchor_right = 1.0
+offset_right = -24.0
+offset_bottom = 92.0
+theme_override_colors/font_color = Color(0.74, 0.77, 0.74, 1)
+text = "目标：突破两处城门并击溃守军"
+horizontal_alignment = 2
+
+[node name="Battlefield" type="Panel" parent="UI/RootPanel"]
 offset_left = 24.0
-offset_top = 92.0
-offset_right = 1128.0
-offset_bottom = 120.0
-theme_override_colors/font_color = Color(0.65, 0.68, 0.68, 1)
-text = "战前切换路线 → 开始战斗 → 每支小队下达 前进 / 坚守 / 撤退"
+offset_top = 112.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_right = -24.0
+offset_bottom = -202.0
+mouse_filter = 2
+
+[node name="DirectionLabel" type="Label" parent="UI/RootPanel/Battlefield"]
+offset_left = 16.0
+offset_top = 12.0
+offset_right = 1040.0
+offset_bottom = 36.0
+theme_override_colors/font_color = Color(0.58, 0.64, 0.63, 1)
+text = "我方集结区 / 撤离区  ←                                             敌军来向  ←"
 horizontal_alignment = 1
 
 [node name="FrontLane" type="ColorRect" parent="UI/RootPanel"]
-offset_left = 170.0
-offset_top = 142.0
-offset_right = 950.0
-offset_bottom = 198.0
-color = Color(0.24, 0.26, 0.28, 1)
+offset_left = 168.0
+anchor_top = 0.25
+anchor_right = 1.0
+anchor_bottom = 0.25
+offset_top = 4.0
+offset_right = -96.0
+offset_bottom = 74.0
+color = Color(0.205, 0.225, 0.22, 1)
 
 [node name="RouteName" type="Label" parent="UI/RootPanel/FrontLane"]
 offset_left = -140.0
-offset_top = 16.0
+offset_top = 22.0
 offset_right = -16.0
-offset_bottom = 42.0
-theme_override_colors/font_color = Color(0.85, 0.85, 0.82, 1)
-text = "正门路线 80"
+offset_bottom = 48.0
+theme_override_colors/font_color = Color(0.88, 0.88, 0.82, 1)
+theme_override_font_sizes/font_size = 16
+text = "正门路线"
 horizontal_alignment = 2
 
 [node name="StateLabel" type="Label" parent="UI/RootPanel/FrontLane"]
-offset_left = 430.0
-offset_top = 15.0
-offset_right = 734.0
-offset_bottom = 42.0
-theme_override_colors/font_color = Color(0.9, 0.72, 0.5, 1)
-text = "正门｜门 HP 600｜守军 13"
+anchor_left = 0.32
+anchor_right = 0.58
+offset_top = 42.0
+offset_bottom = 66.0
+theme_override_colors/font_color = Color(0.88, 0.69, 0.47, 1)
+text = "障碍 600/600"
 horizontal_alignment = 2
 
 [node name="FrontGate" type="ColorRect" parent="UI/RootPanel/FrontLane"]
-offset_left = 750.0
-offset_top = -8.0
-offset_right = 780.0
-offset_bottom = 64.0
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -52.0
+offset_top = -5.0
+offset_right = -20.0
+offset_bottom = 75.0
 color = Color(0.55, 0.33, 0.25, 1)
 
+[node name="EnemyMarker" type="Panel" parent="UI/RootPanel/FrontLane"]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -144.0
+offset_top = 6.0
+offset_right = -60.0
+offset_bottom = 64.0
+mouse_filter = 2
+
+[node name="Count" type="Label" parent="UI/RootPanel/FrontLane/EnemyMarker"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.95, 0.67, 0.57, 1)
+theme_override_font_sizes/font_size = 13
+text = "敌军 0"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="SideLane" type="ColorRect" parent="UI/RootPanel"]
-offset_left = 170.0
-offset_top = 302.0
-offset_right = 950.0
-offset_bottom = 358.0
-color = Color(0.2, 0.25, 0.28, 1)
+offset_left = 168.0
+anchor_top = 0.48
+anchor_right = 1.0
+anchor_bottom = 0.48
+offset_top = 5.0
+offset_right = -96.0
+offset_bottom = 75.0
+color = Color(0.18, 0.225, 0.235, 1)
 
 [node name="RouteName" type="Label" parent="UI/RootPanel/SideLane"]
 offset_left = -140.0
-offset_top = 16.0
+offset_top = 22.0
 offset_right = -16.0
-offset_bottom = 42.0
-theme_override_colors/font_color = Color(0.85, 0.85, 0.82, 1)
-text = "侧门路线 120"
+offset_bottom = 48.0
+theme_override_colors/font_color = Color(0.88, 0.88, 0.82, 1)
+theme_override_font_sizes/font_size = 16
+text = "侧门路线"
 horizontal_alignment = 2
 
 [node name="StateLabel" type="Label" parent="UI/RootPanel/SideLane"]
-offset_left = 430.0
-offset_top = 15.0
-offset_right = 734.0
-offset_bottom = 42.0
-theme_override_colors/font_color = Color(0.9, 0.72, 0.5, 1)
-text = "侧门｜门 HP 360｜守军 19"
+anchor_left = 0.32
+anchor_right = 0.58
+offset_top = 42.0
+offset_bottom = 66.0
+theme_override_colors/font_color = Color(0.88, 0.69, 0.47, 1)
+text = "障碍 360/360"
 horizontal_alignment = 2
 
 [node name="SideGate" type="ColorRect" parent="UI/RootPanel/SideLane"]
-offset_left = 750.0
-offset_top = -8.0
-offset_right = 780.0
-offset_bottom = 64.0
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -52.0
+offset_top = -5.0
+offset_right = -20.0
+offset_bottom = 75.0
 color = Color(0.45, 0.3, 0.24, 1)
+
+[node name="EnemyMarker" type="Panel" parent="UI/RootPanel/SideLane"]
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -144.0
+offset_top = 6.0
+offset_right = -60.0
+offset_bottom = 64.0
+mouse_filter = 2
+
+[node name="Count" type="Label" parent="UI/RootPanel/SideLane/EnemyMarker"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(0.95, 0.67, 0.57, 1)
+theme_override_font_sizes/font_size = 13
+text = "敌军 0"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="MarkerLayer" type="Control" parent="UI/RootPanel"]
 layout_mode = 0
-offset_right = 1152.0
-offset_bottom = 648.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 2
 
+[node name="MissionObjectLayer" type="Control" parent="UI/RootPanel"]
+layout_mode = 0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="Wagon" type="Panel" parent="UI/RootPanel/MissionObjectLayer"]
+visible = false
+anchor_top = 0.37
+anchor_bottom = 0.37
+offset_left = 500.0
+offset_top = 2.0
+offset_right = 652.0
+offset_bottom = 66.0
+
+[node name="Label" type="Label" parent="UI/RootPanel/MissionObjectLayer/Wagon"]
+offset_left = 8.0
+offset_top = 5.0
+offset_right = 144.0
+offset_bottom = 29.0
+text = "粮车"
+horizontal_alignment = 1
+
+[node name="Health" type="ProgressBar" parent="UI/RootPanel/MissionObjectLayer/Wagon"]
+offset_left = 12.0
+offset_top = 34.0
+offset_right = 140.0
+offset_bottom = 54.0
+show_percentage = false
+
+[node name="FrontSearchZone" type="Panel" parent="UI/RootPanel/MissionObjectLayer"]
+visible = false
+anchor_top = 0.25
+anchor_bottom = 0.25
+offset_left = 694.0
+offset_top = 12.0
+offset_right = 806.0
+offset_bottom = 66.0
+
+[node name="Label" type="Label" parent="UI/RootPanel/MissionObjectLayer/FrontSearchZone"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "搜索区？"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="SideSearchZone" type="Panel" parent="UI/RootPanel/MissionObjectLayer"]
+visible = false
+anchor_top = 0.48
+anchor_bottom = 0.48
+offset_left = 694.0
+offset_top = 13.0
+offset_right = 806.0
+offset_bottom = 67.0
+
+[node name="Label" type="Label" parent="UI/RootPanel/MissionObjectLayer/SideSearchZone"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "搜索区？"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ExtractionZone" type="Panel" parent="UI/RootPanel/MissionObjectLayer"]
+visible = false
+anchor_top = 0.37
+anchor_bottom = 0.37
+offset_left = 170.0
+offset_top = 2.0
+offset_right = 286.0
+offset_bottom = 70.0
+
+[node name="Label" type="Label" parent="UI/RootPanel/MissionObjectLayer/ExtractionZone"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+text = "安全撤离区"
+horizontal_alignment = 1
+vertical_alignment = 1
+
 [node name="StartButton" type="Button" parent="UI/RootPanel"]
+anchor_top = 1.0
+anchor_bottom = 1.0
 offset_left = 476.0
-offset_top = 400.0
+offset_top = -246.0
 offset_right = 676.0
-offset_bottom = 444.0
+offset_bottom = -206.0
 text = "开始战斗"
 
 [node name="SquadControls" type="HBoxContainer" parent="UI/RootPanel"]
-offset_left = 48.0
-offset_top = 478.0
-offset_right = 1104.0
-offset_bottom = 620.0
-theme_override_constants/separation = 12
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -188.0
+offset_right = 450.0
+offset_bottom = -24.0
+theme_override_constants/separation = 8
 alignment = 1
+
+[node name="SelectedSquadPanel" type="Panel" parent="UI/RootPanel"]
+offset_left = 462.0
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_top = -188.0
+offset_right = -24.0
+offset_bottom = -24.0
+
+[node name="Title" type="Label" parent="UI/RootPanel/SelectedSquadPanel"]
+offset_left = 16.0
+offset_top = 12.0
+offset_right = 308.0
+offset_bottom = 40.0
+theme_override_colors/font_color = Color(0.92, 0.82, 0.56, 1)
+theme_override_font_sizes/font_size = 18
+text = "当前小队：一队"
+
+[node name="State" type="Label" parent="UI/RootPanel/SelectedSquadPanel"]
+offset_left = 16.0
+offset_top = 46.0
+offset_right = 326.0
+offset_bottom = 92.0
+autowrap_mode = 2
+text = "等待部署"
+
+[node name="AdvanceButton" type="Button" parent="UI/RootPanel/SelectedSquadPanel"]
+offset_left = 16.0
+offset_top = 96.0
+offset_right = 112.0
+offset_bottom = 140.0
+text = "推进"
+
+[node name="HoldButton" type="Button" parent="UI/RootPanel/SelectedSquadPanel"]
+offset_left = 120.0
+offset_top = 96.0
+offset_right = 216.0
+offset_bottom = 140.0
+text = "坚守"
+
+[node name="RetreatButton" type="Button" parent="UI/RootPanel/SelectedSquadPanel"]
+offset_left = 224.0
+offset_top = 96.0
+offset_right = 320.0
+offset_bottom = 140.0
+text = "撤退"
+
+[node name="RecentActions" type="Label" parent="UI/RootPanel/SelectedSquadPanel"]
+offset_left = 352.0
+offset_top = 12.0
+anchor_right = 1.0
+offset_right = -16.0
+offset_bottom = 146.0
+theme_override_colors/font_color = Color(0.72, 0.75, 0.71, 1)
+autowrap_mode = 2
+text = "最近战况\n· 请选择小队并部署路线"
+vertical_alignment = 1
 
 [node name="ExitInputBlocker" type="ColorRect" parent="UI/RootPanel"]
 visible = false
 layout_mode = 0
-offset_right = 1152.0
-offset_bottom = 648.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 0
 color = Color(0.02, 0.025, 0.03, 0.68)
 
 [node name="ExitConfirmation" type="Panel" parent="UI/RootPanel"]
 visible = false
-offset_left = 376.0
-offset_top = 206.0
-offset_right = 776.0
-offset_bottom = 422.0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -200.0
+offset_top = -108.0
+offset_right = 200.0
+offset_bottom = 108.0
 mouse_filter = 0
 
 [node name="Title" type="Label" parent="UI/RootPanel/ExitConfirmation"]
@@ -193,17 +437,24 @@ text = "确认撤退"
 [node name="ResultInputBlocker" type="ColorRect" parent="UI/RootPanel"]
 visible = false
 layout_mode = 0
-offset_right = 1152.0
-offset_bottom = 648.0
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
 mouse_filter = 0
 color = Color(0.02, 0.025, 0.03, 0.68)
 
 [node name="ResultPanel" type="Panel" parent="UI/RootPanel"]
 visible = false
-offset_left = 396.0
-offset_top = 180.0
-offset_right = 756.0
-offset_bottom = 458.0
+anchor_left = 0.5
+anchor_top = 0.5
+anchor_right = 0.5
+anchor_bottom = 0.5
+offset_left = -180.0
+offset_top = -139.0
+offset_right = 180.0
+offset_bottom = 139.0
 mouse_filter = 0
 
 [node name="ResultLabel" type="Label" parent="UI/RootPanel/ResultPanel"]
@@ -212,7 +463,7 @@ offset_top = 24.0
 offset_right = 340.0
 offset_bottom = 184.0
 theme_override_font_sizes/font_size = 18
-text = "RESULT_PENDING"
+text = "等待确认战果"
 horizontal_alignment = 1
 vertical_alignment = 1
 

@@ -2850,7 +2850,9 @@ func _refresh_noticeboard_ui() -> void:
 			% [mission.risk_label, mission.get_reward_text()]
 		)
 		var state_id := get_noticeboard_mission_state(mission.mission_id)
-		(card.get_node("StateLabel") as Label).text = str(state_id)
+		(card.get_node("StateLabel") as Label).text = (
+			_get_noticeboard_state_text(state_id)
+		)
 		var start_button := card.get_node("StartButton") as Button
 		start_button.text = (
 			"再次挑战" if state_id == &"COMPLETED" else "开始任务"
@@ -2861,10 +2863,35 @@ func _refresh_noticeboard_ui() -> void:
 	if _noticeboard_last_result_summary.is_empty():
 		noticeboard_last_result.text = "尚无任务结果"
 	else:
+		var last_mission := get_noticeboard_mission_definition(
+			StringName(
+				_noticeboard_last_result_summary.get("mission_id", &"")
+			)
+		)
 		noticeboard_last_result.text = "最近结果：%s · %s" % [
-			str(_noticeboard_last_result_summary.get("mission_id", &"")),
-			str(_noticeboard_last_result_summary.get("outcome", &"")),
+			last_mission.title if last_mission != null else "未知任务",
+			_get_noticeboard_outcome_text(
+				StringName(
+					_noticeboard_last_result_summary.get("outcome", &"")
+				)
+			),
 		]
+
+
+func _get_noticeboard_state_text(state_id: StringName) -> String:
+	if state_id == &"IN_PROGRESS":
+		return "进行中"
+	if state_id == &"COMPLETED":
+		return "已完成"
+	return "可接受"
+
+
+func _get_noticeboard_outcome_text(outcome: StringName) -> String:
+	if outcome == &"VICTORY":
+		return "胜利"
+	if outcome == &"RETREAT":
+		return "主动撤退"
+	return "失败"
 
 
 func _register_preset_buildings() -> void:

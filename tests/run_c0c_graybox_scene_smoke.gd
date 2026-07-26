@@ -24,8 +24,8 @@ func _run() -> void:
 
 	var title: Label = scene.get_node("UI/RootPanel/Title")
 	_check(
-		title.text == "C0 Battle Graybox",
-		"场景使用明确 C0 Battle Graybox 标识"
+		title.text.begins_with("C0 Battle Graybox · "),
+		"场景保留 C0 标识并显示可读任务名称"
 	)
 	_check(
 		not scene.has_method("_input")
