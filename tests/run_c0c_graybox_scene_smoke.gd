@@ -29,8 +29,9 @@ func _run() -> void:
 	)
 	_check(
 		not scene.has_method("_input")
+			and scene.has_method("_unhandled_input")
 			and scene.city_scene.has_method("_input"),
-		"灰盒不创建第二个原始 _input 所有者"
+		"灰盒仅用 _unhandled_input 接收 Esc，不创建第二个原始 _input 所有者"
 	)
 	_check(
 		not scene.city_scene.visible

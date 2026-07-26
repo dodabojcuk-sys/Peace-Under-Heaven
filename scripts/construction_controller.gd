@@ -730,6 +730,7 @@ func enter_first_war_battle() -> bool:
 		get_first_war_committed_count()
 	)
 	battle.formal_return_completed.connect(_on_first_war_returned)
+	battle.formal_entry_cancelled.connect(_on_first_war_entry_cancelled)
 	first_war_state = FirstWarState.IN_BATTLE
 	_formal_battle_scene = battle
 	get_tree().root.add_child(battle)
@@ -849,6 +850,17 @@ func _on_first_war_returned(summary: Dictionary) -> void:
 	else:
 		first_war_state = FirstWarState.IN_BATTLE
 	first_war_result.visible = true
+	_refresh_city_ui()
+	city_state_changed.emit()
+
+
+func _on_first_war_entry_cancelled() -> void:
+	_formal_battle_scene = null
+	if (
+		first_war_state == FirstWarState.IN_BATTLE
+		and _active_battle_reservation.is_empty()
+	):
+		first_war_state = FirstWarState.PENDING
 	_refresh_city_ui()
 	city_state_changed.emit()
 

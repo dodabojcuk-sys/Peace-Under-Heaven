@@ -31,6 +31,13 @@ theme_override_font_sizes/font_size = 26
 text = "C0 Battle Graybox"
 horizontal_alignment = 1
 
+[node name="ExitButton" type="Button" parent="UI/RootPanel"]
+offset_left = 988.0
+offset_top = 16.0
+offset_right = 1128.0
+offset_bottom = 52.0
+text = "返回内城"
+
 [node name="StatusLabel" type="Label" parent="UI/RootPanel"]
 offset_left = 24.0
 offset_top = 58.0
@@ -135,6 +142,54 @@ offset_bottom = 620.0
 theme_override_constants/separation = 12
 alignment = 1
 
+[node name="ExitInputBlocker" type="ColorRect" parent="UI/RootPanel"]
+visible = false
+layout_mode = 0
+offset_right = 1152.0
+offset_bottom = 648.0
+mouse_filter = 0
+color = Color(0.02, 0.025, 0.03, 0.68)
+
+[node name="ExitConfirmation" type="Panel" parent="UI/RootPanel"]
+visible = false
+offset_left = 376.0
+offset_top = 206.0
+offset_right = 776.0
+offset_bottom = 422.0
+mouse_filter = 0
+
+[node name="Title" type="Label" parent="UI/RootPanel/ExitConfirmation"]
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 380.0
+offset_bottom = 52.0
+theme_override_font_sizes/font_size = 20
+text = "退出战斗？"
+horizontal_alignment = 1
+
+[node name="Message" type="Label" parent="UI/RootPanel/ExitConfirmation"]
+offset_left = 24.0
+offset_top = 62.0
+offset_right = 376.0
+offset_bottom = 132.0
+text = "确认退出将按全军撤退结算。\n撤退途中仍可能产生伤亡。"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="CancelButton" type="Button" parent="UI/RootPanel/ExitConfirmation"]
+offset_left = 48.0
+offset_top = 152.0
+offset_right = 188.0
+offset_bottom = 196.0
+text = "取消"
+
+[node name="ConfirmButton" type="Button" parent="UI/RootPanel/ExitConfirmation"]
+offset_left = 212.0
+offset_top = 152.0
+offset_right = 352.0
+offset_bottom = 196.0
+text = "确认撤退"
+
 [node name="ResultInputBlocker" type="ColorRect" parent="UI/RootPanel"]
 visible = false
 layout_mode = 0
@@ -175,4 +230,4 @@ offset_left = 188.0
 offset_top = 210.0
 offset_right = 328.0
 offset_bottom = 254.0
-text = "返回城市"
+text = "返回内城"

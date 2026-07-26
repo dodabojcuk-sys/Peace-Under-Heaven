@@ -3,6 +3,7 @@ extends Node2D
 
 
 signal formal_return_completed(summary: Dictionary)
+signal formal_entry_cancelled
 
 const CITY_SCENE: PackedScene = preload("res://scenes/blank_map.tscn")
 const DEBUG_PLAYER_COUNT := 50
@@ -20,10 +21,23 @@ const DEBUG_PLAYER_COUNT := 50
 	$UI/RootPanel/SideLane/StateLabel
 )
 @onready var start_button: Button = $UI/RootPanel/StartButton
+@onready var exit_button: Button = $UI/RootPanel/ExitButton
 @onready var squad_controls: HBoxContainer = (
 	$UI/RootPanel/SquadControls
 )
 @onready var marker_layer: Control = $UI/RootPanel/MarkerLayer
+@onready var exit_input_blocker: ColorRect = (
+	$UI/RootPanel/ExitInputBlocker
+)
+@onready var exit_confirmation: Panel = (
+	$UI/RootPanel/ExitConfirmation
+)
+@onready var exit_cancel_button: Button = (
+	$UI/RootPanel/ExitConfirmation/CancelButton
+)
+@onready var exit_confirm_button: Button = (
+	$UI/RootPanel/ExitConfirmation/ConfirmButton
+)
 @onready var result_input_blocker: ColorRect = (
 	$UI/RootPanel/ResultInputBlocker
 )
@@ -48,11 +62,17 @@ var formal_committed_count := 0
 var _squad_ui: Dictionary = {}
 var _squad_markers: Dictionary = {}
 var _confirmed_summary: Dictionary = {}
+var _exit_in_progress := false
+var _return_requested := false
+var _resume_timer_after_exit_cancel := false
 
 
 func _ready() -> void:
 	tick_timer.timeout.connect(_on_tick_timeout)
 	start_button.pressed.connect(start_battle)
+	exit_button.pressed.connect(request_exit_or_return)
+	exit_cancel_button.pressed.connect(cancel_exit_confirmation)
+	exit_confirm_button.pressed.connect(confirm_exit_as_retreat)
 	confirm_button.pressed.connect(confirm_pending_result)
 	return_button.pressed.connect(request_return_to_city)
 	if formal_city_mode:
@@ -62,6 +82,28 @@ func _ready() -> void:
 	_create_battle_request()
 	_create_squad_controls()
 	_refresh_battle_ui()
+
+
+func _unhandled_input(event: InputEvent) -> void:
+	if (
+		event is not InputEventKey
+		or not event.pressed
+		or event.echo
+		or event.keycode != KEY_ESCAPE
+	):
+		return
+	if exit_confirmation.visible:
+		cancel_exit_confirmation()
+		get_viewport().set_input_as_handled()
+		return
+	if request_exit_or_return():
+		get_viewport().set_input_as_handled()
+		return
+	if (
+		request != null
+		and request.phase == BattleRequest.PHASE_RESULT_PENDING
+	):
+		get_viewport().set_input_as_handled()
 
 
 func configure_formal_city(
@@ -89,6 +131,98 @@ func start_battle() -> bool:
 		_set_command_buttons_disabled(int(squad_id), false)
 	tick_timer.start()
 	_refresh_battle_ui()
+	return true
+
+
+func request_exit_or_return() -> bool:
+	if _exit_in_progress or request == null:
+		return false
+	if request.phase == BattleRequest.PHASE_RESERVED:
+		return _return_before_battle()
+	if request.phase == BattleRequest.PHASE_ACTIVE:
+		return open_exit_confirmation()
+	if request.phase == BattleRequest.PHASE_APPLIED:
+		return request_return_to_city() != null
+	return false
+
+
+func open_exit_confirmation() -> bool:
+	if (
+		_exit_in_progress
+		or request == null
+		or request.phase != BattleRequest.PHASE_ACTIVE
+		or exit_confirmation.visible
+	):
+		return false
+	_resume_timer_after_exit_cancel = not tick_timer.is_stopped()
+	tick_timer.stop()
+	exit_input_blocker.visible = true
+	exit_confirmation.visible = true
+	_refresh_exit_ui()
+	return true
+
+
+func cancel_exit_confirmation() -> bool:
+	if not exit_confirmation.visible or _exit_in_progress:
+		return false
+	exit_confirmation.visible = false
+	exit_input_blocker.visible = false
+	if (
+		_resume_timer_after_exit_cancel
+		and request != null
+		and request.phase == BattleRequest.PHASE_ACTIVE
+	):
+		tick_timer.start()
+	_resume_timer_after_exit_cancel = false
+	_refresh_exit_ui()
+	return true
+
+
+func confirm_exit_as_retreat() -> bool:
+	if (
+		_exit_in_progress
+		or not exit_confirmation.visible
+		or request == null
+		or request.phase != BattleRequest.PHASE_ACTIVE
+		or coordinator.active_session == null
+	):
+		return false
+	_exit_in_progress = true
+	_resume_timer_after_exit_cancel = false
+	tick_timer.stop()
+	exit_confirm_button.disabled = true
+	exit_cancel_button.disabled = true
+	exit_confirmation.visible = false
+	exit_input_blocker.visible = true
+
+	var battle_result := coordinator.advance_battle_tick()
+	if battle_result == null:
+		for squad in coordinator.active_session.squads:
+			if int(squad.total_hp) <= 0 or bool(squad.exited):
+				continue
+			if coordinator.issue_order(
+				int(squad.squad_id),
+				BattleOrder.Command.RETREAT
+			) == null:
+				_fail_exit_as_retreat(
+					"全军撤退命令未能进入确定性命令队列"
+				)
+				return false
+		for _tick in range(BattleSession.MAX_BATTLE_TICKS + 2):
+			battle_result = coordinator.advance_battle_tick()
+			if battle_result != null:
+				break
+	if battle_result == null:
+		_fail_exit_as_retreat("全军撤退未生成正式战果")
+		return false
+
+	_show_pending_result(battle_result)
+	if confirm_pending_result().is_empty():
+		_fail_exit_as_retreat("全军撤退战果未能原子写回城市")
+		return false
+	if request_return_to_city() == null:
+		_fail_exit_as_retreat("全军撤退战果已写回，但返回契约创建失败")
+		return false
 	return true
 
 
@@ -145,6 +279,7 @@ func confirm_pending_result() -> Dictionary:
 	)
 	return_button.visible = true
 	return_button.disabled = false
+	_refresh_exit_ui()
 	return summary
 
 
@@ -152,6 +287,11 @@ func request_return_to_city() -> ReturnToCityContract:
 	var return_to_city := coordinator.request_return_to_city()
 	if return_to_city == null:
 		return null
+	if _return_requested:
+		return return_to_city
+	_exit_in_progress = true
+	_return_requested = true
+	exit_button.disabled = true
 	return_button.disabled = true
 	call_deferred("_complete_return_after_input_guard")
 	return return_to_city
@@ -168,6 +308,25 @@ func complete_return_for_test(current_frame: int) -> bool:
 		formal_return_completed.emit(_confirmed_summary.duplicate(true))
 		queue_free()
 	return true
+
+
+func _return_before_battle() -> bool:
+	if not coordinator.cancel_request():
+		return false
+	_exit_in_progress = true
+	exit_button.disabled = true
+	start_button.disabled = true
+	call_deferred("_complete_prebattle_return_after_input_guard")
+	return true
+
+
+func _complete_prebattle_return_after_input_guard() -> void:
+	await get_tree().process_frame
+	$UI/RootPanel.visible = false
+	_restore_city_presentation()
+	if formal_city_mode:
+		formal_entry_cancelled.emit()
+		queue_free()
 
 
 func abort_formal_entry() -> void:
@@ -195,6 +354,16 @@ func _complete_return_after_input_guard() -> void:
 	):
 		await get_tree().process_frame
 	complete_return_for_test(Engine.get_process_frames())
+
+
+func _fail_exit_as_retreat(message: String) -> void:
+	push_error(message)
+	_exit_in_progress = false
+	exit_input_blocker.visible = false
+	exit_confirmation.visible = false
+	exit_confirm_button.disabled = false
+	exit_cancel_button.disabled = false
+	_refresh_exit_ui()
 
 
 func _create_city_fixture() -> void:
@@ -373,6 +542,7 @@ func _advance_one_tick() -> BattleResult:
 func _refresh_battle_ui() -> void:
 	if request == null:
 		status_label.text = "C0 Battle Graybox · 请求创建失败"
+		_refresh_exit_ui()
 		return
 	var tick := (
 		coordinator.active_session.current_tick
@@ -418,6 +588,30 @@ func _refresh_battle_ui() -> void:
 			route_name
 		)
 		_update_marker(squad_id, state)
+	_refresh_exit_ui()
+
+
+func _refresh_exit_ui() -> void:
+	if request == null:
+		exit_button.text = "返回内城"
+		exit_button.disabled = true
+		return
+	if request.phase == BattleRequest.PHASE_RESERVED:
+		exit_button.text = "返回内城"
+	elif request.phase == BattleRequest.PHASE_ACTIVE:
+		exit_button.text = "退出战斗"
+	elif request.phase == BattleRequest.PHASE_RESULT_PENDING:
+		exit_button.text = "请先确认战果"
+	elif request.phase == BattleRequest.PHASE_APPLIED:
+		exit_button.text = "返回内城"
+	else:
+		exit_button.text = "正在返回"
+	exit_button.disabled = (
+		_exit_in_progress
+		or exit_confirmation.visible
+		or request.phase == BattleRequest.PHASE_RESULT_PENDING
+		or request.phase == BattleRequest.PHASE_CANCELLED
+	)
 
 
 func _get_display_route_state(route_id: StringName) -> Dictionary:
@@ -476,6 +670,8 @@ func _update_marker(squad_id: int, state: Dictionary) -> void:
 
 
 func _show_pending_result(battle_result: BattleResult) -> void:
+	exit_confirmation.visible = false
+	exit_input_blocker.visible = false
 	result_input_blocker.visible = true
 	result_panel.visible = true
 	confirm_button.visible = true
@@ -493,6 +689,7 @@ func _show_pending_result(battle_result: BattleResult) -> void:
 	)
 	for squad_id in _squad_ui:
 		_set_command_buttons_disabled(int(squad_id), true)
+	_refresh_exit_ui()
 
 
 func _set_command_buttons_disabled(squad_id: int, disabled: bool) -> void:
