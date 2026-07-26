@@ -59,12 +59,12 @@ func _run() -> void:
 	_check(logging_id > 0, "伐木场可以放置")
 	_check(
 		not construction.is_building_operational(logging_id),
-		"未接路伐木场保持停用"
+		"刚放置的伐木场在施工完成前不运行"
 	)
 	_check(
-		construction.get_operational_status(logging_id).label
-			== "停用：未接入道路",
-		"未接路原因可直接显示"
+		construction.get_operational_status(logging_id).state
+			== &"constructing",
+		"伐木场明确显示施工状态和预计完成日"
 	)
 
 	var road_cells := [
@@ -89,15 +89,16 @@ func _run() -> void:
 		"从城主府根格派生完整四向路网"
 	)
 	_check(
-		construction.is_building_operational(logging_id),
-		"最后一格接通后伐木场转为运行中"
+		not construction.is_building_operational(logging_id),
+		"道路接通不会绕过尚未完成的施工"
 	)
 
 	var wood_before_day: int = construction.wood
 	_check(construction.advance_one_day_for_test(), "可以推进到下一日")
 	_check(
-		construction.wood == wood_before_day + 18,
-		"接通的伐木场从下一日产生 18 木材"
+		construction.is_building_operational(logging_id)
+			and construction.wood == wood_before_day + 18,
+		"第 2 日完工后，接通的伐木场产生 18 木材"
 	)
 	_check(construction.current_day == 2, "日期从第 1 日推进到第 2 日")
 

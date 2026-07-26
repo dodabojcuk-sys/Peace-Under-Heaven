@@ -60,8 +60,10 @@ func _check_warning_and_command_platform() -> void:
 	_check(
 		war_actions.visible
 			and "距离敌袭" in war_intel.text
-			and "可用步兵" in war_intel.text,
-		"选择军令台可查看倒计时、兵力、粮草和城防"
+			and "守军" in war_intel.text
+			and "减损线" in war_intel.text
+			and "建议" in war_intel.text,
+		"选择军令台可查看倒计时、真实兵力粮草城防和建议"
 	)
 
 	city.advance_city_time_for_test(city.SECONDS_PER_DAY)

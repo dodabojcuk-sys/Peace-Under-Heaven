@@ -113,10 +113,19 @@ func _run() -> void:
 		_check(detail_panel.visible, "固定建筑选择后显示右侧详情")
 		_check(target_name.text == record.display_name,
 			"详情显示固定建筑真实名称")
-		_check(target_type.text == "类型：固定预置建筑",
-			"详情显示固定建筑身份")
-		_check(description.text == record.description,
-			"详情显示固定建筑说明")
+		var building_data: Dictionary = construction.get_building_data(
+			fixed_id
+		)
+		_check(
+			target_type.text.contains(str(building_data.level_text))
+				and target_type.text.contains("下一等级：当前切片未开放"),
+			"详情显示固定建筑真实等级且不伪造升级"
+		)
+		_check(
+			description.text.contains("前置：初始固定设施")
+				and description.text.contains("状态：固定 / 可选择"),
+			"详情显示固定设施前置和运行状态"
+		)
 		_check(not remove_button.visible,
 			"固定建筑详情不显示移除入口")
 		_check(not construction_entry.visible,
@@ -130,10 +139,10 @@ func _run() -> void:
 	_check(target_name.text == "军令台 L1", "军令台显示真实名称")
 	var first_war_actions: Control = detail_panel.get_node("FirstWarActions")
 	_check(
-		description.text.contains("北坡首战的正式城市入口")
-			and first_war_actions.visible
+		first_war_actions.visible
+			and first_war_actions.get_node("WarIntel").text.contains("北坡敌情")
 			and not first_war_actions.get_node("EnterBattleButton").visible,
-		"军令台使用正式首战详情且备战早期不伪造可执行入口"
+		"军令台显示真实首战评估且备战早期不伪造执行入口"
 	)
 	_check(not construction.remove_placed_building(command_id),
 		"固定军令台拒绝进入普通移除生命周期")

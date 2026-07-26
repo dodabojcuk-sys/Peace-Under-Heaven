@@ -234,14 +234,24 @@ func _refresh_selection_outline(
 
 
 func _refresh_detail_panel(record: Dictionary) -> void:
-	var origin_cell: Vector2i = record.origin_cell
-	var footprint_cells: Vector2i = record.footprint
+	var build_data: Dictionary = construction_controller.get_building_data(
+		int(record.placement_id)
+	)
 	target_name.text = str(record.display_name)
-	target_type.text = "类型：%s" % str(record.building_type)
-	grid_position.text = "网格位置：(%d, %d)" % [origin_cell.x, origin_cell.y]
-	footprint.text = "占地：%d × %d" % [footprint_cells.x, footprint_cells.y]
-	prototype_status.text = "状态：%s" % str(record.prototype_status)
-	description.text = str(record.description)
+	target_type.text = "%s\n%s" % [
+		str(build_data.level_text),
+		str(build_data.next_level_text),
+	]
+	grid_position.text = "投入：%s｜工期：%s" % [
+		str(build_data.investment_text),
+		str(build_data.duration_text),
+	]
+	footprint.text = "当前效果：%s" % str(build_data.effect_text)
+	prototype_status.text = "进度：%s" % str(build_data.progress_text)
+	description.text = "前置：%s\n状态：%s" % [
+		str(build_data.prerequisite_text),
+		str(build_data.status_text),
+	]
 	var is_command_platform := (
 		StringName(record.template_id) == COMMAND_PLATFORM_TEMPLATE_ID
 	)

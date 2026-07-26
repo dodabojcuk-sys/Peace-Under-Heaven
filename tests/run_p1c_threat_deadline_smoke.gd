@@ -58,12 +58,14 @@ func _run() -> void:
 	var logging_id: int = construction.place_definition_at_cell(
 		&"building.logging_camp.t1",
 		Vector2i(10, 7),
-		false
+		false,
+		true
 	)
 	var farm_id: int = construction.place_definition_at_cell(
 		&"building.farm.t1",
 		Vector2i(12, 7),
-		false
+		false,
+		true
 	)
 	_check(logging_id > 0 and farm_id > 0, "测试生产建筑进入统一记录")
 
@@ -86,7 +88,8 @@ func _run() -> void:
 	var watchtower_id: int = construction.place_definition_at_cell(
 		&"building.watchtower.t1",
 		Vector2i(20, 20),
-		false
+		false,
+		true
 	)
 	_check(watchtower_id > 0, "瞭望塔进入统一 placement")
 	_check(construction.get_city_defense() == 20, "瞭望塔使城防从 10 增至 20")
@@ -143,7 +146,8 @@ func _run() -> void:
 	var post_checkpoint_id: int = construction.place_definition_at_cell(
 		&"building.warehouse.t1",
 		Vector2i(24, 20),
-		false
+		false,
+		true
 	)
 	_check(post_checkpoint_id > 0, "检查点后可以继续建设")
 	while construction.current_day < 12:

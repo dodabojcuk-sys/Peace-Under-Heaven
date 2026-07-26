@@ -90,16 +90,26 @@ func _run() -> void:
 	_check(first_body.color == original_body_color, "选择不修改建筑主体颜色")
 	_check(detail_panel.get_node("TargetName").text == "伐木场",
 		"面板显示伐木场名称")
-	_check(detail_panel.get_node("TargetType").text == "类型：生产建筑",
-		"面板显示生产建筑类型")
-	_check(detail_panel.get_node("GridPosition").text == "网格位置：(25, 15)",
-		"面板显示正确网格位置")
-	_check(detail_panel.get_node("Footprint").text == "占地：2 × 2",
-		"面板显示 2 x 2 占地")
 	_check(
-		detail_panel.get_node("PrototypeStatus").text
-			== "状态：停用：未接入道路",
-		"面板显示未接路状态"
+		detail_panel.get_node("TargetType").text
+			== "当前等级：L1\n下一等级：当前切片未开放",
+		"面板如实显示当前等级且不伪造下一等级"
+	)
+	_check(
+		detail_panel.get_node("GridPosition").text
+			== "投入：木材 40｜工期：1 日",
+		"面板显示真实投入和施工时间"
+	)
+	_check(
+		detail_panel.get_node("Footprint").text
+			== "当前效果：木材 +18/日",
+		"面板显示真实每日效果"
+	)
+	_check(
+		detail_panel.get_node("Description").text.contains(
+			"状态：停用：未接入道路"
+		),
+		"面板显示真实前置和未接路原因"
 	)
 
 	var second_center := _building_screen_center(
@@ -109,8 +119,12 @@ func _run() -> void:
 	_click_via_root(scene, second_center)
 	_check(selection.selected_placement_id == second_placement_id,
 		"单击另一建筑切换选择")
-	_check(detail_panel.get_node("GridPosition").text == "网格位置：(30, 18)",
-		"切换选择后面板字段刷新")
+	_check(
+		detail_panel.get_node("TargetName").text == "伐木场"
+			and detail_panel.get_node("GridPosition").text
+				== "投入：木材 40｜工期：1 日",
+		"切换选择后面板保持与新权威记录一致"
+	)
 
 	_click_via_root(scene, Vector2(700.0, 520.0))
 	_check(not selection.has_selection(), "空白单击取消选择")

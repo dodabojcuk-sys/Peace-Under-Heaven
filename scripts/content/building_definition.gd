@@ -6,6 +6,9 @@ extends Resource
 @export var display_name: String
 @export var building_type: String
 @export var description: String
+@export var level := 1
+@export var build_days := 0
+@export var next_level_definition_id: StringName
 @export var placement_kind: StringName = &"placed"
 @export var footprint := Vector2i.ONE
 @export var road_anchor_offsets: Array[Vector2i] = []

@@ -91,8 +91,14 @@ func _run() -> void:
 		"选中后显示详情和世界描边")
 	_check(detail_panel.get_node("TargetName").text == first_record.display_name,
 		"详情名称来自权威记录")
-	_check(detail_panel.get_node("GridPosition").text == "网格位置：(25, 15)",
-		"详情网格位置来自权威记录")
+	_check(
+		detail_panel.get_node("TargetType").text.contains("当前等级：L1")
+			and detail_panel.get_node("GridPosition").text
+				== "投入：木材 40｜工期：1 日"
+			and detail_panel.get_node("Footprint").text
+				== "当前效果：木材 +18/日",
+		"详情显示权威等级、投入、工期和当前效果"
+	)
 
 	remove_button.emit_signal("pressed")
 	_check(selection.is_awaiting_removal_confirmation(),

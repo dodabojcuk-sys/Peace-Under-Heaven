@@ -67,12 +67,14 @@ func _run() -> void:
 	var logging_id: int = construction.place_definition_at_cell(
 		&"building.logging_camp.t1",
 		Vector2i(10, 7),
-		false
+		false,
+		true
 	)
 	var farm_id: int = construction.place_definition_at_cell(
 		&"building.farm.t1",
 		Vector2i(12, 7),
-		false
+		false,
+		true
 	)
 	_check(
 		construction.is_building_operational(logging_id)
@@ -124,7 +126,8 @@ func _run() -> void:
 	var second_farm_id: int = construction.place_definition_at_cell(
 		&"building.farm.t1",
 		Vector2i(14, 7),
-		false
+		false,
+		true
 	)
 	_check(second_farm_id > 0, "本日可立即完成第二座农田")
 	var food_after_build: int = construction.food
@@ -157,7 +160,8 @@ func _run() -> void:
 	var warehouse_id: int = construction.place_definition_at_cell(
 		&"building.warehouse.t1",
 		Vector2i(20, 20),
-		false
+		false,
+		true
 	)
 	_check(warehouse_id > 0, "仓库可以进入统一 placement 记录")
 	_check(

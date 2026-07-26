@@ -89,36 +89,48 @@ const PRESET_BUILDING_DEFINITIONS := [
 		"template_id": &"manor",
 		"display_name": "城主府 L1",
 		"description": "城市行政中枢；道路网络从其右侧根格开始",
+		"level": 1,
+		"effect_summary": "提供城市道路网络根格",
 	},
 	{
 		"node_path": "../MapWorld/Barracks",
 		"template_id": &"barracks",
 		"display_name": "兵营 L1",
 		"description": "军事训练设施（P1-D 接入征募）",
+		"level": 1,
+		"effect_summary": "每批征募 5 人 · 消耗 15 粮 · 次日完成",
 	},
 	{
 		"node_path": "../MapWorld/Granary",
 		"template_id": &"granary",
 		"display_name": "粮仓 L2",
 		"description": "城市粮食储备（P1-B 接入容量）",
+		"level": 2,
+		"effect_summary": "当前城市木材／粮食基础容量各 160",
 	},
 	{
 		"node_path": "../MapWorld/Academy",
 		"template_id": &"academy",
 		"display_name": "学院 L1",
 		"description": "研究与教育设施（P1-D 接入科技）",
+		"level": 1,
+		"effect_summary": "每日结算科技点 +1",
 	},
 	{
 		"node_path": "../MapWorld/CityGate",
 		"template_id": &"city_gate",
 		"display_name": "城门 L1",
 		"description": "城市出入口（P1-C 接入城防）",
+		"level": 1,
+		"effect_summary": "提供基础城防 10",
 	},
 	{
 		"node_path": "../MapWorld/CommandPlatform",
 		"template_id": &"command_platform",
 		"display_name": "军令台 L1",
 		"description": "北坡首战的正式城市入口",
+		"level": 1,
+		"effect_summary": "显示敌情并处理北坡首战",
 	},
 ]
 
@@ -247,6 +259,7 @@ var last_daily_breakdown := {
 	"maintenance_food": 0,
 	"maintenance_required": 0,
 	"training_completed": 0,
+	"construction_completed": 0,
 	"wood_income": 0,
 	"food_income": 0,
 	"research_income": 0,
@@ -459,7 +472,8 @@ func confirm_current_preview() -> bool:
 func place_definition_at_cell(
 	definition_id: StringName,
 	origin_cell: Vector2i,
-	charge_cost := true
+	charge_cost := true,
+	complete_immediately := false
 ) -> int:
 	if is_city_action_locked_for_battle():
 		return -1
@@ -488,6 +502,10 @@ func place_definition_at_cell(
 		definition
 	)
 	var world_size := _definition_world_size(definition)
+	var starts_completed := (
+		complete_immediately
+		or definition.build_days <= 0
+	)
 	var record := _base_record()
 	record.merge({
 		"placement_id": placement_id,
@@ -501,13 +519,28 @@ func place_definition_at_cell(
 		"footprint": definition.footprint,
 		"occupied_footprint_cells": footprint_cells.duplicate(),
 		"selection_bounds": Rect2(Vector2.ZERO, world_size),
-		"lifecycle_state": &"running",
-		"prototype_status": "运行中",
+		"lifecycle_state": (
+			&"running" if starts_completed else &"constructing"
+		),
+		"prototype_status": (
+			"运行中" if starts_completed else "施工中"
+		),
 		"selectable": true,
 		"removable": true,
 		"movable": false,
 		"requires_road": definition.requires_road,
 		"road_anchor_offsets": definition.road_anchor_offsets.duplicate(),
+		"level": definition.level,
+		"next_level_definition_id": definition.next_level_definition_id,
+		"build_wood_cost": definition.wood_cost,
+		"build_food_cost": definition.food_cost,
+		"build_days": definition.build_days,
+		"construction_started_day": current_day,
+		"construction_complete_day": (
+			current_day
+			if starts_completed
+			else current_day + definition.build_days
+		),
 		"built_day": current_day,
 		"node": building,
 	}, true)
@@ -522,6 +555,7 @@ func place_definition_at_cell(
 	if charge_cost:
 		wood -= definition.wood_cost
 		food -= definition.food_cost
+	_refresh_placed_building_visual(placement_id)
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return placement_id
@@ -531,7 +565,8 @@ func _create_runtime_building(origin_cell: Vector2i) -> int:
 	return place_definition_at_cell(
 		LOGGING_CAMP_DEFINITION.definition_id,
 		origin_cell,
-		false
+		false,
+		true
 	)
 
 
@@ -826,6 +861,7 @@ func _advance_day_boundary() -> bool:
 	if is_city_action_locked_for_battle():
 		return false
 	current_day += 1
+	var construction_completed := _complete_construction_for_current_day()
 	var maintenance_required := get_maintenance_food_cost()
 	var maintenance_paid := mini(food, maintenance_required)
 	food -= maintenance_paid
@@ -863,6 +899,7 @@ func _advance_day_boundary() -> bool:
 		"maintenance_food": maintenance_paid,
 		"maintenance_required": maintenance_required,
 		"training_completed": training_completed,
+		"construction_completed": construction_completed,
 		"wood_income": accepted_wood,
 		"food_income": accepted_food,
 		"research_income": 1,
@@ -893,6 +930,23 @@ func _complete_training_for_current_day() -> int:
 	infantry_count += completed
 	training_queued_count = 0
 	training_complete_day = 0
+	return completed
+
+
+func _complete_construction_for_current_day() -> int:
+	var completed := 0
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if (
+			record.is_empty()
+			or StringName(record.lifecycle_state) != &"constructing"
+			or int(record.construction_complete_day) > current_day
+		):
+			continue
+		record.lifecycle_state = &"running"
+		record.prototype_status = "运行中"
+		completed += 1
+		_refresh_placed_building_visual(placement_id)
 	return completed
 
 
@@ -928,9 +982,13 @@ func get_city_state() -> Dictionary:
 		"supply_shortage": supply_shortage,
 		"emergency_mobilization_used": emergency_mobilization_used,
 		"wood_capacity": get_resource_capacity(&"wood"),
-		"food_capacity": get_resource_capacity(&"food"),
-		"city_defense": get_city_defense(),
-		"enemy_count": enemy_count,
+			"food_capacity": get_resource_capacity(&"food"),
+			"city_defense": get_city_defense(),
+			"construction_in_progress": get_construction_in_progress_count(),
+			"first_war_preparation": (
+				get_first_war_preparation_assessment()
+			),
+			"enemy_count": enemy_count,
 		"enemy_fortification": enemy_fortification,
 		"available_infantry_count": get_available_infantry_count(),
 		"active_battle_reservation": _active_battle_reservation.duplicate(true),
@@ -1372,7 +1430,7 @@ func get_city_defense() -> int:
 	var defense := 10
 	for placement_id in _placement_order:
 		var record: Dictionary = _building_records_by_id.get(placement_id, {})
-		if record.is_empty():
+		if record.is_empty() or not is_building_operational(placement_id):
 			continue
 		var definition := get_definition(record.definition_id)
 		if definition == null:
@@ -1404,7 +1462,7 @@ func get_resource_capacity(resource_id: StringName) -> int:
 	var capacity := BASE_RESOURCE_CAPACITY
 	for placement_id in _placement_order:
 		var record: Dictionary = _building_records_by_id.get(placement_id, {})
-		if record.is_empty():
+		if record.is_empty() or not is_building_operational(placement_id):
 			continue
 		var definition := get_definition(record.definition_id)
 		if definition == null:
@@ -1464,7 +1522,8 @@ func restore_readiness_checkpoint() -> bool:
 		var placement_id := place_definition_at_cell(
 			StringName(placement.definition_id),
 			Vector2i(placement.origin_cell),
-			false
+			false,
+			true
 		)
 		if placement_id < 0:
 			push_error("Readiness checkpoint placement restore failed")
@@ -1472,6 +1531,19 @@ func restore_readiness_checkpoint() -> bool:
 		var record: Dictionary = _building_records_by_id[placement_id]
 		record.built_day = int(placement.built_day)
 		record.disabled_until_day = int(placement.disabled_until_day)
+		record.lifecycle_state = StringName(
+			placement.get("lifecycle_state", &"running")
+		)
+		record.construction_started_day = int(
+			placement.get("construction_started_day", record.built_day)
+		)
+		record.construction_complete_day = int(
+			placement.get(
+				"construction_complete_day",
+				record.built_day
+			)
+		)
+		_refresh_placed_building_visual(placement_id)
 	_update_threat_for_current_day(false)
 	last_daily_report = "已恢复第 9 日自动战备检查点"
 	_enforce_resource_capacity()
@@ -1511,6 +1583,7 @@ func restart_first_map() -> bool:
 		"maintenance_food": 0,
 		"maintenance_required": 0,
 		"training_completed": 0,
+		"construction_completed": 0,
 		"wood_income": 0,
 		"food_income": 0,
 		"research_income": 0,
@@ -1629,10 +1702,13 @@ func _capture_readiness_checkpoint() -> void:
 			continue
 		placements.append({
 			"definition_id": record.definition_id,
-			"origin_cell": record.origin_cell,
-			"built_day": record.built_day,
-			"disabled_until_day": record.disabled_until_day,
-		})
+				"origin_cell": record.origin_cell,
+				"built_day": record.built_day,
+				"disabled_until_day": record.disabled_until_day,
+				"lifecycle_state": record.lifecycle_state,
+				"construction_started_day": record.construction_started_day,
+				"construction_complete_day": record.construction_complete_day,
+			})
 	_readiness_checkpoint = {
 		"day": current_day,
 		"wood": wood,
@@ -1672,10 +1748,245 @@ func _rebuild_daily_report() -> void:
 	]
 	if int(last_daily_breakdown.stopped_placement_id) >= 0:
 		last_daily_report += "｜生产受扰"
+	if int(last_daily_breakdown.get("construction_completed", 0)) > 0:
+		last_daily_report += "｜完工%d" % int(
+			last_daily_breakdown.construction_completed
+		)
 
 
 func get_definition(definition_id: StringName) -> BuildingDefinition:
 	return _definitions_by_id.get(definition_id) as BuildingDefinition
+
+
+func get_definition_build_data(definition_id: StringName) -> Dictionary:
+	var definition := get_definition(definition_id)
+	if definition == null:
+		return {}
+	var unavailable_reason := _get_definition_unavailable_reason(definition)
+	return {
+		"definition_id": definition.definition_id,
+		"display_name": definition.display_name,
+		"level": definition.level,
+		"next_level_label": (
+			"下一等级：当前切片未开放"
+			if definition.next_level_definition_id == &""
+			else "下一等级：%s" % definition.next_level_definition_id
+		),
+		"cost_text": _get_definition_cost_text(definition),
+		"compact_cost_text": _get_definition_compact_cost_text(definition),
+		"duration_text": (
+			"即时完成"
+			if definition.build_days <= 0
+			else "%d 日" % definition.build_days
+		),
+		"effect_text": _get_definition_effect_summary(definition),
+		"prerequisite_text": _get_definition_prerequisite_summary(
+			definition
+		),
+		"unavailable_reason": unavailable_reason,
+		"can_build": unavailable_reason.is_empty(),
+	}
+
+
+func get_building_data(placement_id: int) -> Dictionary:
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
+	if record.is_empty():
+		return {}
+	var status := get_operational_status(placement_id)
+	var level := int(record.get("level", 1))
+	var investment_text := "初始固定设施"
+	var duration_text := "已建成"
+	var effect_text := str(record.get("effect_summary", ""))
+	var prerequisite_text := str(
+		record.get("prerequisite_summary", "初始固定设施")
+	)
+	var progress_text := "已建成"
+	var definition := get_definition(
+		StringName(record.get("definition_id", &""))
+	)
+	if definition != null:
+		var definition_data := get_definition_build_data(
+			definition.definition_id
+		)
+		investment_text = str(definition_data.cost_text)
+		duration_text = str(definition_data.duration_text)
+		effect_text = str(definition_data.effect_text)
+		prerequisite_text = str(definition_data.prerequisite_text)
+		if StringName(record.lifecycle_state) == &"constructing":
+			var total_days := maxi(int(record.build_days), 1)
+			var elapsed_days := clampi(
+				current_day - int(record.construction_started_day),
+				0,
+				total_days
+			)
+			progress_text = "施工 %d/%d 日 · 预计第 %d 日完成" % [
+				elapsed_days,
+				total_days,
+				int(record.construction_complete_day),
+			]
+		else:
+			progress_text = "已完工 · 第 %d 日投入运行" % int(
+				record.construction_complete_day
+			)
+	else:
+		effect_text = _get_fixed_building_effect_summary(
+			StringName(record.template_id),
+			effect_text
+		)
+	return {
+		"level_text": "当前等级：L%d" % level,
+		"next_level_text": "下一等级：当前切片未开放",
+		"investment_text": investment_text,
+		"duration_text": duration_text,
+		"effect_text": effect_text,
+		"prerequisite_text": prerequisite_text,
+		"progress_text": progress_text,
+		"status_text": str(status.label),
+		"upgrade_available": false,
+	}
+
+
+func get_construction_in_progress_count() -> int:
+	var count := 0
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if (
+			not record.is_empty()
+			and StringName(record.lifecycle_state) == &"constructing"
+		):
+			count += 1
+	return count
+
+
+func get_first_war_preparation_assessment() -> Dictionary:
+	var committed_count := get_first_war_committed_count()
+	var food_cost := get_first_war_food_cost(committed_count)
+	var pressure_event := FIRST_MAP_THREAT_SCHEDULE.get_event_for_day(5)
+	var defense_target := (
+		pressure_event.defense_threshold
+		if pressure_event != null
+		else 20
+	)
+	var suggestions: Array[String] = []
+	if committed_count < enemy_count:
+		suggestions.append("补充兵力")
+	if food < food_cost:
+		suggestions.append("补充粮食")
+	if get_city_defense() < defense_target:
+		suggestions.append("建造瞭望塔")
+	return {
+		"committed_count": committed_count,
+		"enemy_count": enemy_count,
+		"troop_status": (
+			"不低于当前敌军"
+			if committed_count >= enemy_count
+			else "少于当前敌军 %d" % (enemy_count - committed_count)
+		),
+		"food": food,
+		"food_cost": food_cost,
+		"supply_status": (
+			"粮草充足"
+			if food >= food_cost
+			else "缺少粮食 %d" % (food_cost - food)
+		),
+		"city_defense": get_city_defense(),
+		"defense_target": defense_target,
+		"defense_status": (
+			"达到首轮骚扰减损线"
+			if get_city_defense() >= defense_target
+			else "低于减损线 %d" % (defense_target - get_city_defense())
+		),
+		"suggestion": (
+			"当前没有明确短板"
+			if suggestions.is_empty()
+			else "建议：" + "、".join(suggestions)
+		),
+	}
+
+
+func _get_definition_cost_text(definition: BuildingDefinition) -> String:
+	var parts: Array[String] = []
+	if definition.wood_cost > 0:
+		parts.append("木材 %d" % definition.wood_cost)
+	if definition.food_cost > 0:
+		parts.append("粮食 %d" % definition.food_cost)
+	return "无资源消耗" if parts.is_empty() else "、".join(parts)
+
+
+func _get_definition_compact_cost_text(
+	definition: BuildingDefinition
+) -> String:
+	var parts: Array[String] = []
+	if definition.wood_cost > 0:
+		parts.append("木%d" % definition.wood_cost)
+	if definition.food_cost > 0:
+		parts.append("粮%d" % definition.food_cost)
+	return "无消耗" if parts.is_empty() else " ".join(parts)
+
+
+func _get_definition_effect_summary(
+	definition: BuildingDefinition
+) -> String:
+	if definition.placement_kind == PLACEMENT_KIND_ROAD:
+		return "接通城市路网"
+	var production := definition.get_capability(&"production")
+	if production != null:
+		return "%s +%d/日" % [
+			"木材" if production.resource_id == &"wood" else "粮食",
+			production.amount,
+		]
+	var storage := definition.get_capability(&"storage")
+	if storage != null:
+		return "木材／粮食容量各 +%d" % storage.amount
+	var defense := definition.get_capability(&"defense")
+	if defense != null:
+		return "城防 +%d" % defense.amount
+	return definition.description
+
+
+func _get_definition_prerequisite_summary(
+	definition: BuildingDefinition
+) -> String:
+	if definition.requires_road:
+		return "建成后需接入道路才生效"
+	return "无额外前置"
+
+
+func _get_definition_unavailable_reason(
+	definition: BuildingDefinition
+) -> String:
+	if is_city_action_locked_for_battle():
+		return "敌袭待处理"
+	var reasons: Array[String] = []
+	if wood < definition.wood_cost:
+		reasons.append("缺木%d" % (definition.wood_cost - wood))
+	if food < definition.food_cost:
+		reasons.append("缺粮%d" % (definition.food_cost - food))
+	return "、".join(reasons)
+
+
+func _get_fixed_building_effect_summary(
+	template_id: StringName,
+	fallback: String
+) -> String:
+	match template_id:
+		&"barracks":
+			var batch_size := get_training_batch_size()
+			return "每批征募 %d 人 · 消耗 %d 粮 · 次日完成" % [
+				batch_size,
+				batch_size * INFANTRY_ROLE.recruit_food_per_unit,
+			]
+		&"granary":
+			return "当前城市木材／粮食基础容量各 %d" % (
+				BASE_RESOURCE_CAPACITY
+			)
+		&"academy":
+			return "每日结算科技点 +1"
+		&"city_gate":
+			return "提供基础城防 10"
+		&"manor":
+			return "提供城市道路网络根格"
+	return fallback
 
 
 func get_definition_ids() -> Array[StringName]:
@@ -1739,6 +2050,13 @@ func get_operational_status(placement_id: int) -> Dictionary:
 	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if record.is_empty():
 		return {"state": &"missing", "label": "不存在"}
+	if StringName(record.lifecycle_state) == &"constructing":
+		return {
+			"state": &"constructing",
+			"label": "施工中 · 预计第 %d 日完成" % int(
+				record.construction_complete_day
+			),
+		}
 	if record.placement_kind == PLACEMENT_KIND_ROAD:
 		var connected_roads := get_connected_road_cells()
 		var road_cell: Vector2i = record.origin_cell
@@ -1997,10 +2315,22 @@ func _refresh_preview_for_current_cell() -> void:
 		PREVIEW_VALID_OUTLINE if preview_valid else PREVIEW_INVALID_OUTLINE
 	)
 	preview_label.text = (
-		"%s\n可放置" % _selected_definition.display_name
-		if preview_valid
-		else "%s\n%s" % [
+		"%s L%d\n%s · %s\n可放置" % [
 			_selected_definition.display_name,
+			_selected_definition.level,
+			_get_definition_compact_cost_text(_selected_definition),
+			(
+				"即时"
+				if _selected_definition.build_days <= 0
+				else "第 %d 日完成" % (
+					current_day + _selected_definition.build_days
+				)
+			),
+		]
+		if preview_valid
+		else "%s L%d\n%s" % [
+			_selected_definition.display_name,
+			_selected_definition.level,
 			preview_invalid_reason,
 		]
 	)
@@ -2109,6 +2439,43 @@ func _create_placed_building_node(
 
 	placed_buildings.add_child(building)
 	return building
+
+
+func _refresh_placed_building_visual(placement_id: int) -> void:
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
+	if record.is_empty():
+		return
+	var building := record.get("node") as Node2D
+	var definition := get_definition(record.definition_id)
+	if building == null or definition == null:
+		return
+	var body := building.get_node_or_null("Body") as Polygon2D
+	var outline := building.get_node_or_null("Outline") as Line2D
+	var label := building.get_node_or_null("Label") as Label
+	var is_constructing := (
+		StringName(record.lifecycle_state) == &"constructing"
+	)
+	if body != null:
+		body.color = (
+			definition.body_color.lerp(Color(0.66, 0.64, 0.58, 1.0), 0.45)
+			if is_constructing
+			else definition.body_color
+		)
+	if outline != null:
+		outline.default_color = (
+			Color(0.72, 0.57, 0.28, 1.0)
+			if is_constructing
+			else definition.outline_color
+		)
+	if label != null:
+		label.text = (
+			"%s\n施工中\n第 %d 日完成" % [
+				definition.display_name,
+				int(record.construction_complete_day),
+			]
+			if is_constructing
+			else definition.display_name
+		)
 
 
 func _release_runtime_record(
@@ -2287,6 +2654,15 @@ func _register_fixed_building(
 		"selectable": true,
 		"removable": false,
 		"movable": false,
+		"level": int(definition.level),
+		"next_level_definition_id": &"",
+		"build_wood_cost": 0,
+		"build_food_cost": 0,
+		"build_days": 0,
+		"construction_started_day": 0,
+		"construction_complete_day": 0,
+		"effect_summary": str(definition.effect_summary),
+		"prerequisite_summary": "初始固定设施",
 		"built_day": 0,
 		"node": building,
 	}, true)
@@ -2316,6 +2692,15 @@ func _base_record() -> Dictionary:
 		"selectable": false,
 		"removable": false,
 		"movable": false,
+		"level": 1,
+		"next_level_definition_id": &"",
+		"build_wood_cost": 0,
+		"build_food_cost": 0,
+		"build_days": 0,
+		"construction_started_day": 0,
+		"construction_complete_day": 0,
+		"effect_summary": "",
+		"prerequisite_summary": "",
 		"requires_road": false,
 		"road_anchor_offsets": [],
 		"built_day": 0,
@@ -2366,6 +2751,52 @@ func _sync_construction_ui() -> void:
 		not _detail_panel_active
 		and state == ConstructionState.CHOOSING_TEMPLATE
 	)
+
+
+func _refresh_construction_catalog_ui() -> void:
+	var catalog_entries := [
+		[road_button, ROAD_DEFINITION],
+		[logging_camp_button, LOGGING_CAMP_DEFINITION],
+		[farm_button, FARM_DEFINITION],
+		[warehouse_button, WAREHOUSE_DEFINITION],
+		[watchtower_button, WATCHTOWER_DEFINITION],
+	]
+	for entry in catalog_entries:
+		var button := entry[0] as Button
+		var definition := entry[1] as BuildingDefinition
+		var data := get_definition_build_data(definition.definition_id)
+		var duration_compact := (
+			"即时"
+			if definition.build_days <= 0
+			else "%d日" % definition.build_days
+		)
+		var second_line := str(data.effect_text)
+		if not bool(data.can_build):
+			second_line = "不可建：%s" % str(data.unavailable_reason)
+		elif definition.requires_road:
+			second_line += " · 需道路"
+		button.text = "%s L%d · %s · %s\n%s" % [
+			definition.display_name,
+			definition.level,
+			str(data.compact_cost_text),
+			duration_compact,
+			second_line,
+		]
+		button.disabled = not bool(data.can_build)
+		button.tooltip_text = (
+			"投入：%s｜工期：%s\n效果：%s\n前置：%s%s"
+			% [
+				str(data.cost_text),
+				str(data.duration_text),
+				str(data.effect_text),
+				str(data.prerequisite_text),
+				(
+					"\n当前不可建：%s" % str(data.unavailable_reason)
+					if not bool(data.can_build)
+					else ""
+				),
+			]
+		)
 
 
 func _refresh_city_ui() -> void:
@@ -2442,12 +2873,14 @@ func _refresh_city_ui() -> void:
 	restart_map_button.visible = (
 		current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
 	)
+	_refresh_construction_catalog_ui()
 	_sync_construction_ui()
 
 
 func _refresh_first_war_ui() -> void:
 	var committed_count := get_first_war_committed_count()
 	var food_cost := get_first_war_food_cost(committed_count)
+	var assessment := get_first_war_preparation_assessment()
 	var state_text := str(get_first_war_state_id())
 	var countdown_text := ""
 	if first_war_state == FirstWarState.WARNING:
@@ -2460,16 +2893,22 @@ func _refresh_first_war_ui() -> void:
 		]
 	first_war_intel.text = (
 		"北坡敌情 · %s%s\n敌军 %d｜工事 %d\n"
-		+ "可用步兵 %d｜粮食 %d\n预计出战粮草 %d｜城防 %d"
+		+ "守军 %d｜%s\n粮食 %d／出战需 %d｜%s\n"
+		+ "城防 %d／减损线 %d｜%s\n%s"
 	) % [
 		state_text,
 		countdown_text,
 		enemy_count,
 		enemy_fortification,
 		committed_count,
+		str(assessment.troop_status),
 		food,
 		food_cost,
+		str(assessment.supply_status),
 		get_city_defense(),
+		int(assessment.defense_target),
+		str(assessment.defense_status),
+		str(assessment.suggestion),
 	]
 	var awaiting_summary := (
 		_first_war_pending_outcome != &""

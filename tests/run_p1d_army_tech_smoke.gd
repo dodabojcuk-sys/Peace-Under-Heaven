@@ -152,7 +152,8 @@ func _run() -> void:
 	var logging_id: int = construction.place_definition_at_cell(
 		&"building.logging_camp.t1",
 		Vector2i(10, 7),
-		false
+		false,
+		true
 	)
 	_check(logging_id > 0, "测试伐木场可以进入统一 placement")
 	var wood_before: int = construction.wood
