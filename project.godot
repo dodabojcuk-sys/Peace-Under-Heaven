@@ -15,6 +15,10 @@ run/main_scene="res://scenes/blank_map.tscn"
 config/features=PackedStringArray("4.5")
 run/disable_stdout_capture=false
 
+[autoload]
+
+RuntimeIdentity="*res://scripts/runtime_identity.gd"
+
 [rendering]
 
 textures/vram_compression/import_etc2_astc=true
