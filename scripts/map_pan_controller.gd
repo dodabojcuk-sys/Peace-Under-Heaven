@@ -5,17 +5,27 @@ const DRAG_THRESHOLD := 8.0
 const MIN_ZOOM := 0.6
 const MAX_ZOOM := 1.6
 const ZOOM_STEP := 0.1
+const MVP_VICTORY_WOOD_REWARD := 20
 
 @onready var camera: Camera2D = $Camera2D
 @onready var map_board: Control = $MapWorld/MapBoard
 @onready var city_map_world: Node2D = $MapWorld
 @onready var city_ui_shell: Control = $UI/Shell
 @onready var campaign_world_map: WorldMapController = $CampaignWorldMap
+@onready var blackstone_expedition_mvp: BlackstoneExpeditionMvp = (
+	$UI/BlackstoneExpeditionMvp
+)
 @onready var construction_controller: Node = $ConstructionController
 @onready var building_selection_controller: Node = $BuildingSelectionController
 @onready var top_status_bar: Control = $UI/Shell/TopStatusBar
 @onready var city_bar: Control = $UI/Shell/CityBar
 @onready var city_bar_toggle: Button = $UI/Shell/CityBarToggle
+@onready var expedition_entry_button: Button = (
+	$UI/Shell/BuildingDetailPanel/FirstWarActions/MvpExpeditionButton
+)
+@onready var expedition_result_status: Label = (
+	$UI/Shell/BuildingDetailPanel/FirstWarActions/MvpResultStatus
+)
 
 var active_drag_button: int = -1
 var last_pointer_screen := Vector2.ZERO
@@ -23,8 +33,10 @@ var pending_drag_delta := Vector2.ZERO
 var is_dragging := false
 var city_bar_expanded := false
 var world_map_open := false
+var mvp_expedition_open := false
 var _city_camera_position := Vector2.ZERO
 var _city_camera_zoom := Vector2.ONE
+var _construction_process_mode := Node.PROCESS_MODE_INHERIT
 
 
 func _ready() -> void:
@@ -40,12 +52,35 @@ func _ready() -> void:
 	campaign_world_map.noticeboard_requested.connect(
 		_on_world_map_noticeboard_requested
 	)
+	expedition_entry_button.pressed.connect(open_blackstone_expedition_mvp)
+	blackstone_expedition_mvp.run_finished.connect(
+		_on_blackstone_mvp_run_finished
+	)
+	blackstone_expedition_mvp.return_to_city_requested.connect(
+		return_from_blackstone_expedition_mvp
+	)
+	construction_controller.city_state_changed.connect(
+		_refresh_blackstone_mvp_entry
+	)
 	campaign_world_map.configure(construction_controller)
 	set_city_bar_expanded(false)
+	_refresh_blackstone_mvp_entry()
 	call_deferred("_initialize_camera")
 
 
 func _input(event: InputEvent) -> void:
+	if mvp_expedition_open:
+		if (
+			event is InputEventKey
+			and event.pressed
+			and not event.echo
+			and event.keycode == KEY_ESCAPE
+		):
+			blackstone_expedition_mvp.handle_escape()
+			get_viewport().set_input_as_handled()
+		return
+		return
+
 	if world_map_open:
 		_handle_world_map_input(event)
 		return
@@ -366,6 +401,83 @@ func ensure_world_map_position_visible(
 
 func is_campaign_world_map_open() -> bool:
 	return world_map_open
+
+
+func open_blackstone_expedition_mvp() -> bool:
+	if (
+		mvp_expedition_open
+		or world_map_open
+		or construction_controller.is_city_action_locked_for_battle()
+	):
+		_refresh_blackstone_mvp_entry()
+		return false
+	_stop_drag()
+	construction_controller.cancel_build_interaction()
+	building_selection_controller.clear_selection()
+	_city_camera_position = camera.position
+	_city_camera_zoom = camera.zoom
+	_construction_process_mode = construction_controller.process_mode
+	construction_controller.process_mode = Node.PROCESS_MODE_DISABLED
+	city_map_world.visible = false
+	city_ui_shell.visible = false
+	mvp_expedition_open = true
+	blackstone_expedition_mvp.visible = true
+	blackstone_expedition_mvp.start_new_run()
+	return true
+
+
+func return_from_blackstone_expedition_mvp() -> bool:
+	if not mvp_expedition_open:
+		return false
+	blackstone_expedition_mvp.visible = false
+	mvp_expedition_open = false
+	city_map_world.visible = true
+	city_ui_shell.visible = true
+	construction_controller.process_mode = _construction_process_mode
+	camera.zoom = _city_camera_zoom
+	camera.position = _city_camera_position
+	_clamp_camera()
+	_refresh_blackstone_mvp_entry()
+	return true
+
+
+func is_blackstone_expedition_mvp_open() -> bool:
+	return mvp_expedition_open
+
+
+func _on_blackstone_mvp_run_finished(
+	outcome: StringName,
+	soldiers_remaining: int,
+	summary: String
+) -> void:
+	if outcome == BlackstoneExpeditionMvp.OUTCOME_VICTORY:
+		var accepted_reward: int = (
+			construction_controller.grant_blackstone_mvp_victory_reward(
+				MVP_VICTORY_WOOD_REWARD
+			)
+		)
+		expedition_result_status.text = (
+			"胜利 · 木材 +%d · 余兵 %d"
+			% [accepted_reward, soldiers_remaining]
+		)
+	elif outcome == BlackstoneExpeditionMvp.OUTCOME_DEFEAT:
+		expedition_result_status.text = "出征失败 · 可再次挑战"
+	if summary.is_empty():
+		expedition_result_status.text = "本次出征已结束"
+
+
+func _refresh_blackstone_mvp_entry() -> void:
+	var is_locked: bool = (
+		construction_controller.is_city_action_locked_for_battle()
+	)
+	expedition_entry_button.visible = not is_locked
+	expedition_result_status.visible = not is_locked
+	expedition_entry_button.disabled = is_locked
+	expedition_entry_button.tooltip_text = (
+		"敌袭待处理，先完成北坡首战"
+		if is_locked
+		else "进入黑石堡小型战区"
+	)
 
 
 func _on_viewport_size_changed() -> void:

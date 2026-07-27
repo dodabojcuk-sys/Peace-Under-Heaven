@@ -1,9 +1,10 @@
-[gd_scene load_steps=12 format=3 uid="uid://blankmap00"]
+[gd_scene load_steps=13 format=3 uid="uid://blankmap00"]
 
 [ext_resource type="Script" path="res://scripts/map_pan_controller.gd" id="1_map_pan"]
 [ext_resource type="Script" path="res://scripts/construction_controller.gd" id="2_construction"]
 [ext_resource type="Script" path="res://scripts/building_selection_controller.gd" id="3_selection"]
 [ext_resource type="PackedScene" path="res://scenes/world_map_v0.tscn" id="4_world_map"]
+[ext_resource type="PackedScene" path="res://scenes/blackstone_expedition_mvp.tscn" id="5_mvp"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top_bar"]
 bg_color = Color(0.847059, 0.831373, 0.796078, 1)
@@ -445,6 +446,8 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="UI" type="CanvasLayer" parent="."]
+
+[node name="BlackstoneExpeditionMvp" parent="UI" instance=ExtResource("5_mvp")]
 
 [node name="Shell" type="Control" parent="UI"]
 layout_mode = 3
@@ -1105,6 +1108,33 @@ mouse_filter = 2
 theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
 theme_override_font_sizes/font_size = 12
 text = "北坡敌情"
+autowrap_mode = 2
+
+[node name="MvpExpeditionButton" type="Button" parent="UI/Shell/BuildingDetailPanel/FirstWarActions"]
+layout_mode = 0
+offset_top = 150.0
+offset_right = 240.0
+offset_bottom = 184.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "出征黑石堡"
+
+[node name="MvpResultStatus" type="Label" parent="UI/Shell/BuildingDetailPanel/FirstWarActions"]
+layout_mode = 0
+offset_top = 190.0
+offset_right = 240.0
+offset_bottom = 224.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 11
+text = "尚未出征"
+horizontal_alignment = 1
+vertical_alignment = 1
 autowrap_mode = 2
 
 [node name="EnterBattleButton" type="Button" parent="UI/Shell/BuildingDetailPanel/FirstWarActions"]

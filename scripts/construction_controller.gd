@@ -2205,6 +2205,21 @@ func get_resource_capacity(resource_id: StringName) -> int:
 	return capacity
 
 
+func grant_blackstone_mvp_victory_reward(
+	requested_wood: int
+) -> int:
+	if requested_wood <= 0:
+		return 0
+	var accepted_wood := mini(
+		requested_wood,
+		maxi(get_resource_capacity(&"wood") - wood, 0)
+	)
+	wood += accepted_wood
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return accepted_wood
+
+
 func has_readiness_checkpoint() -> bool:
 	return not _readiness_checkpoint.is_empty()
 
