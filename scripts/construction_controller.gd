@@ -49,6 +49,9 @@ const WAREHOUSE_DEFINITION: BuildingDefinition = preload(
 const WATCHTOWER_DEFINITION: BuildingDefinition = preload(
 	"res://resources/definitions/buildings/watchtower.tres"
 )
+const EARLY_CITY_SNAPSHOT_V1 = preload(
+	"res://scripts/state/early_city_snapshot_v1.gd"
+)
 const NOTICEBOARD_MISSIONS: Array[MissionDefinition] = [
 	preload("res://resources/definitions/missions/outskirts_sweep.tres"),
 	preload("res://resources/definitions/missions/supply_relief.tres"),
@@ -525,66 +528,26 @@ func place_definition_at_cell(
 		return -1
 
 	var placement_id := _allocate_placement_id()
-	var footprint_cells := get_footprint_cells(
-		origin_cell,
-		definition.footprint
-	)
-	var building := _create_placed_building_node(
-		placement_id,
-		origin_cell,
-		definition
-	)
-	var world_size := _definition_world_size(definition)
 	var starts_completed := (
 		complete_immediately
 		or definition.build_days <= 0
 	)
-	var record := _base_record()
-	record.merge({
-		"placement_id": placement_id,
-		"placement_kind": definition.placement_kind,
-		"template_id": definition.definition_id,
-		"definition_id": definition.definition_id,
-		"display_name": definition.display_name,
-		"building_type": definition.building_type,
-		"description": definition.description,
-		"origin_cell": origin_cell,
-		"footprint": definition.footprint,
-		"occupied_footprint_cells": footprint_cells.duplicate(),
-		"selection_bounds": Rect2(Vector2.ZERO, world_size),
-		"lifecycle_state": (
-			&"running" if starts_completed else &"constructing"
-		),
-		"prototype_status": (
-			"运行中" if starts_completed else "施工中"
-		),
-		"selectable": true,
-		"removable": true,
-		"movable": false,
-		"requires_road": definition.requires_road,
-		"road_anchor_offsets": definition.road_anchor_offsets.duplicate(),
-		"level": definition.level,
-		"next_level_definition_id": definition.next_level_definition_id,
-		"build_wood_cost": definition.wood_cost,
-		"build_food_cost": definition.food_cost,
-		"build_days": definition.build_days,
-		"construction_started_day": current_day,
-		"construction_complete_day": (
+	if not _register_runtime_placement_record(
+		placement_id,
+		origin_cell,
+		definition,
+		&"running" if starts_completed else &"constructing",
+		current_day,
+		0,
+		current_day,
+		(
 			current_day
 			if starts_completed
 			else current_day + definition.build_days
 		),
-		"built_day": current_day,
-		"node": building,
-	}, true)
-	_building_records_by_id[placement_id] = record
-	_placement_order.append(placement_id)
-	for cell in footprint_cells:
-		_occupied_cells[cell] = placement_id
-	building.tree_exited.connect(
-		_on_runtime_building_tree_exited.bind(placement_id, building),
-		CONNECT_ONE_SHOT
-	)
+	):
+		_next_placement_id = placement_id
+		return -1
 	if charge_cost:
 		wood -= definition.wood_cost
 		food -= definition.food_cost
@@ -1181,6 +1144,569 @@ func get_city_state() -> Dictionary:
 	}
 
 
+func export_early_city_snapshot() -> Dictionary:
+	var scope_error := _get_early_city_snapshot_scope_error()
+	if not scope_error.is_empty():
+		return {}
+	var placements: Array[Dictionary] = []
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if (
+			record.is_empty()
+			or record.placement_kind == PLACEMENT_KIND_FIXED
+		):
+			continue
+		placements.append({
+			"placement_id": placement_id,
+			"definition_id": StringName(record.definition_id),
+			"origin_cell": Vector2i(record.origin_cell),
+			"lifecycle_state": StringName(record.lifecycle_state),
+			"built_day": int(record.built_day),
+			"disabled_until_day": int(record.disabled_until_day),
+			"construction_started_day": int(
+				record.construction_started_day
+			),
+			"construction_complete_day": int(
+				record.construction_complete_day
+			),
+		})
+	var snapshot := {
+		"schema_version": EARLY_CITY_SNAPSHOT_V1.SCHEMA_VERSION,
+		"snapshot_kind": EARLY_CITY_SNAPSHOT_V1.SNAPSHOT_KIND,
+		"city_id": EARLY_CITY_SNAPSHOT_V1.CITY_ID,
+		"city": {
+			"current_day": current_day,
+			"day_elapsed_seconds": day_elapsed_seconds,
+			"wood": wood,
+			"food": food,
+			"tech_points": tech_points,
+			"infantry_count": infantry_count,
+			"recruitment_cap": recruitment_cap,
+			"selected_general_id": selected_general_id,
+			"training_queued_count": training_queued_count,
+			"training_complete_day": training_complete_day,
+			"last_training_order_day": last_training_order_day,
+			"researched_tech_ids": researched_tech_ids.duplicate(),
+			"supply_shortage": supply_shortage,
+			"emergency_mobilization_used": (
+				emergency_mobilization_used
+			),
+			"city_time_paused": city_time_paused,
+			"city_time_speed": city_time_speed,
+		},
+		"placements": placements,
+		"next_placement_id": _next_placement_id,
+	}
+	var validation := validate_early_city_snapshot(snapshot)
+	return (
+		validation.snapshot.duplicate(true)
+		if bool(validation.valid)
+		else {}
+	)
+
+
+func validate_early_city_snapshot(snapshot: Dictionary) -> Dictionary:
+	var structural := EARLY_CITY_SNAPSHOT_V1.validate_structure(snapshot)
+	if not bool(structural.valid):
+		return structural
+	var normalized: Dictionary = structural.snapshot
+	var fixed_occupied_cells: Dictionary = {}
+	var fixed_placement_ids: Dictionary = {}
+	var max_fixed_placement_id := 0
+	for placement_id in _placement_order:
+		var fixed_record: Dictionary = _building_records_by_id.get(
+			placement_id,
+			{}
+		)
+		if (
+			fixed_record.is_empty()
+			or fixed_record.placement_kind != PLACEMENT_KIND_FIXED
+		):
+			continue
+		fixed_placement_ids[placement_id] = true
+		max_fixed_placement_id = maxi(max_fixed_placement_id, placement_id)
+		for cell in fixed_record.occupied_footprint_cells:
+			fixed_occupied_cells[Vector2i(cell)] = placement_id
+	var map_grid_size := Vector2i(
+		floori(map_board.size.x / GRID_SIZE),
+		floori(map_board.size.y / GRID_SIZE)
+	)
+	return EARLY_CITY_SNAPSHOT_V1.validate_with_context(normalized, {
+		"city_id": EARLY_CITY_SNAPSHOT_V1.CITY_ID,
+		"definitions_by_id": _definitions_by_id,
+		"generals_by_id": _generals_by_id,
+		"tech_by_id": _tech_by_id,
+		"fixed_occupied_cells": fixed_occupied_cells,
+		"fixed_placement_ids": fixed_placement_ids,
+		"max_fixed_placement_id": max_fixed_placement_id,
+		"map_grid_size": map_grid_size,
+		"base_resource_capacity": BASE_RESOURCE_CAPACITY,
+		"threat_schedule": FIRST_MAP_THREAT_SCHEDULE,
+		"road_root_cells": ROAD_ROOT_CELLS,
+		"seconds_per_day": SECONDS_PER_DAY,
+		"allowed_time_speeds": CITY_TIME_SPEEDS,
+		"allowed_training_batches": (
+			_get_allowed_training_batches_for_snapshot(
+				normalized.city.researched_tech_ids
+			)
+		),
+	})
+
+
+func restore_early_city_snapshot(snapshot: Dictionary) -> Dictionary:
+	var scope_error := _get_early_city_snapshot_scope_error()
+	if not scope_error.is_empty():
+		return {
+			"success": false,
+			"error": "当前城市不可恢复：%s" % scope_error,
+		}
+	var validation := validate_early_city_snapshot(snapshot)
+	if not bool(validation.valid):
+		return {
+			"success": false,
+			"error": str(validation.error),
+		}
+	var rollback_snapshot := export_early_city_snapshot()
+	if rollback_snapshot.is_empty():
+		return {
+			"success": false,
+			"error": "无法捕获恢复前城市状态",
+		}
+	var apply_result := _apply_validated_early_city_snapshot(validation)
+	if not bool(apply_result.success):
+		var rollback_result := _rollback_early_city_snapshot(
+			rollback_snapshot
+		)
+		if not bool(rollback_result.success):
+			push_error(
+				"S1A.1 restore failed and rollback failed: %s / %s"
+				% [apply_result.error, rollback_result.error]
+			)
+			return {
+				"success": false,
+				"error": "恢复失败且旧状态回滚失败：%s" % (
+					rollback_result.error
+				),
+			}
+		_refresh_city_ui()
+		city_state_changed.emit()
+		return {
+			"success": false,
+			"error": str(apply_result.error),
+		}
+	for removed_placement_id in apply_result.removed_placement_ids:
+		building_removed.emit(int(removed_placement_id))
+	cancel_build_interaction()
+	last_daily_breakdown = {
+		"maintenance_food": 0,
+		"maintenance_required": 0,
+		"training_completed": 0,
+		"construction_completed": 0,
+		"wood_income": 0,
+		"food_income": 0,
+		"research_income": 0,
+		"event_wood_loss": 0,
+		"event_food_loss": 0,
+		"stopped_placement_id": -1,
+	}
+	last_daily_report = "已恢复 S1A.1 内存快照"
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {"success": true, "error": ""}
+
+
+func _get_early_city_snapshot_scope_error() -> String:
+	if current_day < 1 or current_day >= FIRST_WAR_PENDING_DAY:
+		return "只支持第 1 至第 6 日的早期城市状态"
+	if first_war_state not in [
+		FirstWarState.PREPARATION,
+		FirstWarState.WARNING,
+	]:
+		return "首战状态已超出早期城市范围"
+	if (
+		not _active_battle_reservation.is_empty()
+		or not _closed_battle_transactions.is_empty()
+		or not _committed_battle_result_ids.is_empty()
+		or not _first_clear_keys.is_empty()
+		or not _last_battle_result_summary.is_empty()
+		or _first_war_pending_outcome != &""
+		or _first_war_result_acknowledged
+		or is_instance_valid(_formal_battle_scene)
+	):
+		return "存在战斗事务或战果"
+	if (
+		_active_noticeboard_mission_id != &""
+		or not _completed_noticeboard_mission_ids.is_empty()
+		or not _noticeboard_last_result_summary.is_empty()
+	):
+		return "存在告示板任务状态"
+	if not _readiness_checkpoint.is_empty():
+		return "存在战备检查点"
+	if city_fallen or city_defense_damage != 0:
+		return "存在战败或城防损伤状态"
+	if _next_battle_transaction_sequence != 1:
+		return "战斗事务序号已变化"
+	var placement_integrity_error := _get_placement_integrity_error()
+	if not placement_integrity_error.is_empty():
+		return placement_integrity_error
+	if (
+		current_day < FIRST_WAR_WARNING_DAY
+		and (
+			first_war_state != FirstWarState.PREPARATION
+			or first_war_warning_count != 0
+		)
+	):
+		return "首战准备状态与日期不一致"
+	if (
+		current_day == FIRST_WAR_WARNING_DAY
+		and (
+			first_war_state != FirstWarState.WARNING
+			or first_war_warning_count != 1
+		)
+	):
+		return "首战预警状态与日期不一致"
+	return ""
+
+
+func _get_placement_integrity_error() -> String:
+	var expected_occupancy: Dictionary = {}
+	var seen_ids: Dictionary = {}
+	for placement_id in _placement_order:
+		if seen_ids.has(placement_id):
+			return "placement 顺序包含重复 ID"
+		seen_ids[placement_id] = true
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if record.is_empty():
+			return "placement 顺序引用缺失记录"
+		var building := record.get("node") as CanvasItem
+		if not is_instance_valid(building):
+			return "placement 记录引用无效节点"
+		for cell in record.occupied_footprint_cells:
+			var typed_cell := Vector2i(cell)
+			if expected_occupancy.has(typed_cell):
+				return "当前 placement 记录互相重叠"
+			expected_occupancy[typed_cell] = placement_id
+	if seen_ids.size() != _building_records_by_id.size():
+		return "权威记录包含未进入 placement 顺序的 ID"
+	if expected_occupancy.size() != _occupied_cells.size():
+		return "当前占用表与 placement 记录数量不一致"
+	for cell in expected_occupancy:
+		if _occupied_cells.get(cell, -1) != expected_occupancy[cell]:
+			return "当前占用表所有权不一致"
+	return ""
+
+
+func _apply_validated_early_city_snapshot(
+	validation: Dictionary
+) -> Dictionary:
+	var clear_result := _clear_runtime_placements_for_snapshot_restore()
+	if not bool(clear_result.success):
+		return clear_result
+	var snapshot: Dictionary = validation.snapshot
+	var install_result := _install_early_city_snapshot(snapshot)
+	if not bool(install_result.success):
+		return install_result
+	var postcondition_error := _get_early_city_snapshot_postcondition_error(
+		validation
+	)
+	if not postcondition_error.is_empty():
+		return {
+			"success": false,
+			"error": "恢复后核对失败：%s" % postcondition_error,
+		}
+	return {
+		"success": true,
+		"error": "",
+		"removed_placement_ids": (
+			clear_result.removed_placement_ids.duplicate()
+		),
+	}
+
+
+func _install_early_city_snapshot(snapshot: Dictionary) -> Dictionary:
+	var city: Dictionary = snapshot.city
+	current_day = int(city.current_day)
+	day_elapsed_seconds = float(city.day_elapsed_seconds)
+	wood = int(city.wood)
+	food = int(city.food)
+	tech_points = int(city.tech_points)
+	infantry_count = int(city.infantry_count)
+	recruitment_cap = int(city.recruitment_cap)
+	selected_general_id = StringName(city.selected_general_id)
+	training_queued_count = int(city.training_queued_count)
+	training_complete_day = int(city.training_complete_day)
+	last_training_order_day = int(city.last_training_order_day)
+	researched_tech_ids.assign(city.researched_tech_ids)
+	supply_shortage = bool(city.supply_shortage)
+	emergency_mobilization_used = bool(city.emergency_mobilization_used)
+	city_time_paused = bool(city.city_time_paused)
+	city_time_speed = float(city.city_time_speed)
+	var threat := EARLY_CITY_SNAPSHOT_V1.get_expected_threat(
+		current_day,
+		FIRST_MAP_THREAT_SCHEDULE
+	)
+	enemy_count = int(threat.enemy_count)
+	enemy_fortification = int(threat.enemy_fortification)
+	first_war_state = FirstWarState.PREPARATION
+	first_war_warning_count = 0
+	_update_first_war_state_for_current_day()
+	for placement_value in snapshot.placements:
+		if not _restore_runtime_placement_from_snapshot(placement_value):
+			return {
+				"success": false,
+				"error": "无法安装 placement %d" % int(
+					placement_value.placement_id
+				),
+			}
+	_next_placement_id = int(snapshot.next_placement_id)
+	return {"success": true, "error": ""}
+
+
+func _clear_runtime_placements_for_snapshot_restore() -> Dictionary:
+	var runtime_ids: Array[int] = []
+	var removed_ids: Array[int] = []
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if (
+			not record.is_empty()
+			and record.placement_kind != PLACEMENT_KIND_FIXED
+		):
+			runtime_ids.append(placement_id)
+	for placement_id in runtime_ids:
+		var record: Dictionary = _building_records_by_id.get(
+			placement_id,
+			{}
+		)
+		var building := record.get("node") as Node2D
+		if not _release_runtime_record(placement_id, true, false):
+			return {
+				"success": false,
+				"error": "释放旧 placement %d 失败" % placement_id,
+			}
+		if is_instance_valid(building):
+			if building.get_parent() == placed_buildings:
+				placed_buildings.remove_child(building)
+			building.queue_free()
+		removed_ids.append(placement_id)
+	return {
+		"success": true,
+		"error": "",
+		"removed_placement_ids": removed_ids,
+	}
+
+
+func _restore_runtime_placement_from_snapshot(
+	placement: Dictionary
+) -> bool:
+	var placement_id := int(placement.placement_id)
+	var definition := get_definition(StringName(placement.definition_id))
+	var origin_cell := Vector2i(placement.origin_cell)
+	return _register_runtime_placement_record(
+		placement_id,
+		origin_cell,
+		definition,
+		StringName(placement.lifecycle_state),
+		int(placement.built_day),
+		int(placement.disabled_until_day),
+		int(placement.construction_started_day),
+		int(placement.construction_complete_day),
+	)
+
+
+func _register_runtime_placement_record(
+	placement_id: int,
+	origin_cell: Vector2i,
+	definition: BuildingDefinition,
+	lifecycle_state: StringName,
+	built_day: int,
+	disabled_until_day: int,
+	construction_started_day: int,
+	construction_complete_day: int
+) -> bool:
+	if definition == null or _building_records_by_id.has(placement_id):
+		return false
+	var footprint_cells := get_footprint_cells(
+		origin_cell,
+		definition.footprint
+	)
+	for cell in footprint_cells:
+		if _occupied_cells.has(cell):
+			return false
+	var building := _create_placed_building_node(
+		placement_id,
+		origin_cell,
+		definition
+	)
+	if (
+		not is_instance_valid(building)
+		or building.get_parent() != placed_buildings
+	):
+		if is_instance_valid(building):
+			building.queue_free()
+		return false
+	var record := _base_record()
+	record.merge({
+		"placement_id": placement_id,
+		"placement_kind": definition.placement_kind,
+		"template_id": definition.definition_id,
+		"definition_id": definition.definition_id,
+		"display_name": definition.display_name,
+		"building_type": definition.building_type,
+		"description": definition.description,
+		"origin_cell": origin_cell,
+		"footprint": definition.footprint,
+		"occupied_footprint_cells": footprint_cells.duplicate(),
+		"selection_bounds": Rect2(
+			Vector2.ZERO,
+			_definition_world_size(definition)
+		),
+		"lifecycle_state": lifecycle_state,
+		"prototype_status": (
+			"施工中"
+			if lifecycle_state == &"constructing"
+			else "运行中"
+		),
+		"selectable": true,
+		"removable": true,
+		"movable": false,
+		"requires_road": definition.requires_road,
+		"road_anchor_offsets": definition.road_anchor_offsets.duplicate(),
+		"level": definition.level,
+		"next_level_definition_id": definition.next_level_definition_id,
+		"build_wood_cost": definition.wood_cost,
+		"build_food_cost": definition.food_cost,
+		"build_days": definition.build_days,
+		"construction_started_day": construction_started_day,
+		"construction_complete_day": construction_complete_day,
+		"built_day": built_day,
+		"disabled_until_day": disabled_until_day,
+		"node": building,
+	}, true)
+	_building_records_by_id[placement_id] = record
+	_placement_order.append(placement_id)
+	for cell in footprint_cells:
+		_occupied_cells[cell] = placement_id
+	building.tree_exited.connect(
+		_on_runtime_building_tree_exited.bind(placement_id, building),
+		CONNECT_ONE_SHOT
+	)
+	_refresh_placed_building_visual(placement_id)
+	return true
+
+
+func _rollback_early_city_snapshot(snapshot: Dictionary) -> Dictionary:
+	var validation := validate_early_city_snapshot(snapshot)
+	if not bool(validation.valid):
+		return {
+			"success": false,
+			"error": "回滚快照校验失败：%s" % validation.error,
+		}
+	_force_reset_runtime_projection()
+	var install_result := _install_early_city_snapshot(validation.snapshot)
+	if not bool(install_result.success):
+		return {
+			"success": false,
+			"error": "回滚快照安装失败：%s" % install_result.error,
+		}
+	var postcondition_error := _get_early_city_snapshot_postcondition_error(
+		validation
+	)
+	if not postcondition_error.is_empty():
+		return {
+			"success": false,
+			"error": "回滚后核对失败：%s" % postcondition_error,
+		}
+	return {"success": true, "error": ""}
+
+
+func _force_reset_runtime_projection() -> void:
+	var runtime_nodes := placed_buildings.get_children()
+	var fixed_records: Dictionary = {}
+	var fixed_order: Array[int] = []
+	var fixed_occupied: Dictionary = {}
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if (
+			record.is_empty()
+			or record.placement_kind != PLACEMENT_KIND_FIXED
+		):
+			continue
+		fixed_records[placement_id] = record
+		fixed_order.append(placement_id)
+		for cell in record.occupied_footprint_cells:
+			fixed_occupied[Vector2i(cell)] = placement_id
+	_building_records_by_id = fixed_records
+	_placement_order.assign(fixed_order)
+	_occupied_cells = fixed_occupied
+	for child in runtime_nodes:
+		if child.get_parent() == placed_buildings:
+			placed_buildings.remove_child(child)
+		child.queue_free()
+
+
+func _get_early_city_snapshot_postcondition_error(
+	validation: Dictionary
+) -> String:
+	var expected_snapshot: Dictionary = validation.snapshot
+	if (
+		str(expected_snapshot.city_id)
+		!= EARLY_CITY_SNAPSHOT_V1.CITY_ID
+	):
+		return "城市身份不匹配"
+	var integrity_error := _get_placement_integrity_error()
+	if not integrity_error.is_empty():
+		return integrity_error
+	var actual_snapshot := export_early_city_snapshot()
+	if actual_snapshot.is_empty():
+		return "恢复后无法重新导出快照"
+	if actual_snapshot != expected_snapshot:
+		return "恢复后的权威源字段与候选状态不一致"
+
+	var expected_ids: Dictionary = {}
+	for placement_value in expected_snapshot.placements:
+		expected_ids[int(placement_value.placement_id)] = true
+	var node_id_counts: Dictionary = {}
+	for child in placed_buildings.get_children():
+		if not child.has_meta("placement_id"):
+			return "运行时 placement 节点缺少 ID"
+		var node_id := int(child.get_meta("placement_id"))
+		node_id_counts[node_id] = int(node_id_counts.get(node_id, 0)) + 1
+	if node_id_counts.size() != expected_ids.size():
+		return "运行时 placement 节点数量不一致"
+	for placement_id in expected_ids:
+		if int(node_id_counts.get(placement_id, 0)) != 1:
+			return "placement %d 的运行时节点不唯一" % placement_id
+		var record: Dictionary = _building_records_by_id.get(
+			placement_id,
+			{}
+		)
+		var building := record.get("node") as Node2D
+		if (
+			not is_instance_valid(building)
+			or building.get_parent() != placed_buildings
+			or int(building.get_meta("placement_id", -1)) != placement_id
+		):
+			return "placement %d 的记录与节点不一致" % placement_id
+
+	var derived: Dictionary = validation.derived
+	if _occupied_cells != derived.occupied_cells:
+		return "恢复后的 occupied cells 与候选派生结果不一致"
+	if get_connected_road_cells() != derived.connected_road_cells:
+		return "恢复后的道路连通与候选派生结果不一致"
+	if (
+		get_resource_capacity(&"wood") != int(derived.wood_capacity)
+		or get_resource_capacity(&"food") != int(derived.food_capacity)
+	):
+		return "恢复后的资源容量与候选派生结果不一致"
+	for placement_id in derived.operational_by_id:
+		if (
+			is_building_operational(placement_id)
+			!= bool(derived.operational_by_id[placement_id])
+		):
+			return "placement %d 的启用状态不一致" % placement_id
+	return ""
+
+
 func is_city_action_locked_for_battle() -> bool:
 	return (
 		not _active_battle_reservation.is_empty()
@@ -1497,10 +2023,24 @@ func get_effective_command_limit() -> int:
 
 
 func get_training_batch_size() -> int:
+	return _get_training_batch_size_for_tech_ids(researched_tech_ids)
+
+
+func _get_training_batch_size_for_tech_ids(tech_ids: Array) -> int:
 	var rotational := get_tech_definition(&"tech.rotational_recruitment")
-	if rotational != null and has_tech(rotational.tech_id):
+	if rotational != null and rotational.tech_id in tech_ids:
 		return roundi(rotational.effect_amount)
 	return BASE_TRAINING_BATCH
+
+
+func _get_allowed_training_batches_for_snapshot(
+	tech_ids: Array
+) -> Array[int]:
+	var allowed: Array[int] = [BASE_TRAINING_BATCH]
+	var current_batch := _get_training_batch_size_for_tech_ids(tech_ids)
+	if current_batch not in allowed:
+		allowed.append(current_batch)
+	return allowed
 
 
 func can_queue_training() -> bool:
@@ -2676,7 +3216,8 @@ func _refresh_placed_building_visual(placement_id: int) -> void:
 
 func _release_runtime_record(
 	placement_id: int,
-	require_complete_ownership: bool
+	require_complete_ownership: bool,
+	emit_removal_signal := true
 ) -> bool:
 	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if (
@@ -2699,7 +3240,8 @@ func _release_runtime_record(
 			)
 	_building_records_by_id.erase(placement_id)
 	_placement_order.erase(placement_id)
-	building_removed.emit(placement_id)
+	if emit_removal_signal:
+		building_removed.emit(placement_id)
 	return true
 
 
