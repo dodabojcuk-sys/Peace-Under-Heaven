@@ -2,10 +2,12 @@
 
 ## 当前阶段
 
-- `V5_G1_IMPLEMENTED_PENDING_INDEPENDENT_REVIEW`
+- `V5_G1_VERIFIED_G2_AUTHORIZED`
 
 ## 验收状态
 
+- 2026-07-30，新的独立 reviewer 绑定 G1 候选 `b3a7f03055350f25caa14dee8a630cf3b004d028` 及 parent `2cc4ebf01622b424ff4a4cd145c421b8fd1bbec3`，签发 `V5_G1_CONTRACT_PACKAGE_REVIEW_ACCEPTED`。六项 G1 合同与 V5-G1 已 VERIFIED；条件式授权因此生效，允许立即连续实施完整 V5-G2，但不提前接受任何 G2 runtime。
+- G1 独立复审重新得到合同基线 51/51，并增加 30 项跨合同字段、版本、写入者和回滚检查；V5 专项 27 条、tracked 29/29 共 1601 条、all-present 30/30 共 1713 条／1742 条 PASS；两正式场景、editor scan、工作簿 14 项持久化检查与 13 表渲染复核、`git diff --check` 和错误签名扫描均通过。证据目录：`/tmp/txwzs-v5-g1-independent-review-001.MJhd1Y`。
 - 2026-07-30，新的独立 reviewer 绑定修复候选 `bd15fca` 及 parent `242f793`，签发 `V5_P0_P1_PACKAGE_REVIEW_ACCEPTED`。V5-G0 已 VERIFIED，P0/P1 十一项已覆盖任务 independently accepted；该结论只接受单兵种定义、唯一驻军真值源、兼容入口、可派查询和预留容量修复，不提前接受 G1/G2。
 - 原缺陷已独立按边界重测：在权威查询可派 10 人时，预留 12 人失败且驻军／预留／未预留／可派读模型零写入；预留 10 人成功；总驻军始终等于预留加未预留且所有数量非负。
 - 独立复审重新得到 V5 专项 27 条断言、边界 probe 10 条断言、tracked 29/29 共 1601 条断言、all-present 30/30 共 1713 条断言／1742 条 PASS 行；正式主场景、黑石堡、最终 editor scan、`git diff --check` 和最终错误签名扫描均通过。

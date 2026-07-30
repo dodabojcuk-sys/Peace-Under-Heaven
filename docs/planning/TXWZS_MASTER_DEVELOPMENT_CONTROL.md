@@ -2,13 +2,13 @@
 
 ## Control Metadata
 
-- Plan version: 0.8.0-v5-g0-review-g1-contracts-001
+- Plan version: 0.9.0-v5-g1-independent-review-001
 - Updated: 2026-07-30
 - Workbook: docs/planning/TXWZS_MASTER_DEVELOPMENT_CONTROL.xlsx
 - Canonical editing rule: edit the workbook first, then export Markdown/CSV in the same planning change.
 - Fact authority: Git, code, configuration, tests, and identified runtime evidence override this plan.
-- Current phase: V4 VERIFIED / FROZEN; V5-G0 VERIFIED; V5-G1 IMPLEMENTED_PENDING_INDEPENDENT_REVIEW
-- Unique next gate: independent review of the six-contract V5-G1 package; V5-G2 is not authorized
+- Current phase: V4 VERIFIED / FROZEN; V5-G0 VERIFIED; V5-G1 VERIFIED; V5-G2 AUTHORIZED / IN_PROGRESS
+- Unique next gate: complete V5-G2 automated vertical-loop candidate, then independent review
 - Gate instances: 63 (V4–V12 × G0–G6)
 - Requirements / tasks / tests: 25 / 88 / 69
 - P0 uncovered requirements: 0
@@ -17,12 +17,14 @@
 
 | Field | Value |
 | --- | --- |
-| Branch / parent HEAD | codex/v5-g0-review-g1-contracts-001@2cc4ebf |
+| Branch / parent HEAD | codex/v5-g0-review-g1-contracts-001@b3a7f03 |
 | Upstream | none for the local branch; no push |
 | V4 checkpoint | 5357c28 (`feat: freeze verified V4 milestone`) |
 | V5 repair candidate | bd15fca, parent 242f793, independently accepted |
 | V5 G0 review checkpoint | 2cc4ebf (`docs: accept repaired V5 P0 P1 package`) |
 | V5 G1 candidate | Six contracts, validation matrix, state/report, and synchronized planning artifacts; no G2 runtime |
+| V5 G1 independent verdict | `V5_G1_CONTRACT_PACKAGE_REVIEW_ACCEPTED`; 51/51 baseline + 30/30 cross-contract checks |
+| V5 G1 evidence | /tmp/txwzs-v5-g1-independent-review-001.MJhd1Y |
 | Protected untracked | 8 S1A.2 files |
 | G0 boundary probe | 10 explicit assertions: dispatchable 10; reserve 12 rejects without writes; reserve 10 succeeds |
 | G0 V5 focused | 27 explicit assertions, all passed |
@@ -40,14 +42,14 @@ The `/tmp` evidence is session-local, not the durable rollback point. The durabl
 - V4 stores marching armies in the scene script. `_marching_armies` is an array, but the implementation only updates element 0 and blocks concurrent commands.
 - WorldMapPresentationModel is a read-only fixture, not persistent strategic state.
 - S1A.1 memory snapshots are accepted. G1 read-only review gives S1A.2 `CONDITIONAL_REUSE_ACCEPTED`: storage mechanics and the legacy V1 reader may be adapted, while the eight files remain protected and cannot directly become the V5 writer/schema.
-- G0 independent review accepted `bd15fca`; this verdict covers P0/P1 only. G1 contracts are main-agent implemented and await a different independent review.
+- G0 independent review accepted `bd15fca`; G1 independent review accepted `b3a7f03`. G2 implementation is conditionally authorized but has no acceptance verdict.
 
 ## V4–V12 Roadmap
 
 | Phase | Name | Player result | Detail level | Status | Progress |
 | --- | --- | --- | --- | --- | ---: |
 | V4 | 派遣主链路冻结 | 玩家从己方驻军节点选路线、选比例、完成可见行军并得到一次性到达结算。 | Work-package | VERIFIED / FROZEN | 100% |
-| V5 | 单兵种战争底座＋城内训练补兵 | 城市能真实训练步兵；驻军可派出；伤亡、幸存、驻扎/返回写回；保存重载后保持一致。 | Detailed | IN_PROGRESS | 25% VERIFIED |
+| V5 | 单兵种战争底座＋城内训练补兵 | 城市能真实训练步兵；驻军可派出；伤亡、幸存、驻扎/返回写回；保存重载后保持一致。 | Detailed | IN_PROGRESS | 39% VERIFIED |
 | V6 | 持久外城战区＋多军队数据模型 | 多支军队可以在持久外城道路上行军、驻扎、支援、进攻、返回，重进场景后位置与进度一致。 | Medium | NOT_STARTED | 0% |
 | V7 | 步兵遭遇战 | 两军在道路或据点相遇时进入可读、可决策的步兵遭遇战，结果写回军队与战区。 | Work-package | NOT_STARTED | 0% |
 | V8 | 围城状态＋战事内城 | 军队抵达敌城后形成围城；进入临时战事内城，城墙/城门/核心代表战役，不摧毁常态内城布局。 | Work-package | NOT_STARTED | 0% |
@@ -74,7 +76,7 @@ The `/tmp` evidence is session-local, not the durable rollback point. The durabl
 - P0 evidence freezes the V4 checkpoint, ownership table, stable single-unit contract, garrison conservation, temporary manpower rule, rollback, and stop conditions.
 - P1 uses a private `GarrisonState` under the existing `ConstructionController`, preserves `infantry_count` as a compatibility property, reuses `UnitRole`, adds a dispatchable read model, exposes “驻军 / 可派” in the city sidebar, and has a 27-assertion focused runner.
 - G1 adds six contract artifacts: TrainingQueue source state; strategic-time/scene matrix; ArmyState collection; encounter facts/writeback; S1A.2 reuse decision; and V5 save schema/migration/rollback.
-- These six G1 tasks are `IMPLEMENTED_PENDING_REVIEW`. They add no TrainingQueue, ArmyRegistry, V2 writer/migrator, second unit, enemy AI, siege, or new combat runtime.
+- These six G1 tasks are independently accepted and `VERIFIED`. They add no TrainingQueue, ArmyRegistry, V2 writer/migrator, second unit, enemy AI, siege, or new combat runtime.
 
 ## V6 Medium Plan
 
@@ -99,10 +101,15 @@ focused runner, tracked 29/29, all-present 30/30, formal scenes, editor scan,
 diff check, and zero final error signatures. The 11 related tasks and V5-G0
 are VERIFIED.
 
-The six selected G1 tasks are `IMPLEMENTED_PENDING_REVIEW`; V5-G1 is not
-VERIFIED until another independent reviewer accepts the contract package.
-V5-G2 remains at its pre-existing partial/in-progress ledger state but is
-explicitly NOT AUTHORIZED; no G2 work was performed.
+The six selected G1 tasks and V5-G1 are independently accepted and VERIFIED
+by `TXWZS_V5_G1_CONTRACT_PACKAGE_INDEPENDENT_REVIEW_001.md`. The review bound
+`b3a7f03`, parent `2cc4ebf`, the exact 16-file manifest, 51/51 baseline
+checks, 30/30 cross-contract checks, full regression, workbook verification,
+and the protected S1A.2 hashes.
+
+The user's conditional authorization therefore activates V5-G2. Its ledger is
+IN_PROGRESS while P2/P3/P4/P5 runtime work proceeds; it must not be marked
+VERIFIED before a later independent G2 review.
 
 Independent review must bind the reviewer task identity, reviewed commit/patch/hash, findings, implementer response, and re-review result. Main-agent evidence is labeled PASS_MAIN_AGENT until independently rerun.
 
@@ -128,7 +135,8 @@ Independent review must bind the reviewer task identity, reviewed commit/patch/h
 - G0 local review checkpoint: `2cc4ebf`.
 - G1 artifacts: `docs/architecture/V5_TRAINING_QUEUE_SOURCE_STATE_CONTRACT_V0.md`, `V5_STRATEGIC_TIME_SCENE_MATRIX_CONTRACT_V0.md`, `V5_ARMY_STATE_COLLECTION_CONTRACT_V0.md`, `V5_ENCOUNTER_OUTCOME_FACTS_CONTRACT_V0.md`, `V5_SAVE_SCHEMA_MIGRATION_ROLLBACK_CONTRACT_V0.md`, and `docs/reports/TXWZS_V5_S1A2_REUSE_DECISION_001.md`.
 - G1 validation matrix: `docs/testing/V5_G1_CONTRACT_TEST_MATRIX.md`.
-- G1 status is `IMPLEMENTED_PENDING_INDEPENDENT_REVIEW`; this main-agent contract package does not claim an independent G1 verdict.
+- G1 independent review: `docs/reports/TXWZS_V5_G1_CONTRACT_PACKAGE_INDEPENDENT_REVIEW_001.md`; verdict `V5_G1_CONTRACT_PACKAGE_REVIEW_ACCEPTED`.
+- G1 status is `VERIFIED`; G2 is authorized/in progress and has no acceptance verdict.
 
 ## Four-Layer Architecture
 
