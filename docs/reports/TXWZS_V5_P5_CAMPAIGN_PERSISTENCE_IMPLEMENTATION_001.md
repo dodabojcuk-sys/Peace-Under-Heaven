@@ -35,7 +35,7 @@ S1A.2 implementation, or authorize V5-G3.
 
 | Check | Result |
 | --- | --- |
-| V5 campaign persistence runner | exit 0; 33 explicit assertions |
+| V5 campaign persistence runner | exit 0; 32 explicit assertions |
 | Cold process A / B / C | exits 0 / 0 / 0 |
 | V1 migration | active, empty, invalid, repeated-source checks pass |
 | Memory codec roundtrip | canonical DTO, checksum, exact typed equality pass |

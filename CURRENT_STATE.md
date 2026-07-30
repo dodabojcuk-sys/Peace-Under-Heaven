@@ -2,12 +2,17 @@
 
 ## 当前阶段
 
-- `V5_G2_P5_IMPLEMENTED_PENDING_PACKAGE_REVIEW`
+- `V5_G2_IMPLEMENTED_PENDING_INDEPENDENT_REVIEW`
 
 ## 验收状态
 
+- 2026-07-30，V5-G2 P2/P3/P4/P5 runtime 与 automated vertical loop 已全部实现，当前统一 verdict 为 `V5_G2_IMPLEMENTED_PENDING_INDEPENDENT_REVIEW`。这不是主 Agent 自行接受 G2；G3/G4/P6/V6 仍未启动。
+- 纵向闭环 20 条断言通过，完整覆盖训练、日界容量失败、驻军、预留、派遣、整数行军、真实 `BattleSession`、幂等战果写回、V5 保存和新运行时精确恢复。
+- V5 六个专项 runner 为 6/6、166 条明确断言；tracked 为 33/33、1720 条明确断言；all-present 为 35/35、1852 条明确断言／1886 条 PASS 行。正式城市、黑石堡、C0 场景和 editor scan 均 exit 0，最终错误签名为 0。报告：`docs/reports/TXWZS_V5_G2_RUNTIME_PACKAGE_001.md`。
+- P2/P3/P4/P5 本地 checkpoints 分别为 `023f11a`、`a95f510`、`8a6e65a`、`ee32d84`；最终 G2 candidate 只纳入闭环、报告、状态和规划同步，不纳入 S1A.2。
+- 主控工作簿与 Markdown／五份 CSV 镜像已同步到 `1.0.0-v5-g2-runtime-candidate-001`：16 个 G2 runtime tasks 为 `IMPLEMENTED_PENDING_REVIEW`，V5-G2 Gate 未标 VERIFIED，V4/G0/G1 状态保持不变。
 - 2026-07-30，V5-G2 P5 已实现 `CampaignSnapshotV2`、规范类型 DTO／checksum codec、不可变代次存储、V1 只读迁移、未来版本阻断、坏档回退和完整 live apply rollback。P5 仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`，没有接受 V5-G2。
-- P5 专项 33 条明确断言通过；三个独立 Godot 进程 A/B/C 均 exit 0，证明 2500ms 在途 Army 冷恢复、只推进剩余 3500ms、再冷恢复为 6000ms `ARRIVED` 且不重复推进。报告：`docs/reports/TXWZS_V5_P5_CAMPAIGN_PERSISTENCE_IMPLEMENTATION_001.md`。
+- P5 专项 32 条明确断言通过；三个独立 Godot 进程 A/B/C 均 exit 0，证明 2500ms 在途 Army 冷恢复、只推进剩余 3500ms、再冷恢复为 6000ms `ARRIVED` 且不重复推进。报告：`docs/reports/TXWZS_V5_P5_CAMPAIGN_PERSISTENCE_IMPLEMENTATION_001.md`。
 - S1A.2 裁决继续为 `CONDITIONAL_REUSE_ACCEPTED`：V5 复用严格校验、不可变代次、发布前复读和只读迁移思想，但不复用其 V1 writer/schema；八个受保护文件仍逐字节不变、untracked、unstaged。
 - 2026-07-30，V5-G2 P4 已让现有 `CombatTransactionCoordinator` 从 ArmyState 构造真实遭遇请求，并由原 `BattleSession` 产出唯一 terminal facts；城市权威入口一次性应用胜利驻扎、撤退返城或失败关闭。P4 仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`。
 - P4 专项 23 条、C0 写回 19 条、C0 城市时间 59 条、首战闭环 57 条、黑石堡 151 条、P3 27 条断言通过；正式场景、editor scan 和 `git diff --check` 通过。报告：`docs/reports/TXWZS_V5_P4_ENCOUNTER_WRITEBACK_IMPLEMENTATION_001.md`。
@@ -25,10 +30,10 @@
 - 2026-07-30，独立复审绑定候选 `242f793` 及 parent `5357c28`，发现权威“可派”查询受 `recruitment_cap` 约束，但战斗预留入口没有复用该容量约束；当可派为 10 时仍可写入 12 人预留。原候选 verdict 为 `REVIEW_REQUIRED`，不得标记 `V5_P0_P1_PACKAGE_REVIEW_ACCEPTED`。
 - 同轮最小修复已让预留入口服从 `get_dispatchable_infantry_count()`，并新增容量阻断及失败零写入回归。修复后 V5 专项 27 条断言通过，tracked 29/29、1601 条断言通过，all-present 30/30、1713 条断言及 1742 条 PASS 行通过；正式主场景、黑石堡场景、Godot editor scan、`git diff --check` 和错误签名扫描通过。
 - Repair 001 的历史终态为 `REPAIRED_PENDING_INDEPENDENT_REVIEW`；该门禁已由 Review 002 独立关闭，并形成本地 review checkpoint `2cc4ebf`。
-- V5-G1 六项合同已经实现：TrainingQueue 源状态、战略时间／暂停／战争阻断／场景切换矩阵、可持久化 ArmyState 集合、遭遇事实与权威写回、S1A.2 只读复用裁决、V5 schema／迁移失败／回滚边界。六项均为 `IMPLEMENTED_PENDING_INDEPENDENT_REVIEW`，不得自标 VERIFIED。
+- V5-G1 候选形成时实现了六项合同：TrainingQueue 源状态、战略时间／暂停／战争阻断／场景切换矩阵、可持久化 ArmyState 集合、遭遇事实与权威写回、S1A.2 只读复用裁决、V5 schema／迁移失败／回滚边界；其候选状态曾为 `IMPLEMENTED_PENDING_INDEPENDENT_REVIEW`，现已由后续独立复审接受为 `VERIFIED`。
 - G1 静态合同与当前代码所有权校验为 51/51；最终 V5 专项 27 条断言、tracked 29/29 共 1601 条断言、all-present 30/30 共 1713 条断言／1742 条 PASS 行通过；正式主场景、黑石堡、editor scan、工作簿 38 项持久化校验、`git diff --check` 和最终错误签名扫描均通过。证据目录：`/tmp/txwzs-v5-g1-contracts-001.0QQ8C8`。
 - 主控工作簿及 Markdown／五份 CSV 镜像已同步到计划版本 `0.8.0-v5-g0-review-g1-contracts-001`：P0/P1 十一项和 V5-G0 为 VERIFIED；六项 G1 任务为 IMPLEMENTED_PENDING_REVIEW；V5 进度为 11/44（25% VERIFIED）。
-- V4 继续保持 `VERIFIED / FROZEN`；V5-G2 明确 `NOT AUTHORIZED`，工作簿保留既有 `PARTIAL / IN_PROGRESS` 历史状态但本轮没有实施 G2 runtime；V6 `NOT STARTED`。
+- 在 G1 候选形成当时，V5-G2 仍是 `NOT AUTHORIZED`；该历史状态已由后续 G1 独立接受和条件授权取代。当前 V4 仍为 `VERIFIED / FROZEN`，V5-G2 为 `IMPLEMENTED_PENDING_INDEPENDENT_REVIEW`，V6 `NOT STARTED`。
 - 2026-07-30，V5 已从冻结的 V4 checkpoint `5357c28` 开始首个实质切片；P0 基线／所有权／数据合同与 P1 单兵种驻军实现已完成，原始候选为 `IMPLEMENTED_PENDING_REVIEW`，尚未标记 V5 Gate VERIFIED。
 - `ConstructionController` 继续是唯一城市运行时写入者；新增私有 `GarrisonState` 作为本城兵种数量源，旧 `infantry_count` 是兼容属性而不是第二份存储。
 - 当前只公开既有 `UnitRole` 的稳定 ID `unit_role.infantry_basic`；没有复制战斗数值、增加第二兵种或创建第二套 `CityState`。
