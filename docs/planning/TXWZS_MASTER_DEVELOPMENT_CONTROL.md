@@ -2,13 +2,13 @@
 
 ## Control Metadata
 
-- Plan version: 0.7.0-v5-p0-p1-implementation-001
+- Plan version: 0.8.0-v5-g0-review-g1-contracts-001
 - Updated: 2026-07-30
 - Workbook: docs/planning/TXWZS_MASTER_DEVELOPMENT_CONTROL.xlsx
 - Canonical editing rule: edit the workbook first, then export Markdown/CSV in the same planning change.
 - Fact authority: Git, code, configuration, tests, and identified runtime evidence override this plan.
-- Current phase: V4 VERIFIED / FROZEN; V5 P0/P1 IMPLEMENTED_PENDING_REVIEW
-- Unique next gate: V5 P0/P1 package review; only G0 can receive a full verdict, while G1/G2 remain partial
+- Current phase: V4 VERIFIED / FROZEN; V5-G0 VERIFIED; V5-G1 IMPLEMENTED_PENDING_INDEPENDENT_REVIEW
+- Unique next gate: independent review of the six-contract V5-G1 package; V5-G2 is not authorized
 - Gate instances: 63 (V4–V12 × G0–G6)
 - Requirements / tasks / tests: 25 / 88 / 69
 - P0 uncovered requirements: 0
@@ -17,36 +17,37 @@
 
 | Field | Value |
 | --- | --- |
-| Branch / parent HEAD | codex/v4-milestone-closure@64f37bda130397f08cdd012609dc2d3a5f5c6b99 |
-| Upstream | none for the local closure branch |
+| Branch / parent HEAD | codex/v5-g0-review-g1-contracts-001@2cc4ebf |
+| Upstream | none for the local branch; no push |
 | V4 checkpoint | 5357c28 (`feat: freeze verified V4 milestone`) |
-| V5 candidate | P0 contract + P1 garrison source/adapter/UI/runner |
+| V5 repair candidate | bd15fca, parent 242f793, independently accepted |
+| V5 G0 review checkpoint | 2cc4ebf (`docs: accept repaired V5 P0 P1 package`) |
+| V5 G1 candidate | Six contracts, validation matrix, state/report, and synchronized planning artifacts; no G2 runtime |
 | Protected untracked | 8 S1A.2 files |
-| Blackstone / C0 focused | 150 / 59 explicit assertions, all passed |
-| Tracked regression | 27/27 runners, 1515 PASS lines, 0 error signatures |
-| All-present regression | 29/29 runners, 1686 PASS lines, 0 error signatures |
-| Final evidence | /tmp/txwzs-v4-milestone-closure.fD2A6P |
-| V5 first-slice regression | 30/30 all-present runners, 1740 PASS lines, 0 error signatures |
-| V5 evidence | /tmp/txwzs-v5-single-unit-garrison.20260730 |
+| G0 boundary probe | 10 explicit assertions: dispatchable 10; reserve 12 rejects without writes; reserve 10 succeeds |
+| G0 V5 focused | 27 explicit assertions, all passed |
+| G0 tracked regression | 29/29 runners, 1601 explicit assertions, 0 error signatures |
+| G0 all-present regression | 30/30 runners, 1713 explicit assertions / 1742 PASS lines, 0 error signatures |
+| G0 evidence | /tmp/txwzs-v5-g0-review-002.BlGA2l |
 
 The `/tmp` evidence is session-local, not the durable rollback point. The durable V4 rollback point is the local V4 checkpoint commit containing this revision and its parent. The eight protected S1A.2 files remain outside that checkpoint.
 
 ## Baseline Differences
 
-- The branch, parent HEAD, V4/C0 candidate, state machine, single visible troop option, and protected S1A.2 scope match the repository.
-- BattleSession exists; UnitDefinition, GarrisonState, ArmyState, SiegeSession, CityState, WorldState, RouteState, TrainingQueue, and SaveSchemaVersion do not exist as the named classes.
+- The branch, checkpoint, V4/C0 candidate, state machine, single visible troop option, and protected S1A.2 scope match the repository.
+- `BattleSession` and the private `GarrisonState` exist. `UnitDefinition`, runtime `ArmyState`/`ArmyRegistry`, `SiegeSession`, `CityState`, `WorldState`, `RouteState`, `TrainingQueue`, and runtime `SaveSchemaVersion` do not yet exist as named runtime classes.
 - UnitRole is the current static infantry definition; the plan must adapt or evolve it instead of automatically adding a duplicate UnitDefinition.
-- V4 stores garrisons and marching armies in the scene script. _marching_armies is an array, but the implementation only updates element 0 and blocks concurrent commands.
+- V4 stores marching armies in the scene script. `_marching_armies` is an array, but the implementation only updates element 0 and blocks concurrent commands.
 - WorldMapPresentationModel is a read-only fixture, not persistent strategic state.
-- S1A.1 memory snapshots are accepted. The eight S1A.2 disk files exist but remain protected and are not treated as an accepted disk-save baseline.
-- The final tracked regression is 27/27. The all-present 29/29 observation includes the untracked S1A.2 runner but does not accept or freeze S1A.2.
+- S1A.1 memory snapshots are accepted. G1 read-only review gives S1A.2 `CONDITIONAL_REUSE_ACCEPTED`: storage mechanics and the legacy V1 reader may be adapted, while the eight files remain protected and cannot directly become the V5 writer/schema.
+- G0 independent review accepted `bd15fca`; this verdict covers P0/P1 only. G1 contracts are main-agent implemented and await a different independent review.
 
 ## V4–V12 Roadmap
 
 | Phase | Name | Player result | Detail level | Status | Progress |
 | --- | --- | --- | --- | --- | ---: |
 | V4 | 派遣主链路冻结 | 玩家从己方驻军节点选路线、选比例、完成可见行军并得到一次性到达结算。 | Work-package | VERIFIED / FROZEN | 100% |
-| V5 | 单兵种战争底座＋城内训练补兵 | 城市能真实训练步兵；驻军可派出；伤亡、幸存、驻扎/返回写回；保存重载后保持一致。 | Detailed | IN_PROGRESS | 0% VERIFIED |
+| V5 | 单兵种战争底座＋城内训练补兵 | 城市能真实训练步兵；驻军可派出；伤亡、幸存、驻扎/返回写回；保存重载后保持一致。 | Detailed | IN_PROGRESS | 25% VERIFIED |
 | V6 | 持久外城战区＋多军队数据模型 | 多支军队可以在持久外城道路上行军、驻扎、支援、进攻、返回，重进场景后位置与进度一致。 | Medium | NOT_STARTED | 0% |
 | V7 | 步兵遭遇战 | 两军在道路或据点相遇时进入可读、可决策的步兵遭遇战，结果写回军队与战区。 | Work-package | NOT_STARTED | 0% |
 | V8 | 围城状态＋战事内城 | 军队抵达敌城后形成围城；进入临时战事内城，城墙/城门/核心代表战役，不摧毁常态内城布局。 | Work-package | NOT_STARTED | 0% |
@@ -58,7 +59,7 @@ The `/tmp` evidence is session-local, not the durable rollback point. The durabl
 ## V5 Detailed Plan
 
 - Vertical loop: produce one infantry unit → local garrison → real dispatch → result → survivors return or garrison → state writeback → save and reload.
-- V5 already introduces a persistent ArmyState collection container with stable route/node IDs and progress; the V5 gameplay rule allows at most one active army.
+- G1 defines a future persistent `ArmyRegistry` collection with stable army/route/node IDs and logical progress; the V5 gameplay limit of at most one active army is a validator policy, not a singleton data model.
 - Task count: **44**
 - Work packages:
   - P0 基线与合同: 5
@@ -69,10 +70,11 @@ The `/tmp` evidence is session-local, not the durable rollback point. The durabl
   - P5 存档与迁移: 5
   - P6 最小军备 UI: 3
   - P7 验证与冻结: 7
-- V5 P0 and P1 are implemented as one substantive first slice and await the V5-G0/G1/G2 package review.
+- V5 P0 and P1 were implemented as one substantive first slice and independently accepted at V5-G0.
 - P0 evidence freezes the V4 checkpoint, ownership table, stable single-unit contract, garrison conservation, temporary manpower rule, rollback, and stop conditions.
-- P1 uses a private `GarrisonState` under the existing `ConstructionController`, preserves `infantry_count` as a compatibility property, reuses `UnitRole`, adds a dispatchable read model, exposes “驻军 / 可派” in the city sidebar, and adds a 25-assertion focused runner.
-- No persistent `ArmyState`, save schema, second unit, or S1A.2 reuse is part of this slice.
+- P1 uses a private `GarrisonState` under the existing `ConstructionController`, preserves `infantry_count` as a compatibility property, reuses `UnitRole`, adds a dispatchable read model, exposes “驻军 / 可派” in the city sidebar, and has a 27-assertion focused runner.
+- G1 adds six contract artifacts: TrainingQueue source state; strategic-time/scene matrix; ArmyState collection; encounter facts/writeback; S1A.2 reuse decision; and V5 save schema/migration/rollback.
+- These six G1 tasks are `IMPLEMENTED_PENDING_REVIEW`. They add no TrainingQueue, ArmyRegistry, V2 writer/migrator, second unit, enemy AI, siege, or new combat runtime.
 
 ## V6 Medium Plan
 
@@ -91,13 +93,16 @@ Only VERIFIED counts as complete. CANCELLED requires a decision record and is re
 
 The workbook contains 63 concrete gate instances: V4-G0 through V12-G6. V4-G0 through V4-G6 are VERIFIED. `V4_UI_VISUAL_SLICE_INDEPENDENT_REVIEW_002_ACCEPTED` remains the final route repair review; its candidate hashes match the final V4 candidate. `TXWZS_V4_MILESTONE_CLOSURE_001_ACCEPTED` records the fresh eight-state 1152×648 path, 150 Blackstone assertions, 59 C0 authority assertions, tracked 27/27, all-present 29/29, formal scenes, editor scan, diff check, and zero final error signatures. `T-V4-003` is PASS and V4 is VERIFIED/FROZEN.
 
-V5 P0/P1 now has main-agent implementation evidence: the architecture
-contract, one authoritative city garrison source, compatibility/read APIs,
-player-visible city-sidebar output, a 25-assertion focused runner, and 30/30
-all-present regression. The 11 related tasks are
-`IMPLEMENTED_PENDING_REVIEW`; V5-G0 is pending review, while V5-G1/G2 are only
-partial because their required P2–P5 tasks have not started. They are not
-self-upgraded to VERIFIED.
+V5 P0/P1 now has independent acceptance evidence: `bd15fca`, its exact parent
+and four-file manifest, the 10/12 capacity boundary probe, the 27-assertion
+focused runner, tracked 29/29, all-present 30/30, formal scenes, editor scan,
+diff check, and zero final error signatures. The 11 related tasks and V5-G0
+are VERIFIED.
+
+The six selected G1 tasks are `IMPLEMENTED_PENDING_REVIEW`; V5-G1 is not
+VERIFIED until another independent reviewer accepts the contract package.
+V5-G2 remains at its pre-existing partial/in-progress ledger state but is
+explicitly NOT AUTHORIZED; no G2 work was performed.
 
 Independent review must bind the reviewer task identity, reviewed commit/patch/hash, findings, implementer response, and re-review result. Main-agent evidence is labeled PASS_MAIN_AGENT until independently rerun.
 
@@ -119,7 +124,11 @@ Independent review must bind the reviewer task identity, reviewed commit/patch/h
 - The user explicitly accepted Review 002 and authorized the consolidated V4 Gate. `T-V4-003` and V4-G6 are PASS/VERIFIED, V4 is frozen, and V5-P0-T001 was released from that checkpoint. No Review 003 was created.
 - V5 first-slice implementation report: `docs/reports/TXWZS_V5_SINGLE_UNIT_GARRISON_SLICE_001.md`.
 - V5 P0/P1 contract: `docs/architecture/V5_SINGLE_UNIT_WAR_FOUNDATION_CONTRACT_V0.md`.
-- V5 status is `IMPLEMENTED_PENDING_REVIEW`; this implementation record does not claim an independent package verdict.
+- G0 repair review: `docs/reports/TXWZS_V5_P0_P1_PACKAGE_INDEPENDENT_REVIEW_002.md`; verdict `V5_P0_P1_PACKAGE_REVIEW_ACCEPTED`.
+- G0 local review checkpoint: `2cc4ebf`.
+- G1 artifacts: `docs/architecture/V5_TRAINING_QUEUE_SOURCE_STATE_CONTRACT_V0.md`, `V5_STRATEGIC_TIME_SCENE_MATRIX_CONTRACT_V0.md`, `V5_ARMY_STATE_COLLECTION_CONTRACT_V0.md`, `V5_ENCOUNTER_OUTCOME_FACTS_CONTRACT_V0.md`, `V5_SAVE_SCHEMA_MIGRATION_ROLLBACK_CONTRACT_V0.md`, and `docs/reports/TXWZS_V5_S1A2_REUSE_DECISION_001.md`.
+- G1 validation matrix: `docs/testing/V5_G1_CONTRACT_TEST_MATRIX.md`.
+- G1 status is `IMPLEMENTED_PENDING_INDEPENDENT_REVIEW`; this main-agent contract package does not claim an independent G1 verdict.
 
 ## Four-Layer Architecture
 
