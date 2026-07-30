@@ -6,6 +6,12 @@
 
 ## 验收状态
 
+- 2026-07-31，新的独立 reviewer `/root/v5_g2_repair_independent_reviewer_002` 在正式 worktree `/Users/m1-meng/.codex/worktrees/3231/godot-天下无战事2` 绑定 `cd7be2b → e2c1096 → 5d659243`。同一正式 codec/store/restore 对抗用例在 `cd7be2b` 动态复现 Training／Army `.000001` 覆盖，在 `e2c1096` 确认原 rollback 已拒绝。
+- 本轮同时确认 `e2c1096` 仍接受字符串／浮点 sequence、未封堵持久化上限与 successor 边界，并让“无 active order、保留历史下单日”的合法 V1→V2 迁移失败。因此 reviewer 按 verdict B 完成最小 follow-up repair `fab962c0a84024e7034c32e9d5c39debc1659c5f`，但不得自签接受；当前仍为 `V5_G2_REPAIRED_PENDING_INDEPENDENT_REVIEW`。
+- `fab962c` 要求 stable-ID sequence 为整数，显式处理 exact-persistence exhausted sentinel，在 Army reservation 写权威状态前阻断 sequence exhaustion，并恢复合法 V1 空队列历史迁移。永久 P5 runner 现为 51 条断言，且在 `cd7be2b`／`e2c1096` 生产语义下分别暴露原 rollback 与新边界回退。
+- 最终回归：G2 focused 6/6、185 条明确断言；tracked 33/33、1739 条；all-present 35/35、1871 条／1905 条 PASS；正式城市、黑石堡、C0、editor scan、`git diff --check` 均 exit 0，最终错误签名 0。
+- 主控 XLSX、Markdown 与五份 CSV 未改动，Git blob 与已验证的 `5d659243` 规划 checkpoint 完全相同：13 sheets、公式错误 0、`totalMismatches=0` 的同源关系保持；精确 16 项仍为 `IMPLEMENTED_PENDING_REVIEW`，V5-G2 未 VERIFIED，G3–G6／P6／P7／V6 未启动。S1A.2 八文件前后 SHA-256 不变且仍是唯一 untracked、unstaged。
+- 新复审证据见 `docs/reports/TXWZS_V5_G2_STABLE_ID_SEQUENCE_REPAIR_INDEPENDENT_REVIEW_002.md`。下一唯一 Gate 为 `V5-G2 Stable-ID Boundary Repair Fresh Independent Review`，不得先进入 G3。
 - 2026-07-30，独立 reviewer `/root/v5_g2_independent_reviewer` 绑定原始 G2 candidate `cd7be2b4e65f453889c5f49a4922f788cca08a68`、parent `ee32d8445b11260a26501768da2c58abca78a113` 与 40-file tracked scope，复现了 checksum-valid snapshot 可倒退 `next_order_sequence`／`next_army_sequence` 并在恢复后复用稳定 ID 的缺陷。
 - 同轮最小修复让 `TrainingQueue` 和 `ArmyRegistry` 恢复校验拒绝任何不大于既有最大稳定 ID 的序列，并给 P5 增加两条对抗断言。精确三文件原子 repair commit 为 `e2c1096f858d571d4621b93174d3848406b42ffa`，parent 为原始 G2 candidate `cd7be2b4e65f453889c5f49a4922f788cca08a68`。修复 reviewer 不得自行接受，当前统一 verdict 为 `V5_G2_REPAIRED_PENDING_INDEPENDENT_REVIEW`；G3/G4/G5/G6/P6/V6 均未启动。
 - 纵向闭环 20 条断言继续通过。V5 六个专项 runner 为 6/6、168 条明确断言；tracked 为 33/33、1722 条明确断言；all-present 为 35/35、1854 条明确断言／1888 条 PASS 行。正式城市、黑石堡、C0 场景和 editor scan 均 exit 0，最终错误签名为 0。
