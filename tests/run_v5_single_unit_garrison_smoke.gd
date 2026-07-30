@@ -113,6 +113,19 @@ func _run() -> void:
 	var coordinator := CombatTransactionCoordinator.new()
 	scene.add_child(coordinator)
 	_check(coordinator.configure(city), "战斗协调器绑定唯一城市权威")
+	city.recruitment_cap = 10
+	var rejected_request := coordinator.create_request(12)
+	_check(
+		rejected_request == null,
+		"战斗预留不能超过容量约束后的权威可派数量"
+	)
+	_check(
+		city.get_active_battle_reservation().is_empty()
+			and city.infantry_count == 50
+			and city.get_dispatchable_infantry_count() == 10,
+		"容量阻断失败不产生预留或驻军部分写入"
+	)
+	city.recruitment_cap = 50
 	var request := coordinator.create_request(12)
 	_check(request != null and request.is_valid(), "可以从驻军预留 12 人")
 	var reserved: Dictionary = city.get_garrison_snapshot()

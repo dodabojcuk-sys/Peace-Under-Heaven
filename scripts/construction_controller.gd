@@ -1861,8 +1861,7 @@ func reserve_battle_force(
 	if (
 		not _active_battle_reservation.is_empty()
 		or committed_count <= 0
-		or committed_count > get_available_infantry_count()
-		or committed_count > get_effective_command_limit()
+		or committed_count > get_dispatchable_infantry_count()
 	):
 		return &""
 	var transaction_id := StringName(

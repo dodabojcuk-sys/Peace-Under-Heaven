@@ -2,11 +2,15 @@
 
 ## 当前阶段
 
-- `V5_P0_P1_IMPLEMENTED_PENDING_PACKAGE_REVIEW`
+- `V5_P0_P1_REPAIRED_PENDING_INDEPENDENT_REVIEW`
 
 ## 验收状态
 
-- 2026-07-30，V5 已从冻结的 V4 checkpoint `5357c28` 开始首个实质切片；P0 基线／所有权／数据合同与 P1 单兵种驻军实现已完成，当前为 `IMPLEMENTED_PENDING_REVIEW`，尚未标记 V5 Gate VERIFIED。
+- 2026-07-30，独立复审绑定候选 `242f793` 及 parent `5357c28`，发现权威“可派”查询受 `recruitment_cap` 约束，但战斗预留入口没有复用该容量约束；当可派为 10 时仍可写入 12 人预留。原候选 verdict 为 `REVIEW_REQUIRED`，不得标记 `V5_P0_P1_PACKAGE_REVIEW_ACCEPTED`。
+- 同轮最小修复已让预留入口服从 `get_dispatchable_infantry_count()`，并新增容量阻断及失败零写入回归。修复后 V5 专项 27 条断言通过，tracked 29/29、1601 条断言通过，all-present 30/30、1713 条断言及 1742 条 PASS 行通过；正式主场景、黑石堡场景、Godot editor scan、`git diff --check` 和错误签名扫描通过。
+- 当前终态为 `REPAIRED_PENDING_INDEPENDENT_REVIEW`：本线程不能自行接受修复后候选，V5-G0 仍未 VERIFIED，P0/P1 十一项任务仍未 VERIFIED；按 Gate 协议没有进入 G1，六项 G1 合同与规划工作簿同步均未实施。
+- V4 继续保持 `VERIFIED / FROZEN`；V5-G2 继续 `PARTIAL / IN_PROGRESS`，P2–P5 runtime implementation 仍为 `NOT_STARTED`。
+- 2026-07-30，V5 已从冻结的 V4 checkpoint `5357c28` 开始首个实质切片；P0 基线／所有权／数据合同与 P1 单兵种驻军实现已完成，原始候选为 `IMPLEMENTED_PENDING_REVIEW`，尚未标记 V5 Gate VERIFIED。
 - `ConstructionController` 继续是唯一城市运行时写入者；新增私有 `GarrisonState` 作为本城兵种数量源，旧 `infantry_count` 是兼容属性而不是第二份存储。
 - 当前只公开既有 `UnitRole` 的稳定 ID `unit_role.infantry_basic`；没有复制战斗数值、增加第二兵种或创建第二套 `CityState`。
 - 城市侧栏现在可观察地显示“驻军”和“可派”；可派数同时服从战斗预留、征募容量和将领指挥上限。
