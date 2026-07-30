@@ -2,10 +2,12 @@
 
 ## 当前阶段
 
-- `V5_G2_P3_IMPLEMENTED_PENDING_PACKAGE_REVIEW`
+- `V5_G2_P4_IMPLEMENTED_PENDING_PACKAGE_REVIEW`
 
 ## 验收状态
 
+- 2026-07-30，V5-G2 P4 已让现有 `CombatTransactionCoordinator` 从 ArmyState 构造真实遭遇请求，并由原 `BattleSession` 产出唯一 terminal facts；城市权威入口一次性应用胜利驻扎、撤退返城或失败关闭。P4 仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`。
+- P4 专项 23 条、C0 写回 19 条、C0 城市时间 59 条、首战闭环 57 条、黑石堡 151 条、P3 27 条断言通过；正式场景、editor scan 和 `git diff --check` 通过。报告：`docs/reports/TXWZS_V5_P4_ENCOUNTER_WRITEBACK_IMPLEMENTATION_001.md`。
 - 2026-07-30，V5-G2 P3 已实现集合型 `ArmyRegistry`、黑石堡窄适配层、派遣预留／取消／一次性扣兵、单 active policy、整数毫秒行军和幂等抵达。持久模型没有 singleton、Node、像素坐标或 UI 状态；P3 仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`。
 - P3 专项 27 条、既有黑石堡 151 条、V5 驻军 27 条、P2 37 条断言通过；三个正式场景、editor scan 和 `git diff --check` 通过。报告：`docs/reports/TXWZS_V5_P3_ARMY_STATE_IMPLEMENTATION_001.md`。
 - 2026-07-30，V5-G2 P2 训练与时间运行时已形成阶段 checkpoint：`TrainingQueue` 是唯一训练订单源，旧三字段降为只读兼容投影；下单、资源扣除、完成写驻军、容量／供养阻断和 1×／2×／4×／暂停／战争阻断／场景切换测试已实现。P2 状态仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`，没有提前接受 V5-G2。

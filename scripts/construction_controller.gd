@@ -290,6 +290,7 @@ var _army_registry: ArmyRegistry = ARMY_REGISTRY.new()
 var _army_dispatch_adapter: V5ArmyDispatchAdapter
 var _active_army_dispatch_reservation: Dictionary = {}
 var _next_army_dispatch_transaction_sequence := 1
+var _active_army_encounter: Dictionary = {}
 var training_queued_count: int:
 	get:
 		return int(_training_queue.get_active_order().get("quantity", 0))
@@ -1852,6 +1853,7 @@ func _get_early_city_snapshot_postcondition_error(
 func is_city_action_locked_for_battle() -> bool:
 	return (
 		not _active_battle_reservation.is_empty()
+		or not _active_army_encounter.is_empty()
 		or is_first_war_time_blocked()
 	)
 
@@ -2078,6 +2080,9 @@ func get_committed_world_infantry_total() -> int:
 		+ _army_registry.get_total_active_units(
 			INFANTRY_ROLE.role_id
 		)
+		+ _army_registry.get_total_stationed_units(
+			INFANTRY_ROLE.role_id
+		)
 	)
 
 
@@ -2119,6 +2124,51 @@ func is_combat_transaction_coordinator_bound(
 		and _designated_combat_transaction_coordinator == coordinator
 		and coordinator.is_bound_to_city(self)
 	)
+
+
+func authorize_army_encounter_activation(
+	army_id: StringName,
+	transaction_id: StringName,
+	coordinator: CombatTransactionCoordinator
+) -> bool:
+	if (
+		not is_combat_transaction_coordinator_bound(coordinator)
+		or not _active_army_encounter.is_empty()
+	):
+		return false
+	var army := _army_registry.get_army(army_id)
+	if (
+		army.is_empty()
+		or StringName(army.transaction_id) != transaction_id
+		or StringName(army.phase)
+			!= ArmyRegistry.PHASE_SETTLEMENT_PENDING
+	):
+		return false
+	_active_army_encounter = {
+		"army_id": army_id,
+		"transaction_id": transaction_id,
+		"phase": BATTLE_PHASE_ACTIVE,
+	}
+	return true
+
+
+func authorize_army_encounter_result_pending(
+	army_id: StringName,
+	transaction_id: StringName,
+	coordinator: CombatTransactionCoordinator
+) -> bool:
+	if (
+		not is_combat_transaction_coordinator_bound(coordinator)
+		or _active_army_encounter.is_empty()
+		or StringName(_active_army_encounter.army_id) != army_id
+		or StringName(_active_army_encounter.transaction_id)
+			!= transaction_id
+		or StringName(_active_army_encounter.phase)
+			!= BATTLE_PHASE_ACTIVE
+	):
+		return false
+	_active_army_encounter.phase = BATTLE_PHASE_RESULT_PENDING
+	return true
 
 
 func reserve_battle_force(
@@ -2228,11 +2278,18 @@ func apply_battle_result_atomic(
 		return {}
 	var battle_result: BattleResult = settlement.get("battle_result")
 	var request: BattleRequest = settlement.get("request")
+	var army_id := StringName(settlement.get("army_id", &""))
 	if (
 		battle_result == null
 		or request == null
 	):
 		return {}
+	if army_id != &"":
+		return _apply_army_battle_result_atomic(
+			battle_result,
+			request,
+			army_id
+		)
 	if _committed_battle_result_ids.has(battle_result.result_id):
 		var committed_summary := get_committed_battle_result_summary(
 			battle_result.result_id
@@ -2433,6 +2490,201 @@ func apply_battle_result_atomic(
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return summary.duplicate(true)
+
+
+func _apply_army_battle_result_atomic(
+	battle_result: BattleResult,
+	request: BattleRequest,
+	army_id: StringName
+) -> Dictionary:
+	if _committed_battle_result_ids.has(battle_result.result_id):
+		var existing := get_committed_battle_result_summary(
+			battle_result.result_id
+		)
+		if (
+			Dictionary(
+				existing.get("battle_fact_snapshot", {})
+			) == battle_result.get_authority_snapshot()
+			and StringName(existing.get("army_id", &"")) == army_id
+		):
+			return existing
+		return {}
+	if (
+		_battle_result_commit_in_flight_ids.has(battle_result.result_id)
+		or not battle_result.is_consistent()
+		or _active_army_encounter.is_empty()
+		or StringName(_active_army_encounter.army_id) != army_id
+		or StringName(_active_army_encounter.transaction_id)
+			!= battle_result.transaction_id
+		or StringName(_active_army_encounter.phase)
+			!= BATTLE_PHASE_RESULT_PENDING
+		or request.phase != BattleRequest.PHASE_RESULT_PENDING
+		or request.transaction_id != battle_result.transaction_id
+		or request.level_id != battle_result.level_id
+		or request.created_day != battle_result.started_day
+		or request.committed_force.get_digest()
+			!= battle_result.player_snapshot_digest
+		or request.enemy_force.get_digest()
+			!= battle_result.enemy_snapshot_digest
+		or battle_result.enemy_casualties
+			> request.enemy_force.enemy_count
+	):
+		return {}
+	var army := _army_registry.get_army(army_id)
+	if (
+		army.is_empty()
+		or StringName(army.transaction_id)
+			!= battle_result.transaction_id
+		or StringName(army.phase)
+			!= ArmyRegistry.PHASE_SETTLEMENT_PENDING
+	):
+		return {}
+	var committed_total := 0
+	for count in Dictionary(army.units_by_definition_id).values():
+		committed_total += int(count)
+	if (
+		committed_total != battle_result.committed_count
+		or committed_total
+			!= request.committed_force.get_committed_total()
+	):
+		return {}
+	var survivor_units: Dictionary = {}
+	if battle_result.survivor_count > 0:
+		survivor_units[INFANTRY_ROLE.role_id] = (
+			battle_result.survivor_count
+		)
+	var disposition := ArmyRegistry.DISPOSITION_CLOSED_LOST
+	if battle_result.outcome == BattleOutcome.Value.VICTORY:
+		disposition = ArmyRegistry.DISPOSITION_STATIONED_TARGET
+	elif battle_result.outcome == BattleOutcome.Value.RETREAT:
+		if battle_result.survivor_count <= 0:
+			return {}
+		disposition = ArmyRegistry.DISPOSITION_RETURNING_HOME
+	var registry_probe := ArmyRegistry.new()
+	if (
+		not registry_probe.restore_snapshot(
+			_army_registry.get_snapshot(),
+			get_unit_definition_ids()
+		)
+		or not registry_probe.apply_settlement(
+			army_id,
+			battle_result.transaction_id,
+			battle_result.result_id,
+			survivor_units,
+			disposition
+		)
+	):
+		return {}
+	var duration_milliseconds := battle_result.get_duration_milliseconds()
+	if duration_milliseconds < 0:
+		return {}
+	_battle_result_commit_in_flight_ids[battle_result.result_id] = true
+	var time_before_day := current_day
+	var time_before_milliseconds := get_day_elapsed_milliseconds()
+	var advanced_days := _advance_city_time_for_battle_settlement(
+		duration_milliseconds
+	)
+	if advanced_days < 0:
+		_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
+		return {}
+	if not _army_registry.apply_settlement(
+		army_id,
+		battle_result.transaction_id,
+		battle_result.result_id,
+		survivor_units,
+		disposition
+	):
+		_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
+		return {}
+	var summary := {
+		"result_id": battle_result.result_id,
+		"transaction_id": battle_result.transaction_id,
+		"session_id": battle_result.session_id,
+		"level_id": battle_result.level_id,
+		"army_id": army_id,
+		"outcome": BattleOutcome.to_id(battle_result.outcome),
+		"finished_tick": battle_result.finished_tick,
+		"committed_count": battle_result.committed_count,
+		"survivor_count": battle_result.survivor_count,
+		"casualty_count": battle_result.casualty_count,
+		"enemy_casualties": battle_result.enemy_casualties,
+		"disposition": disposition,
+		"battle_duration_milliseconds": duration_milliseconds,
+		"city_time_before_day": time_before_day,
+		"city_time_before_milliseconds": time_before_milliseconds,
+		"city_time_after_day": current_day,
+		"city_time_after_milliseconds": (
+			get_day_elapsed_milliseconds()
+		),
+		"city_time_advanced_days": advanced_days,
+		"battle_fact_snapshot": (
+			battle_result.get_authority_snapshot().duplicate(true)
+		),
+	}
+	_committed_battle_result_ids[battle_result.result_id] = (
+		summary.duplicate(true)
+	)
+	_closed_battle_transactions[battle_result.transaction_id] = (
+		BATTLE_PHASE_APPLIED
+	)
+	_last_battle_result_summary = summary.duplicate(true)
+	_active_army_encounter = {}
+	_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return summary.duplicate(true)
+
+
+func complete_returned_army_to_garrison(
+	army_id: StringName,
+	transaction_id: StringName
+) -> Dictionary:
+	var army := _army_registry.get_army(army_id)
+	if (
+		army.is_empty()
+		or StringName(army.transaction_id) != transaction_id
+		or StringName(army.phase) != ArmyRegistry.PHASE_ARRIVED
+		or StringName(army.last_applied_result_id) == &""
+	):
+		return {}
+	var survivor_count := int(
+		Dictionary(army.units_by_definition_id).get(
+			INFANTRY_ROLE.role_id,
+			0
+		)
+	)
+	if survivor_count <= 0:
+		return {}
+	var registry_before := _army_registry.get_snapshot()
+	var garrison_before := infantry_count
+	if not _garrison_state.try_add_units(
+		INFANTRY_ROLE.role_id,
+		survivor_count
+	):
+		return {}
+	if not _army_registry.close_return_to_garrison(
+		army_id,
+		transaction_id
+	):
+		_garrison_state.set_unit_count(
+			INFANTRY_ROLE.role_id,
+			garrison_before
+		)
+		_army_registry.restore_snapshot(
+			registry_before,
+			get_unit_definition_ids()
+		)
+		return {}
+	var summary := {
+		"army_id": army_id,
+		"transaction_id": transaction_id,
+		"returned_count": survivor_count,
+		"garrison_after": infantry_count,
+		"phase": ArmyRegistry.PHASE_CLOSED,
+	}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return summary
 
 
 func get_last_daily_breakdown() -> Dictionary:
@@ -2870,6 +3122,7 @@ func restart_first_map() -> bool:
 	_army_registry = ARMY_REGISTRY.new()
 	_active_army_dispatch_reservation = {}
 	_next_army_dispatch_transaction_sequence = 1
+	_active_army_encounter = {}
 	researched_tech_ids.clear()
 	supply_shortage = false
 	emergency_mobilization_used = false

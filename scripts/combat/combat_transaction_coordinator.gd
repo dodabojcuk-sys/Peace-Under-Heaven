@@ -13,6 +13,8 @@ var return_contract: ReturnToCityContract
 var _return_completed := false
 var _pending_result_authority: Dictionary = {}
 var last_result_error_id: StringName = &""
+var _army_id: StringName = &""
+var _army_mode := false
 
 
 func configure(city_controller_value: Node) -> bool:
@@ -73,6 +75,8 @@ func create_request(
 	_pending_result_authority = {}
 	_bound_session = null
 	last_result_error_id = &""
+	_army_id = &""
+	_army_mode = false
 	var transaction_id: StringName = (
 		_city_controller.reserve_battle_force(committed_total, self)
 	)
@@ -156,14 +160,93 @@ func create_request(
 	return active_request
 
 
+func create_army_request(
+	army_id: StringName,
+	level_id: StringName,
+	enemy_count: int,
+	enemy_fortification := 0
+) -> BattleRequest:
+	if (
+		_city_controller == null
+		or active_request != null
+		or army_id == &""
+		or level_id == &""
+		or enemy_count <= 0
+		or enemy_fortification < 0
+	):
+		return null
+	var army: Dictionary = _city_controller.get_army_state(army_id)
+	if (
+		army.is_empty()
+		or StringName(army.phase) != ArmyRegistry.PHASE_SETTLEMENT_PENDING
+	):
+		return null
+	var transaction_id := StringName(army.transaction_id)
+	var units: Dictionary = army.units_by_definition_id
+	var committed_total := 0
+	for count in units.values():
+		committed_total += int(count)
+	if committed_total <= 0:
+		return null
+	return_contract = null
+	_return_completed = false
+	_pending_result_authority = {}
+	_bound_session = null
+	last_result_error_id = &""
+	var committed_snapshot := CommittedForceSnapshot.create_default(
+		transaction_id,
+		committed_total,
+		_city_controller.get_unit_role(),
+		_city_controller.selected_general_id,
+		_city_controller.researched_tech_ids.duplicate(),
+		_city_controller.get_infantry_attack_multiplier(),
+		_city_controller.get_infantry_defense_multiplier(),
+		_city_controller.supply_shortage
+	)
+	var enemy_snapshot := EnemyForceSnapshot.create(
+		transaction_id,
+		_city_controller.current_day,
+		enemy_count,
+		enemy_fortification
+	)
+	var request := BattleRequest.new(
+		transaction_id,
+		level_id,
+		_city_controller.current_day,
+		committed_snapshot,
+		enemy_snapshot,
+		false,
+		0,
+		_city_controller.get_city_defense(),
+		&"FIRST_WAR",
+		StringName("v5.encounter.%s" % String(level_id)),
+		0,
+		0
+	)
+	if not request.is_valid():
+		return null
+	_army_id = army_id
+	_army_mode = true
+	active_request = request
+	return active_request
+
+
 func activate_request() -> bool:
 	if (
 		active_request == null
 		or active_request.phase != BattleRequest.PHASE_RESERVED
-		or not _city_controller.activate_battle_reservation(
+	):
+		return false
+	if _army_mode:
+		if not _city_controller.authorize_army_encounter_activation(
+			_army_id,
 			active_request.transaction_id,
 			self
-		)
+		):
+			return false
+	elif not _city_controller.activate_battle_reservation(
+		active_request.transaction_id,
+		self
 	):
 		return false
 	active_request.phase = BattleRequest.PHASE_ACTIVE
@@ -285,6 +368,8 @@ func complete_return_to_city(current_frame: int) -> bool:
 	_pending_result_authority = {}
 	_return_completed = true
 	return_contract = null
+	_army_id = &""
+	_army_mode = false
 	return true
 
 
@@ -328,7 +413,14 @@ func mark_result_pending() -> bool:
 		_pending_result_authority = authority_snapshot.duplicate(true)
 	elif _pending_result_authority != authority_snapshot:
 		return false
-	if not _city_controller.mark_battle_result_pending(
+	if _army_mode:
+		if not _city_controller.authorize_army_encounter_result_pending(
+			_army_id,
+			active_request.transaction_id,
+			self
+		):
+			return false
+	elif not _city_controller.mark_battle_result_pending(
 		active_request.transaction_id,
 		self
 	):
@@ -364,4 +456,5 @@ func get_authorized_settlement_for_bound_city(
 	return {
 		"battle_result": BattleResult.from_authority_snapshot(authority_snapshot),
 		"request": active_request,
+		"army_id": _army_id if _army_mode else &"",
 	}

@@ -9,6 +9,9 @@ const PHASE_ARRIVED := &"ARRIVED"
 const PHASE_RETURNING := &"RETURNING"
 const PHASE_SETTLEMENT_PENDING := &"SETTLEMENT_PENDING"
 const PHASE_CLOSED := &"CLOSED"
+const DISPOSITION_STATIONED_TARGET := &"STATIONED_TARGET"
+const DISPOSITION_RETURNING_HOME := &"RETURNING_HOME"
+const DISPOSITION_CLOSED_LOST := &"CLOSED_LOST"
 const ACTIVE_PHASES := [
 	PHASE_RESERVED,
 	PHASE_MARCHING,
@@ -210,12 +213,91 @@ func replace_composition_for_settlement(
 	return true
 
 
+func apply_settlement(
+	army_id: StringName,
+	transaction_id: StringName,
+	result_id: StringName,
+	survivor_units: Dictionary,
+	disposition: StringName
+) -> bool:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	if (
+		army.is_empty()
+		or StringName(army.transaction_id) != transaction_id
+		or StringName(army.phase) != PHASE_SETTLEMENT_PENDING
+		or StringName(army.last_applied_result_id) != &""
+		or result_id == &""
+		or disposition
+			not in [
+				DISPOSITION_STATIONED_TARGET,
+				DISPOSITION_RETURNING_HOME,
+				DISPOSITION_CLOSED_LOST,
+			]
+		or not _has_valid_composition(survivor_units, true)
+		or (
+			disposition == DISPOSITION_RETURNING_HOME
+			and survivor_units.is_empty()
+		)
+		or (
+			disposition == DISPOSITION_CLOSED_LOST
+			and not survivor_units.is_empty()
+		)
+	):
+		return false
+	army.units_by_definition_id = survivor_units.duplicate(true)
+	army.last_applied_result_id = result_id
+	if disposition == DISPOSITION_RETURNING_HOME:
+		var previous_source := StringName(army.source_node_id)
+		army.source_node_id = StringName(army.target_node_id)
+		army.target_node_id = previous_source
+		army.progress_milliseconds = 0
+		army.phase = PHASE_RETURNING
+	else:
+		army.phase = PHASE_CLOSED
+	_armies_by_id[army_id] = army
+	return true
+
+
+func close_return_to_garrison(
+	army_id: StringName,
+	transaction_id: StringName
+) -> bool:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	if (
+		army.is_empty()
+		or StringName(army.transaction_id) != transaction_id
+		or StringName(army.phase) != PHASE_ARRIVED
+		or StringName(army.last_applied_result_id) == &""
+	):
+		return false
+	army.units_by_definition_id = {}
+	army.phase = PHASE_CLOSED
+	_armies_by_id[army_id] = army
+	return true
+
+
 func get_total_active_units(definition_id: StringName) -> int:
 	var total := 0
 	for army in get_active_armies():
 		total += int(
 			Dictionary(army.units_by_definition_id).get(definition_id, 0)
 		)
+	return total
+
+
+func get_total_stationed_units(definition_id: StringName) -> int:
+	var total := 0
+	for army in get_armies():
+		if (
+			StringName(army.phase) == PHASE_CLOSED
+			and StringName(army.last_applied_result_id) != &""
+		):
+			total += int(
+				Dictionary(army.units_by_definition_id).get(
+					definition_id,
+					0
+				)
+			)
 	return total
 
 
