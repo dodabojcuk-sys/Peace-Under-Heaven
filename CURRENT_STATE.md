@@ -2,10 +2,17 @@
 
 ## 当前阶段
 
-- `S1A1_CITY_STATE_SNAPSHOT_ROUNDTRIP_ACCEPTED_S1A2_NOT_STARTED`
+- `V4_VERIFIED_FROZEN_V5_READY`
 
 ## 验收状态
 
+- 2026-07-30，`TXWZS_V4_MILESTONE_CLOSURE_001_ACCEPTED`：V4 最终综合 Gate 通过，`T-V4-003: PASS`，V4 标记为 `VERIFIED / FROZEN`。
+- 黑石堡视觉切片沿用已接受的 `V4_UI_VISUAL_SLICE_INDEPENDENT_REVIEW_002_ACCEPTED`；最终候选哈希未变化，没有创建 Review 003。
+- 最终 1152×648 候选重新生成默认、调遣、行军、撤退、失败、胜利、返回、重进八态截图；“我方营地 → 山路援军”路线与标题／说明均不相交，目视无贴字、抢层级、裁切、残留遮罩或重复结果层。
+- 最终 Blackstone 专项为 150 条明确断言通过；C0 城市时间专项为 59 条明确断言通过；tracked 27/27、1515 PASS，all-present 29/29、1686 PASS，正式主场景、黑石堡场景、editor scan、`git diff --check` 和错误签名扫描均通过。
+- C0 城市时间、`BattleSession` terminal authority、coordinator ownership、幂等重放与冲突拒绝均无回退。
+- V4 checkpoint 只纳入可解释的 V4/C0/规划/报告范围；S1A.2 八个文件仍是受保护 untracked，不因 all-present runner 通过而获得验收或进入提交。
+- V5 已解除冻结，但必须先按正式计划完成 P0 基线、所有权与数据合同；不得复制第二套 `CityState`，不得把未验收 S1A.2 当作存档基线。
 - P0-01A R1–R4 均未通过用户实体鼠标拖拽验收。
 - P0-01A 使用的旧 `Control` / `PanContent.position` 平移方案已被替换。
 - P0-01B 已迁移到唯一的 `Node2D + Camera2D` 导航。

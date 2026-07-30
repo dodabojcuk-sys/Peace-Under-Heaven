@@ -304,6 +304,8 @@ var _readiness_checkpoint: Dictionary = {}
 var _active_battle_reservation: Dictionary = {}
 var _closed_battle_transactions: Dictionary = {}
 var _committed_battle_result_ids: Dictionary = {}
+var _designated_combat_transaction_coordinator: CombatTransactionCoordinator
+var _battle_result_commit_in_flight_ids: Dictionary = {}
 var _first_clear_keys: Dictionary = {}
 var _last_battle_result_summary: Dictionary = {}
 var _first_war_pending_outcome: StringName = &""
@@ -595,6 +597,37 @@ func advance_city_time(simulation_delta: float) -> int:
 		if is_first_war_time_blocked():
 			break
 
+	_refresh_time_ui()
+	return advanced_days
+
+
+func _advance_city_time_for_battle_settlement(
+	duration_milliseconds: int
+) -> int:
+	if duration_milliseconds <= 0:
+		return 0
+	var milliseconds_per_day := roundi(SECONDS_PER_DAY * 1000.0)
+	var elapsed_milliseconds := clampi(
+		roundi(day_elapsed_seconds * 1000.0),
+		0,
+		milliseconds_per_day
+	)
+	var remaining_milliseconds := duration_milliseconds
+	var advanced_days := 0
+	while remaining_milliseconds > 0:
+		var milliseconds_until_boundary := (
+			milliseconds_per_day - elapsed_milliseconds
+		)
+		if remaining_milliseconds < milliseconds_until_boundary:
+			elapsed_milliseconds += remaining_milliseconds
+			remaining_milliseconds = 0
+			break
+		remaining_milliseconds -= milliseconds_until_boundary
+		elapsed_milliseconds = 0
+		if not _advance_day_boundary(true):
+			return -1
+		advanced_days += 1
+	day_elapsed_seconds = float(elapsed_milliseconds) / 1000.0
 	_refresh_time_ui()
 	return advanced_days
 
@@ -982,8 +1015,10 @@ func get_day_progress_ratio() -> float:
 	return clampf(day_elapsed_seconds / SECONDS_PER_DAY, 0.0, 1.0)
 
 
-func _advance_day_boundary() -> bool:
-	if is_city_action_locked_for_battle():
+func _advance_day_boundary(
+	allow_battle_settlement := false
+) -> bool:
+	if not allow_battle_settlement and is_city_action_locked_for_battle():
 		return false
 	current_day += 1
 	var construction_completed := _complete_construction_for_current_day()
@@ -1039,7 +1074,8 @@ func _advance_day_boundary() -> bool:
 	_rebuild_daily_report()
 	if accepted_wood < wood_income or accepted_food < food_income:
 		last_daily_report += "（容量封顶）"
-	_update_first_war_state_for_current_day()
+	if not allow_battle_settlement:
+		_update_first_war_state_for_current_day()
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return true
@@ -1744,7 +1780,35 @@ func has_first_clear(first_clear_key: StringName) -> bool:
 	return _first_clear_keys.has(first_clear_key)
 
 
-func reserve_battle_force(committed_count: int) -> StringName:
+func _accept_combat_transaction_coordinator_binding(
+	coordinator: CombatTransactionCoordinator
+) -> bool:
+	if coordinator == null or not coordinator.is_bound_to_city(self):
+		return false
+	if _designated_combat_transaction_coordinator == coordinator:
+		return true
+	if _designated_combat_transaction_coordinator != null:
+		return false
+	_designated_combat_transaction_coordinator = coordinator
+	return true
+
+
+func is_combat_transaction_coordinator_bound(
+	coordinator: CombatTransactionCoordinator
+) -> bool:
+	return (
+		coordinator != null
+		and _designated_combat_transaction_coordinator == coordinator
+		and coordinator.is_bound_to_city(self)
+	)
+
+
+func reserve_battle_force(
+	committed_count: int,
+	coordinator: CombatTransactionCoordinator
+) -> StringName:
+	if not is_combat_transaction_coordinator_bound(coordinator):
+		return &""
 	if (
 		not _active_battle_reservation.is_empty()
 		or committed_count <= 0
@@ -1766,7 +1830,12 @@ func reserve_battle_force(committed_count: int) -> StringName:
 	return transaction_id
 
 
-func activate_battle_reservation(transaction_id: StringName) -> bool:
+func activate_battle_reservation(
+	transaction_id: StringName,
+	coordinator: CombatTransactionCoordinator
+) -> bool:
+	if not is_combat_transaction_coordinator_bound(coordinator):
+		return false
 	return _transition_battle_reservation(
 		transaction_id,
 		BATTLE_PHASE_RESERVED,
@@ -1774,7 +1843,12 @@ func activate_battle_reservation(transaction_id: StringName) -> bool:
 	)
 
 
-func mark_battle_result_pending(transaction_id: StringName) -> bool:
+func mark_battle_result_pending(
+	transaction_id: StringName,
+	coordinator: CombatTransactionCoordinator
+) -> bool:
+	if not is_combat_transaction_coordinator_bound(coordinator):
+		return false
 	return _transition_battle_reservation(
 		transaction_id,
 		BATTLE_PHASE_ACTIVE,
@@ -1782,7 +1856,12 @@ func mark_battle_result_pending(transaction_id: StringName) -> bool:
 	)
 
 
-func cancel_battle_reservation(transaction_id: StringName) -> bool:
+func cancel_battle_reservation(
+	transaction_id: StringName,
+	coordinator: CombatTransactionCoordinator
+) -> bool:
+	if not is_combat_transaction_coordinator_bound(coordinator):
+		return false
 	if (
 		_active_battle_reservation.is_empty()
 		or StringName(_active_battle_reservation.transaction_id)
@@ -1817,10 +1896,25 @@ func _transition_battle_reservation(
 
 
 func apply_battle_result_atomic(
-	battle_result: BattleResult,
-	request: BattleRequest
+	transaction_id: StringName,
+	result_id: StringName
 ) -> Dictionary:
-	if battle_result == null or request == null:
+	if not is_combat_transaction_coordinator_bound(
+		_designated_combat_transaction_coordinator
+	):
+		return {}
+	var settlement := _designated_combat_transaction_coordinator.get_authorized_settlement_for_bound_city(
+		transaction_id,
+		result_id
+	)
+	if settlement.is_empty():
+		return {}
+	var battle_result: BattleResult = settlement.get("battle_result")
+	var request: BattleRequest = settlement.get("request")
+	if (
+		battle_result == null
+		or request == null
+	):
 		return {}
 	if _committed_battle_result_ids.has(battle_result.result_id):
 		var committed_summary := get_committed_battle_result_summary(
@@ -1830,8 +1924,16 @@ func apply_battle_result_atomic(
 			StringName(committed_summary.get("transaction_id", &""))
 				== battle_result.transaction_id
 			and request.transaction_id == battle_result.transaction_id
+			and StringName(committed_summary.get("session_id", &""))
+				== battle_result.session_id
+			and int(committed_summary.get("finished_tick", -1))
+				== battle_result.finished_tick
+			and StringName(committed_summary.get("outcome", &""))
+				== BattleOutcome.to_id(battle_result.outcome)
 		):
 			return committed_summary
+		return {}
+	if _battle_result_commit_in_flight_ids.has(battle_result.result_id):
 		return {}
 	if (
 		not battle_result.is_consistent()
@@ -1874,6 +1976,11 @@ func apply_battle_result_atomic(
 	):
 		return {}
 
+	var battle_duration_milliseconds := (
+		battle_result.get_duration_milliseconds()
+	)
+	if battle_duration_milliseconds < 0:
+		return {}
 	var grants_first_clear := (
 		battle_result.outcome == BattleOutcome.Value.VICTORY
 		and battle_result.first_clear_key != &""
@@ -1881,6 +1988,18 @@ func apply_battle_result_atomic(
 	)
 	var planned_wood := request.reward_wood if grants_first_clear else 0
 	var planned_food := request.reward_food if grants_first_clear else 0
+	_battle_result_commit_in_flight_ids[battle_result.result_id] = true
+	var city_time_before_day := current_day
+	var city_time_before_milliseconds := roundi(
+		day_elapsed_seconds * 1000.0
+	)
+	var advanced_days := _advance_city_time_for_battle_settlement(
+		battle_duration_milliseconds
+	)
+	if advanced_days < 0:
+		_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
+		return {}
+
 	var wood_capacity := get_resource_capacity(&"wood")
 	var food_capacity := get_resource_capacity(&"food")
 	var actual_food_cost := (
@@ -1913,14 +2032,28 @@ func apply_battle_result_atomic(
 			if battle_result.outcome == BattleOutcome.Value.VICTORY
 			else maxi(enemy_count - battle_result.enemy_casualties, 0)
 		)
-	if next_infantry < 0:
-		return {}
 
 	var summary := {
 		"result_id": battle_result.result_id,
 		"transaction_id": battle_result.transaction_id,
+		"session_id": battle_result.session_id,
 		"level_id": battle_result.level_id,
 		"outcome": BattleOutcome.to_id(battle_result.outcome),
+		"finished_tick": battle_result.finished_tick,
+		"breached_route": battle_result.breached_route,
+		"orders_digest": battle_result.orders_digest,
+		"player_snapshot_digest": battle_result.player_snapshot_digest,
+		"enemy_snapshot_digest": battle_result.enemy_snapshot_digest,
+		"first_clear_key": battle_result.first_clear_key,
+		"battle_duration_milliseconds": battle_duration_milliseconds,
+		"city_time_advanced_milliseconds": battle_duration_milliseconds,
+		"city_time_before_day": city_time_before_day,
+		"city_time_before_milliseconds": city_time_before_milliseconds,
+		"city_time_after_day": current_day,
+		"city_time_after_milliseconds": roundi(
+			day_elapsed_seconds * 1000.0
+		),
+		"city_time_advanced_days": advanced_days,
 		"committed_count": battle_result.committed_count,
 		"survivor_count": battle_result.survivor_count,
 		"casualty_count": battle_result.casualty_count,
@@ -1979,6 +2112,7 @@ func apply_battle_result_atomic(
 	)
 	_last_battle_result_summary = summary.duplicate(true)
 	_active_battle_reservation = {}
+	_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return summary.duplicate(true)

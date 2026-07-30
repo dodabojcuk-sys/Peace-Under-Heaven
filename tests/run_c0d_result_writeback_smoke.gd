@@ -124,20 +124,19 @@ func _check_victory_confirmation_and_return() -> void:
 	)
 
 	await _check_historical_replay_without_reward(
-		scene.city_controller
+		scene.city_controller,
+		scene.coordinator
 	)
 	scene.queue_free()
 	await process_frame
 
 
 func _check_historical_replay_without_reward(
-	city_controller: Node
+	city_controller: Node,
+	coordinator: CombatTransactionCoordinator
 ) -> void:
-	var coordinator := CombatTransactionCoordinator.new()
-	city_controller.add_child(coordinator)
-	coordinator.configure(city_controller)
 	var committed := mini(
-		10,
+		50,
 		city_controller.get_available_infantry_count()
 	)
 	var request := coordinator.create_request(committed)
@@ -145,32 +144,31 @@ func _check_historical_replay_without_reward(
 	if request == null:
 		return
 	_check(coordinator.activate_request(), "历史重打事务进入 ACTIVE")
+	for squad in request.committed_force.squads:
+		squad.route_id = CommittedForceSnapshot.SIDE_ROUTE
+	var session := coordinator.create_session()
+	if session == null:
+		_check(false, "历史重打创建真实 BattleSession")
+		return
+	for squad in session.squads:
+		coordinator.issue_order(int(squad.squad_id), BattleOrder.Command.ADVANCE)
+	var replay_result := session.run_until_complete()
 	_check(
-		city_controller.mark_battle_result_pending(
-			request.transaction_id
-		),
-		"历史重打测试夹具进入 RESULT_PENDING"
+		replay_result != null
+			and replay_result.outcome == BattleOutcome.Value.VICTORY
+			and coordinator.mark_result_pending(),
+		"历史重打由真实 BattleSession 进入 RESULT_PENDING"
 	)
-	request.phase = BattleRequest.PHASE_RESULT_PENDING
-	var replay_result := _make_result(
-		request,
-		&"historical-replay-result",
-		BattleOutcome.Value.VICTORY,
-		committed
-	)
-	var before: Dictionary = city_controller.get_city_state()
-	var summary := BattleResultApplier.new(city_controller).apply(
-		replay_result,
-		request
-	)
-	var after: Dictionary = city_controller.get_city_state()
+	if replay_result == null:
+		return
+	var summary := coordinator.confirm_result()
 	_check(
 		not summary.is_empty()
-			and not bool(summary.first_clear_granted)
+		and not bool(summary.first_clear_granted)
 			and int(summary.accepted_wood_reward) == 0
 			and int(summary.accepted_food_reward) == 0
-			and int(after.wood) == int(before.wood)
-			and int(after.food) == int(before.food),
+			and int(summary.city_time_advanced_milliseconds)
+				== replay_result.get_duration_milliseconds(),
 		"历史重打胜利不重复领取首通奖励"
 	)
 
@@ -196,7 +194,8 @@ func _check_replay_reward_and_invalid_transaction() -> void:
 	_check(coordinator.activate_request(), "非法事务用例进入 ACTIVE")
 	_check(
 		city_controller.mark_battle_result_pending(
-			request.transaction_id
+			request.transaction_id,
+			coordinator
 		),
 		"非法事务用例进入 RESULT_PENDING"
 	)
@@ -209,9 +208,9 @@ func _check_replay_reward_and_invalid_transaction() -> void:
 	)
 	invalid_result.transaction_id = &"battle-foreign"
 	var before: Dictionary = city_controller.get_city_state()
-	var rejected := BattleResultApplier.new(city_controller).apply(
-		invalid_result,
-		request
+	var rejected := BattleResultApplier.new(city_controller).apply_authorized(
+		request.transaction_id,
+		invalid_result.result_id
 	)
 	var after: Dictionary = city_controller.get_city_state()
 	_check(

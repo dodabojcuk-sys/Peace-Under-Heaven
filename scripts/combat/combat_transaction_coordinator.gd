@@ -4,17 +4,60 @@ extends Node
 
 const DEFAULT_LEVEL_ID := &"first_map.main_assault.v0"
 
-var city_controller: Node
+var _city_controller: Node
 var active_request: BattleRequest
 var active_session: BattleSession
+var _bound_session: BattleSession
 var result_applier: BattleResultApplier
 var return_contract: ReturnToCityContract
 var _return_completed := false
+var _pending_result_authority: Dictionary = {}
+var last_result_error_id: StringName = &""
 
 
-func configure(city_controller_value: Node) -> void:
-	city_controller = city_controller_value
-	result_applier = BattleResultApplier.new(city_controller)
+func configure(city_controller_value: Node) -> bool:
+	if (
+		city_controller_value == null
+		or not city_controller_value.has_method(
+			"_accept_combat_transaction_coordinator_binding"
+		)
+		or not city_controller_value.has_method(
+			"is_combat_transaction_coordinator_bound"
+		)
+	):
+		return false
+	if _city_controller == city_controller_value:
+		return (
+			result_applier != null
+			and city_controller_value.is_combat_transaction_coordinator_bound(
+				self
+			)
+		)
+	if _city_controller != null:
+		return false
+	var candidate_applier := BattleResultApplier.new(city_controller_value)
+	_city_controller = city_controller_value
+	if not city_controller_value._accept_combat_transaction_coordinator_binding(
+		self
+	):
+		_city_controller = null
+		return false
+	if not city_controller_value.is_combat_transaction_coordinator_bound(self):
+		_city_controller = null
+		return false
+	result_applier = candidate_applier
+	return true
+
+
+func get_bound_city() -> Node:
+	return _city_controller
+
+
+func is_bound_to_city(city_controller_value: Node) -> bool:
+	return (
+		city_controller_value != null
+		and _city_controller == city_controller_value
+	)
 
 
 func create_request(
@@ -23,21 +66,24 @@ func create_request(
 	formal_city_entry := false,
 	mission_definition: MissionDefinition = null
 ) -> BattleRequest:
-	if city_controller == null or active_request != null:
+	if _city_controller == null or active_request != null:
 		return null
 	return_contract = null
 	_return_completed = false
+	_pending_result_authority = {}
+	_bound_session = null
+	last_result_error_id = &""
 	var transaction_id: StringName = (
-		city_controller.reserve_battle_force(committed_total)
+		_city_controller.reserve_battle_force(committed_total, self)
 	)
 	if transaction_id == &"":
 		return null
-	var unit_role: UnitRole = city_controller.get_unit_role()
+	var unit_role: UnitRole = _city_controller.get_unit_role()
 	var tech_ids: Array[StringName] = (
-		city_controller.researched_tech_ids.duplicate()
+		_city_controller.researched_tech_ids.duplicate()
 	)
 	var committed_food_cost: int = (
-		city_controller.get_first_war_food_cost(committed_total)
+		_city_controller.get_first_war_food_cost(committed_total)
 		if formal_city_entry
 		else 0
 	)
@@ -45,15 +91,15 @@ func create_request(
 		transaction_id,
 		committed_total,
 		unit_role,
-		city_controller.selected_general_id,
+		_city_controller.selected_general_id,
 		tech_ids,
-		city_controller.get_infantry_attack_multiplier(),
-		city_controller.get_infantry_defense_multiplier(),
+		_city_controller.get_infantry_attack_multiplier(),
+		_city_controller.get_infantry_defense_multiplier(),
 		(
-			city_controller.supply_shortage
+			_city_controller.supply_shortage
 			or (
 				formal_city_entry
-				and city_controller.food < committed_food_cost
+				and _city_controller.food < committed_food_cost
 			)
 		)
 	)
@@ -67,15 +113,15 @@ func create_request(
 	var enemy_snapshot := (
 		EnemyForceSnapshot.create_for_mission(
 			transaction_id,
-			city_controller.current_day,
+			_city_controller.current_day,
 			mission_definition
 		)
 		if mission_definition != null
 		else EnemyForceSnapshot.create(
 			transaction_id,
-			city_controller.current_day,
-			city_controller.enemy_count,
-			city_controller.enemy_fortification
+			_city_controller.current_day,
+			_city_controller.enemy_count,
+			_city_controller.enemy_fortification
 		)
 	)
 	var source_id := (
@@ -91,12 +137,12 @@ func create_request(
 	var request := BattleRequest.new(
 		transaction_id,
 		level_id,
-		city_controller.current_day,
+		_city_controller.current_day,
 		committed_snapshot,
 		enemy_snapshot,
 		formal_city_entry,
 		committed_food_cost,
-		city_controller.get_city_defense(),
+		_city_controller.get_city_defense(),
 		source_id,
 		first_clear_key,
 		mission_definition.reward_wood if mission_definition != null else 30,
@@ -104,7 +150,7 @@ func create_request(
 		mission_definition
 	)
 	if not request.is_valid():
-		city_controller.cancel_battle_reservation(transaction_id)
+		_city_controller.cancel_battle_reservation(transaction_id, self)
 		return null
 	active_request = request
 	return active_request
@@ -114,8 +160,9 @@ func activate_request() -> bool:
 	if (
 		active_request == null
 		or active_request.phase != BattleRequest.PHASE_RESERVED
-		or not city_controller.activate_battle_reservation(
-			active_request.transaction_id
+		or not _city_controller.activate_battle_reservation(
+			active_request.transaction_id,
+			self
 		)
 	):
 		return false
@@ -154,6 +201,7 @@ func create_session() -> BattleSession:
 	if session.request == null:
 		return null
 	active_session = session
+	_bound_session = session
 	return active_session
 
 
@@ -177,22 +225,30 @@ func issue_order(
 	return active_session.issue_order(squad_id, command)
 
 
-func confirm_result() -> Dictionary:
+func confirm_result(payload: BattleResult = null) -> Dictionary:
+	last_result_error_id = &""
 	if (
 		active_request == null
-		or active_session == null
-		or active_session.result == null
+		or _bound_session == null
 		or active_request.phase not in [
 			BattleRequest.PHASE_RESULT_PENDING,
 			BattleRequest.PHASE_APPLIED,
 		]
 	):
+		last_result_error_id = &"RESULT_NOT_PENDING"
 		return {}
-	var summary := result_applier.apply(
-		active_session.result,
-		active_request
+	if _pending_result_authority.is_empty():
+		last_result_error_id = &"RESULT_AUTHORITY_UNAVAILABLE"
+		return {}
+	if payload != null and not payload.matches_authority_snapshot(_pending_result_authority):
+		last_result_error_id = &"RESULT_PAYLOAD_CONFLICT"
+		return {}
+	var summary: Dictionary = result_applier.apply_authorized(
+		active_request.transaction_id,
+		StringName(_pending_result_authority.get("result_id", &""))
 	)
 	if summary.is_empty():
+		last_result_error_id = result_applier.last_error_id
 		return {}
 	active_request.phase = BattleRequest.PHASE_APPLIED
 	return summary
@@ -224,7 +280,9 @@ func complete_return_to_city(current_frame: int) -> bool:
 		return false
 	return_contract.completed = true
 	active_session = null
+	_bound_session = null
 	active_request = null
+	_pending_result_authority = {}
 	_return_completed = true
 	return_contract = null
 	return true
@@ -234,13 +292,16 @@ func cancel_request() -> bool:
 	if (
 		active_request == null
 		or active_request.phase != BattleRequest.PHASE_RESERVED
-		or not city_controller.cancel_battle_reservation(
-			active_request.transaction_id
+		or not _city_controller.cancel_battle_reservation(
+			active_request.transaction_id,
+			self
 		)
 	):
 		return false
 	active_request.phase = BattleRequest.PHASE_CANCELLED
 	active_request = null
+	_bound_session = null
+	_pending_result_authority = {}
 	return true
 
 
@@ -248,10 +309,59 @@ func mark_result_pending() -> bool:
 	if (
 		active_request == null
 		or active_request.phase != BattleRequest.PHASE_ACTIVE
-		or not city_controller.mark_battle_result_pending(
-			active_request.transaction_id
-		)
+		or active_session == null
+		or active_session != _bound_session
+		or not active_session.completed
+	):
+		return false
+	var authority_snapshot := active_session.get_terminal_result_snapshot()
+	if (
+		authority_snapshot.is_empty()
+		or StringName(authority_snapshot.get("transaction_id", &""))
+			!= active_request.transaction_id
+		or StringName(authority_snapshot.get("session_id", &""))
+			!= active_session.session_id
+		or StringName(authority_snapshot.get("result_id", &"")) == &""
+	):
+		return false
+	if _pending_result_authority.is_empty():
+		_pending_result_authority = authority_snapshot.duplicate(true)
+	elif _pending_result_authority != authority_snapshot:
+		return false
+	if not _city_controller.mark_battle_result_pending(
+		active_request.transaction_id,
+		self
 	):
 		return false
 	active_request.phase = BattleRequest.PHASE_RESULT_PENDING
 	return true
+
+
+func get_authorized_settlement_for_bound_city(
+	transaction_id: StringName,
+	result_id: StringName
+) -> Dictionary:
+	if (
+		active_request == null
+		or _bound_session == null
+		or active_session != _bound_session
+		or active_request.phase not in [
+			BattleRequest.PHASE_RESULT_PENDING,
+			BattleRequest.PHASE_APPLIED,
+		]
+		or _pending_result_authority.is_empty()
+		or transaction_id != active_request.transaction_id
+		or result_id != StringName(_pending_result_authority.get("result_id", &""))
+	):
+		return {}
+	var authority_snapshot := _pending_result_authority.duplicate(true)
+	if (
+		StringName(authority_snapshot.get("transaction_id", &"")) != transaction_id
+		or StringName(authority_snapshot.get("session_id", &""))
+			!= _bound_session.session_id
+	):
+		return {}
+	return {
+		"battle_result": BattleResult.from_authority_snapshot(authority_snapshot),
+		"request": active_request,
+	}

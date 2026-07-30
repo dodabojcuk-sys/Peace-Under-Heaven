@@ -2,6 +2,9 @@ class_name BattleSession
 extends RefCounted
 
 
+signal terminal_completed(result_payload: BattleResult, terminal_record: Dictionary)
+
+
 const TICK_MILLISECONDS := 250
 const ATTACK_INTERVAL_TICKS := 4
 const MAX_BATTLE_TICKS := 720
@@ -28,6 +31,7 @@ var retreat_was_ordered := false
 var forced_retreat_requested := false
 var completed := false
 var result: BattleResult
+var _terminal_authority_record: Dictionary = {}
 var mission_definition: MissionDefinition
 var mission_objective_state: Dictionary = {}
 
@@ -56,6 +60,7 @@ func initialize(request_value: BattleRequest) -> bool:
 	forced_retreat_requested = false
 	completed = false
 	result = null
+	_terminal_authority_record = {}
 	mission_definition = request.mission_definition
 	mission_objective_state = {}
 	for squad_snapshot in request.committed_force.squads:
@@ -369,34 +374,55 @@ func _complete(
 	outcome: BattleOutcome.Value,
 	breached_route: StringName = &""
 ) -> void:
-	completed = true
 	var survivors := _get_survivor_count()
 	var enemy_survivors := 0
 	for route_id in routes:
 		enemy_survivors += _alive_members(
 			int(routes[route_id].enemy_total_hp)
 		)
-	result = BattleResult.new()
-	result.result_id = StringName("%s-result-001" % request.transaction_id)
-	result.transaction_id = request.transaction_id
-	result.session_id = session_id
-	result.level_id = request.level_id
-	result.outcome = outcome
-	result.started_day = request.created_day
-	result.finished_tick = current_tick
-	result.committed_count = request.committed_force.get_committed_total()
-	result.survivor_count = survivors
-	result.casualty_count = result.committed_count - survivors
-	result.enemy_casualties = (
+	var terminal_result := BattleResult.new()
+	terminal_result.result_id = StringName("%s-result-001" % request.transaction_id)
+	terminal_result.transaction_id = request.transaction_id
+	terminal_result.session_id = session_id
+	terminal_result.level_id = request.level_id
+	terminal_result.outcome = outcome
+	terminal_result.started_day = request.created_day
+	terminal_result.finished_tick = current_tick
+	terminal_result.committed_count = request.committed_force.get_committed_total()
+	terminal_result.survivor_count = survivors
+	terminal_result.casualty_count = terminal_result.committed_count - survivors
+	terminal_result.enemy_casualties = (
 		request.enemy_force.enemy_count - enemy_survivors
 	)
-	result.breached_route = breached_route
-	result.orders_digest = get_orders_digest()
-	result.player_snapshot_digest = (
+	terminal_result.breached_route = breached_route
+	terminal_result.orders_digest = get_orders_digest()
+	terminal_result.player_snapshot_digest = (
 		request.committed_force.get_digest()
 	)
-	result.enemy_snapshot_digest = request.enemy_force.get_digest()
-	result.first_clear_key = request.first_clear_key
+	terminal_result.enemy_snapshot_digest = request.enemy_force.get_digest()
+	terminal_result.first_clear_key = request.first_clear_key
+	_terminal_authority_record = {
+		"result": terminal_result.get_authority_snapshot().duplicate(true),
+		"completion": {
+			"session_id": session_id,
+			"state_digest": get_state_digest(),
+			"route_ids": routes.keys().duplicate(),
+		},
+	}.duplicate(true)
+	completed = true
+	result = BattleResult.from_authority_snapshot(
+		get_terminal_result_snapshot()
+	)
+	terminal_completed.emit(result, get_terminal_authority_record())
+
+
+func get_terminal_authority_record() -> Dictionary:
+	return _terminal_authority_record.duplicate(true)
+
+
+func get_terminal_result_snapshot() -> Dictionary:
+	var result_snapshot: Dictionary = _terminal_authority_record.get("result", {})
+	return result_snapshot.duplicate(true)
 
 
 func _initialize_mission_objective_state() -> void:

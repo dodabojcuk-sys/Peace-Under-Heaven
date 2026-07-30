@@ -88,7 +88,7 @@ func _run() -> void:
 		"取消事务记录 CANCELLED"
 	)
 	_check(
-		not city.cancel_battle_reservation(transaction_id),
+		not city.cancel_battle_reservation(transaction_id, coordinator),
 		"重复取消不产生第二次变化"
 	)
 
@@ -112,11 +112,25 @@ func _run() -> void:
 	_check(
 		not coordinator.cancel_request()
 			and not city.cancel_battle_reservation(
-				second_request.transaction_id
+				second_request.transaction_id,
+				coordinator
 			),
 		"战斗开始后不能伪装成战前取消"
 	)
-	_check(coordinator.mark_result_pending(), "ACTIVE 可以进入 RESULT_PENDING")
+	var second_session := coordinator.create_session()
+	if second_session != null:
+		for squad in second_session.squads:
+			coordinator.issue_order(
+				int(squad.squad_id),
+				BattleOrder.Command.RETREAT
+			)
+		second_session.run_until_complete()
+	_check(
+		second_session != null
+			and second_session.result != null
+			and coordinator.mark_result_pending(),
+		"真实 finalize 后 ACTIVE 可以进入 RESULT_PENDING"
+	)
 	_check(
 		second_request.phase == BattleRequest.PHASE_RESULT_PENDING,
 		"结果 pending 生命周期明确"

@@ -21,19 +21,21 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
-color = Color(0.807843, 0.784314, 0.713726, 1)
+color = Color(0.913725, 0.882353, 0.796078, 1)
 
 [node name="Title" type="Label" parent="."]
+z_index = 2
 layout_mode = 0
 offset_left = 32.0
-offset_top = 20.0
-offset_right = 440.0
-offset_bottom = 52.0
-theme_override_colors/font_color = Color(0.172549, 0.160784, 0.137255, 1)
-theme_override_font_sizes/font_size = 24
-text = "黑石堡小型战区 · MVP"
+offset_top = 19.0
+offset_right = 190.0
+offset_bottom = 45.0
+theme_override_colors/font_color = Color(1, 0.976471, 0.913725, 1)
+theme_override_font_sizes/font_size = 18
+text = "黑石堡战区"
 
 [node name="Subtitle" type="Label" parent="."]
+visible = false
 layout_mode = 0
 offset_left = 34.0
 offset_top = 56.0
@@ -41,153 +43,460 @@ offset_right = 850.0
 offset_bottom = 80.0
 theme_override_colors/font_color = Color(0.337255, 0.313726, 0.266667, 1)
 theme_override_font_sizes/font_size = 14
-text = "按住我军节点，拖向相邻据点派兵　·　绿色：可前往　红色：不可前往"
+text = "按住己方驻军节点拖向相邻据点，松开后选择派兵数量　·　Esc / 右键取消"
 
 [node name="ReturnToCityButton" type="Button" parent="."]
+z_index = 2
 layout_mode = 1
 anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -150.0
-offset_top = 20.0
+offset_top = 12.0
 offset_right = -24.0
-offset_bottom = 58.0
+offset_bottom = 52.0
 grow_horizontal = 0
 focus_mode = 0
 mouse_default_cursor_shape = 2
-text = "返回城市"
+text = "撤退"
 
 [node name="Header" type="Panel" parent="."]
+z_index = 1
 layout_mode = 0
-offset_left = 32.0
-offset_top = 92.0
-offset_right = 1120.0
-offset_bottom = 146.0
+offset_right = 1152.0
+offset_bottom = 64.0
+mouse_filter = 2
 
 [node name="Soldiers" type="Label" parent="Header"]
 layout_mode = 0
-offset_left = 18.0
-offset_top = 15.0
-offset_right = 190.0
-offset_bottom = 39.0
-theme_override_font_sizes/font_size = 16
-text = "当前兵力：10"
+offset_left = 760.0
+offset_top = 23.0
+offset_right = 1008.0
+offset_bottom = 41.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "营地 10　活动行军 0"
+horizontal_alignment = 2
 
 [node name="Status" type="Label" parent="Header"]
 layout_mode = 0
 offset_left = 210.0
-offset_top = 15.0
-offset_right = 1048.0
-offset_bottom = 39.0
+offset_top = 24.0
+offset_right = 740.0
+offset_bottom = 40.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "IDLE · 选择一个真实驻军来源"
+
+[node name="MissionPanel" type="Panel" parent="."]
+layout_mode = 0
+offset_left = 19.0
+offset_top = 79.0
+offset_right = 267.0
+offset_bottom = 627.0
+mouse_filter = 2
+
+[node name="Title" type="Label" parent="MissionPanel"]
+layout_mode = 0
+offset_left = 17.0
+offset_top = 17.0
+offset_right = 229.0
+offset_bottom = 43.0
+theme_override_font_sizes/font_size = 18
+text = "任务目标"
+
+[node name="StatusTag" type="Panel" parent="MissionPanel"]
+layout_mode = 0
+offset_left = 17.0
+offset_top = 57.0
+offset_right = 129.0
+offset_bottom = 85.0
+mouse_filter = 2
+
+[node name="Dot" type="ColorRect" parent="MissionPanel/StatusTag"]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 11.0
+offset_right = 16.0
+offset_bottom = 17.0
+mouse_filter = 2
+
+[node name="Label" type="Label" parent="MissionPanel/StatusTag"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 6.0
+offset_right = 102.0
+offset_bottom = 22.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "待命令"
+
+[node name="Body" type="Label" parent="MissionPanel"]
+layout_mode = 0
+offset_left = 17.0
+offset_top = 103.0
+offset_right = 229.0
+offset_bottom = 169.0
+mouse_filter = 2
 theme_override_font_sizes/font_size = 14
-text = "选择一条相邻路线。先取得援军，胜算会更高。"
+text = "击溃黑石堡守军。所有路线必须由实际驻军来源显式发起。"
+autowrap_mode = 2
+
+[node name="Rule" type="Panel" parent="MissionPanel"]
+layout_mode = 0
+offset_left = 17.0
+offset_top = 189.0
+offset_right = 229.0
+offset_bottom = 315.0
+mouse_filter = 2
+
+[node name="Label" type="Label" parent="MissionPanel/Rule"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 10.0
+offset_right = 200.0
+offset_bottom = 116.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "规则
+• 战区停留期间城市暂停
+• 结算只由真实结果触发
+• 同时只允许一条活动行军"
+autowrap_mode = 2
+
+[node name="Hint" type="Label" parent="MissionPanel"]
+layout_mode = 0
+offset_left = 17.0
+offset_top = 471.0
+offset_right = 229.0
+offset_bottom = 519.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "拖动驻军：选择路线
+右键 / Esc：取消待命令"
+autowrap_mode = 2
 
 [node name="Battlefield" type="Control" parent="."]
 layout_mode = 0
-offset_left = 32.0
-offset_top = 164.0
-offset_right = 1120.0
-offset_bottom = 616.0
+offset_left = 287.0
+offset_top = 79.0
+offset_right = 1131.0
+offset_bottom = 627.0
+mouse_filter = 2
+
+[node name="Surface" type="Panel" parent="Battlefield"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TerrainNorth" type="Panel" parent="Battlefield"]
+layout_mode = 0
+offset_left = 38.0
+offset_top = 47.0
+offset_right = 458.0
+offset_bottom = 267.0
+mouse_filter = 2
+
+[node name="TerrainSouth" type="Panel" parent="Battlefield"]
+layout_mode = 0
+offset_left = 419.0
+offset_top = 209.0
+offset_right = 779.0
+offset_bottom = 449.0
 mouse_filter = 2
 
 [node name="CampToReinforcement" type="Line2D" parent="Battlefield"]
-points = PackedVector2Array(180, 292, 390, 122)
-width = 7.0
-default_color = Color(0.454902, 0.419608, 0.341176, 1)
+points = PackedVector2Array(105, 403, 275, 153)
+width = 3.0
+default_color = Color(0.286275, 0.290196, 0.258824, 1)
 
 [node name="CampToOutpost" type="Line2D" parent="Battlefield"]
-points = PackedVector2Array(180, 292, 590, 292)
-width = 7.0
-default_color = Color(0.454902, 0.419608, 0.341176, 1)
+points = PackedVector2Array(105, 403, 500, 338)
+width = 3.0
+default_color = Color(0.286275, 0.290196, 0.258824, 1)
 
 [node name="ReinforcementToOutpost" type="Line2D" parent="Battlefield"]
-points = PackedVector2Array(390, 122, 590, 292)
-width = 7.0
-default_color = Color(0.454902, 0.419608, 0.341176, 1)
+points = PackedVector2Array(275, 153, 500, 338)
+width = 3.0
+default_color = Color(0.286275, 0.290196, 0.258824, 1)
 
 [node name="OutpostToFortress" type="Line2D" parent="Battlefield"]
-points = PackedVector2Array(590, 292, 900, 252)
-width = 9.0
-default_color = Color(0.470588, 0.27451, 0.223529, 1)
+points = PackedVector2Array(500, 338, 735, 148)
+width = 6.0
+default_color = Color(0.337255, 0.384314, 0.262745, 1)
 
 [node name="CommandLine" type="Line2D" parent="Battlefield"]
 visible = false
-z_index = 8
+z_index = 0
 width = 12.0
 default_color = Color(0.2, 0.9, 0.65, 1)
 antialiased = true
 
 [node name="CommandArrow" type="Polygon2D" parent="Battlefield"]
 visible = false
-z_index = 9
-polygon = PackedVector2Array(0, 0, -22, -12, -17, 0, -22, 12)
+z_index = 0
+polygon = PackedVector2Array(0, 0, -12, -6, -9, 0, -12, 6)
 color = Color(0.2, 0.9, 0.65, 1)
 
 [node name="Camp" type="Button" parent="Battlefield"]
 layout_mode = 0
-offset_left = 100.0
-offset_top = 252.0
-offset_right = 260.0
-offset_bottom = 332.0
+offset_left = 10.0
+offset_top = 345.0
+offset_right = 200.0
+offset_bottom = 461.0
 focus_mode = 0
 mouse_filter = 1
 mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 12
+text = ""
+
+[node name="Marker" type="Panel" parent="Battlefield/Camp"]
+layout_mode = 0
+offset_left = 66.0
+offset_right = 124.0
+offset_bottom = 58.0
+mouse_filter = 2
+
+[node name="Name" type="Label" parent="Battlefield/Camp"]
+layout_mode = 0
+offset_top = 66.0
+offset_right = 190.0
+offset_bottom = 88.0
+mouse_filter = 2
 theme_override_font_sizes/font_size = 15
-text = "我方营地
-起点 · 10 名士兵"
+text = "我方营地"
+horizontal_alignment = 1
+
+[node name="Detail" type="Label" parent="Battlefield/Camp"]
+layout_mode = 0
+offset_top = 92.0
+offset_right = 190.0
+offset_bottom = 112.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "我方驻军 10 · 可发兵"
+horizontal_alignment = 1
 
 [node name="Reinforcement" type="Button" parent="Battlefield"]
 layout_mode = 0
-offset_left = 310.0
-offset_top = 82.0
-offset_right = 470.0
-offset_bottom = 162.0
+offset_left = 180.0
+offset_top = 95.0
+offset_right = 370.0
+offset_bottom = 211.0
 focus_mode = 0
 mouse_filter = 1
 mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 12
+text = ""
+
+[node name="Marker" type="Panel" parent="Battlefield/Reinforcement"]
+layout_mode = 0
+offset_left = 66.0
+offset_right = 124.0
+offset_bottom = 58.0
+mouse_filter = 2
+
+[node name="Name" type="Label" parent="Battlefield/Reinforcement"]
+layout_mode = 0
+offset_top = 66.0
+offset_right = 190.0
+offset_bottom = 88.0
+mouse_filter = 2
 theme_override_font_sizes/font_size = 15
-text = "山路援军
-+6 名士兵"
+text = "山路援军"
+horizontal_alignment = 1
+
+[node name="Detail" type="Label" parent="Battlefield/Reinforcement"]
+layout_mode = 0
+offset_top = 92.0
+offset_right = 190.0
+offset_bottom = 112.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "待接应 · +6"
+horizontal_alignment = 1
 
 [node name="Outpost" type="Button" parent="Battlefield"]
 layout_mode = 0
-offset_left = 510.0
-offset_top = 252.0
-offset_right = 670.0
-offset_bottom = 332.0
+offset_left = 405.0
+offset_top = 280.0
+offset_right = 595.0
+offset_bottom = 396.0
 focus_mode = 0
 mouse_filter = 1
 mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 12
+text = ""
+
+[node name="Marker" type="Panel" parent="Battlefield/Outpost"]
+layout_mode = 0
+offset_left = 66.0
+offset_right = 124.0
+offset_bottom = 58.0
+mouse_filter = 2
+
+[node name="Name" type="Label" parent="Battlefield/Outpost"]
+layout_mode = 0
+offset_top = 66.0
+offset_right = 190.0
+offset_bottom = 88.0
+mouse_filter = 2
 theme_override_font_sizes/font_size = 15
-text = "黑石前哨
-敌军 5 人"
+text = "黑石前哨"
+horizontal_alignment = 1
+
+[node name="Detail" type="Label" parent="Battlefield/Outpost"]
+layout_mode = 0
+offset_top = 92.0
+offset_right = 190.0
+offset_bottom = 112.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "敌军 5 · 目标"
+horizontal_alignment = 1
 
 [node name="Fortress" type="Button" parent="Battlefield"]
 layout_mode = 0
-offset_left = 820.0
-offset_top = 212.0
-offset_right = 1000.0
-offset_bottom = 302.0
+offset_left = 640.0
+offset_top = 90.0
+offset_right = 830.0
+offset_bottom = 206.0
 focus_mode = 0
 mouse_filter = 1
 mouse_default_cursor_shape = 2
-theme_override_font_sizes/font_size = 17
-text = "黑石堡
-敌军 8 人"
+theme_override_font_sizes/font_size = 12
+text = ""
 
-[node name="ArmyMarker" type="Label" parent="Battlefield"]
+[node name="Marker" type="Panel" parent="Battlefield/Fortress"]
 layout_mode = 0
-offset_left = 148.0
-offset_top = 210.0
-offset_right = 212.0
-offset_bottom = 246.0
+offset_left = 66.0
+offset_right = 124.0
+offset_bottom = 58.0
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.164706, 0.262745, 0.419608, 1)
-theme_override_font_sizes/font_size = 19
-text = "◆ 我军"
+
+[node name="Name" type="Label" parent="Battlefield/Fortress"]
+layout_mode = 0
+offset_top = 66.0
+offset_right = 190.0
+offset_bottom = 88.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 15
+text = "黑石堡"
 horizontal_alignment = 1
 
+[node name="Detail" type="Label" parent="Battlefield/Fortress"]
+layout_mode = 0
+offset_top = 92.0
+offset_right = 190.0
+offset_bottom = 112.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "敌军 8 · 目标"
+horizontal_alignment = 1
+
+[node name="MarchingArmy" type="Node2D" parent="Battlefield"]
+visible = false
+z_index = 7
+
+[node name="Flag" type="Polygon2D" parent="Battlefield/MarchingArmy"]
+polygon = PackedVector2Array(-16, -20, 20, -20, 10, -5, 20, 10, -16, 10)
+color = Color(0.164706, 0.513726, 0.858824, 1)
+
+[node name="Count" type="Label" parent="Battlefield/MarchingArmy"]
+offset_left = -28.0
+offset_top = -18.0
+offset_right = 28.0
+offset_bottom = 9.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 1)
+theme_override_colors/font_outline_color = Color(0.0784314, 0.133333, 0.2, 1)
+theme_override_constants/outline_size = 3
+theme_override_font_sizes/font_size = 15
+text = "步 10"
+horizontal_alignment = 1
+
+[node name="MarchInfo" type="Panel" parent="Battlefield"]
+visible = false
+z_index = 6
+layout_mode = 0
+offset_left = 23.0
+offset_top = 413.0
+offset_right = 819.0
+offset_bottom = 523.0
+mouse_filter = 2
+
+[node name="Label" type="Label" parent="Battlefield/MarchInfo"]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 10.0
+offset_right = 610.0
+offset_bottom = 32.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 15
+text = "我方营地 → 黑石前哨 · 10 人"
+
+[node name="StateLabel" type="Label" parent="Battlefield/MarchInfo"]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 42.0
+offset_right = 480.0
+offset_bottom = 60.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "行军中"
+
+[node name="PercentLabel" type="Label" parent="Battlefield/MarchInfo"]
+layout_mode = 0
+offset_left = 484.0
+offset_top = 42.0
+offset_right = 534.0
+offset_bottom = 60.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "0%"
+horizontal_alignment = 2
+
+[node name="ProgressBar" type="ProgressBar" parent="Battlefield/MarchInfo"]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 70.0
+offset_right = 534.0
+offset_bottom = 80.0
+mouse_filter = 2
+show_percentage = false
+
+[node name="ConcurrencyTag" type="Panel" parent="Battlefield/MarchInfo"]
+layout_mode = 0
+offset_left = 630.0
+offset_top = 48.0
+offset_right = 774.0
+offset_bottom = 76.0
+mouse_filter = 2
+
+[node name="Dot" type="ColorRect" parent="Battlefield/MarchInfo/ConcurrencyTag"]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 11.0
+offset_right = 16.0
+offset_bottom = 17.0
+mouse_filter = 2
+
+[node name="Label" type="Label" parent="Battlefield/MarchInfo/ConcurrencyTag"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 6.0
+offset_right = 136.0
+offset_bottom = 22.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "并发命令已阻止"
+
 [node name="Legend" type="Label" parent="Battlefield"]
+visible = false
 layout_mode = 0
 offset_left = 24.0
 offset_top = 374.0
@@ -199,60 +508,217 @@ theme_override_font_sizes/font_size = 13
 text = "规则：我方兵力 > 敌军即胜，剩余兵力 = 我方 - 敌军；否则出征失败。"
 horizontal_alignment = 1
 
+[node name="DispatchBar" type="Panel" parent="."]
+visible = false
+z_index = 20
+layout_mode = 0
+offset_left = 310.0
+offset_top = 492.0
+offset_right = 1106.0
+offset_bottom = 602.0
+mouse_filter = 0
+
+[node name="Route" type="Label" parent="DispatchBar"]
+layout_mode = 0
+offset_left = 18.0
+offset_top = 10.0
+offset_right = 290.0
+offset_bottom = 34.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 15
+text = "我方营地 → 山路援军　·　接应　·　约 6.0 秒"
+
+[node name="Details" type="Label" parent="DispatchBar"]
+layout_mode = 0
+offset_left = 18.0
+offset_top = 34.0
+offset_right = 290.0
+offset_bottom = 54.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.862745, 0.85098, 0.807843, 1)
+theme_override_font_sizes/font_size = 13
+text = "步兵／驻军　·　当前 10　·　点击一个比例立即出发"
+
+[node name="CloseButton" type="Button" parent="DispatchBar"]
+layout_mode = 0
+offset_left = 758.0
+offset_top = 8.0
+offset_right = 786.0
+offset_bottom = 36.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+text = "×"
+
+[node name="Percent25" type="Button" parent="DispatchBar"]
+layout_mode = 0
+offset_left = 304.0
+offset_top = 62.0
+offset_right = 384.0
+offset_bottom = 98.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+text = "25% · 派3 · 留7"
+
+[node name="Percent50" type="Button" parent="DispatchBar"]
+layout_mode = 0
+offset_left = 392.0
+offset_top = 62.0
+offset_right = 472.0
+offset_bottom = 98.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.788235, 0.909804, 1, 1)
+theme_override_font_sizes/font_size = 15
+text = "50% · 派5 · 留5"
+
+[node name="Percent75" type="Button" parent="DispatchBar"]
+layout_mode = 0
+offset_left = 480.0
+offset_top = 62.0
+offset_right = 560.0
+offset_bottom = 98.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+text = "75% · 派8 · 留2"
+
+[node name="Percent100" type="Button" parent="DispatchBar"]
+layout_mode = 0
+offset_left = 568.0
+offset_top = 62.0
+offset_right = 648.0
+offset_bottom = 98.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+text = "全部 · 派10 · 留0"
+
+[node name="ConfirmButton" type="Button" parent="DispatchBar"]
+layout_mode = 0
+offset_left = 656.0
+offset_top = 58.0
+offset_right = 776.0
+offset_bottom = 102.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+text = "确认调遣"
+
+[node name="ModalOverlay" type="ColorRect" parent="."]
+visible = false
+z_index = 100
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.109804, 0.117647, 0.105882, 0.721569)
+
 [node name="ResultPanel" type="Panel" parent="."]
 visible = false
+z_index = 101
 layout_mode = 1
 anchors_preset = 8
 anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -230.0
-offset_top = -120.0
-offset_right = 230.0
-offset_bottom = 120.0
+offset_left = -220.0
+offset_top = -136.0
+offset_right = 220.0
+offset_bottom = 136.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 0
 
+[node name="StatusTag" type="Panel" parent="ResultPanel"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 24.0
+offset_right = 136.0
+offset_bottom = 52.0
+mouse_filter = 2
+
+[node name="Dot" type="ColorRect" parent="ResultPanel/StatusTag"]
+layout_mode = 0
+offset_left = 10.0
+offset_top = 11.0
+offset_right = 16.0
+offset_bottom = 17.0
+mouse_filter = 2
+
+[node name="Label" type="Label" parent="ResultPanel/StatusTag"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 6.0
+offset_right = 104.0
+offset_bottom = 22.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "已完成"
+
 [node name="Title" type="Label" parent="ResultPanel"]
 layout_mode = 0
 offset_left = 24.0
-offset_top = 22.0
-offset_right = 436.0
-offset_bottom = 56.0
-theme_override_font_sizes/font_size = 22
-text = "黑石堡战斗胜利"
-horizontal_alignment = 1
+offset_top = 66.0
+offset_right = 416.0
+offset_bottom = 92.0
+theme_override_font_sizes/font_size = 18
+text = "战区胜利"
 
 [node name="Details" type="Label" parent="ResultPanel"]
 layout_mode = 0
 offset_left = 30.0
-offset_top = 70.0
-offset_right = 430.0
-offset_bottom = 140.0
+offset_top = 106.0
+offset_right = 416.0
+offset_bottom = 150.0
 theme_override_font_sizes/font_size = 14
 text = "战斗结果"
-horizontal_alignment = 1
-vertical_alignment = 1
 autowrap_mode = 2
+
+[node name="SourceBox" type="Panel" parent="ResultPanel"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 164.0
+offset_right = 416.0
+offset_bottom = 200.0
+mouse_filter = 2
+
+[node name="Label" type="Label" parent="ResultPanel/SourceBox"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 8.0
+offset_right = 380.0
+offset_bottom = 26.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "结果来源：黑石堡战区"
 
 [node name="RetryButton" type="Button" parent="ResultPanel"]
 layout_mode = 0
 offset_left = 58.0
-offset_top = 168.0
-offset_right = 210.0
-offset_bottom = 210.0
+offset_top = 216.0
+offset_right = 194.0
+offset_bottom = 256.0
 focus_mode = 0
 mouse_default_cursor_shape = 2
-text = "再次挑战"
+text = "取消"
 
 [node name="ReturnButton" type="Button" parent="ResultPanel"]
 layout_mode = 0
-offset_left = 250.0
-offset_top = 168.0
-offset_right = 402.0
-offset_bottom = 210.0
+offset_left = 280.0
+offset_top = 216.0
+offset_right = 416.0
+offset_bottom = 256.0
 focus_mode = 0
 mouse_default_cursor_shape = 2
 text = "返回城市"
+
+[node name="CloseButton" type="Button" parent="ResultPanel"]
+layout_mode = 0
+offset_left = 400.0
+offset_top = 12.0
+offset_right = 428.0
+offset_bottom = 40.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+text = "×"
