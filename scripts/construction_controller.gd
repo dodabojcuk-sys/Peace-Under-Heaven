@@ -58,6 +58,12 @@ const GARRISON_STATE = preload(
 const TRAINING_QUEUE = preload(
 	"res://scripts/army/training_queue.gd"
 )
+const ARMY_REGISTRY = preload(
+	"res://scripts/army/army_registry.gd"
+)
+const V5_ARMY_DISPATCH_ADAPTER = preload(
+	"res://scripts/army/v5_army_dispatch_adapter.gd"
+)
 const NOTICEBOARD_MISSIONS: Array[MissionDefinition] = [
 	preload("res://resources/definitions/missions/outskirts_sweep.tres"),
 	preload("res://resources/definitions/missions/supply_relief.tres"),
@@ -280,6 +286,10 @@ var recruitment_cap := BASE_RECRUITMENT_CAP
 var selected_general_id: StringName = &""
 var _training_queue: TrainingQueue = TRAINING_QUEUE.new(&"blackstone_city")
 var _last_training_failure_id: StringName = &""
+var _army_registry: ArmyRegistry = ARMY_REGISTRY.new()
+var _army_dispatch_adapter: V5ArmyDispatchAdapter
+var _active_army_dispatch_reservation: Dictionary = {}
+var _next_army_dispatch_transaction_sequence := 1
 var training_queued_count: int:
 	get:
 		return int(_training_queue.get_active_order().get("quantity", 0))
@@ -1848,8 +1858,13 @@ func is_city_action_locked_for_battle() -> bool:
 
 func get_available_infantry_count() -> int:
 	return maxi(
-		infantry_count - int(
-			_active_battle_reservation.get("committed_count", 0)
+		infantry_count
+		- int(_active_battle_reservation.get("committed_count", 0))
+		- int(
+			_active_army_dispatch_reservation.get(
+				"committed_count",
+				0
+			)
 		),
 		0
 	)
@@ -1890,6 +1905,180 @@ func get_garrison_snapshot() -> Dictionary:
 
 func get_active_battle_reservation() -> Dictionary:
 	return _active_battle_reservation.duplicate(true)
+
+
+func get_v5_army_dispatch_adapter() -> V5ArmyDispatchAdapter:
+	if _army_dispatch_adapter == null:
+		_army_dispatch_adapter = V5_ARMY_DISPATCH_ADAPTER.new()
+		_army_dispatch_adapter.configure(self)
+	return _army_dispatch_adapter
+
+
+func reserve_army_dispatch(
+	committed_count: int,
+	target_node_id: StringName,
+	route_id: StringName,
+	duration_milliseconds: int
+) -> Dictionary:
+	if (
+		not _active_army_dispatch_reservation.is_empty()
+		or _army_registry.has_active_army()
+		or not _active_battle_reservation.is_empty()
+		or committed_count <= 0
+		or committed_count > get_dispatchable_infantry_count()
+		or target_node_id == &""
+		or target_node_id == &"blackstone_city"
+		or route_id == &""
+		or duration_milliseconds <= 0
+	):
+		return {}
+	var transaction_id := StringName(
+		"dispatch.blackstone.%06d"
+		% _next_army_dispatch_transaction_sequence
+	)
+	_next_army_dispatch_transaction_sequence += 1
+	_active_army_dispatch_reservation = {
+		"transaction_id": transaction_id,
+		"committed_count": committed_count,
+		"source_node_id": &"blackstone_city",
+		"target_node_id": target_node_id,
+		"route_id": route_id,
+		"duration_milliseconds": duration_milliseconds,
+	}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return _active_army_dispatch_reservation.duplicate(true)
+
+
+func cancel_army_dispatch(transaction_id: StringName) -> bool:
+	if (
+		_active_army_dispatch_reservation.is_empty()
+		or StringName(
+			_active_army_dispatch_reservation.transaction_id
+		) != transaction_id
+	):
+		return false
+	_active_army_dispatch_reservation = {}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
+
+
+func confirm_army_dispatch(transaction_id: StringName) -> Dictionary:
+	if (
+		_active_army_dispatch_reservation.is_empty()
+		or StringName(
+			_active_army_dispatch_reservation.transaction_id
+		) != transaction_id
+		or _army_registry.has_active_army()
+	):
+		return {}
+	var reservation := _active_army_dispatch_reservation.duplicate(true)
+	var registry_before := _army_registry.get_snapshot()
+	var garrison_before := infantry_count
+	var units := {
+		INFANTRY_ROLE.role_id: int(reservation.committed_count),
+	}
+	var army := _army_registry.create_reserved(
+		&"player",
+		&"blackstone_city",
+		StringName(reservation.source_node_id),
+		StringName(reservation.target_node_id),
+		StringName(reservation.route_id),
+		units,
+		int(reservation.duration_milliseconds),
+		transaction_id
+	)
+	if army.is_empty():
+		return {}
+	if not _garrison_state.try_remove_units(
+		INFANTRY_ROLE.role_id,
+		int(reservation.committed_count)
+	):
+		_army_registry.restore_snapshot(
+			registry_before,
+			get_unit_definition_ids()
+		)
+		return {}
+	if not _army_registry.transition(
+		StringName(army.army_id),
+		transaction_id,
+		ArmyRegistry.PHASE_RESERVED,
+		ArmyRegistry.PHASE_MARCHING
+	):
+		_garrison_state.set_unit_count(
+			INFANTRY_ROLE.role_id,
+			garrison_before
+		)
+		_army_registry.restore_snapshot(
+			registry_before,
+			get_unit_definition_ids()
+		)
+		return {}
+	_active_army_dispatch_reservation = {}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return _army_registry.get_army(StringName(army.army_id))
+
+
+func get_active_army_dispatch_reservation() -> Dictionary:
+	return _active_army_dispatch_reservation.duplicate(true)
+
+
+func get_army_registry_snapshot() -> Dictionary:
+	return _army_registry.get_snapshot().duplicate(true)
+
+
+func get_army_state(army_id: StringName) -> Dictionary:
+	return _army_registry.get_army(army_id)
+
+
+func get_active_armies() -> Array[Dictionary]:
+	return _army_registry.get_active_armies()
+
+
+func advance_army_strategic_time(
+	army_id: StringName,
+	transaction_id: StringName,
+	expected_progress_milliseconds: int,
+	delta_milliseconds: int
+) -> Dictionary:
+	var result := _army_registry.advance_progress(
+		army_id,
+		transaction_id,
+		expected_progress_milliseconds,
+		delta_milliseconds
+	)
+	if result.is_empty():
+		return {}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return result.duplicate(true)
+
+
+func mark_army_settlement_pending(
+	army_id: StringName,
+	transaction_id: StringName
+) -> bool:
+	var changed := _army_registry.transition(
+		army_id,
+		transaction_id,
+		ArmyRegistry.PHASE_ARRIVED,
+		ArmyRegistry.PHASE_SETTLEMENT_PENDING
+	)
+	if changed:
+		_refresh_city_ui()
+		city_state_changed.emit()
+	return changed
+
+
+func get_committed_world_infantry_total() -> int:
+	return (
+		infantry_count
+		+ _army_registry.get_total_active_units(
+			INFANTRY_ROLE.role_id
+		)
+	)
 
 
 func get_closed_battle_transaction_phase(
@@ -2678,6 +2867,9 @@ func restart_first_map() -> bool:
 	selected_general_id = &""
 	_training_queue.clear()
 	_last_training_failure_id = &""
+	_army_registry = ARMY_REGISTRY.new()
+	_active_army_dispatch_reservation = {}
+	_next_army_dispatch_transaction_sequence = 1
 	researched_tech_ids.clear()
 	supply_shortage = false
 	emergency_mobilization_used = false

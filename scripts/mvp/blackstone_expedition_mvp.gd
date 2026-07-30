@@ -144,6 +144,7 @@ var _concurrent_command_blocked_notice := false
 
 var _marching_armies: Array[Dictionary] = []
 var _next_marching_army_id := 1
+var _v5_army_dispatch_adapter: V5ArmyDispatchAdapter
 
 
 func _ready() -> void:
@@ -186,6 +187,28 @@ func _ready() -> void:
 
 func _process(delta: float) -> void:
 	advance_marching_time(delta)
+
+
+func configure_v5_army_dispatch_adapter(
+	adapter: V5ArmyDispatchAdapter
+) -> bool:
+	if adapter == null:
+		return false
+	if (
+		_v5_army_dispatch_adapter != null
+		and _v5_army_dispatch_adapter != adapter
+	):
+		return false
+	_v5_army_dispatch_adapter = adapter
+	return true
+
+
+func get_v5_dispatch_read_model() -> Dictionary:
+	return (
+		_v5_army_dispatch_adapter.get_dispatch_read_model()
+		if _v5_army_dispatch_adapter != null
+		else {}
+	)
 
 
 func _gui_input(event: InputEvent) -> void:

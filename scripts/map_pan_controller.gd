@@ -59,6 +59,9 @@ func _ready() -> void:
 	blackstone_expedition_mvp.return_to_city_requested.connect(
 		return_from_blackstone_expedition_mvp
 	)
+	blackstone_expedition_mvp.configure_v5_army_dispatch_adapter(
+		construction_controller.get_v5_army_dispatch_adapter()
+	)
 	construction_controller.city_state_changed.connect(
 		_refresh_blackstone_mvp_entry
 	)

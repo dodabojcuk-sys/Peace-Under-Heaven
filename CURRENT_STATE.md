@@ -2,10 +2,12 @@
 
 ## 当前阶段
 
-- `V5_G2_P2_IMPLEMENTED_PENDING_PACKAGE_REVIEW`
+- `V5_G2_P3_IMPLEMENTED_PENDING_PACKAGE_REVIEW`
 
 ## 验收状态
 
+- 2026-07-30，V5-G2 P3 已实现集合型 `ArmyRegistry`、黑石堡窄适配层、派遣预留／取消／一次性扣兵、单 active policy、整数毫秒行军和幂等抵达。持久模型没有 singleton、Node、像素坐标或 UI 状态；P3 仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`。
+- P3 专项 27 条、既有黑石堡 151 条、V5 驻军 27 条、P2 37 条断言通过；三个正式场景、editor scan 和 `git diff --check` 通过。报告：`docs/reports/TXWZS_V5_P3_ARMY_STATE_IMPLEMENTATION_001.md`。
 - 2026-07-30，V5-G2 P2 训练与时间运行时已形成阶段 checkpoint：`TrainingQueue` 是唯一训练订单源，旧三字段降为只读兼容投影；下单、资源扣除、完成写驻军、容量／供养阻断和 1×／2×／4×／暂停／战争阻断／场景切换测试已实现。P2 状态仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`，没有提前接受 V5-G2。
 - P2 专项 37 条、既有 P1-D 45 条、S1A.1 126 条、V5 驻军 27 条、C0 城市时间 59 条断言通过；正式城市、黑石堡、C0 场景、editor scan 和 `git diff --check` 通过。报告：`docs/reports/TXWZS_V5_P2_TRAINING_TIME_IMPLEMENTATION_001.md`。
 - 2026-07-30，新的独立 reviewer 绑定 G1 候选 `b3a7f03055350f25caa14dee8a630cf3b004d028` 及 parent `2cc4ebf01622b424ff4a4cd145c421b8fd1bbec3`，签发 `V5_G1_CONTRACT_PACKAGE_REVIEW_ACCEPTED`。六项 G1 合同与 V5-G1 已 VERIFIED；条件式授权因此生效，允许立即连续实施完整 V5-G2，但不提前接受任何 G2 runtime。
