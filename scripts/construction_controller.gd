@@ -2294,6 +2294,7 @@ func reserve_army_dispatch(
 	if (
 		not _active_army_dispatch_reservation.is_empty()
 		or _army_registry.has_active_army()
+		or not _army_registry.can_allocate_stable_id()
 		or not _active_battle_reservation.is_empty()
 		or committed_count <= 0
 		or committed_count > get_dispatchable_infantry_count()

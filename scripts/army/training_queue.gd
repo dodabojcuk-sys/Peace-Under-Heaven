@@ -5,6 +5,7 @@ extends RefCounted
 const SCHEMA_VERSION := 1
 const PHASE_QUEUED := &"QUEUED"
 const PHASE_COMPLETED := &"COMPLETED"
+const MAX_EXACT_PERSISTED_SEQUENCE := 9007199254740991
 
 var city_id: StringName
 var _next_order_sequence := 1
@@ -50,6 +51,7 @@ func enqueue(
 		or food_cost_committed < 0
 		or has_active_order()
 		or _last_order_day == ordered_day
+		or _next_order_sequence >= MAX_EXACT_PERSISTED_SEQUENCE
 	):
 		return {}
 	var order_id := StringName(
@@ -190,7 +192,10 @@ static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
 	if (
 		int(snapshot.get("schema_version", 0)) != SCHEMA_VERSION
 		or StringName(snapshot.get("city_id", &"")) == &""
+		or typeof(snapshot.get("next_order_sequence", null)) != TYPE_INT
 		or int(snapshot.get("next_order_sequence", 0)) <= 0
+		or int(snapshot.get("next_order_sequence", 0))
+			> MAX_EXACT_PERSISTED_SEQUENCE
 		or int(snapshot.get("last_order_day", -1)) < 0
 		or not snapshot.get("orders_by_id", null) is Dictionary
 	):
@@ -263,7 +268,10 @@ static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
 		}
 	if (
 		int(normalized.next_order_sequence) <= maximum_order_sequence
-		or int(normalized.last_order_day) != maximum_ordered_day
+		or (
+			not normalized.orders_by_id.is_empty()
+			and int(normalized.last_order_day) != maximum_ordered_day
+		)
 	):
 		return {
 			"valid": false,

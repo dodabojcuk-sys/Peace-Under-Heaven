@@ -3,6 +3,7 @@ extends RefCounted
 
 
 const SCHEMA_VERSION := 1
+const MAX_EXACT_PERSISTED_SEQUENCE := 9007199254740991
 const PHASE_RESERVED := &"RESERVED"
 const PHASE_MARCHING := &"MARCHING"
 const PHASE_ARRIVED := &"ARRIVED"
@@ -34,6 +35,10 @@ var _armies_by_id: Dictionary = {}
 
 func has_active_army() -> bool:
 	return not get_active_armies().is_empty()
+
+
+func can_allocate_stable_id() -> bool:
+	return _next_army_sequence < MAX_EXACT_PERSISTED_SEQUENCE
 
 
 func get_army(army_id: StringName) -> Dictionary:
@@ -79,6 +84,7 @@ func create_reserved(
 		or transaction_id == &""
 		or duration_milliseconds <= 0
 		or not _has_valid_composition(units_by_definition_id)
+		or not can_allocate_stable_id()
 	):
 		return {}
 	var army_id := StringName(
@@ -337,7 +343,10 @@ static func validate_snapshot(
 ) -> Dictionary:
 	if (
 		int(snapshot.get("schema_version", 0)) != SCHEMA_VERSION
+		or typeof(snapshot.get("next_army_sequence", null)) != TYPE_INT
 		or int(snapshot.get("next_army_sequence", 0)) <= 0
+		or int(snapshot.get("next_army_sequence", 0))
+			> MAX_EXACT_PERSISTED_SEQUENCE
 		or not snapshot.get("armies_by_id", null) is Dictionary
 	):
 		return {"valid": false, "error_id": &"INVALID_ARMY_REGISTRY"}

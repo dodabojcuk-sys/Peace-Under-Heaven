@@ -131,6 +131,60 @@ func _run() -> void:
 				.orders_by_id.is_empty(),
 		"空训练 V1 确定性迁移为空 TrainingQueue 集合"
 	)
+	var v1_empty_with_history := v1_empty.duplicate(true)
+	v1_empty_with_history.city.current_day = 2
+	v1_empty_with_history.city.last_training_order_day = 1
+	var historical_v1_text := var_to_str(v1_empty_with_history)
+	var empty_live_before: Dictionary = (
+		empty_source.export_v5_campaign_snapshot()
+	)
+	var historical_empty_migration: Dictionary = (
+		empty_source.migrate_v1_snapshot_to_v5(
+			v1_empty_with_history
+		)
+	)
+	_check(
+		historical_empty_migration.success
+			and historical_empty_migration.snapshot.training_queue
+				.orders_by_id.is_empty()
+			and historical_empty_migration.snapshot.training_queue
+				.last_order_day == 1
+			and var_to_str(v1_empty_with_history) == historical_v1_text
+			and empty_source.export_v5_campaign_snapshot()
+				== empty_live_before,
+		"无 active order 但保留训练历史日的合法 V1 只读迁移成功"
+	)
+
+	for invalid_sequence in ["2", 2.7, 9223372036854775807]:
+		var malformed_training := v2_active.duplicate(true)
+		malformed_training.training_queue.next_order_sequence = (
+			invalid_sequence
+		)
+		var training_before: Dictionary = (
+			source.export_v5_campaign_snapshot()
+		)
+		var malformed_training_restore: Dictionary = (
+			source.restore_v5_campaign_snapshot(malformed_training)
+		)
+		_check(
+			not malformed_training_restore.success
+				and source.export_v5_campaign_snapshot()
+					== training_before,
+			"训练 sequence 非整数或不可安全持久化时结构化拒绝且零写入"
+		)
+		var malformed_army := v2_active.duplicate(true)
+		malformed_army.army_registry.next_army_sequence = (
+			invalid_sequence
+		)
+		var army_before: Dictionary = source.export_v5_campaign_snapshot()
+		var malformed_army_restore: Dictionary = (
+			source.restore_v5_campaign_snapshot(malformed_army)
+		)
+		_check(
+			not malformed_army_restore.success
+				and source.export_v5_campaign_snapshot() == army_before,
+			"军队 sequence 非整数或不可安全持久化时结构化拒绝且零写入"
+		)
 
 	var validator := Callable(source, "validate_v5_campaign_snapshot")
 	var encoded := V5CampaignSaveCodec.encode_snapshot(
@@ -188,6 +242,249 @@ func _run() -> void:
 		"成功发布不残留可加载临时文件"
 	)
 
+	var completed_training := v2_active.duplicate(true)
+	var historical_order_id := StringName(
+		completed_training.training_queue.active_order_id
+	)
+	completed_training.city.current_day = 2
+	completed_training.garrison.unit_counts_by_definition_id[
+		source.INFANTRY_ROLE.role_id
+	] = 25
+	completed_training.training_queue.active_order_id = &""
+	completed_training.training_queue.orders_by_id[
+		historical_order_id
+	].phase = TrainingQueue.PHASE_COMPLETED
+	completed_training.training_queue.orders_by_id[
+		historical_order_id
+	].completed_day = int(
+		completed_training.training_queue.orders_by_id[
+			historical_order_id
+		].complete_day
+	)
+	var near_limit_queue_snapshot: Dictionary = (
+		completed_training.training_queue.duplicate(true)
+	)
+	near_limit_queue_snapshot.next_order_sequence = (
+		TrainingQueue.MAX_EXACT_PERSISTED_SEQUENCE - 1
+	)
+	var near_limit_queue := TrainingQueue.new(&"blackstone_city")
+	var near_limit_queue_restored := near_limit_queue.restore_snapshot(
+		near_limit_queue_snapshot
+	)
+	var near_limit_order: Dictionary = near_limit_queue.enqueue(
+		source.INFANTRY_ROLE.role_id,
+		5,
+		3,
+		4,
+		5
+	)
+	var exhausted_queue_snapshot: Dictionary = (
+		near_limit_queue.get_snapshot()
+	)
+	var exhausted_queue_validation: Dictionary = (
+		TrainingQueue.validate_snapshot(
+		exhausted_queue_snapshot
+		)
+	)
+	var near_limit_order_id := StringName(
+		near_limit_order.get("order_id", &"")
+	)
+	var near_limit_completed := near_limit_queue.mark_completed(
+		near_limit_order_id,
+		4
+	)
+	var exhausted_queue_before: Dictionary = (
+		near_limit_queue.get_snapshot()
+	)
+	var exhausted_order: Dictionary = near_limit_queue.enqueue(
+		source.INFANTRY_ROLE.role_id,
+		5,
+		5,
+		6,
+		5
+	)
+	_check(
+		near_limit_queue_restored
+			and near_limit_order_id
+				== StringName(
+					"training.blackstone_city.%d"
+					% (
+						TrainingQueue
+						.MAX_EXACT_PERSISTED_SEQUENCE - 1
+					)
+				)
+			and exhausted_queue_validation.valid
+			and exhausted_queue_snapshot.next_order_sequence
+				== TrainingQueue.MAX_EXACT_PERSISTED_SEQUENCE
+			and near_limit_completed
+			and exhausted_order.is_empty()
+			and near_limit_queue.get_snapshot()
+				== exhausted_queue_before,
+		"训练 MAX-1 restore→create 产生可持久化 exhausted sentinel，后续创建零写入"
+	)
+	var exhausted_training_authority := completed_training.duplicate(true)
+	exhausted_training_authority.training_queue.next_order_sequence = (
+		TrainingQueue.MAX_EXACT_PERSISTED_SEQUENCE
+	)
+	var exhausted_training_scene := packed_scene.instantiate()
+	root.add_child(exhausted_training_scene)
+	await process_frame
+	await process_frame
+	var exhausted_training_controller: Node = (
+		exhausted_training_scene.get_node("ConstructionController")
+	)
+	exhausted_training_controller.set_process(false)
+	var exhausted_training_restore: Dictionary = (
+		exhausted_training_controller.restore_v5_campaign_snapshot(
+			exhausted_training_authority
+		)
+	)
+	var exhausted_training_before: Dictionary = (
+		exhausted_training_controller.export_v5_campaign_snapshot()
+	)
+	var exhausted_training_request: Dictionary = (
+		exhausted_training_controller.request_training()
+	)
+	_check(
+		exhausted_training_restore.success
+			and not exhausted_training_request.success
+			and exhausted_training_request.error_id
+				== &"TRAINING_QUEUE_COMMIT"
+			and exhausted_training_controller
+				.export_v5_campaign_snapshot()
+				== exhausted_training_before,
+		"训练 exhausted sentinel 经正式创建入口结构化失败且全部 authority 零写入"
+	)
+	var stale_training_disk := completed_training.duplicate(true)
+	stale_training_disk.training_queue.next_order_sequence = 1
+	var stale_training_root := test_root.path_join("stale_training")
+	var stale_training_store := V5CampaignSaveStore.new(
+		stale_training_root
+	)
+	_check(
+		DirAccess.make_dir_recursive_absolute(stale_training_root) == OK
+			and _write_counterexample_generation(
+				stale_training_store,
+				stale_training_disk
+			),
+		"正式 codec 生成 checksum 合法但训练领域非法的隔离代次"
+	)
+	var stale_training_scene := packed_scene.instantiate()
+	root.add_child(stale_training_scene)
+	await process_frame
+	await process_frame
+	var stale_training_controller: Node = (
+		stale_training_scene.get_node("ConstructionController")
+	)
+	stale_training_controller.set_process(false)
+	var stale_training_before: Dictionary = (
+		stale_training_controller.export_v5_campaign_snapshot()
+	)
+	var stale_training_load: Dictionary = (
+		stale_training_store.load_and_restore(
+			stale_training_controller
+		)
+	)
+	var stale_training_reused := false
+	if bool(stale_training_load.get("success", false)):
+		stale_training_controller.queue_training()
+		var loaded_training: Dictionary = (
+			stale_training_controller.export_v5_campaign_snapshot()
+		)
+		stale_training_reused = (
+			loaded_training.training_queue.orders_by_id.size() == 1
+			and loaded_training.training_queue.orders_by_id.has(
+				historical_order_id
+			)
+		)
+	print(
+		"V5_STALE_TRAINING_COUNTEREXAMPLE load=%s reused=%s old=%s"
+		% [
+			stale_training_load.get("success", false),
+			stale_training_reused,
+			historical_order_id,
+		]
+	)
+	_check(
+		not bool(stale_training_load.get("success", false))
+			and stale_training_controller.export_v5_campaign_snapshot()
+				== stale_training_before,
+		"checksum 合法的训练 sequence rollback 经正式 load/restore 边界拒绝且零写入"
+	)
+
+	var legal_training_root := test_root.path_join("legal_training")
+	var legal_training_store := V5CampaignSaveStore.new(
+		legal_training_root
+	)
+	var legal_training_save := legal_training_store.save_snapshot(
+		completed_training,
+		validator
+	)
+	var legal_training_scene := packed_scene.instantiate()
+	root.add_child(legal_training_scene)
+	await process_frame
+	await process_frame
+	var legal_training_controller: Node = (
+		legal_training_scene.get_node("ConstructionController")
+	)
+	legal_training_controller.set_process(false)
+	var legal_training_load := legal_training_store.load_and_restore(
+		legal_training_controller
+	)
+	legal_training_controller.food = 0
+	var training_resource_before: Dictionary = (
+		legal_training_controller.export_v5_campaign_snapshot()
+	)
+	var training_resource_failure: Dictionary = (
+		legal_training_controller.request_training()
+	)
+	var training_resource_zero_write: bool = (
+		not training_resource_failure.success
+		and training_resource_failure.error_id == &"INSUFFICIENT_FOOD"
+		and legal_training_controller.export_v5_campaign_snapshot()
+			== training_resource_before
+	)
+	legal_training_controller.restore_v5_campaign_snapshot(
+		completed_training
+	)
+	legal_training_controller.recruitment_cap = 25
+	var training_capacity_before: Dictionary = (
+		legal_training_controller.export_v5_campaign_snapshot()
+	)
+	var training_capacity_failure: Dictionary = (
+		legal_training_controller.request_training()
+	)
+	var training_capacity_zero_write: bool = (
+		not training_capacity_failure.success
+		and training_capacity_failure.error_id
+			== &"RECRUITMENT_CAPACITY"
+		and legal_training_controller.export_v5_campaign_snapshot()
+			== training_capacity_before
+	)
+	legal_training_controller.restore_v5_campaign_snapshot(
+		completed_training
+	)
+	var legal_training_create: bool = (
+		legal_training_controller.queue_training()
+	)
+	var legal_training_after: Dictionary = (
+		legal_training_controller.export_v5_campaign_snapshot()
+	)
+	_check(
+		legal_training_save.success
+			and legal_training_load.success
+			and training_resource_zero_write
+			and training_capacity_zero_write
+			and legal_training_create
+			and legal_training_after.training_queue.orders_by_id.has(
+				&"training.blackstone_city.000001"
+			)
+			and legal_training_after.training_queue.orders_by_id.has(
+				&"training.blackstone_city.000002"
+			),
+		"合法高水位恢复后资源/容量失败零写入，首次成功训练为唯一 .000002"
+	)
+
 	var restore_scene := packed_scene.instantiate()
 	root.add_child(restore_scene)
 	await process_frame
@@ -232,6 +529,276 @@ func _run() -> void:
 				army.army_id
 			].route_id == &"route.persistence",
 		"V2 保存点包含 active Army stable ID、route/node 和整数进度"
+	)
+	var historical_army_id := StringName(army.army_id)
+	var closed_army := in_transit.duplicate(true)
+	closed_army.army_registry.armies_by_id[
+		historical_army_id
+	].phase = ArmyRegistry.PHASE_CLOSED
+	closed_army.army_registry.armies_by_id[
+		historical_army_id
+	].units_by_definition_id = {}
+	var near_limit_registry_snapshot: Dictionary = (
+		closed_army.army_registry.duplicate(true)
+	)
+	near_limit_registry_snapshot.next_army_sequence = (
+		ArmyRegistry.MAX_EXACT_PERSISTED_SEQUENCE - 1
+	)
+	var near_limit_registry := ArmyRegistry.new()
+	var near_limit_registry_restored := (
+		near_limit_registry.restore_snapshot(
+			near_limit_registry_snapshot,
+			[source.INFANTRY_ROLE.role_id],
+			true
+		)
+	)
+	var near_limit_army: Dictionary = (
+		near_limit_registry.create_reserved(
+			&"player",
+			&"blackstone_city",
+			&"blackstone_city",
+			&"node.limit",
+			&"route.limit",
+			{source.INFANTRY_ROLE.role_id: 5},
+			1000,
+			&"dispatch.limit"
+		)
+	)
+	var near_limit_army_id := StringName(
+		near_limit_army.get("army_id", &"")
+	)
+	var exhausted_registry_snapshot: Dictionary = (
+		near_limit_registry.get_snapshot()
+	)
+	var exhausted_registry_validation: Dictionary = (
+		ArmyRegistry.validate_snapshot(
+			exhausted_registry_snapshot,
+			[source.INFANTRY_ROLE.role_id],
+			true
+		)
+	)
+	exhausted_registry_snapshot.armies_by_id[
+		near_limit_army_id
+	].phase = ArmyRegistry.PHASE_CLOSED
+	exhausted_registry_snapshot.armies_by_id[
+		near_limit_army_id
+	].units_by_definition_id = {}
+	var exhausted_registry := ArmyRegistry.new()
+	var exhausted_registry_restored := (
+		exhausted_registry.restore_snapshot(
+			exhausted_registry_snapshot,
+			[source.INFANTRY_ROLE.role_id],
+			true
+		)
+	)
+	var exhausted_registry_before: Dictionary = (
+		exhausted_registry.get_snapshot()
+	)
+	var exhausted_army: Dictionary = exhausted_registry.create_reserved(
+		&"player",
+		&"blackstone_city",
+		&"blackstone_city",
+		&"node.exhausted",
+		&"route.exhausted",
+		{source.INFANTRY_ROLE.role_id: 5},
+		1000,
+		&"dispatch.exhausted"
+	)
+	_check(
+		near_limit_registry_restored
+			and near_limit_army_id
+				== StringName(
+					"army.player.%d"
+					% (
+						ArmyRegistry
+						.MAX_EXACT_PERSISTED_SEQUENCE - 1
+					)
+				)
+			and exhausted_registry_validation.valid
+			and exhausted_registry_snapshot.next_army_sequence
+				== ArmyRegistry.MAX_EXACT_PERSISTED_SEQUENCE
+			and exhausted_registry_restored
+			and exhausted_army.is_empty()
+			and exhausted_registry.get_snapshot()
+				== exhausted_registry_before,
+		"军队 MAX-1 restore→create 产生可持久化 exhausted sentinel，后续创建零写入"
+	)
+	var exhausted_army_authority := closed_army.duplicate(true)
+	exhausted_army_authority.army_registry.next_army_sequence = (
+		ArmyRegistry.MAX_EXACT_PERSISTED_SEQUENCE
+	)
+	var exhausted_army_scene := packed_scene.instantiate()
+	root.add_child(exhausted_army_scene)
+	await process_frame
+	await process_frame
+	var exhausted_army_controller: Node = (
+		exhausted_army_scene.get_node("ConstructionController")
+	)
+	exhausted_army_controller.set_process(false)
+	var exhausted_army_restore: Dictionary = (
+		exhausted_army_controller.restore_v5_campaign_snapshot(
+			exhausted_army_authority
+		)
+	)
+	var exhausted_army_before: Dictionary = (
+		exhausted_army_controller.export_v5_campaign_snapshot()
+	)
+	var exhausted_army_reservation: Dictionary = (
+		exhausted_army_controller.reserve_army_dispatch(
+			5,
+			&"node.exhausted",
+			&"route.exhausted",
+			1000
+		)
+	)
+	_check(
+		exhausted_army_restore.success
+			and exhausted_army_reservation.is_empty()
+			and exhausted_army_controller
+				.get_active_army_dispatch_reservation()
+				.is_empty()
+			and exhausted_army_controller
+				.export_v5_campaign_snapshot()
+				== exhausted_army_before,
+		"军队 exhausted sentinel 在 reservation 前失败且 transaction/authority 零写入"
+	)
+	var stale_army_disk := closed_army.duplicate(true)
+	stale_army_disk.army_registry.next_army_sequence = 1
+	var stale_army_root := test_root.path_join("stale_army")
+	var stale_army_store := V5CampaignSaveStore.new(stale_army_root)
+	_check(
+		DirAccess.make_dir_recursive_absolute(stale_army_root) == OK
+			and _write_counterexample_generation(
+				stale_army_store,
+				stale_army_disk
+			),
+		"正式 codec 生成 checksum 合法但军队领域非法的隔离代次"
+	)
+	var stale_army_scene := packed_scene.instantiate()
+	root.add_child(stale_army_scene)
+	await process_frame
+	await process_frame
+	var stale_army_controller: Node = (
+		stale_army_scene.get_node("ConstructionController")
+	)
+	stale_army_controller.set_process(false)
+	var stale_army_before: Dictionary = (
+		stale_army_controller.export_v5_campaign_snapshot()
+	)
+	var stale_army_load: Dictionary = stale_army_store.load_and_restore(
+		stale_army_controller
+	)
+	var stale_army_reused := false
+	if bool(stale_army_load.get("success", false)):
+		var stale_reservation: Dictionary = (
+			stale_army_controller.reserve_army_dispatch(
+				5,
+				&"node.stale",
+				&"route.stale",
+				1000
+			)
+		)
+		var stale_created: Dictionary = (
+			stale_army_controller.confirm_army_dispatch(
+				StringName(stale_reservation.get(
+					"transaction_id",
+					&""
+				))
+			)
+		)
+		stale_army_reused = (
+			StringName(stale_created.get("army_id", &""))
+			== historical_army_id
+		)
+	print(
+		"V5_STALE_ARMY_COUNTEREXAMPLE load=%s reused=%s old=%s"
+		% [
+			stale_army_load.get("success", false),
+			stale_army_reused,
+			historical_army_id,
+		]
+	)
+	_check(
+		not bool(stale_army_load.get("success", false))
+			and stale_army_controller.export_v5_campaign_snapshot()
+				== stale_army_before,
+		"checksum 合法的军队 sequence rollback 经正式 load/restore 边界拒绝且零写入"
+	)
+
+	var legal_army_root := test_root.path_join("legal_army")
+	var legal_army_store := V5CampaignSaveStore.new(legal_army_root)
+	var legal_army_save := legal_army_store.save_snapshot(
+		closed_army,
+		Callable(restored, "validate_v5_campaign_snapshot")
+	)
+	var legal_army_scene := packed_scene.instantiate()
+	root.add_child(legal_army_scene)
+	await process_frame
+	await process_frame
+	var legal_army_controller: Node = (
+		legal_army_scene.get_node("ConstructionController")
+	)
+	legal_army_controller.set_process(false)
+	var legal_army_load := legal_army_store.load_and_restore(
+		legal_army_controller
+	)
+	var army_capacity_before: Dictionary = (
+		legal_army_controller.export_v5_campaign_snapshot()
+	)
+	var army_capacity_failure: Dictionary = (
+		legal_army_controller.reserve_army_dispatch(
+			999,
+			&"node.capacity",
+			&"route.capacity",
+			1000
+		)
+	)
+	var army_capacity_zero_write: bool = (
+		army_capacity_failure.is_empty()
+		and legal_army_controller.export_v5_campaign_snapshot()
+			== army_capacity_before
+	)
+	var legal_reservation: Dictionary = (
+		legal_army_controller.reserve_army_dispatch(
+			5,
+			&"node.legal",
+			&"route.legal",
+			1000
+		)
+	)
+	var legal_army_create: Dictionary = (
+		legal_army_controller.confirm_army_dispatch(
+			StringName(legal_reservation.get("transaction_id", &""))
+		)
+	)
+	var legal_army_after: Dictionary = (
+		legal_army_controller.export_v5_campaign_snapshot()
+	)
+	var active_army_before: Dictionary = legal_army_after.duplicate(true)
+	var active_army_failure: Dictionary = (
+		legal_army_controller.reserve_army_dispatch(
+			1,
+			&"node.active_block",
+			&"route.active_block",
+			1000
+		)
+	)
+	_check(
+		legal_army_save.success
+			and legal_army_load.success
+			and army_capacity_zero_write
+			and StringName(legal_army_create.get("army_id", &""))
+				== &"army.player.000002"
+			and legal_army_after.army_registry.armies_by_id.has(
+				&"army.player.000001"
+			)
+			and legal_army_after.army_registry.armies_by_id.has(
+				&"army.player.000002"
+			)
+			and active_army_failure.is_empty()
+			and legal_army_controller.export_v5_campaign_snapshot()
+				== active_army_before,
+		"合法高水位恢复后容量/单 active 失败零写入，首次成功军队为唯一 .000002"
 	)
 	var stale_army_sequence := in_transit.duplicate(true)
 	stale_army_sequence.army_registry.next_army_sequence = 1
@@ -457,6 +1024,33 @@ func _run_cold_worker(mode: String, save_directory: String) -> Dictionary:
 		"exit_code": exit_code,
 		"output": "\n".join(output),
 	}
+
+
+func _accept_counterexample(snapshot: Dictionary) -> Dictionary:
+	return {
+		"valid": true,
+		"error_id": &"",
+		"error": "",
+		"snapshot": snapshot.duplicate(true),
+	}
+
+
+func _write_counterexample_generation(
+	store: V5CampaignSaveStore,
+	snapshot: Dictionary
+) -> bool:
+	var encoded := V5CampaignSaveCodec.encode_snapshot(
+		snapshot,
+		1,
+		Callable(self, "_accept_counterexample")
+	)
+	return (
+		bool(encoded.get("success", false))
+		and _write_text(
+			store.get_generation_path(1),
+			str(encoded.get("storage_text", ""))
+		)
+	)
 
 
 func _read_text(path: String) -> String:
