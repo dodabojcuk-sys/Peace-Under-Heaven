@@ -2,13 +2,18 @@
 
 ## 当前阶段
 
-- `V5_P0_P1_REPAIRED_PENDING_INDEPENDENT_REVIEW`
+- `V5_G0_VERIFIED_G1_CONTRACTS_NOT_STARTED`
 
 ## 验收状态
 
+- 2026-07-30，新的独立 reviewer 绑定修复候选 `bd15fca` 及 parent `242f793`，签发 `V5_P0_P1_PACKAGE_REVIEW_ACCEPTED`。V5-G0 已 VERIFIED，P0/P1 十一项已覆盖任务 independently accepted；该结论只接受单兵种定义、唯一驻军真值源、兼容入口、可派查询和预留容量修复，不提前接受 G1/G2。
+- 原缺陷已独立按边界重测：在权威查询可派 10 人时，预留 12 人失败且驻军／预留／未预留／可派读模型零写入；预留 10 人成功；总驻军始终等于预留加未预留且所有数量非负。
+- 独立复审重新得到 V5 专项 27 条断言、边界 probe 10 条断言、tracked 29/29 共 1601 条断言、all-present 30/30 共 1713 条断言／1742 条 PASS 行；正式主场景、黑石堡、最终 editor scan、`git diff --check` 和最终错误签名扫描均通过。
+- `bd15fca` 实际 parent、四文件提交清单和 blob 哈希与 Repair 001 的运行时两文件哈希及状态／报告范围一致；唯一预留写入口统一调用 `get_dispatchable_infantry_count()`，玩家 UI 路径最终都服从同一协调器／城市权威入口。
+- S1A.2 八文件由源工作树逐字节复制到本独立工作树，仅供 all-present 观察；复审前后哈希一致，保持 untracked、unstaged，尚未获得 P5 复用裁决。
 - 2026-07-30，独立复审绑定候选 `242f793` 及 parent `5357c28`，发现权威“可派”查询受 `recruitment_cap` 约束，但战斗预留入口没有复用该容量约束；当可派为 10 时仍可写入 12 人预留。原候选 verdict 为 `REVIEW_REQUIRED`，不得标记 `V5_P0_P1_PACKAGE_REVIEW_ACCEPTED`。
 - 同轮最小修复已让预留入口服从 `get_dispatchable_infantry_count()`，并新增容量阻断及失败零写入回归。修复后 V5 专项 27 条断言通过，tracked 29/29、1601 条断言通过，all-present 30/30、1713 条断言及 1742 条 PASS 行通过；正式主场景、黑石堡场景、Godot editor scan、`git diff --check` 和错误签名扫描通过。
-- 当前终态为 `REPAIRED_PENDING_INDEPENDENT_REVIEW`：本线程不能自行接受修复后候选，V5-G0 仍未 VERIFIED，P0/P1 十一项任务仍未 VERIFIED；按 Gate 协议没有进入 G1，六项 G1 合同与规划工作簿同步均未实施。
+- Repair 001 的历史终态为 `REPAIRED_PENDING_INDEPENDENT_REVIEW`；该门禁现已由 Review 002 独立关闭。G1 六项合同与规划工作簿同步仍未实施，不能标记 VERIFIED。
 - V4 继续保持 `VERIFIED / FROZEN`；V5-G2 继续 `PARTIAL / IN_PROGRESS`，P2–P5 runtime implementation 仍为 `NOT_STARTED`。
 - 2026-07-30，V5 已从冻结的 V4 checkpoint `5357c28` 开始首个实质切片；P0 基线／所有权／数据合同与 P1 单兵种驻军实现已完成，原始候选为 `IMPLEMENTED_PENDING_REVIEW`，尚未标记 V5 Gate VERIFIED。
 - `ConstructionController` 继续是唯一城市运行时写入者；新增私有 `GarrisonState` 作为本城兵种数量源，旧 `infantry_count` 是兼容属性而不是第二份存储。
