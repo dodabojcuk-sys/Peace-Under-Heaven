@@ -64,6 +64,9 @@ const ARMY_REGISTRY = preload(
 const V5_ARMY_DISPATCH_ADAPTER = preload(
 	"res://scripts/army/v5_army_dispatch_adapter.gd"
 )
+const V5_CAMPAIGN_SNAPSHOT = preload(
+	"res://scripts/state/v5_campaign_snapshot.gd"
+)
 const NOTICEBOARD_MISSIONS: Array[MissionDefinition] = [
 	preload("res://resources/definitions/missions/outskirts_sweep.tres"),
 	preload("res://resources/definitions/missions/supply_relief.tres"),
@@ -291,6 +294,7 @@ var _army_dispatch_adapter: V5ArmyDispatchAdapter
 var _active_army_dispatch_reservation: Dictionary = {}
 var _next_army_dispatch_transaction_sequence := 1
 var _active_army_encounter: Dictionary = {}
+var _v5_restore_failure_after_city_install_for_test := false
 var training_queued_count: int:
 	get:
 		return int(_training_queue.get_active_order().get("quantity", 0))
@@ -1340,6 +1344,371 @@ func export_early_city_snapshot() -> Dictionary:
 		if bool(validation.valid)
 		else {}
 	)
+
+
+func export_v5_campaign_snapshot() -> Dictionary:
+	if (
+		not _active_battle_reservation.is_empty()
+		or not _active_army_dispatch_reservation.is_empty()
+		or not _active_army_encounter.is_empty()
+	):
+		return {}
+	var snapshot := {
+		"schema_version": V5CampaignSnapshot.SCHEMA_VERSION,
+		"snapshot_kind": V5CampaignSnapshot.SNAPSHOT_KIND,
+		"city_id": V5CampaignSnapshot.CITY_ID,
+		"city": {
+			"current_day": current_day,
+			"day_elapsed_milliseconds": (
+				get_day_elapsed_milliseconds()
+			),
+			"wood": wood,
+			"food": food,
+			"tech_points": tech_points,
+			"recruitment_cap": recruitment_cap,
+			"selected_general_id": selected_general_id,
+			"researched_tech_ids": researched_tech_ids.duplicate(),
+			"supply_shortage": supply_shortage,
+			"emergency_mobilization_used": (
+				emergency_mobilization_used
+			),
+			"city_time_paused": city_time_paused,
+			"city_time_speed_id": StringName(
+				"%dx" % roundi(city_time_speed)
+			),
+		},
+		"placements": _export_v5_placements(),
+		"next_placement_id": _next_placement_id,
+		"garrison": {
+			"schema_version": GarrisonState.SCHEMA_VERSION,
+			"city_id": _garrison_state.city_id,
+			"unit_counts_by_definition_id": (
+				_garrison_state.get_unit_counts()
+			),
+		},
+		"training_queue": _training_queue.get_snapshot(),
+		"army_registry": _army_registry.get_snapshot(),
+		"settlement_ledger": {
+			"committed_results_by_id": (
+				_committed_battle_result_ids.duplicate(true)
+			),
+			"closed_transactions_by_id": (
+				_closed_battle_transactions.duplicate(true)
+			),
+			"first_clear_keys": _first_clear_keys.duplicate(true),
+			"completed_noticeboard_mission_ids": (
+				_completed_noticeboard_mission_ids.duplicate(true)
+			),
+			"next_battle_transaction_sequence": (
+				_next_battle_transaction_sequence
+			),
+			"next_army_dispatch_transaction_sequence": (
+				_next_army_dispatch_transaction_sequence
+			),
+		},
+	}
+	var validation := validate_v5_campaign_snapshot(snapshot)
+	return (
+		Dictionary(validation.snapshot).duplicate(true)
+		if bool(validation.valid)
+		else {}
+	)
+
+
+func _export_v5_placements() -> Array[Dictionary]:
+	var placements: Array[Dictionary] = []
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if (
+			record.is_empty()
+			or record.placement_kind == PLACEMENT_KIND_FIXED
+		):
+			continue
+		placements.append({
+			"placement_id": placement_id,
+			"definition_id": StringName(record.definition_id),
+			"origin_cell": Vector2i(record.origin_cell),
+			"lifecycle_state": StringName(record.lifecycle_state),
+			"built_day": int(record.built_day),
+			"disabled_until_day": int(record.disabled_until_day),
+			"construction_started_day": int(
+				record.construction_started_day
+			),
+			"construction_complete_day": int(
+				record.construction_complete_day
+			),
+		})
+	return placements
+
+
+func validate_v5_campaign_snapshot(
+	snapshot: Dictionary
+) -> Dictionary:
+	var structural := V5CampaignSnapshot.validate_structure(
+		snapshot,
+		get_unit_definition_ids()
+	)
+	if not bool(structural.valid):
+		return structural
+	var candidate: Dictionary = structural.snapshot
+	var selected_general := StringName(
+		candidate.city.selected_general_id
+	)
+	if (
+		selected_general != &""
+		and not _generals_by_id.has(selected_general)
+	):
+		return {
+			"valid": false,
+			"error_id": &"UNKNOWN_GENERAL",
+			"error": "V2 引用未知将领",
+		}
+	for tech_id_value in candidate.city.researched_tech_ids:
+		if not _tech_by_id.has(StringName(tech_id_value)):
+			return {
+				"valid": false,
+				"error_id": &"UNKNOWN_TECH",
+				"error": "V2 引用未知科技",
+			}
+	for placement_value in candidate.placements:
+		var placement: Dictionary = placement_value
+		if get_definition(StringName(placement.definition_id)) == null:
+			return {
+				"valid": false,
+				"error_id": &"UNKNOWN_BUILDING",
+				"error": "V2 引用未知建筑",
+			}
+	var garrison_total := 0
+	for count in Dictionary(
+		candidate.garrison.unit_counts_by_definition_id
+	).values():
+		garrison_total += int(count)
+	var queued_total := 0
+	for order in Dictionary(
+		candidate.training_queue.orders_by_id
+	).values():
+		if StringName(order.phase) == TrainingQueue.PHASE_QUEUED:
+			queued_total += int(order.quantity)
+	var command_limit := int(candidate.city.recruitment_cap)
+	if selected_general != &"":
+		command_limit = int(
+			_generals_by_id[selected_general].command_limit
+		)
+	if garrison_total + queued_total > command_limit:
+		return {
+			"valid": false,
+			"error_id": &"COMMAND_LIMIT_CONSERVATION",
+			"error": "V2 驻军与训练队列超过指挥上限",
+		}
+	return structural
+
+
+func migrate_v1_snapshot_to_v5(
+	v1_snapshot: Dictionary
+) -> Dictionary:
+	return V5CampaignSnapshot.migrate_v1(
+		v1_snapshot,
+		Callable(self, "validate_early_city_snapshot"),
+		Callable(self, "validate_v5_campaign_snapshot"),
+		INFANTRY_ROLE.role_id,
+		INFANTRY_ROLE.recruit_food_per_unit
+	)
+
+
+func restore_v5_campaign_snapshot(
+	snapshot: Dictionary
+) -> Dictionary:
+	if (
+		not _active_battle_reservation.is_empty()
+		or not _active_army_dispatch_reservation.is_empty()
+		or not _active_army_encounter.is_empty()
+	):
+		return {
+			"success": false,
+			"error_id": &"LIVE_TRANSACTION",
+			"error": "存在活动事务，拒绝恢复",
+		}
+	var validation := validate_v5_campaign_snapshot(snapshot)
+	if not bool(validation.valid):
+		return {
+			"success": false,
+			"error_id": validation.error_id,
+			"error": validation.error,
+		}
+	var rollback := export_v5_campaign_snapshot()
+	if rollback.is_empty():
+		return {
+			"success": false,
+			"error_id": &"ROLLBACK_CAPTURE_FAILED",
+			"error": "无法捕获 V5 恢复前状态",
+		}
+	var applied := _apply_validated_v5_campaign_snapshot(
+		validation.snapshot,
+		true
+	)
+	if not bool(applied.success):
+		_force_reset_runtime_projection()
+		var rollback_result := _apply_validated_v5_campaign_snapshot(
+			rollback,
+			false
+		)
+		if not bool(rollback_result.success):
+			push_error("V5 restore and rollback both failed")
+			return {
+				"success": false,
+				"error_id": &"ROLLBACK_FAILED",
+				"error": "V5 恢复失败且回滚失败",
+			}
+		return applied
+	var postcondition := export_v5_campaign_snapshot()
+	if postcondition != validation.snapshot:
+		_force_reset_runtime_projection()
+		var postcondition_rollback := (
+			_apply_validated_v5_campaign_snapshot(rollback, false)
+		)
+		if not bool(postcondition_rollback.success):
+			push_error("V5 postcondition rollback failed")
+			return {
+				"success": false,
+				"error_id": &"ROLLBACK_FAILED",
+				"error": "V5 核对失败且回滚失败",
+			}
+		return {
+			"success": false,
+			"error_id": &"POSTCONDITION_FAILED",
+			"error": "V5 恢复后核对失败，已回滚",
+		}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {
+		"success": true,
+		"error_id": &"",
+		"error": "",
+	}
+
+
+func _apply_validated_v5_campaign_snapshot(
+	snapshot: Dictionary,
+	allow_test_failure: bool
+) -> Dictionary:
+	var city: Dictionary = snapshot.city
+	var queue: Dictionary = snapshot.training_queue
+	var active_order_id := StringName(queue.active_order_id)
+	var active_order: Dictionary = (
+		Dictionary(queue.orders_by_id).get(active_order_id, {})
+	)
+	var garrison_counts: Dictionary = (
+		snapshot.garrison.unit_counts_by_definition_id
+	)
+	var compatibility_snapshot := {
+		"city": {
+			"current_day": int(city.current_day),
+			"day_elapsed_seconds": (
+				float(city.day_elapsed_milliseconds) / 1000.0
+			),
+			"wood": int(city.wood),
+			"food": int(city.food),
+			"tech_points": int(city.tech_points),
+			"infantry_count": int(
+				garrison_counts.get(INFANTRY_ROLE.role_id, 0)
+			),
+			"recruitment_cap": int(city.recruitment_cap),
+			"selected_general_id": StringName(
+				city.selected_general_id
+			),
+			"training_queued_count": int(
+				active_order.get("quantity", 0)
+			),
+			"training_complete_day": int(
+				active_order.get("complete_day", 0)
+			),
+			"last_training_order_day": int(
+				queue.last_order_day
+			),
+			"researched_tech_ids": (
+				city.researched_tech_ids.duplicate()
+			),
+			"supply_shortage": bool(city.supply_shortage),
+			"emergency_mobilization_used": bool(
+				city.emergency_mobilization_used
+			),
+			"city_time_paused": bool(city.city_time_paused),
+			"city_time_speed": float(
+				String(city.city_time_speed_id).trim_suffix("x")
+			),
+		},
+		"placements": snapshot.placements.duplicate(true),
+		"next_placement_id": int(snapshot.next_placement_id),
+	}
+	var clear_result := _clear_runtime_placements_for_snapshot_restore()
+	if not bool(clear_result.success):
+		return {
+			"success": false,
+			"error_id": &"CITY_CLEAR_FAILED",
+			"error": clear_result.error,
+		}
+	var city_install := _install_early_city_snapshot(
+		compatibility_snapshot
+	)
+	if not bool(city_install.success):
+		return {
+			"success": false,
+			"error_id": &"CITY_APPLY_FAILED",
+			"error": city_install.error,
+		}
+	_next_placement_id = int(snapshot.next_placement_id)
+	if (
+		allow_test_failure
+		and _v5_restore_failure_after_city_install_for_test
+	):
+		return {
+			"success": false,
+			"error_id": &"APPLY_FAILED",
+			"error": "注入 V5 apply failure",
+		}
+	if not _training_queue.restore_snapshot(snapshot.training_queue):
+		return {
+			"success": false,
+			"error_id": &"TRAINING_APPLY_FAILED",
+			"error": "TrainingQueue 恢复失败",
+		}
+	if not _army_registry.restore_snapshot(
+		snapshot.army_registry,
+		get_unit_definition_ids()
+	):
+		return {
+			"success": false,
+			"error_id": &"ARMY_APPLY_FAILED",
+			"error": "ArmyRegistry 恢复失败",
+		}
+	var ledger: Dictionary = snapshot.settlement_ledger
+	_committed_battle_result_ids = Dictionary(
+		ledger.committed_results_by_id
+	).duplicate(true)
+	_closed_battle_transactions = Dictionary(
+		ledger.closed_transactions_by_id
+	).duplicate(true)
+	_first_clear_keys = Dictionary(ledger.first_clear_keys).duplicate(true)
+	_completed_noticeboard_mission_ids = Dictionary(
+		ledger.completed_noticeboard_mission_ids
+	).duplicate(true)
+	_next_battle_transaction_sequence = int(
+		ledger.next_battle_transaction_sequence
+	)
+	_next_army_dispatch_transaction_sequence = int(
+		ledger.next_army_dispatch_transaction_sequence
+	)
+	_active_battle_reservation = {}
+	_active_army_dispatch_reservation = {}
+	_active_army_encounter = {}
+	_last_battle_result_summary = {}
+	return {"success": true, "error_id": &"", "error": ""}
+
+
+func set_v5_restore_failure_after_city_install_for_test(
+	enabled: bool
+) -> void:
+	_v5_restore_failure_after_city_install_for_test = enabled
 
 
 func validate_early_city_snapshot(snapshot: Dictionary) -> Dictionary:

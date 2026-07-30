@@ -2,10 +2,13 @@
 
 ## 当前阶段
 
-- `V5_G2_P4_IMPLEMENTED_PENDING_PACKAGE_REVIEW`
+- `V5_G2_P5_IMPLEMENTED_PENDING_PACKAGE_REVIEW`
 
 ## 验收状态
 
+- 2026-07-30，V5-G2 P5 已实现 `CampaignSnapshotV2`、规范类型 DTO／checksum codec、不可变代次存储、V1 只读迁移、未来版本阻断、坏档回退和完整 live apply rollback。P5 仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`，没有接受 V5-G2。
+- P5 专项 33 条明确断言通过；三个独立 Godot 进程 A/B/C 均 exit 0，证明 2500ms 在途 Army 冷恢复、只推进剩余 3500ms、再冷恢复为 6000ms `ARRIVED` 且不重复推进。报告：`docs/reports/TXWZS_V5_P5_CAMPAIGN_PERSISTENCE_IMPLEMENTATION_001.md`。
+- S1A.2 裁决继续为 `CONDITIONAL_REUSE_ACCEPTED`：V5 复用严格校验、不可变代次、发布前复读和只读迁移思想，但不复用其 V1 writer/schema；八个受保护文件仍逐字节不变、untracked、unstaged。
 - 2026-07-30，V5-G2 P4 已让现有 `CombatTransactionCoordinator` 从 ArmyState 构造真实遭遇请求，并由原 `BattleSession` 产出唯一 terminal facts；城市权威入口一次性应用胜利驻扎、撤退返城或失败关闭。P4 仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`。
 - P4 专项 23 条、C0 写回 19 条、C0 城市时间 59 条、首战闭环 57 条、黑石堡 151 条、P3 27 条断言通过；正式场景、editor scan 和 `git diff --check` 通过。报告：`docs/reports/TXWZS_V5_P4_ENCOUNTER_WRITEBACK_IMPLEMENTATION_001.md`。
 - 2026-07-30，V5-G2 P3 已实现集合型 `ArmyRegistry`、黑石堡窄适配层、派遣预留／取消／一次性扣兵、单 active policy、整数毫秒行军和幂等抵达。持久模型没有 singleton、Node、像素坐标或 UI 状态；P3 仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`。
