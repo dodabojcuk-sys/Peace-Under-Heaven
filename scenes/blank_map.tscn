@@ -653,7 +653,8 @@ offset_bottom = 238.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
 theme_override_font_sizes/font_size = 10
-text = "步兵 20/50 · 科技 0"
+text = "驻军 20 · 可派 20/50
+科技 0"
 autowrap_mode = 2
 
 [node name="RecruitButton" type="Button" parent="UI/Shell/CityBar"]

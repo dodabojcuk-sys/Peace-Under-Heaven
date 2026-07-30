@@ -2,13 +2,13 @@
 
 ## Control Metadata
 
-- Plan version: 0.6.0-v4-milestone-closure-001
+- Plan version: 0.7.0-v5-p0-p1-implementation-001
 - Updated: 2026-07-30
 - Workbook: docs/planning/TXWZS_MASTER_DEVELOPMENT_CONTROL.xlsx
 - Canonical editing rule: edit the workbook first, then export Markdown/CSV in the same planning change.
 - Fact authority: Git, code, configuration, tests, and identified runtime evidence override this plan.
-- Current phase: V4 VERIFIED / FROZEN; V5 READY
-- Unique READY task: V5-P0-T001; lock the V5 baseline and protection scope
+- Current phase: V4 VERIFIED / FROZEN; V5 P0/P1 IMPLEMENTED_PENDING_REVIEW
+- Unique next gate: V5 P0/P1 package review; only G0 can receive a full verdict, while G1/G2 remain partial
 - Gate instances: 63 (V4–V12 × G0–G6)
 - Requirements / tasks / tests: 25 / 88 / 69
 - P0 uncovered requirements: 0
@@ -19,12 +19,15 @@
 | --- | --- |
 | Branch / parent HEAD | codex/v4-milestone-closure@64f37bda130397f08cdd012609dc2d3a5f5c6b99 |
 | Upstream | none for the local closure branch |
-| V4/C0 candidate | 10 tracked files plus explained reports/planning artifacts |
+| V4 checkpoint | 5357c28 (`feat: freeze verified V4 milestone`) |
+| V5 candidate | P0 contract + P1 garrison source/adapter/UI/runner |
 | Protected untracked | 8 S1A.2 files |
 | Blackstone / C0 focused | 150 / 59 explicit assertions, all passed |
 | Tracked regression | 27/27 runners, 1515 PASS lines, 0 error signatures |
 | All-present regression | 29/29 runners, 1686 PASS lines, 0 error signatures |
 | Final evidence | /tmp/txwzs-v4-milestone-closure.fD2A6P |
+| V5 first-slice regression | 30/30 all-present runners, 1740 PASS lines, 0 error signatures |
+| V5 evidence | /tmp/txwzs-v5-single-unit-garrison.20260730 |
 
 The `/tmp` evidence is session-local, not the durable rollback point. The durable V4 rollback point is the local V4 checkpoint commit containing this revision and its parent. The eight protected S1A.2 files remain outside that checkpoint.
 
@@ -43,7 +46,7 @@ The `/tmp` evidence is session-local, not the durable rollback point. The durabl
 | Phase | Name | Player result | Detail level | Status | Progress |
 | --- | --- | --- | --- | --- | ---: |
 | V4 | 派遣主链路冻结 | 玩家从己方驻军节点选路线、选比例、完成可见行军并得到一次性到达结算。 | Work-package | VERIFIED / FROZEN | 100% |
-| V5 | 单兵种战争底座＋城内训练补兵 | 城市能真实训练步兵；驻军可派出；伤亡、幸存、驻扎/返回写回；保存重载后保持一致。 | Detailed | READY | 0% |
+| V5 | 单兵种战争底座＋城内训练补兵 | 城市能真实训练步兵；驻军可派出；伤亡、幸存、驻扎/返回写回；保存重载后保持一致。 | Detailed | IN_PROGRESS | 0% VERIFIED |
 | V6 | 持久外城战区＋多军队数据模型 | 多支军队可以在持久外城道路上行军、驻扎、支援、进攻、返回，重进场景后位置与进度一致。 | Medium | NOT_STARTED | 0% |
 | V7 | 步兵遭遇战 | 两军在道路或据点相遇时进入可读、可决策的步兵遭遇战，结果写回军队与战区。 | Work-package | NOT_STARTED | 0% |
 | V8 | 围城状态＋战事内城 | 军队抵达敌城后形成围城；进入临时战事内城，城墙/城门/核心代表战役，不摧毁常态内城布局。 | Work-package | NOT_STARTED | 0% |
@@ -66,7 +69,10 @@ The `/tmp` evidence is session-local, not the durable rollback point. The durabl
   - P5 存档与迁移: 5
   - P6 最小军备 UI: 3
   - P7 验证与冻结: 7
-- V5 is released. Its unique READY task is P0-T001: re-establish the real baseline and protection scope before changing any persistent data contract.
+- V5 P0 and P1 are implemented as one substantive first slice and await the V5-G0/G1/G2 package review.
+- P0 evidence freezes the V4 checkpoint, ownership table, stable single-unit contract, garrison conservation, temporary manpower rule, rollback, and stop conditions.
+- P1 uses a private `GarrisonState` under the existing `ConstructionController`, preserves `infantry_count` as a compatibility property, reuses `UnitRole`, adds a dispatchable read model, exposes “驻军 / 可派” in the city sidebar, and adds a 25-assertion focused runner.
+- No persistent `ArmyState`, save schema, second unit, or S1A.2 reuse is part of this slice.
 
 ## V6 Medium Plan
 
@@ -83,7 +89,15 @@ G0 baseline → G1 ownership contract → G2 automated vertical loop → G3 full
 
 Only VERIFIED counts as complete. CANCELLED requires a decision record and is removed from the denominator.
 
-The workbook contains 63 concrete gate instances: V4-G0 through V12-G6. V4-G0 through V4-G6 are VERIFIED. `V4_UI_VISUAL_SLICE_INDEPENDENT_REVIEW_002_ACCEPTED` remains the final route repair review; its candidate hashes match the final V4 candidate. `TXWZS_V4_MILESTONE_CLOSURE_001_ACCEPTED` records the fresh eight-state 1152×648 path, 150 Blackstone assertions, 59 C0 authority assertions, tracked 27/27, all-present 29/29, formal scenes, editor scan, diff check, and zero final error signatures. `T-V4-003` is PASS, V4 is VERIFIED/FROZEN, and V5-P0-T001 is the sole READY task.
+The workbook contains 63 concrete gate instances: V4-G0 through V12-G6. V4-G0 through V4-G6 are VERIFIED. `V4_UI_VISUAL_SLICE_INDEPENDENT_REVIEW_002_ACCEPTED` remains the final route repair review; its candidate hashes match the final V4 candidate. `TXWZS_V4_MILESTONE_CLOSURE_001_ACCEPTED` records the fresh eight-state 1152×648 path, 150 Blackstone assertions, 59 C0 authority assertions, tracked 27/27, all-present 29/29, formal scenes, editor scan, diff check, and zero final error signatures. `T-V4-003` is PASS and V4 is VERIFIED/FROZEN.
+
+V5 P0/P1 now has main-agent implementation evidence: the architecture
+contract, one authoritative city garrison source, compatibility/read APIs,
+player-visible city-sidebar output, a 25-assertion focused runner, and 30/30
+all-present regression. The 11 related tasks are
+`IMPLEMENTED_PENDING_REVIEW`; V5-G0 is pending review, while V5-G1/G2 are only
+partial because their required P2–P5 tasks have not started. They are not
+self-upgraded to VERIFIED.
 
 Independent review must bind the reviewer task identity, reviewed commit/patch/hash, findings, implementer response, and re-review result. Main-agent evidence is labeled PASS_MAIN_AGENT until independently rerun.
 
@@ -102,7 +116,10 @@ Independent review must bind the reviewer task identity, reviewed commit/patch/h
 - RVW-V4-P5-002 verdict: `ACCEPT_V4_P5_T001_READY_FOR_USER_STAGE_TEST`; V4-P5-T001 and V4-G1 through V4-G5 are VERIFIED.
 - Visual slice review: `docs/reports/TXWZS_V4_UI_VISUAL_SLICE_INDEPENDENT_REVIEW_002.md`; verdict `V4_UI_VISUAL_SLICE_INDEPENDENT_REVIEW_002_ACCEPTED`.
 - Milestone closure: `docs/reports/TXWZS_V4_MILESTONE_CLOSURE_001.md`; verdict `TXWZS_V4_MILESTONE_CLOSURE_001_ACCEPTED`.
-- The user explicitly accepted Review 002 and authorized the consolidated V4 Gate. `T-V4-003` and V4-G6 are PASS/VERIFIED, V4 is frozen, and V5-P0-T001 is READY. No Review 003 was created.
+- The user explicitly accepted Review 002 and authorized the consolidated V4 Gate. `T-V4-003` and V4-G6 are PASS/VERIFIED, V4 is frozen, and V5-P0-T001 was released from that checkpoint. No Review 003 was created.
+- V5 first-slice implementation report: `docs/reports/TXWZS_V5_SINGLE_UNIT_GARRISON_SLICE_001.md`.
+- V5 P0/P1 contract: `docs/architecture/V5_SINGLE_UNIT_WAR_FOUNDATION_CONTRACT_V0.md`.
+- V5 status is `IMPLEMENTED_PENDING_REVIEW`; this implementation record does not claim an independent package verdict.
 
 ## Four-Layer Architecture
 

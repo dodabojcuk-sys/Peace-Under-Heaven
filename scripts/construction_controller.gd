@@ -52,6 +52,9 @@ const WATCHTOWER_DEFINITION: BuildingDefinition = preload(
 const EARLY_CITY_SNAPSHOT_V1 = preload(
 	"res://scripts/state/early_city_snapshot_v1.gd"
 )
+const GARRISON_STATE = preload(
+	"res://scripts/army/garrison_state.gd"
+)
 const NOTICEBOARD_MISSIONS: Array[MissionDefinition] = [
 	preload("res://resources/definitions/missions/outskirts_sweep.tres"),
 	preload("res://resources/definitions/missions/supply_relief.tres"),
@@ -259,7 +262,16 @@ var current_day := 1
 var wood := 100
 var food := 80
 var tech_points := 0
-var infantry_count := 20
+var _garrison_state: GarrisonState = GARRISON_STATE.new(
+	&"blackstone_city",
+	INFANTRY_ROLE.role_id,
+	20
+)
+var infantry_count: int:
+	get:
+		return _garrison_state.get_unit_count(INFANTRY_ROLE.role_id)
+	set(value):
+		_garrison_state.set_unit_count(INFANTRY_ROLE.role_id, value)
 var recruitment_cap := BASE_RECRUITMENT_CAP
 var selected_general_id: StringName = &""
 var training_queued_count := 0
@@ -1149,9 +1161,13 @@ func get_city_state() -> Dictionary:
 			"first_war_preparation": (
 				get_first_war_preparation_assessment()
 			),
-			"enemy_count": enemy_count,
+		"enemy_count": enemy_count,
 		"enemy_fortification": enemy_fortification,
 		"available_infantry_count": get_available_infantry_count(),
+		"dispatchable_infantry_count": (
+			get_dispatchable_infantry_count()
+		),
+		"garrison": get_garrison_snapshot(),
 		"active_battle_reservation": _active_battle_reservation.duplicate(true),
 		"committed_battle_result_ids": _committed_battle_result_ids.keys(),
 		"first_clear_keys": _first_clear_keys.keys(),
@@ -1757,6 +1773,39 @@ func get_available_infantry_count() -> int:
 		),
 		0
 	)
+
+
+func get_dispatchable_infantry_count() -> int:
+	return mini(
+		get_available_infantry_count(),
+		mini(recruitment_cap, get_effective_command_limit())
+	)
+
+
+func get_unit_definition_ids() -> Array[StringName]:
+	return [INFANTRY_ROLE.role_id]
+
+
+func get_unit_definition(
+	definition_id: StringName
+) -> UnitRole:
+	if definition_id != INFANTRY_ROLE.role_id:
+		return null
+	return INFANTRY_ROLE
+
+
+func get_garrison_snapshot() -> Dictionary:
+	var reserved_count := int(
+		_active_battle_reservation.get("committed_count", 0)
+	)
+	var snapshot := _garrison_state.get_snapshot()
+	snapshot["definition_id"] = INFANTRY_ROLE.role_id
+	snapshot["reserved_count"] = reserved_count
+	snapshot["unreserved_count"] = get_available_infantry_count()
+	snapshot["dispatchable_count"] = get_dispatchable_infantry_count()
+	snapshot["recruitment_cap"] = recruitment_cap
+	snapshot["effective_command_limit"] = get_effective_command_limit()
+	return snapshot.duplicate(true)
 
 
 func get_active_battle_reservation() -> Dictionary:
@@ -3813,8 +3862,9 @@ func _refresh_city_ui() -> void:
 		if training_queued_count > 0
 		else ""
 	)
-	army_status.text = "步兵 %d/%d · 科技 %d%s%s" % [
+	army_status.text = "驻军 %d · 可派 %d/%d\n科技 %d%s%s" % [
 		infantry_count,
+		get_dispatchable_infantry_count(),
 		command_limit,
 		tech_points,
 		queued_text,

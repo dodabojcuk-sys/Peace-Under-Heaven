@@ -2,10 +2,16 @@
 
 ## 当前阶段
 
-- `V4_VERIFIED_FROZEN_V5_READY`
+- `V5_P0_P1_IMPLEMENTED_PENDING_PACKAGE_REVIEW`
 
 ## 验收状态
 
+- 2026-07-30，V5 已从冻结的 V4 checkpoint `5357c28` 开始首个实质切片；P0 基线／所有权／数据合同与 P1 单兵种驻军实现已完成，当前为 `IMPLEMENTED_PENDING_REVIEW`，尚未标记 V5 Gate VERIFIED。
+- `ConstructionController` 继续是唯一城市运行时写入者；新增私有 `GarrisonState` 作为本城兵种数量源，旧 `infantry_count` 是兼容属性而不是第二份存储。
+- 当前只公开既有 `UnitRole` 的稳定 ID `unit_role.infantry_basic`；没有复制战斗数值、增加第二兵种或创建第二套 `CityState`。
+- 城市侧栏现在可观察地显示“驻军”和“可派”；可派数同时服从战斗预留、征募容量和将领指挥上限。
+- V5 专项为 25 条明确断言通过；首轮 all-present 为 30/30、1740 PASS，fresh 1152×648 城市侧栏截图无重叠或裁切。
+- V5 本轮没有引入存档 schema 或迁移；S1A.2 八个文件继续受保护、untracked、未暂存，必须到 V5 P5 独立裁决后才能谈复用。
 - 2026-07-30，`TXWZS_V4_MILESTONE_CLOSURE_001_ACCEPTED`：V4 最终综合 Gate 通过，`T-V4-003: PASS`，V4 标记为 `VERIFIED / FROZEN`。
 - 黑石堡视觉切片沿用已接受的 `V4_UI_VISUAL_SLICE_INDEPENDENT_REVIEW_002_ACCEPTED`；最终候选哈希未变化，没有创建 Review 003。
 - 最终 1152×648 候选重新生成默认、调遣、行军、撤退、失败、胜利、返回、重进八态截图；“我方营地 → 山路援军”路线与标题／说明均不相交，目视无贴字、抢层级、裁切、残留遮罩或重复结果层。
