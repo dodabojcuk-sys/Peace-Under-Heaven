@@ -2,10 +2,12 @@
 
 ## 当前阶段
 
-- `V5_G1_VERIFIED_G2_AUTHORIZED`
+- `V5_G2_P2_IMPLEMENTED_PENDING_PACKAGE_REVIEW`
 
 ## 验收状态
 
+- 2026-07-30，V5-G2 P2 训练与时间运行时已形成阶段 checkpoint：`TrainingQueue` 是唯一训练订单源，旧三字段降为只读兼容投影；下单、资源扣除、完成写驻军、容量／供养阻断和 1×／2×／4×／暂停／战争阻断／场景切换测试已实现。P2 状态仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`，没有提前接受 V5-G2。
+- P2 专项 37 条、既有 P1-D 45 条、S1A.1 126 条、V5 驻军 27 条、C0 城市时间 59 条断言通过；正式城市、黑石堡、C0 场景、editor scan 和 `git diff --check` 通过。报告：`docs/reports/TXWZS_V5_P2_TRAINING_TIME_IMPLEMENTATION_001.md`。
 - 2026-07-30，新的独立 reviewer 绑定 G1 候选 `b3a7f03055350f25caa14dee8a630cf3b004d028` 及 parent `2cc4ebf01622b424ff4a4cd145c421b8fd1bbec3`，签发 `V5_G1_CONTRACT_PACKAGE_REVIEW_ACCEPTED`。六项 G1 合同与 V5-G1 已 VERIFIED；条件式授权因此生效，允许立即连续实施完整 V5-G2，但不提前接受任何 G2 runtime。
 - G1 独立复审重新得到合同基线 51/51，并增加 30 项跨合同字段、版本、写入者和回滚检查；V5 专项 27 条、tracked 29/29 共 1601 条、all-present 30/30 共 1713 条／1742 条 PASS；两正式场景、editor scan、工作簿 14 项持久化检查与 13 表渲染复核、`git diff --check` 和错误签名扫描均通过。证据目录：`/tmp/txwzs-v5-g1-independent-review-001.MJhd1Y`。
 - 2026-07-30，新的独立 reviewer 绑定修复候选 `bd15fca` 及 parent `242f793`，签发 `V5_P0_P1_PACKAGE_REVIEW_ACCEPTED`。V5-G0 已 VERIFIED，P0/P1 十一项已覆盖任务 independently accepted；该结论只接受单兵种定义、唯一驻军真值源、兼容入口、可派查询和预留容量修复，不提前接受 G1/G2。

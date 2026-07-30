@@ -55,6 +55,9 @@ const EARLY_CITY_SNAPSHOT_V1 = preload(
 const GARRISON_STATE = preload(
 	"res://scripts/army/garrison_state.gd"
 )
+const TRAINING_QUEUE = preload(
+	"res://scripts/army/training_queue.gd"
+)
 const NOTICEBOARD_MISSIONS: Array[MissionDefinition] = [
 	preload("res://resources/definitions/missions/outskirts_sweep.tres"),
 	preload("res://resources/definitions/missions/supply_relief.tres"),
@@ -81,6 +84,7 @@ const BASE_TRAINING_BATCH := 5
 const EMERGENCY_MOBILIZATION_FOOD_COST := 30
 const EMERGENCY_MOBILIZATION_INFANTRY := 5
 const SECONDS_PER_DAY := 180.0
+const MILLISECONDS_PER_DAY := 180000
 const CITY_TIME_SPEEDS := [1.0, 2.0, 4.0]
 const FIRST_WAR_EVENT_ID := &"first_war.north_slope.v0"
 const FIRST_WAR_WARNING_DAY := 6
@@ -274,9 +278,17 @@ var infantry_count: int:
 		_garrison_state.set_unit_count(INFANTRY_ROLE.role_id, value)
 var recruitment_cap := BASE_RECRUITMENT_CAP
 var selected_general_id: StringName = &""
-var training_queued_count := 0
-var training_complete_day := 0
-var last_training_order_day := 0
+var _training_queue: TrainingQueue = TRAINING_QUEUE.new(&"blackstone_city")
+var _last_training_failure_id: StringName = &""
+var training_queued_count: int:
+	get:
+		return int(_training_queue.get_active_order().get("quantity", 0))
+var training_complete_day: int:
+	get:
+		return int(_training_queue.get_active_order().get("complete_day", 0))
+var last_training_order_day: int:
+	get:
+		return _training_queue.get_last_order_day()
 var researched_tech_ids: Array[StringName] = []
 var supply_shortage := false
 var emergency_mobilization_used := false
@@ -588,27 +600,35 @@ func advance_city_time(simulation_delta: float) -> int:
 	):
 		return 0
 
-	var remaining_seconds := simulation_delta
+	var remaining_milliseconds := roundi(simulation_delta * 1000.0)
+	if remaining_milliseconds <= 0:
+		return 0
+	var elapsed_milliseconds := clampi(
+		roundi(day_elapsed_seconds * 1000.0),
+		0,
+		MILLISECONDS_PER_DAY
+	)
 	var advanced_days := 0
-	while remaining_seconds > 0.0:
-		var seconds_until_boundary := maxf(
-			SECONDS_PER_DAY - day_elapsed_seconds,
-			0.0
+	while remaining_milliseconds > 0:
+		var milliseconds_until_boundary := maxi(
+			MILLISECONDS_PER_DAY - elapsed_milliseconds,
+			0
 		)
-		if remaining_seconds < seconds_until_boundary:
-			day_elapsed_seconds += remaining_seconds
-			remaining_seconds = 0.0
+		if remaining_milliseconds < milliseconds_until_boundary:
+			elapsed_milliseconds += remaining_milliseconds
+			remaining_milliseconds = 0
 			break
 
-		remaining_seconds -= seconds_until_boundary
-		day_elapsed_seconds = 0.0
+		remaining_milliseconds -= milliseconds_until_boundary
+		elapsed_milliseconds = 0
 		if not _advance_day_boundary():
-			day_elapsed_seconds = SECONDS_PER_DAY
+			elapsed_milliseconds = MILLISECONDS_PER_DAY
 			break
 		advanced_days += 1
 		if is_first_war_time_blocked():
 			break
 
+	day_elapsed_seconds = float(elapsed_milliseconds) / 1000.0
 	_refresh_time_ui()
 	return advanced_days
 
@@ -618,17 +638,16 @@ func _advance_city_time_for_battle_settlement(
 ) -> int:
 	if duration_milliseconds <= 0:
 		return 0
-	var milliseconds_per_day := roundi(SECONDS_PER_DAY * 1000.0)
 	var elapsed_milliseconds := clampi(
 		roundi(day_elapsed_seconds * 1000.0),
 		0,
-		milliseconds_per_day
+		MILLISECONDS_PER_DAY
 	)
 	var remaining_milliseconds := duration_milliseconds
 	var advanced_days := 0
 	while remaining_milliseconds > 0:
 		var milliseconds_until_boundary := (
-			milliseconds_per_day - elapsed_milliseconds
+			MILLISECONDS_PER_DAY - elapsed_milliseconds
 		)
 		if remaining_milliseconds < milliseconds_until_boundary:
 			elapsed_milliseconds += remaining_milliseconds
@@ -648,9 +667,21 @@ func advance_city_time_for_test(simulation_delta: float) -> int:
 	return advance_city_time(simulation_delta)
 
 
+func advance_city_frame_for_test(real_delta: float) -> int:
+	return advance_city_time(real_delta * city_time_speed)
+
+
 func advance_one_day_for_test() -> bool:
 	day_elapsed_seconds = 0.0
 	return _advance_day_boundary()
+
+
+func get_day_elapsed_milliseconds() -> int:
+	return clampi(
+		roundi(day_elapsed_seconds * 1000.0),
+		0,
+		MILLISECONDS_PER_DAY
+	)
 
 
 func set_city_time_paused(paused: bool) -> void:
@@ -1032,6 +1063,8 @@ func _advance_day_boundary(
 ) -> bool:
 	if not allow_battle_settlement and is_city_action_locked_for_battle():
 		return false
+	if not _can_complete_training_for_day(current_day + 1):
+		return false
 	current_day += 1
 	var construction_completed := _complete_construction_for_current_day()
 	var maintenance_required := get_maintenance_food_cost()
@@ -1093,17 +1126,47 @@ func _advance_day_boundary(
 	return true
 
 
+func _can_complete_training_for_day(boundary_day: int) -> bool:
+	var order := _training_queue.get_due_order(boundary_day)
+	if order.is_empty():
+		return true
+	var future_total := (
+		_garrison_state.get_total_count() + int(order.quantity)
+	)
+	if future_total > recruitment_cap:
+		_last_training_failure_id = &"TRAINING_COMPLETION_CAPACITY"
+		return false
+	if future_total > get_effective_command_limit():
+		_last_training_failure_id = &"TRAINING_COMPLETION_COMMAND_LIMIT"
+		return false
+	return true
+
+
 func _complete_training_for_current_day() -> int:
-	if (
-		training_queued_count <= 0
-		or training_complete_day > current_day
-	):
+	var order := _training_queue.get_due_order(current_day)
+	if order.is_empty():
 		return 0
-	var completed := training_queued_count
-	infantry_count += completed
-	training_queued_count = 0
-	training_complete_day = 0
-	return completed
+	var quantity := int(order.quantity)
+	var capacity := mini(recruitment_cap, get_effective_command_limit())
+	if not _garrison_state.try_add_units(
+		StringName(order.unit_definition_id),
+		quantity,
+		capacity
+	):
+		_last_training_failure_id = &"TRAINING_COMPLETION_CAPACITY"
+		return 0
+	if not _training_queue.mark_completed(
+		StringName(order.order_id),
+		current_day
+	):
+		_garrison_state.try_remove_units(
+			StringName(order.unit_definition_id),
+			quantity
+		)
+		_last_training_failure_id = &"TRAINING_COMPLETION_COMMIT"
+		return 0
+	_last_training_failure_id = &""
+	return quantity
 
 
 func _complete_construction_for_current_day() -> int:
@@ -1151,6 +1214,17 @@ func get_city_state() -> Dictionary:
 		"selected_general_id": selected_general_id,
 		"training_queued_count": training_queued_count,
 		"training_complete_day": training_complete_day,
+		"training_queue": get_training_queue_snapshot(),
+		"day_elapsed_milliseconds": get_day_elapsed_milliseconds(),
+		"city_time_speed_id": StringName(
+			"%dx" % roundi(city_time_speed)
+		),
+		"manual_pause": city_time_paused,
+		"war_block_reason": (
+			&"FIRST_WAR"
+			if is_first_war_time_blocked()
+			else &""
+		),
 		"researched_tech_ids": researched_tech_ids.duplicate(),
 		"supply_shortage": supply_shortage,
 		"emergency_mobilization_used": emergency_mobilization_used,
@@ -1485,9 +1559,15 @@ func _install_early_city_snapshot(snapshot: Dictionary) -> Dictionary:
 	infantry_count = int(city.infantry_count)
 	recruitment_cap = int(city.recruitment_cap)
 	selected_general_id = StringName(city.selected_general_id)
-	training_queued_count = int(city.training_queued_count)
-	training_complete_day = int(city.training_complete_day)
-	last_training_order_day = int(city.last_training_order_day)
+	if not _restore_training_legacy_state(
+		int(city.training_queued_count),
+		int(city.training_complete_day),
+		int(city.last_training_order_day)
+	):
+		return {
+			"success": false,
+			"error": "无法恢复训练队列",
+		}
 	researched_tech_ids.assign(city.researched_tech_ids)
 	supply_shortage = bool(city.supply_shortage)
 	emergency_mobilization_used = bool(city.emergency_mobilization_used)
@@ -2226,32 +2306,144 @@ func _get_allowed_training_batches_for_snapshot(
 
 
 func can_queue_training() -> bool:
-	var batch_size := get_training_batch_size()
-	var command_limit := get_effective_command_limit()
-	var food_cost := batch_size * INFANTRY_ROLE.recruit_food_per_unit
-	return (
-		not is_city_action_locked_for_battle()
-		and
-		current_day < FIRST_MAP_THREAT_SCHEDULE.max_day
-		and training_queued_count == 0
-		and last_training_order_day != current_day
-		and get_available_infantry_count() + batch_size <= recruitment_cap
-		and get_available_infantry_count() + batch_size <= command_limit
-		and food >= food_cost
+	return _get_training_failure_id(
+		INFANTRY_ROLE.role_id,
+		get_training_batch_size()
+	) == &""
+
+
+func _get_training_failure_id(
+	unit_definition_id: StringName,
+	quantity: int
+) -> StringName:
+	if is_city_action_locked_for_battle():
+		return &"CITY_BATTLE_LOCKED"
+	if current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day:
+		return &"TRAINING_DAY_LIMIT"
+	if _training_queue.has_active_order():
+		return &"TRAINING_QUEUE_BUSY"
+	if last_training_order_day == current_day:
+		return &"TRAINING_DAILY_LIMIT"
+	if get_unit_definition(unit_definition_id) == null:
+		return &"UNKNOWN_UNIT_DEFINITION"
+	if quantity <= 0 or quantity != get_training_batch_size():
+		return &"INVALID_TRAINING_QUANTITY"
+	if supply_shortage:
+		return &"SUPPLY_SHORTAGE"
+	var future_total := _garrison_state.get_total_count() + quantity
+	if future_total > recruitment_cap:
+		return &"RECRUITMENT_CAPACITY"
+	if future_total > get_effective_command_limit():
+		return &"COMMAND_LIMIT"
+	var food_cost := quantity * INFANTRY_ROLE.recruit_food_per_unit
+	if food < food_cost:
+		return &"INSUFFICIENT_FOOD"
+	return &""
+
+
+func request_training(
+	unit_definition_id := INFANTRY_ROLE.role_id,
+	quantity := -1
+) -> Dictionary:
+	var requested_quantity := (
+		get_training_batch_size()
+		if quantity < 0
+		else quantity
 	)
+	var failure_id := _get_training_failure_id(
+		StringName(unit_definition_id),
+		requested_quantity
+	)
+	if failure_id != &"":
+		_last_training_failure_id = failure_id
+		return {
+			"success": false,
+			"error_id": failure_id,
+			"order": {},
+		}
+	var food_cost := (
+		requested_quantity * INFANTRY_ROLE.recruit_food_per_unit
+	)
+	var order := _training_queue.enqueue(
+		StringName(unit_definition_id),
+		requested_quantity,
+		current_day,
+		current_day + 1,
+		food_cost
+	)
+	if order.is_empty():
+		_last_training_failure_id = &"TRAINING_QUEUE_COMMIT"
+		return {
+			"success": false,
+			"error_id": _last_training_failure_id,
+			"order": {},
+		}
+	food -= food_cost
+	_last_training_failure_id = &""
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {
+		"success": true,
+		"error_id": &"",
+		"order": order.duplicate(true),
+	}
 
 
 func queue_training() -> bool:
-	if not can_queue_training():
-		return false
-	var batch_size := get_training_batch_size()
-	food -= batch_size * INFANTRY_ROLE.recruit_food_per_unit
-	training_queued_count = batch_size
-	training_complete_day = current_day + 1
-	last_training_order_day = current_day
-	_refresh_city_ui()
-	city_state_changed.emit()
-	return true
+	return bool(request_training().success)
+
+
+func get_training_queue_snapshot() -> Dictionary:
+	return _training_queue.get_snapshot().duplicate(true)
+
+
+func get_last_training_failure_id() -> StringName:
+	return _last_training_failure_id
+
+
+func get_training_blocked_reason() -> Dictionary:
+	var error_id := _get_training_failure_id(
+		INFANTRY_ROLE.role_id,
+		get_training_batch_size()
+	)
+	var messages := {
+		&"CITY_BATTLE_LOCKED": "战斗期间不可征募",
+		&"TRAINING_DAY_LIMIT": "首战阶段已结束征募",
+		&"TRAINING_QUEUE_BUSY": "已有训练正在进行",
+		&"TRAINING_DAILY_LIMIT": "今日已下达训练",
+		&"UNKNOWN_UNIT_DEFINITION": "未知兵种",
+		&"INVALID_TRAINING_QUANTITY": "训练批量不符合当前规则",
+		&"SUPPLY_SHORTAGE": "供给不足，训练暂停",
+		&"RECRUITMENT_CAPACITY": "驻军已达征募容量",
+		&"COMMAND_LIMIT": "驻军将超过指挥上限",
+		&"INSUFFICIENT_FOOD": "粮食不足",
+	}
+	return {
+		"blocked": error_id != &"",
+		"error_id": error_id,
+		"message": String(messages.get(error_id, "")),
+	}
+
+
+func _restore_training_legacy_state(
+	quantity: int,
+	complete_day: int,
+	last_order_day: int
+) -> bool:
+	var food_cost := maxi(
+		quantity * INFANTRY_ROLE.recruit_food_per_unit,
+		0
+	)
+	var restored := _training_queue.restore_legacy_state(
+		quantity,
+		complete_day,
+		last_order_day,
+		INFANTRY_ROLE.role_id,
+		food_cost
+	)
+	if restored:
+		_last_training_failure_id = &""
+	return restored
 
 
 func get_maintenance_food_cost() -> int:
@@ -2422,15 +2614,13 @@ func restore_readiness_checkpoint() -> bool:
 	selected_general_id = StringName(
 		_readiness_checkpoint.selected_general_id
 	)
-	training_queued_count = int(
-		_readiness_checkpoint.training_queued_count
-	)
-	training_complete_day = int(
-		_readiness_checkpoint.training_complete_day
-	)
-	last_training_order_day = int(
-		_readiness_checkpoint.last_training_order_day
-	)
+	if not _restore_training_legacy_state(
+		int(_readiness_checkpoint.training_queued_count),
+		int(_readiness_checkpoint.training_complete_day),
+		int(_readiness_checkpoint.last_training_order_day)
+	):
+		push_error("Readiness checkpoint training queue restore failed")
+		return false
 	researched_tech_ids.assign(
 		_readiness_checkpoint.researched_tech_ids
 	)
@@ -2486,9 +2676,8 @@ func restart_first_map() -> bool:
 	infantry_count = 20
 	recruitment_cap = BASE_RECRUITMENT_CAP
 	selected_general_id = &""
-	training_queued_count = 0
-	training_complete_day = 0
-	last_training_order_day = 0
+	_training_queue.clear()
+	_last_training_failure_id = &""
 	researched_tech_ids.clear()
 	supply_shortage = false
 	emergency_mobilization_used = false
@@ -3861,13 +4050,21 @@ func _refresh_city_ui() -> void:
 		if training_queued_count > 0
 		else ""
 	)
-	army_status.text = "驻军 %d · 可派 %d/%d\n科技 %d%s%s" % [
+	var training_block := get_training_blocked_reason()
+	var blocked_text := (
+		"\n征募阻断：%s" % String(training_block.message)
+		if bool(training_block.blocked)
+			and training_queued_count == 0
+		else ""
+	)
+	army_status.text = "驻军 %d · 可派 %d/%d\n科技 %d%s%s%s" % [
 		infantry_count,
 		get_dispatchable_infantry_count(),
 		command_limit,
 		tech_points,
 		queued_text,
 		" · 供给不足" if supply_shortage else "",
+		blocked_text,
 	]
 	recruit_button.text = "征募 %d 人 · %d 粮" % [
 		get_training_batch_size(),
