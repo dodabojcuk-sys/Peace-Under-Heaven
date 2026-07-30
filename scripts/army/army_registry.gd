@@ -343,18 +343,27 @@ static func validate_snapshot(
 		return {"valid": false, "error_id": &"INVALID_ARMY_REGISTRY"}
 	var normalized := snapshot.duplicate(true)
 	var active_count := 0
+	var maximum_army_sequence := 0
 	for army_id_value in normalized.armies_by_id:
 		var army_value = normalized.armies_by_id[army_id_value]
 		if not army_value is Dictionary:
 			return {"valid": false, "error_id": &"INVALID_ARMY_STATE"}
 		var army: Dictionary = army_value
 		var army_id := StringName(army.get("army_id", &""))
+		var owner_faction_id := StringName(
+			army.get("owner_faction_id", &"")
+		)
+		var army_sequence := _parse_army_sequence(
+			army_id,
+			owner_faction_id
+		)
 		var phase := StringName(army.get("phase", &""))
 		var units = army.get("units_by_definition_id", null)
 		if (
 			army_id == &""
 			or army_id != StringName(army_id_value)
-			or StringName(army.get("owner_faction_id", &"")) == &""
+			or owner_faction_id == &""
+			or army_sequence <= 0
 			or StringName(army.get("home_city_id", &"")) == &""
 			or StringName(army.get("source_node_id", &"")) == &""
 			or StringName(army.get("target_node_id", &"")) == &""
@@ -386,10 +395,16 @@ static func validate_snapshot(
 			)
 		):
 			return {"valid": false, "error_id": &"INVALID_ARMY_STATE"}
+		maximum_army_sequence = maxi(
+			maximum_army_sequence,
+			army_sequence
+		)
 		if phase in ACTIVE_PHASES:
 			active_count += 1
 	if enforce_single_active and active_count > 1:
 		return {"valid": false, "error_id": &"V5_ACTIVE_ARMY_LIMIT"}
+	if int(normalized.next_army_sequence) <= maximum_army_sequence:
+		return {"valid": false, "error_id": &"ARMY_SEQUENCE_MISMATCH"}
 	return {
 		"valid": true,
 		"error_id": &"",
@@ -413,6 +428,23 @@ static func _has_valid_snapshot_composition(
 		):
 			return false
 	return true
+
+
+static func _parse_army_sequence(
+	army_id: StringName,
+	owner_faction_id: StringName
+) -> int:
+	var prefix := "army.%s." % String(owner_faction_id)
+	var text := String(army_id)
+	if not text.begins_with(prefix):
+		return 0
+	var digits := text.trim_prefix(prefix)
+	if not digits.is_valid_int():
+		return 0
+	var sequence := int(digits)
+	if sequence <= 0 or text != "%s%06d" % [prefix, sequence]:
+		return 0
+	return sequence
 
 
 func _has_valid_composition(

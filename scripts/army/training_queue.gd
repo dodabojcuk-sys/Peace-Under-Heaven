@@ -201,6 +201,8 @@ static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
 	)
 	var seen: Dictionary = {}
 	var queued_count := 0
+	var maximum_order_sequence := 0
+	var maximum_ordered_day := 0
 	for order_id_value in normalized.orders_by_id:
 		var order_value = normalized.orders_by_id[order_id_value]
 		if not order_value is Dictionary:
@@ -208,10 +210,15 @@ static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
 		var order: Dictionary = order_value
 		var order_id := StringName(order.get("order_id", &""))
 		var phase := StringName(order.get("phase", &""))
+		var order_sequence := _parse_order_sequence(
+			order_id,
+			StringName(normalized.city_id)
+		)
 		if (
 			int(order.get("schema_version", 0)) != SCHEMA_VERSION
 			or order_id == &""
 			or order_id != StringName(order_id_value)
+			or order_sequence <= 0
 			or seen.has(order_id)
 			or StringName(order.get("city_id", &""))
 				!= StringName(normalized.city_id)
@@ -234,6 +241,14 @@ static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
 		):
 			return {"valid": false, "error_id": &"INVALID_TRAINING_ORDER"}
 		seen[order_id] = true
+		maximum_order_sequence = maxi(
+			maximum_order_sequence,
+			order_sequence
+		)
+		maximum_ordered_day = maxi(
+			maximum_ordered_day,
+			int(order.ordered_day)
+		)
 		if phase == PHASE_QUEUED:
 			queued_count += 1
 			if order_id != active_order_id:
@@ -246,8 +261,33 @@ static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
 			"valid": false,
 			"error_id": &"ACTIVE_TRAINING_ORDER_MISMATCH",
 		}
+	if (
+		int(normalized.next_order_sequence) <= maximum_order_sequence
+		or int(normalized.last_order_day) != maximum_ordered_day
+	):
+		return {
+			"valid": false,
+			"error_id": &"TRAINING_SEQUENCE_MISMATCH",
+		}
 	return {
 		"valid": true,
 		"error_id": &"",
 		"snapshot": normalized,
 	}
+
+
+static func _parse_order_sequence(
+	order_id: StringName,
+	expected_city_id: StringName
+) -> int:
+	var prefix := "training.%s." % String(expected_city_id)
+	var text := String(order_id)
+	if not text.begins_with(prefix):
+		return 0
+	var digits := text.trim_prefix(prefix)
+	if not digits.is_valid_int():
+		return 0
+	var sequence := int(digits)
+	if sequence <= 0 or text != "%s%06d" % [prefix, sequence]:
+		return 0
+	return sequence

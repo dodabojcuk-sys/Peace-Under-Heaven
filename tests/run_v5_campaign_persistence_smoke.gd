@@ -63,6 +63,14 @@ func _run() -> void:
 			and v2_active.city.day_elapsed_milliseconds == 37500,
 		"V1 迁移产生空军队/结算集合并保留精确时间"
 	)
+	var stale_training_sequence := v2_active.duplicate(true)
+	stale_training_sequence.training_queue.next_order_sequence = 1
+	_check(
+		not source.validate_v5_campaign_snapshot(
+			stale_training_sequence
+		).valid,
+		"V2 拒绝会在恢复后复用既有训练 order ID 的倒退序列"
+	)
 	var migrated_again: Dictionary = (
 		source.migrate_v1_snapshot_to_v5(v1_active)
 	)
@@ -224,6 +232,14 @@ func _run() -> void:
 				army.army_id
 			].route_id == &"route.persistence",
 		"V2 保存点包含 active Army stable ID、route/node 和整数进度"
+	)
+	var stale_army_sequence := in_transit.duplicate(true)
+	stale_army_sequence.army_registry.next_army_sequence = 1
+	_check(
+		not restored.validate_v5_campaign_snapshot(
+			stale_army_sequence
+		).valid,
+		"V2 拒绝会在恢复后复用既有 army ID 的倒退序列"
 	)
 	var second_save := store.save_snapshot(
 		in_transit,
