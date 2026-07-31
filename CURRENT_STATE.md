@@ -7,9 +7,10 @@
 V4 已冻结，V5-G0、G1、G2 已 `VERIFIED`，V5 整体仍为 `IN_PROGRESS`。
 G3–G6、P6、P7、V6 尚未启动。
 
-当前停止点是 post-G2 文档收敛。完成本地原子文档 checkpoint 后仍不得进入
-G3；下一项另行授权的工作是
-`M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS`。
+post-G2 文档收敛已在 `b1ad4a0` 完成。当前唯一获授权的工作是
+`M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS`；该工作只允许同步
+迁移元数据、建立 GitHub branch/tag 基线并完成 fresh-clone readiness
+验证，不得进入 G3。
 
 ## Git 基线
 
@@ -17,9 +18,10 @@ G3；下一项另行授权的工作是
 | --- | --- |
 | Branch | `codex/v5-g0-review-g1-contracts-001` |
 | G2 acceptance checkpoint | `af244167f7b0a31f3de2cc34673faa953113b96b` |
+| Post-G2 documentation convergence | `b1ad4a09e202904aced9262104545867a97573cb` |
 | Upstream | 本地 branch 无 upstream |
-| Remote action | 未 push、未 tag、未 fresh clone |
-| Index | 文档收敛提交前保持空；只按精确路径暂存 |
+| Remote action | M4 仅使用显式 branch/tag refs；结果以 `git ls-remote` 与 fresh clone 现场证据为准 |
+| Index | 只按精确路径暂存；不得 stage S1A.2 |
 | Protected untracked | 精确 8 个 S1A.2 文件 |
 
 V5-G2 链：
@@ -31,6 +33,7 @@ cd7be2b
 → fab962c
 → 4d0fbfc
 → af24416
+→ b1ad4a0
 ```
 
 `fab962c` 的精确 repair 范围：
@@ -223,7 +226,7 @@ GODOT=/Applications/Godot.app/Contents/MacOS/Godot
 
 ## 下一步与禁止项
 
-下一项在用户另行授权后执行：
+当前只执行：
 
 ```text
 M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS
@@ -234,6 +237,6 @@ M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS
 - 进入 G3；
 - 修改运行时代码、场景、资源或测试语义；
 - stage S1A.2；
-- push、tag、fresh clone、部署；
+- force push、批量推送其他 refs、部署；
 - 清理或迁移存档；
 - 把测试通过扩写为用户体验或发布结论。

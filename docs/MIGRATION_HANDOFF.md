@@ -2,16 +2,18 @@
 
 ## 当前裁决
 
-迁移尚未开始。
+实际迁移尚未开始；本轮只验证迁移基线能否由 GitHub 独立恢复。
 
-post-G2 文档收敛完成后，下一项仍需用户单独授权：
+post-G2 文档收敛已在 `b1ad4a0` 完成，当前已获授权的唯一任务是：
 
 ```text
 M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS
 ```
 
-本交接只准备迁移基线，不创建 tag、不 push、不 fresh clone、不部署，也不
-进入 G3。
+本交接允许完成最小 metadata sync、annotated migration tag、指定
+branch/tag 原子推送和 GitHub fresh clone readiness；不部署，也不进入 G3。
+是否成功必须由 source、remote、clone 三方现场证据裁决，本文不预先声明
+成功。
 
 ## 迁移前置状态
 
@@ -19,6 +21,7 @@ M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS
 | --- | --- |
 | Branch | `codex/v5-g0-review-g1-contracts-001` |
 | G2 acceptance | `af244167f7b0a31f3de2cc34673faa953113b96b` |
+| Documentation convergence | `b1ad4a09e202904aced9262104545867a97573cb` |
 | Verdict | `V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED` |
 | Godot | `4.5.1.stable.official.f62fdbde1`；project feature set `4.5` |
 | Plan | `1.0.2-v5-g2-fresh-review-accepted-003` |
@@ -28,12 +31,15 @@ M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS
 | G3–G6/P6/P7/V6 | `NOT_STARTED` |
 | Protected files | 精确 8 个 S1A.2，untracked、unstaged、hash unchanged |
 
-文档收敛 checkpoint 是 acceptance checkpoint 的纯文档后继；具体 SHA
-以 `git log -1 --oneline` 现场解析，不能由文档自引用预先写死。
+`b1ad4a0` 是 acceptance checkpoint 的文档与规划资产后继。metadata sync
+commit 必须以它为精确 parent；该新提交的 SHA、tag 和远端状态只能现场
+解析，不能由文档自引用预先写死。
 
 ## Clone、checkout 与资源
 
-获得 M4 授权后，在全新隔离目录中执行等价流程：
+metadata sync、可迁移性门禁和远端确认通过后，在全新隔离目录中执行等价
+流程。仓库根目录始终通过 `git rev-parse --show-toplevel` 获取；不得依赖
+M1 的 `.codex/worktrees/...` 绝对路径。
 
 ```sh
 git clone <authorized-private-repository-url> txwzs-godot-rebuild
@@ -118,7 +124,7 @@ docs/planning/csv/risks_and_decisions.csv
 
 ## M4 建议验收顺序
 
-1. 现场确认文档收敛 commit 的 parent 是 `af24416`，且只含 Markdown。
+1. 现场确认 `b1ad4a0` 的 parent 是 `af24416`，且只含文档与规划资产。
 2. 检查 index、branch、HEAD、commit chain 和 Git status。
 3. 核对八文件源端 SHA-256。
 4. 在获得授权后创建明确的迁移 tag。

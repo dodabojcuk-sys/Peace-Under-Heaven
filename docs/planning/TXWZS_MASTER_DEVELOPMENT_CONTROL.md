@@ -11,9 +11,10 @@
 - Gate instances: `63` (`V4–V12 × G0–G6`)
 - Current phase: V4 `VERIFIED / FROZEN`; V5-G0/G1/G2 `VERIFIED`;
   V5 `IN_PROGRESS`
-- Unique next action: finish the authorized post-G2 documentation checkpoint,
-  then stop
-- Not authorized: G3–G6, P6, P7, V6, push, tag, fresh clone, deployment
+- Post-G2 documentation convergence checkpoint:
+  `b1ad4a09e202904aced9262104545867a97573cb`
+- Unique next action: `M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS`
+- Not authorized: G3–G6, P6, P7, V6, deployment
 
 Git、代码、配置、测试和识别明确的运行时证据高于本计划。工作簿是结构化
 主控；本 Markdown 是人类可读摘要；五份 CSV 是工作簿指定表的逐值镜像。
@@ -29,6 +30,7 @@ Git、代码、配置、测试和识别明确的运行时证据高于本计划�
 | V5-G2 original candidate | `cd7be2b` |
 | V5-G2 repair chain | `cd7be2b → e2c1096 → 5d659243 → fab962c → 4d0fbfc` |
 | V5-G2 acceptance checkpoint | `af244167f7b0a31f3de2cc34673faa953113b96b` |
+| Post-G2 documentation convergence | `b1ad4a09e202904aced9262104545867a97573cb` |
 | V5-G2 verdict | `V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED` |
 | Protected untracked | exact 8 S1A.2 files |
 | Upstream | none for local branch |
@@ -189,10 +191,13 @@ docs/planning/csv/risks_and_decisions.csv
 
 ## Next Control Point
 
-完成并提交本轮纯文档收敛后停止。下一任务只有在用户明确授权后才是：
+post-G2 文档收敛已在 `b1ad4a0` 完成。当前唯一获授权任务是：
 
 ```text
 M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS
 ```
 
-该任务之前不创建 tag、不 push、不 fresh clone、不进入 G3。
+该任务仅允许 migration metadata sync、指定 branch/tag 的原子推送和 GitHub
+fresh-clone readiness 验证；不得进入 G3。仓库根目录必须在运行时通过
+`git rev-parse --show-toplevel` 获取，M1 linked-worktree 绝对路径不是运行
+或迁移依赖。
