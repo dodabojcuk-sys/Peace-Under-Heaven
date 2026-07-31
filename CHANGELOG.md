@@ -1,0 +1,57 @@
+# Changelog
+
+本文件只保留迁移时需要的高层里程碑。细节以 Git 历史、主控工作簿和当前
+验收报告为准。
+
+## Unreleased
+
+### Documentation
+
+- 将 76 份、14,940 行、706,926 字节的 Markdown 基线收敛为 9 份活跃文档。
+- 新增统一 README、架构合同、迁移交接和本 Changelog。
+- 将 372 行且含陈旧 pending 叙述的 `CURRENT_STATE.md` 改为当前 Gate 快照。
+- 将多个 V5-G2 candidate、repair 和 review 稿合并为单一最终验收报告。
+- 删除 Git 可恢复的旧研究稿、handoff、重复报告、旧测试统计和本机绝对路径。
+- 主控 XLSX 与三份受影响 CSV 只把 deleted Markdown 和 `/tmp` 证据改为
+  稳定活文档或明确的历史证据标记；Gate、任务状态、公式和结构不变。
+- 未修改代码、测试语义、场景或资源。
+
+## 2026-07-31 — V5-G2 accepted
+
+- 原 candidate `cd7be2b` 因 checksum-valid snapshot 可回退 sequence 并复用
+  stable ID，被独立复查拒绝。
+- 第一轮 repair `e2c1096` 阻断 sequence 小于等于既有最大 ID 的恢复，但仍
+  留有 type coercion、精确上限/successor、Army pre-write exhaustion 和
+  合法 V1 空队列历史迁移缺口。
+- 第二轮四文件 repair `fab962c` 关闭上述边界并增加永久对抗测试；修复者未
+  自签接受。
+- Fresh independent verdict：`V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED`。
+- Acceptance checkpoint：`af244167f7b0a31f3de2cc34673faa953113b96b`。
+- 绑定链：
+  `cd7be2b → e2c1096 → 5d659243 → fab962c → 4d0fbfc → af24416`。
+- 精确 16 项 G2 runtime task 和 V5-G2 标为 `VERIFIED`。
+- focused `6/6 · 185`、tracked `33/33 · 1739`、
+  all-present `35/35 · 1871 / 1905 PASS`。
+- G3–G6、P6、P7、V6 保持 `NOT_STARTED`。
+
+## 2026-07-30 — V5-G0/G1 accepted
+
+- V5-G0 独立接受单兵种定义、私有 `GarrisonState`、驻军/可派守恒和容量
+  阻断。
+- V5-G1 独立接受 TrainingQueue、时间矩阵、ArmyRegistry、遭遇事实、V5
+  schema/迁移/回滚和 S1A.2 条件复用合同。
+- S1A.2 八文件保持 untracked、unstaged，未成为 V5 writer/schema。
+
+## 2026-07-30 — V4 frozen
+
+- V4 派遣主链路完成独立复查、正式窗口证据和里程碑冻结。
+- C0 城市时间、terminal authority、coordinator ownership、幂等重放和
+  冲突拒绝进入冻结基线。
+- V4 checkpoint：`5357c28`。
+
+## 2026-07-25 至 2026-07-27 — P0/P1/C0 baseline
+
+- 建立 Camera2D 导航、固定 UI、建造、选择、建筑生命周期和统一交互。
+- 建立第一张地图的道路、生产、日期、威胁、训练、科技和军令台技术闭环。
+- 建立 C0 确定性战斗灰盒和城市写回事务。
+- S1A.1 内存快照 roundtrip 获得接受；S1A.2 留在保护边界外。

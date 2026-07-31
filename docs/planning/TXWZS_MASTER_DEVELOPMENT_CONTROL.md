@@ -2,182 +2,197 @@
 
 ## Control Metadata
 
-- Plan version: 1.0.2-v5-g2-fresh-review-accepted-003
-- Updated: 2026-07-31
-- Workbook: docs/planning/TXWZS_MASTER_DEVELOPMENT_CONTROL.xlsx
-- Canonical editing rule: edit the workbook first, then export Markdown/CSV in the same planning change.
-- Fact authority: Git, code, configuration, tests, and identified runtime evidence override this plan.
-- Current phase: V4 VERIFIED / FROZEN; V5-G0 VERIFIED; V5-G1 VERIFIED; V5-G2 VERIFIED; V5 IN_PROGRESS
-- Unique next action: stop at the V5-G2 acceptance checkpoint and await separately authorized Markdown convergence; do not enter G3/G4/G5/G6/V6
-- Gate instances: 63 (V4–V12 × G0–G6)
-- Requirements / tasks / tests: 25 / 88 / 69
-- P0 uncovered requirements: 0
+- Plan version: `1.0.2-v5-g2-fresh-review-accepted-003`
+- Updated: `2026-07-31`
+- Canonical workbook:
+  `docs/planning/TXWZS_MASTER_DEVELOPMENT_CONTROL.xlsx`
+- Five direct CSV mirrors: `docs/planning/csv/`
+- Requirements / tasks / tests: `25 / 88 / 69`
+- Gate instances: `63` (`V4–V12 × G0–G6`)
+- Current phase: V4 `VERIFIED / FROZEN`; V5-G0/G1/G2 `VERIFIED`;
+  V5 `IN_PROGRESS`
+- Unique next action: finish the authorized post-G2 documentation checkpoint,
+  then stop
+- Not authorized: G3–G6, P6, P7, V6, push, tag, fresh clone, deployment
 
-## Current Git Baseline
+Git、代码、配置、测试和识别明确的运行时证据高于本计划。工作簿是结构化
+主控；本 Markdown 是人类可读摘要；五份 CSV 是工作簿指定表的逐值镜像。
+
+## Current Baseline
 
 | Field | Value |
 | --- | --- |
-| Branch / reviewed HEAD | codex/v5-g0-review-g1-contracts-001@4d0fbfc5aefe07509db115f8f4f68e22aeda8a98 |
-| Upstream | none for the local branch; no push |
-| V4 checkpoint | 5357c28 (`feat: freeze verified V4 milestone`) |
-| V5 repair candidate | bd15fca, parent 242f793, independently accepted |
-| V5 G0 review checkpoint | 2cc4ebf (`docs: accept repaired V5 P0 P1 package`) |
-| V5 G1 candidate | `b3a7f03`; independently accepted |
-| V5 G1 independent verdict | `V5_G1_CONTRACT_PACKAGE_REVIEW_ACCEPTED`; 51/51 baseline + 30/30 cross-contract checks |
-| V5 G1 evidence | /tmp/txwzs-v5-g1-independent-review-001.MJhd1Y |
-| V5 P2 checkpoint | `023f11a` (`feat: implement V5 training and strategic time`) |
-| V5 P3 checkpoint | `a95f510` (`feat: implement V5 persistent army state`) |
-| V5 P4 checkpoint | `8a6e65a` (`feat: implement V5 encounter settlement`) |
-| V5 P5 checkpoint | `ee32d84` (`feat: implement V5 campaign persistence`) |
-| V5 G2 candidate | `cd7be2b`, parent `ee32d84`; independent review found stable-ID sequence rollback |
-| V5 G2 reviewed chain | `cd7be2b` → `e2c1096` → `5d659243` → `fab962c` → `4d0fbfc`; all ancestor checks passed |
-| V5 G2 repair checkpoint | `fab962c0a84024e7034c32e9d5c39debc1659c5f`; exact four-file repair: training queue, army registry, construction controller, P5 smoke |
-| V5 G2 review verdict | `V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED`; fresh reviewer `/root/v5_g2_boundary_fresh_independent_reviewer_003` |
-| Protected untracked | 8 S1A.2 files |
-| G0 boundary probe | 10 explicit assertions: dispatchable 10; reserve 12 rejects without writes; reserve 10 succeeds |
-| G0 V5 focused | 27 explicit assertions, all passed |
-| G0 tracked regression | 29/29 runners, 1601 explicit assertions, 0 error signatures |
-| G0 all-present regression | 30/30 runners, 1713 explicit assertions / 1742 PASS lines, 0 error signatures |
-| G0 evidence | /tmp/txwzs-v5-g0-review-002.BlGA2l |
-| G2 fresh boundary probe | 29/29 assertions; P5 permanent runner 51/51 |
-| G2 V5 focused | 6/6 runners, 185 explicit assertions |
-| G2 tracked regression | 33/33 runners, 1739 explicit assertions |
-| G2 all-present regression | 35/35 runners, 1871 explicit assertions / 1905 PASS lines |
-| G2 evidence | `docs/reports/TXWZS_V5_G2_STABLE_ID_BOUNDARY_REPAIR_FRESH_INDEPENDENT_REVIEW_003.md`; cold A/B/C 0/0/0, formal scenes/editor/diff/error scans all clean |
+| Branch | `codex/v5-g0-review-g1-contracts-001` |
+| V4 checkpoint | `5357c28` |
+| V5-G0 review checkpoint | `2cc4ebf` |
+| V5-G1 candidate | `b3a7f03` |
+| V5-G2 original candidate | `cd7be2b` |
+| V5-G2 repair chain | `cd7be2b → e2c1096 → 5d659243 → fab962c → 4d0fbfc` |
+| V5-G2 acceptance checkpoint | `af244167f7b0a31f3de2cc34673faa953113b96b` |
+| V5-G2 verdict | `V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED` |
+| Protected untracked | exact 8 S1A.2 files |
+| Upstream | none for local branch |
 
-The `/tmp` evidence is session-local, not the durable rollback point. The durable V4 rollback point is the local V4 checkpoint commit containing this revision and its parent. The eight protected S1A.2 files remain outside that checkpoint.
+Durable evidence:
 
-## Baseline Differences
-
-- The branch, checkpoint, V4/C0 candidate, state machine, single visible troop option, and protected S1A.2 scope match the repository.
-- `BattleSession`, private `GarrisonState`, `TrainingQueue`, collection-based `ArmyRegistry`, and the V5 campaign snapshot/codec/store now exist. `UnitDefinition`, `SiegeSession`, `CityState`, `WorldState`, and `RouteState` do not exist as new runtime classes.
-- UnitRole is the current static infantry definition; the plan must adapt or evolve it instead of automatically adding a duplicate UnitDefinition.
-- V4 stores marching armies in the scene script. `_marching_armies` is an array, but the implementation only updates element 0 and blocks concurrent commands.
-- WorldMapPresentationModel is a read-only fixture, not persistent strategic state.
-- S1A.1 memory snapshots are accepted. S1A.2 remains `CONDITIONAL_REUSE_ACCEPTED`: V5 reused validation and immutable-generation mechanics through separate V2 files, while all eight protected V1 files stayed hash-identical, untracked, and unstaged.
-- G0 independent review accepted `bd15fca`; G1 independent review accepted `b3a7f03`. G2 review of `cd7be2b` found checksum-valid sequence rollback could reuse stable training-order and army IDs. The later four-file repair `fab962c` closed type, range, exhaustion, pre-write and legal V1 migration boundaries; fresh Review 003 independently accepted it at reviewed checkpoint `4d0fbfc`.
+- [V5-G2 final acceptance](../reports/TXWZS_V5_G2_FINAL_ACCEPTANCE.md)
+- [Current state](../../CURRENT_STATE.md)
+- [Architecture contract](../architecture/TXWZS_ARCHITECTURE_CONTRACT.md)
+- [Migration handoff](../MIGRATION_HANDOFF.md)
 
 ## V4–V12 Roadmap
 
-| Phase | Name | Player result | Detail level | Status | Progress |
-| --- | --- | --- | --- | --- | ---: |
-| V4 | 派遣主链路冻结 | 玩家从己方驻军节点选路线、选比例、完成可见行军并得到一次性到达结算。 | Work-package | VERIFIED / FROZEN | 100% |
-| V5 | 单兵种战争底座＋城内训练补兵 | 城市能真实训练步兵；驻军可派出；伤亡、幸存、驻扎/返回写回；保存重载后保持一致。 | Detailed | IN_PROGRESS | 75% VERIFIED |
-| V6 | 持久外城战区＋多军队数据模型 | 多支军队可以在持久外城道路上行军、驻扎、支援、进攻、返回，重进场景后位置与进度一致。 | Medium | NOT_STARTED | 0% |
-| V7 | 步兵遭遇战 | 两军在道路或据点相遇时进入可读、可决策的步兵遭遇战，结果写回军队与战区。 | Work-package | NOT_STARTED | 0% |
-| V8 | 围城状态＋战事内城 | 军队抵达敌城后形成围城；进入临时战事内城，城墙/城门/核心代表战役，不摧毁常态内城布局。 | Work-package | NOT_STARTED | 0% |
-| V9 | 第二持久城市＋占领闭环 | 玩家可占领/收复第二城市；其布局和归属持久，失败不销毁原布局。 | Work-package | NOT_STARTED | 0% |
-| V10 | 敌方战略行动 | 敌军会在天下地图上增援、封锁、进攻；玩家能提前看见并响应。 | Work-package | NOT_STARTED | 0% |
-| V11 | 第二兵种＋正式编组 | 玩家用两种真实兵种组成可保存编组，并在战前/战中体现差异。 | Work-package | NOT_STARTED | 0% |
-| V12 | 工程、侦察、伏击和特殊行动 | 军队可执行少量明确的非正面战斗行动，改变路线、情报或战斗条件。 | Work-package | NOT_STARTED | 0% |
+| Phase | Player result | Detail | Status | Progress |
+| --- | --- | --- | --- | ---: |
+| V4 | 可见派遣、行军、失败/胜利与一次性到达结算 | Work-package | `VERIFIED / FROZEN` | 100% |
+| V5 | 单兵种训练、驻军、派遣、战果写回、保存重载一致 | Detailed | `IN_PROGRESS` | 75% VERIFIED |
+| V6 | 持久外城战区与多军队数据模型 | Medium | `NOT_STARTED` | 0% |
+| V7 | 步兵遭遇战 | Work-package | `NOT_STARTED` | 0% |
+| V8 | 围城状态与战事内城 | Work-package | `NOT_STARTED` | 0% |
+| V9 | 第二持久城市与占领闭环 | Work-package | `NOT_STARTED` | 0% |
+| V10 | 敌方战略行动 | Work-package | `NOT_STARTED` | 0% |
+| V11 | 第二兵种与正式编组 | Work-package | `NOT_STARTED` | 0% |
+| V12 | 工程、侦察、伏击与特殊行动 | Work-package | `NOT_STARTED` | 0% |
 
-## V5 Detailed Plan
+## V5 Scope
 
-- Vertical loop: produce one infantry unit → local garrison → real dispatch → result → survivors return or garrison → state writeback → save and reload.
-- G1 defines a future persistent `ArmyRegistry` collection with stable army/route/node IDs and logical progress; the V5 gameplay limit of at most one active army is a validator policy, not a singleton data model.
-- Task count: **44**
-- Work packages:
-  - P0 基线与合同: 5
-  - P1 单兵种与驻军: 6
-  - P2 训练与时间: 7
-  - P3 派遣与军队: 6
-  - P4 战果写回: 5
-  - P5 存档与迁移: 5
-  - P6 最小军备 UI: 3
-  - P7 验证与冻结: 7
-- V5 P0 and P1 were implemented as one substantive first slice and independently accepted at V5-G0.
-- P0 evidence freezes the V4 checkpoint, ownership table, stable single-unit contract, garrison conservation, temporary manpower rule, rollback, and stop conditions.
-- P1 uses a private `GarrisonState` under the existing `ConstructionController`, preserves `infantry_count` as a compatibility property, reuses `UnitRole`, adds a dispatchable read model, exposes “驻军 / 可派” in the city sidebar, and has a 27-assertion focused runner.
-- G1 adds six independently accepted contract artifacts: TrainingQueue source state; strategic-time/scene matrix; ArmyState collection; encounter facts/writeback; S1A.2 reuse decision; and V5 save schema/migration/rollback.
-- G2 implements the contracted `TrainingQueue`, collection-based `ArmyRegistry`, Army encounter settlement adapter, `CampaignSnapshotV2`, `SaveEnvelopeV1`, V1 read-only migration, immutable generations, cold-process recovery, and rollback. Independent review repaired sequence validators so a restored snapshot cannot reuse an existing stable training-order or army ID.
-- The exact 16 G2 runtime tasks are independently accepted and `VERIFIED`. This acceptance adds no second unit, multi-active policy, enemy AI, siege, new battle source, P6 UI package, or V6 work; P4-T005, P6/P7 and G3–G6 remain unstarted.
+Vertical loop：
 
-## V6 Medium Plan
+```text
+produce infantry
+→ local garrison
+→ real dispatch
+→ battle facts
+→ survivors return or garrison
+→ authoritative writeback
+→ save and reload
+```
 
-- Persistent outworld state and logical routes.
-- Enable multiple active ArmyState records on the V5 collection container; do not replace or remigrate the container.
-- Extend full persistent theater and scene restoration for concurrent armies.
-- UI may issue one command at a time, but the model cannot depend on a singleton active army.
-- Garrison, support, attack, return, march save/reload, scene re-entry, encounter trigger, and siege trigger contracts.
-- Encounter combat and siege presentation remain V7/V8 scope.
+任务总数 `44`：
+
+| Work package | Count | Current boundary |
+| --- | ---: | --- |
+| P0 基线与合同 | 5 | `VERIFIED` |
+| P1 单兵种与驻军 | 6 | `VERIFIED` |
+| P2 训练与时间 | 7 | G1 contracts + G2 runtime `VERIFIED` |
+| P3 派遣与军队 | 6 | G1 contract + G2 runtime `VERIFIED` |
+| P4 战果写回 | 5 | T001 contract、T002–T004 runtime `VERIFIED`; T005 `NOT_STARTED` |
+| P5 存档与迁移 | 5 | G1 decisions/contracts + G2 runtime `VERIFIED` |
+| P6 最小军备 UI | 3 | `NOT_STARTED` |
+| P7 验证与冻结 | 7 | `NOT_STARTED` |
+
+### Exact G2 runtime tasks
+
+```text
+V5-P2-T002  V5-P2-T003  V5-P2-T005  V5-P2-T006  V5-P2-T007
+V5-P3-T002  V5-P3-T003  V5-P3-T004  V5-P3-T005  V5-P3-T006
+V5-P4-T002  V5-P4-T003  V5-P4-T004
+V5-P5-T003  V5-P5-T004  V5-P5-T005
+```
+
+这 16 项和 V5-G2 已独立接受。没有因此接受 P4-T005、P6、P7 或 G3。
 
 ## Gate Model
 
-G0 baseline → G1 ownership contract → G2 automated vertical loop → G3 full regression → G4 real window → G5 independent review → G6 user playtest/freeze
+```text
+G0 baseline
+→ G1 ownership/contracts
+→ G2 automated vertical loop
+→ G3 full regression
+→ G4 real window
+→ G5 independent review
+→ G6 user playtest/freeze
+```
 
-Only VERIFIED counts as complete. CANCELLED requires a decision record and is removed from the denominator.
+只有 `VERIFIED` 计入完成。`CANCELLED` 仅在绑定已接受决策记录时从分母
+移除。
 
-The workbook contains 63 concrete gate instances: V4-G0 through V12-G6. V4-G0 through V4-G6 are VERIFIED. `V4_UI_VISUAL_SLICE_INDEPENDENT_REVIEW_002_ACCEPTED` remains the final route repair review; its candidate hashes match the final V4 candidate. `TXWZS_V4_MILESTONE_CLOSURE_001_ACCEPTED` records the fresh eight-state 1152×648 path, 150 Blackstone assertions, 59 C0 authority assertions, tracked 27/27, all-present 29/29, formal scenes, editor scan, diff check, and zero final error signatures. `T-V4-003` is PASS and V4 is VERIFIED/FROZEN.
+| Gate | Status | Evidence boundary |
+| --- | --- | --- |
+| V5-G0 | `VERIFIED` | 单兵种、驻军源状态、容量阻断、独立复查 |
+| V5-G1 | `VERIFIED` | 六项架构合同、51/51 baseline、30/30 cross-contract |
+| V5-G2 | `VERIFIED` | fresh stable-ID review、focused/tracked/all-present |
+| V5-G3 | `NOT_STARTED` | 不由本轮重复回归自动推进 |
+| V5-G4 | `NOT_STARTED` | 真实窗口垂直闭环尚未执行 |
+| V5-G5 | `NOT_STARTED` | 阶段级独立复查尚未执行 |
+| V5-G6 | `NOT_STARTED` | 用户试玩和 V5 冻结尚未执行 |
 
-V5 P0/P1 now has independent acceptance evidence: `bd15fca`, its exact parent
-and four-file manifest, the 10/12 capacity boundary probe, the 27-assertion
-focused runner, tracked 29/29, all-present 30/30, formal scenes, editor scan,
-diff check, and zero final error signatures. The 11 related tasks and V5-G0
-are VERIFIED.
+## G2 Acceptance Summary
 
-The six selected G1 tasks and V5-G1 are independently accepted and VERIFIED
-by `TXWZS_V5_G1_CONTRACT_PACKAGE_INDEPENDENT_REVIEW_001.md`. The review bound
-`b3a7f03`, parent `2cc4ebf`, the exact 16-file manifest, 51/51 baseline
-checks, 30/30 cross-contract checks, full regression, workbook verification,
-and the protected S1A.2 hashes.
+Fresh reviewer：
+`/root/v5_g2_boundary_fresh_independent_reviewer_003`。
 
-The user's conditional authorization activated V5-G2. P2/P3/P4/P5 and the
-automated vertical loop are implemented. Review of original candidate
-`cd7be2b` reproduced a critical stable-ID sequence rollback defect. The repair
-chain ended at `fab962c`, adding strict type/range/exhaustion checks, pre-write
-Army failure, legal V1 empty-queue migration and permanent adversarial tests.
-Fresh reviewer `/root/v5_g2_boundary_fresh_independent_reviewer_003` bound
-`cd7be2b → e2c1096 → 5d659243 → fab962c → 4d0fbfc`, reran the boundary probe
-and full regression, and issued `V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED`.
-Only the exact 16 runtime tasks and V5-G2 are VERIFIED; G3/G4/G5/G6/V6 remain
-NOT_STARTED.
+| Basket | Result |
+| --- | --- |
+| boundary probe | 29/29 |
+| P5 permanent runner | 51/51 |
+| G2 focused | 6/6 · 185 |
+| tracked | 33/33 · 1739 |
+| all-present | 35/35 · 1871 assertions / 1905 PASS |
+| V5 cold workers | A/B/C 0/0/0 |
+| S1A.2 cold workers | A/B/C 0/0/0 |
+| formal city / Blackstone / C0 / editor | exit 0 |
 
-Independent review must bind the reviewer task identity, reviewed commit/patch/hash, findings, implementer response, and re-review result. Main-agent evidence is labeled PASS_MAIN_AGENT until independently rerun.
+`fab962c` 的精确四文件 repair 关闭：
 
-## Independent Review
+- sequence type coercion；
+- JSON-safe exact integer range；
+- successor 与 exhausted sentinel；
+- Army reservation 前失败；
+- 合法 V1 空队列历史下单日迁移；
+- 失败零部分写入。
 
-- Review record: RVW-PLAN-001
-- Reviewer task: /root/master_plan_review_fast
-- Initial verdict: REQUEST_CHANGES / V5_EXECUTION_BLOCKED
-- Findings PLAN-001 through PLAN-006 were incorporated in plan version 0.1.0-review1; re-review result is recorded in docs/reviews/TXWZS_MASTER_PLAN_REVIEW_001.md.
-- Repair review: RVW-PLAN-002, reviewer task /root/master_plan_review_final, report docs/reviews/TXWZS_MASTER_PLAN_REVIEW_002.md.
-- The external REVIEW_002 report binds the final XLSX, Markdown, five CSV and ZIP hashes; the workbook does not self-reference its own hash.
-- Gate-control repair review: RVW-PLAN-003, report docs/reviews/TXWZS_MASTER_PLAN_REVIEW_003.md.
-- REVIEW_003 remains immutable historical evidence and binds the pre-sync PLAN-REPAIR-002 hashes.
-- The user accepted REVIEW_003 on 2026-07-29. PLAN-STATE-SYNC-001 records the state transition and binds the regenerated artifact hashes.
-- V4 technical review record: RVW-V4-P5-002, reviewer task `/root`, report `docs/reviews/TXWZS_V4_P5_T001_INDEPENDENT_REVIEW_002.md`.
-- RVW-V4-P5-002 verdict: `ACCEPT_V4_P5_T001_READY_FOR_USER_STAGE_TEST`; V4-P5-T001 and V4-G1 through V4-G5 are VERIFIED.
-- Visual slice review: `docs/reports/TXWZS_V4_UI_VISUAL_SLICE_INDEPENDENT_REVIEW_002.md`; verdict `V4_UI_VISUAL_SLICE_INDEPENDENT_REVIEW_002_ACCEPTED`.
-- Milestone closure: `docs/reports/TXWZS_V4_MILESTONE_CLOSURE_001.md`; verdict `TXWZS_V4_MILESTONE_CLOSURE_001_ACCEPTED`.
-- The user explicitly accepted Review 002 and authorized the consolidated V4 Gate. `T-V4-003` and V4-G6 are PASS/VERIFIED, V4 is frozen, and V5-P0-T001 was released from that checkpoint. No Review 003 was created.
-- V5 first-slice implementation report: `docs/reports/TXWZS_V5_SINGLE_UNIT_GARRISON_SLICE_001.md`.
-- V5 P0/P1 contract: `docs/architecture/V5_SINGLE_UNIT_WAR_FOUNDATION_CONTRACT_V0.md`.
-- G0 repair review: `docs/reports/TXWZS_V5_P0_P1_PACKAGE_INDEPENDENT_REVIEW_002.md`; verdict `V5_P0_P1_PACKAGE_REVIEW_ACCEPTED`.
-- G0 local review checkpoint: `2cc4ebf`.
-- G1 artifacts: `docs/architecture/V5_TRAINING_QUEUE_SOURCE_STATE_CONTRACT_V0.md`, `V5_STRATEGIC_TIME_SCENE_MATRIX_CONTRACT_V0.md`, `V5_ARMY_STATE_COLLECTION_CONTRACT_V0.md`, `V5_ENCOUNTER_OUTCOME_FACTS_CONTRACT_V0.md`, `V5_SAVE_SCHEMA_MIGRATION_ROLLBACK_CONTRACT_V0.md`, and `docs/reports/TXWZS_V5_S1A2_REUSE_DECISION_001.md`.
-- G1 validation matrix: `docs/testing/V5_G1_CONTRACT_TEST_MATRIX.md`.
-- G1 independent review: `docs/reports/TXWZS_V5_G1_CONTRACT_PACKAGE_INDEPENDENT_REVIEW_001.md`; verdict `V5_G1_CONTRACT_PACKAGE_REVIEW_ACCEPTED`.
-- G1 is `VERIFIED`; original G2 candidate `cd7be2b` did not pass review. The later four-file repair `fab962c` was independently accepted at reviewed document checkpoint `4d0fbfc`.
-- G2 implementation reports: `TXWZS_V5_P2_TRAINING_TIME_IMPLEMENTATION_001.md`, `TXWZS_V5_P3_ARMY_STATE_IMPLEMENTATION_001.md`, `TXWZS_V5_P4_ENCOUNTER_WRITEBACK_IMPLEMENTATION_001.md`, `TXWZS_V5_P5_CAMPAIGN_PERSISTENCE_IMPLEMENTATION_001.md`, and `TXWZS_V5_G2_RUNTIME_PACKAGE_001.md`.
-- G2 independent review and repair report: `docs/reports/TXWZS_V5_G2_RUNTIME_PACKAGE_INDEPENDENT_REVIEW_001.md`; verdict `V5_G2_REPAIRED_PENDING_INDEPENDENT_REVIEW`.
-- G2 boundary follow-up repair checkpoint: `fab962c0a84024e7034c32e9d5c39debc1659c5f`; exact scope is `training_queue.gd`, `army_registry.gd`, `construction_controller.gd`, and `run_v5_campaign_persistence_smoke.gd`.
-- G2 fresh independent acceptance: `docs/reports/TXWZS_V5_G2_STABLE_ID_BOUNDARY_REPAIR_FRESH_INDEPENDENT_REVIEW_003.md`; reviewer `/root/v5_g2_boundary_fresh_independent_reviewer_003`; verdict `V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED`.
-
-## Four-Layer Architecture
+## Architecture
 
 | Layer | Persistence | Boundary |
 | --- | --- | --- |
-| 常态内城 | Persistent | buildings, population/manpower, training, garrison, food |
-| 外城战区 | Persistent-changing | routes, positions, armies, garrisons, encounters |
-| 战事内城 | Battle instance | walls, gates, defenders, siege phases; never a second city truth |
-| 天下地图 | Persistent overview | cities, factions, campaign and enemy strategic actions |
+| 常态内城 | Persistent | buildings, resources, training, garrison, time |
+| 外城战区 | Persistent-changing | routes, logical positions, armies, encounters |
+| 战事内城 | Battle instance | battle-only walls/gates/defenders; no second city truth |
+| 天下地图 | Persistent overview | cities, factions, campaign actions |
 
-## Mirrors
+当前唯一城市写入者是 `ConstructionController`；本城兵力来自私有
+`GarrisonState`；训练来自 `TrainingQueue`；军队来自集合型
+`ArmyRegistry`；`BattleSession` 只产出事实；coordinator 授权写回。
 
-- docs/planning/csv/roadmap.csv
-- docs/planning/csv/tasks.csv
-- docs/planning/csv/acceptance_matrix.csv
-- docs/planning/csv/tests.csv
-- docs/planning/csv/risks_and_decisions.csv
+## S1A.2
 
-Do not edit mirrors independently. Regenerate them from the same workbook revision.
+Verdict：`CONDITIONAL_REUSE_ACCEPTED`。
+
+V5 复用严格校验、不可变代次、临时写/flush/复读/发布、SHA-256、
+writer lock、上一有效代次恢复和 V1 read-only import 思路。八个 V1 文件
+不成为 V5 writer/schema，并继续 untracked、unstaged。
+
+精确清单和 SHA-256 见
+[CURRENT_STATE.md](../../CURRENT_STATE.md#s1a2-保护)。
+
+## Workbook and Mirrors
+
+- Workbook sheets: `13`
+- Formula-error matches: `0`
+- Five CSV mirror mismatches: `0`
+- Markdown title and current Gate data match plan version
+  `1.0.2-v5-g2-fresh-review-accepted-003`
+
+Mirrors:
+
+```text
+docs/planning/csv/roadmap.csv
+docs/planning/csv/tasks.csv
+docs/planning/csv/acceptance_matrix.csv
+docs/planning/csv/tests.csv
+docs/planning/csv/risks_and_decisions.csv
+```
+
+不得独立编辑镜像。任何状态变化必须先更新工作簿，再在同一 planning change
+中重导 Markdown/CSV。
+
+## Next Control Point
+
+完成并提交本轮纯文档收敛后停止。下一任务只有在用户明确授权后才是：
+
+```text
+M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS
+```
+
+该任务之前不创建 tag、不 push、不 fresh clone、不进入 G3。

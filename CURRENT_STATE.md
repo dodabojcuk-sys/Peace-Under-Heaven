@@ -1,372 +1,239 @@
-# CURRENT_STATE
+# 当前状态
 
-## 当前阶段
+## 结论
 
-- `V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED`
+`V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED`
 
-## 验收状态
+V4 已冻结，V5-G0、G1、G2 已 `VERIFIED`，V5 整体仍为 `IN_PROGRESS`。
+G3–G6、P6、P7、V6 尚未启动。
 
-- 2026-07-31，fresh reviewer `/root/v5_g2_boundary_fresh_independent_reviewer_003` 在正式 worktree 绑定完整提交链 `cd7be2b → e2c1096 → 5d659243 → fab962c → 4d0fbfc`，独立签发唯一 verdict：`V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED`。
-- 独立动态证据：新临时边界 probe 29/29；正式 P5 persistence runner 51/51；string／float／null／容器／负数／零／INT64_MAX sequence 均拒绝且零部分恢复；MAX-1→successor→exhausted sentinel 正确；Army exhaustion 在 reservation／transaction／garrison 写入前失败；合法 V1 空队列历史日只读迁移成功；非法迁移、创建、恢复和 store preflight 均零部分写入。临时 probe 已删除，未暂存、未提交。
-- 完整现场回归与要求基线精确一致：G2 focused 6/6、185 条；tracked 33/33、1739 条；all-present 35/35、1871 条／1905 PASS；V5 与 S1A.2 cold workers A/B/C 均 exit 0；正式城市、黑石堡、C0、editor、worktree/repair `git diff --check` 均 exit 0，错误签名 0。
-- `fab962c` 精确四文件 repair 已独立接受：`scripts/army/training_queue.gd`、`scripts/army/army_registry.gd`、`scripts/construction_controller.gd`、`tests/run_v5_campaign_persistence_smoke.gd`。未发现新实质缺陷；不需要新源码修复。
-- S1A.2 八文件前后 SHA-256 不变，仍是唯一 untracked、unstaged；本结论不把 V1 文件采用为 V5 writer/schema，`CONDITIONAL_REUSE_ACCEPTED` 边界不变。
-- 独立验收报告见 `docs/reports/TXWZS_V5_G2_STABLE_ID_BOUNDARY_REPAIR_FRESH_INDEPENDENT_REVIEW_003.md`。精确 16 项任务和 V5-G2 已同步为 `VERIFIED`；本轮只形成报告、状态、主控 XLSX／Markdown／五 CSV 的本地 acceptance checkpoint，随后停止，不进入 G3，不 push、不部署、不清理既有 Markdown。
-- 2026-07-31，新的独立 reviewer `/root/v5_g2_repair_independent_reviewer_002` 在正式 worktree `/Users/m1-meng/.codex/worktrees/3231/godot-天下无战事2` 绑定 `cd7be2b → e2c1096 → 5d659243`。同一正式 codec/store/restore 对抗用例在 `cd7be2b` 动态复现 Training／Army `.000001` 覆盖，在 `e2c1096` 确认原 rollback 已拒绝。
-- 本轮同时确认 `e2c1096` 仍接受字符串／浮点 sequence、未封堵持久化上限与 successor 边界，并让“无 active order、保留历史下单日”的合法 V1→V2 迁移失败。因此 reviewer 按 verdict B 完成最小 follow-up repair `fab962c0a84024e7034c32e9d5c39debc1659c5f`，但不得自签接受；该轮终态为 `V5_G2_REPAIRED_PENDING_INDEPENDENT_REVIEW`，后由 fresh review 003 独立关闭。
-- `fab962c` 要求 stable-ID sequence 为整数，显式处理 exact-persistence exhausted sentinel，在 Army reservation 写权威状态前阻断 sequence exhaustion，并恢复合法 V1 空队列历史迁移。永久 P5 runner 现为 51 条断言，且在 `cd7be2b`／`e2c1096` 生产语义下分别暴露原 rollback 与新边界回退。
-- 最终回归：G2 focused 6/6、185 条明确断言；tracked 33/33、1739 条；all-present 35/35、1871 条／1905 条 PASS；正式城市、黑石堡、C0、editor scan、`git diff --check` 均 exit 0，最终错误签名 0。
-- 主控 XLSX、Markdown 与五份 CSV 未改动，Git blob 与已验证的 `5d659243` 规划 checkpoint 完全相同：13 sheets、公式错误 0、`totalMismatches=0` 的同源关系保持；精确 16 项仍为 `IMPLEMENTED_PENDING_REVIEW`，V5-G2 未 VERIFIED，G3–G6／P6／P7／V6 未启动。S1A.2 八文件前后 SHA-256 不变且仍是唯一 untracked、unstaged。
-- 新复审证据见 `docs/reports/TXWZS_V5_G2_STABLE_ID_SEQUENCE_REPAIR_INDEPENDENT_REVIEW_002.md`。下一唯一 Gate 为 `V5-G2 Stable-ID Boundary Repair Fresh Independent Review`，不得先进入 G3。
-- 2026-07-30，独立 reviewer `/root/v5_g2_independent_reviewer` 绑定原始 G2 candidate `cd7be2b4e65f453889c5f49a4922f788cca08a68`、parent `ee32d8445b11260a26501768da2c58abca78a113` 与 40-file tracked scope，复现了 checksum-valid snapshot 可倒退 `next_order_sequence`／`next_army_sequence` 并在恢复后复用稳定 ID 的缺陷。
-- 同轮最小修复让 `TrainingQueue` 和 `ArmyRegistry` 恢复校验拒绝任何不大于既有最大稳定 ID 的序列，并给 P5 增加两条对抗断言。精确三文件原子 repair commit 为 `e2c1096f858d571d4621b93174d3848406b42ffa`，parent 为原始 G2 candidate `cd7be2b4e65f453889c5f49a4922f788cca08a68`。修复 reviewer 不得自行接受，该轮 verdict 为 `V5_G2_REPAIRED_PENDING_INDEPENDENT_REVIEW`；后续 `fab962c` 与 fresh review 003 已关闭该门，G3/G4/G5/G6/P6/V6 仍未启动。
-- 纵向闭环 20 条断言继续通过。V5 六个专项 runner 为 6/6、168 条明确断言；tracked 为 33/33、1722 条明确断言；all-present 为 35/35、1854 条明确断言／1888 条 PASS 行。正式城市、黑石堡、C0 场景和 editor scan 均 exit 0，最终错误签名为 0。
-- P2/P3/P4/P5 本地 checkpoints 分别为 `023f11a`、`a95f510`、`8a6e65a`、`ee32d84`；原始 G2 candidate 为 `cd7be2b`。S1A.2 八个受保护文件在复审及修复前后 SHA-256 完全不变，继续 untracked、unstaged。
-- 主控工作簿与 Markdown／五份 CSV 镜像已同步到 `1.0.1-v5-g2-repair-001`：16 个 G2 runtime tasks 仍为 `IMPLEMENTED_PENDING_REVIEW`，V5-G2 Gate 未标 VERIFIED，V4/G0/G1 与 V6 状态保持不变。工作簿 13/13 sheets 已重新渲染，公式错误扫描为 0，工作簿与五份 CSV 逐值比对 `totalMismatches=0`；`roadmap.csv` 重导后保持 byte-identical。
-- 独立复审与修复证据见 `docs/reports/TXWZS_V5_G2_RUNTIME_PACKAGE_INDEPENDENT_REVIEW_001.md`；下一唯一 Gate 是由全新 reviewer 绑定 repair checkpoint 并重跑缺陷对抗项与 G2 回归。
-- 2026-07-30，V5-G2 P5 已实现 `CampaignSnapshotV2`、规范类型 DTO／checksum codec、不可变代次存储、V1 只读迁移、未来版本阻断、坏档回退和完整 live apply rollback。P5 仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`，没有接受 V5-G2。
-- P5 专项 32 条明确断言通过；三个独立 Godot 进程 A/B/C 均 exit 0，证明 2500ms 在途 Army 冷恢复、只推进剩余 3500ms、再冷恢复为 6000ms `ARRIVED` 且不重复推进。报告：`docs/reports/TXWZS_V5_P5_CAMPAIGN_PERSISTENCE_IMPLEMENTATION_001.md`。
-- S1A.2 裁决继续为 `CONDITIONAL_REUSE_ACCEPTED`：V5 复用严格校验、不可变代次、发布前复读和只读迁移思想，但不复用其 V1 writer/schema；八个受保护文件仍逐字节不变、untracked、unstaged。
-- 2026-07-30，V5-G2 P4 已让现有 `CombatTransactionCoordinator` 从 ArmyState 构造真实遭遇请求，并由原 `BattleSession` 产出唯一 terminal facts；城市权威入口一次性应用胜利驻扎、撤退返城或失败关闭。P4 仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`。
-- P4 专项 23 条、C0 写回 19 条、C0 城市时间 59 条、首战闭环 57 条、黑石堡 151 条、P3 27 条断言通过；正式场景、editor scan 和 `git diff --check` 通过。报告：`docs/reports/TXWZS_V5_P4_ENCOUNTER_WRITEBACK_IMPLEMENTATION_001.md`。
-- 2026-07-30，V5-G2 P3 已实现集合型 `ArmyRegistry`、黑石堡窄适配层、派遣预留／取消／一次性扣兵、单 active policy、整数毫秒行军和幂等抵达。持久模型没有 singleton、Node、像素坐标或 UI 状态；P3 仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`。
-- P3 专项 27 条、既有黑石堡 151 条、V5 驻军 27 条、P2 37 条断言通过；三个正式场景、editor scan 和 `git diff --check` 通过。报告：`docs/reports/TXWZS_V5_P3_ARMY_STATE_IMPLEMENTATION_001.md`。
-- 2026-07-30，V5-G2 P2 训练与时间运行时已形成阶段 checkpoint：`TrainingQueue` 是唯一训练订单源，旧三字段降为只读兼容投影；下单、资源扣除、完成写驻军、容量／供养阻断和 1×／2×／4×／暂停／战争阻断／场景切换测试已实现。P2 状态仅为 `IMPLEMENTED_PENDING_G2_INDEPENDENT_REVIEW`，没有提前接受 V5-G2。
-- P2 专项 37 条、既有 P1-D 45 条、S1A.1 126 条、V5 驻军 27 条、C0 城市时间 59 条断言通过；正式城市、黑石堡、C0 场景、editor scan 和 `git diff --check` 通过。报告：`docs/reports/TXWZS_V5_P2_TRAINING_TIME_IMPLEMENTATION_001.md`。
-- 2026-07-30，新的独立 reviewer 绑定 G1 候选 `b3a7f03055350f25caa14dee8a630cf3b004d028` 及 parent `2cc4ebf01622b424ff4a4cd145c421b8fd1bbec3`，签发 `V5_G1_CONTRACT_PACKAGE_REVIEW_ACCEPTED`。六项 G1 合同与 V5-G1 已 VERIFIED；条件式授权因此生效，允许立即连续实施完整 V5-G2，但不提前接受任何 G2 runtime。
-- G1 独立复审重新得到合同基线 51/51，并增加 30 项跨合同字段、版本、写入者和回滚检查；V5 专项 27 条、tracked 29/29 共 1601 条、all-present 30/30 共 1713 条／1742 条 PASS；两正式场景、editor scan、工作簿 14 项持久化检查与 13 表渲染复核、`git diff --check` 和错误签名扫描均通过。证据目录：`/tmp/txwzs-v5-g1-independent-review-001.MJhd1Y`。
-- 2026-07-30，新的独立 reviewer 绑定修复候选 `bd15fca` 及 parent `242f793`，签发 `V5_P0_P1_PACKAGE_REVIEW_ACCEPTED`。V5-G0 已 VERIFIED，P0/P1 十一项已覆盖任务 independently accepted；该结论只接受单兵种定义、唯一驻军真值源、兼容入口、可派查询和预留容量修复，不提前接受 G1/G2。
-- 原缺陷已独立按边界重测：在权威查询可派 10 人时，预留 12 人失败且驻军／预留／未预留／可派读模型零写入；预留 10 人成功；总驻军始终等于预留加未预留且所有数量非负。
-- 独立复审重新得到 V5 专项 27 条断言、边界 probe 10 条断言、tracked 29/29 共 1601 条断言、all-present 30/30 共 1713 条断言／1742 条 PASS 行；正式主场景、黑石堡、最终 editor scan、`git diff --check` 和最终错误签名扫描均通过。
-- `bd15fca` 实际 parent、四文件提交清单和 blob 哈希与 Repair 001 的运行时两文件哈希及状态／报告范围一致；唯一预留写入口统一调用 `get_dispatchable_infantry_count()`，玩家 UI 路径最终都服从同一协调器／城市权威入口。
-- S1A.2 八文件由源工作树逐字节复制到本独立工作树；G1 只读裁决为 `CONDITIONAL_REUSE_ACCEPTED`：可复用不可变代次、校验、写入／重读／发布与 V1 只读迁移输入，但原八文件不得直接成为 V5 writer/schema，继续保持哈希不变、untracked、unstaged。
-- 2026-07-30，独立复审绑定候选 `242f793` 及 parent `5357c28`，发现权威“可派”查询受 `recruitment_cap` 约束，但战斗预留入口没有复用该容量约束；当可派为 10 时仍可写入 12 人预留。原候选 verdict 为 `REVIEW_REQUIRED`，不得标记 `V5_P0_P1_PACKAGE_REVIEW_ACCEPTED`。
-- 同轮最小修复已让预留入口服从 `get_dispatchable_infantry_count()`，并新增容量阻断及失败零写入回归。修复后 V5 专项 27 条断言通过，tracked 29/29、1601 条断言通过，all-present 30/30、1713 条断言及 1742 条 PASS 行通过；正式主场景、黑石堡场景、Godot editor scan、`git diff --check` 和错误签名扫描通过。
-- Repair 001 的历史终态为 `REPAIRED_PENDING_INDEPENDENT_REVIEW`；该门禁已由 Review 002 独立关闭，并形成本地 review checkpoint `2cc4ebf`。
-- V5-G1 候选形成时实现了六项合同：TrainingQueue 源状态、战略时间／暂停／战争阻断／场景切换矩阵、可持久化 ArmyState 集合、遭遇事实与权威写回、S1A.2 只读复用裁决、V5 schema／迁移失败／回滚边界；其候选状态曾为 `IMPLEMENTED_PENDING_INDEPENDENT_REVIEW`，现已由后续独立复审接受为 `VERIFIED`。
-- G1 静态合同与当前代码所有权校验为 51/51；最终 V5 专项 27 条断言、tracked 29/29 共 1601 条断言、all-present 30/30 共 1713 条断言／1742 条 PASS 行通过；正式主场景、黑石堡、editor scan、工作簿 38 项持久化校验、`git diff --check` 和最终错误签名扫描均通过。证据目录：`/tmp/txwzs-v5-g1-contracts-001.0QQ8C8`。
-- 主控工作簿及 Markdown／五份 CSV 镜像已同步到计划版本 `0.8.0-v5-g0-review-g1-contracts-001`：P0/P1 十一项和 V5-G0 为 VERIFIED；六项 G1 任务为 IMPLEMENTED_PENDING_REVIEW；V5 进度为 11/44（25% VERIFIED）。
-- 在 G1 候选形成当时，V5-G2 仍是 `NOT AUTHORIZED`；该历史状态已由后续 G1 独立接受、条件授权和 G2 fresh independent acceptance 取代。当前 V4 仍为 `VERIFIED / FROZEN`，V5-G2 为 `VERIFIED`，V6 `NOT STARTED`。
-- 2026-07-30，V5 已从冻结的 V4 checkpoint `5357c28` 开始首个实质切片；P0 基线／所有权／数据合同与 P1 单兵种驻军实现已完成，原始候选为 `IMPLEMENTED_PENDING_REVIEW`，尚未标记 V5 Gate VERIFIED。
-- `ConstructionController` 继续是唯一城市运行时写入者；新增私有 `GarrisonState` 作为本城兵种数量源，旧 `infantry_count` 是兼容属性而不是第二份存储。
-- 当前只公开既有 `UnitRole` 的稳定 ID `unit_role.infantry_basic`；没有复制战斗数值、增加第二兵种或创建第二套 `CityState`。
-- 城市侧栏现在可观察地显示“驻军”和“可派”；可派数同时服从战斗预留、征募容量和将领指挥上限。
-- V5 专项为 25 条明确断言通过；首轮 all-present 为 30/30、1740 PASS，fresh 1152×648 城市侧栏截图无重叠或裁切。
-- V5 G1 只定义 schema、迁移和回滚合同，没有引入 writer、migrator 或运行时恢复；S1A.2 八个文件继续受保护、untracked、未暂存。
-- 2026-07-30，`TXWZS_V4_MILESTONE_CLOSURE_001_ACCEPTED`：V4 最终综合 Gate 通过，`T-V4-003: PASS`，V4 标记为 `VERIFIED / FROZEN`。
-- 黑石堡视觉切片沿用已接受的 `V4_UI_VISUAL_SLICE_INDEPENDENT_REVIEW_002_ACCEPTED`；最终候选哈希未变化，没有创建 Review 003。
-- 最终 1152×648 候选重新生成默认、调遣、行军、撤退、失败、胜利、返回、重进八态截图；“我方营地 → 山路援军”路线与标题／说明均不相交，目视无贴字、抢层级、裁切、残留遮罩或重复结果层。
-- 最终 Blackstone 专项为 150 条明确断言通过；C0 城市时间专项为 59 条明确断言通过；tracked 27/27、1515 PASS，all-present 29/29、1686 PASS，正式主场景、黑石堡场景、editor scan、`git diff --check` 和错误签名扫描均通过。
-- C0 城市时间、`BattleSession` terminal authority、coordinator ownership、幂等重放与冲突拒绝均无回退。
-- V4 checkpoint 只纳入可解释的 V4/C0/规划/报告范围；S1A.2 八个文件仍是受保护 untracked，不因 all-present runner 通过而获得验收或进入提交。
-- V5 已解除冻结，但必须先按正式计划完成 P0 基线、所有权与数据合同；不得复制第二套 `CityState`，不得把未验收 S1A.2 当作存档基线。
-- P0-01A R1–R4 均未通过用户实体鼠标拖拽验收。
-- P0-01A 使用的旧 `Control` / `PanContent.position` 平移方案已被替换。
-- P0-01B 已迁移到唯一的 `Node2D + Camera2D` 导航。
-- 滚轮缩放已由用户实体操作确认。
-- 地图拖动已由用户实体操作确认；截图证明地图、道路、建筑和中心标记整体移动，固定提示保持不动。
-- 当前导航基线已通过用户人工验收。
-- P0-02B-S1 静态默认 UI Shell 已通过用户实体观察。
-- 默认状态仍以地图为主，当前 UI Shell 可以作为后续建造研究的固定界面基线。
-- P0-03B-S1 最小网格建造原型已实现并获用户接受。
-- 用户实体确认可以进入建造并放置建筑，建造过程中地图拖动和滚轮缩放正常。
-- 运行截图观察到已占用位置显示红色无效预览。
-- 右键取消、`Esc` 取消和四个常驻 UI 遮挡区不能确认目前仅由自动测试确认，未记录为用户实体确认。
-- P0-04B-S1 建筑选择与详情面板原型已通过自动验证和用户 10 项实体鼠标测试。
-- 用户实体确认建筑切换、空白取消、Esc、关闭按钮、拖动保留选择、缩放后描边对齐、面板防穿透、建造互斥、新建筑可选及重复占用拒绝均正常。
-- P0-05 运行时建筑生命周期与安全移除已通过自动验证和用户实体鼠标测试。
-- 用户于 2026-07-25 完成 P0-05 的 16 项集中实体测试，反馈“上面的我都测试了，暂时没发现什么问题”。
-- P0-05 实体结论只记录用户完成全部测试及总体反馈，不补写用户未提供的逐项观察细节。
-- P0-06 已把六个固定灰盒建筑与运行时测试建筑纳入同一份权威记录、选择和详情路径，并把建造入口迁移到右侧。
-- 用户于 2026-07-25 接受当前 P0-06 结果作为本阶段封存版本；该结论是阶段整体接受，不补写为逐项实体交互测试。
-- P0-06 的固定建筑能力、统一记录、右侧建造入口、底栏移除和 P0-05 回归目前由自动 smoke 验证覆盖。
-- 自动构造或注入的输入事件只能作为辅助证据，不能替代实体鼠标验收。
-- P1-00 已完成首个城市玩法闭环与长期执行门禁研究。
-- 用户已选择“伐木场 → 道路接通 → 木材”作为第一个技术实现切口；它不是完整游戏循环。
-- 农田／粮食没有被淘汰，已纳入首图第二个生产能力。
-- P1-00B 已完成第一张地图纵向切片 V0 和通用内容语法研究。
-- 用户已接受 `FIRST_MAP_VERTICAL_SLICE_V0` 作为 P1 连续实施基线；该接受不代表数值已平衡或首图已通过实体“是否好玩”验收。
-- P1-A 已实现类型化建筑定义、道路 placement、四向连通、伐木场启停与木材日产。
-- P1-B 已实现农田、粮食、仓库容量和唯一确定的每日结算顺序。
-- P1-C 已实现第 5／8／10／12 日压力、公开敌军与工事、城防减损和第 9 日恢复检查点；其原第 12 日推进限制已由当前时间规则纠正。
-- P1-D 已实现第一时代步兵、每日维护、次日训练、一个将领槽、三个将领原型、三个首图科技和一次紧急动员。
-- P1-E 已把第 6 日预警、第 7 日不可绕过的战争阻断、军令台正式入口、同一 C0 北坡战场和三种战果写回串成技术闭环。
-- 用户将 P1-E 判定为“技术闭环通过／产品体验不通过”：现有内城建设和 C0 战场仍是灰盒，不能因按钮、状态、事务与自动测试成立就宣称首战可玩。
-- P1-F 已完成第一个实施切片“建设数据化”：现有可建定义补齐等级与工期，非道路建筑经过一日施工才启用，建造目录和统一详情显示真实投入、效果、前置、进度、完成日和不可建原因。
-- P1-F 尚未完成建设数据向正式北坡战场的完整映射、正式战场表现、战果可读性和真人平衡体验。
-- 用户已接受 C0 最小真实战斗契约、首战灰盒规则和测试矩阵。
-- C0 已实现最多三支步兵小队、两条进攻路线、前进／坚守／撤退和确定性 0.25 秒固定 tick；结果由实际演算产生，不是预先计算回放或纯战力自动结算。
-- C0 已实现唯一兵力事务 `RESERVED → ACTIVE → RESULT_PENDING → APPLIED`，以及仅战前允许的 `CANCELLED`。
-- 首通奖励木材 30、粮食 20 已作为用户接受的首轮可调基线实现，只在首次胜利确认时应用一次，不代表最终平衡。
-- C0 自动契约和回归测试已通过；当前等待用户实际体验胜利、失败、主动撤退、双路线意义和节奏。
-- 城市主界面已淘汰玩家可见的“结束本日”；时间默认自动流动，只能由顶部单一控件明确暂停或继续。
-- 当前 1× 每日日长为 `180` 模拟秒，另有 2×、4× 和玩家暂停；它们是集中、可测试的首战节奏参数，等待用户体验校准，不代表最终平衡。
-- 暂停只冻结城市模拟时间；地图拖拽／缩放、建筑选择、建设规划、侧栏和普通 UI 继续可用。
-- 左侧 `152 px` 城市栏现在默认收起并有始终可见的展开／收起入口；展开和收起不修改建筑 placement 或暂停状态。
-- 相机初始化、建筑聚焦和边界 clamp 已改为使用顶部栏与当前侧栏状态派生的地图安全矩形。
-- C0 的两路线、三命令、0.25 秒确定性 tick 规则没有重写；P1-E 现等待用户实体体验，P1-F 仍暂停。
-- 开发运行环境已增加单实例标准入口和实时 Git 身份标题；该基础设施变更不改变上述产品状态。
-- P1-G1 已新增独立固定告示板入口；告示板负责居民委托和小型任务，军令台继续负责北坡首战与主线军事行动，城主府继续负责城市治理。
-- 告示板 V0 通过三份 `MissionDefinition` 驱动同一个 C0 场景：城郊清剿要求全歼，粮道求援要求固定粮车存活且全歼，失踪斥候要求发现目标后由有效小队撤离。
-- 三项任务状态仅保存在当前进程内存中；未使用 `FileAccess`、未增加 save schema。
-- 每项任务的木材／粮食奖励只在当前进程首次胜利时通过现有战果事务发放一次；失败、撤退和重玩不重复奖励。
-- 瞭望塔使用 `build_catalog_visible = false` 从通用建造目录移除；其定义、数值、占地、fixture placement 和查询能力仍保留。
-- P1-G2 已为同一个 C0 场景增加只读战场表现模型、可点击小队标记、唯一选中小队命令区、敌军／接敌投影、真实战况摘要和三类任务对象；没有创建第二套 BattleSession 或改写战斗规则。
-- 城郊清剿显示两路敌军与肃清状态；粮道求援显示固定粮车生命和危险方向；失踪斥候在发现前只显示中性搜索区，发现后才揭示目标并持续显示撤离区。
-- P1-G2 已通过自动投影、命令、三任务、退出事务和回归测试，并由 AI 在 `1152 × 648` GUI 中实际点击小队、开始战斗和提交推进命令；这不是用户实体体验接受。
-- 告示板卡片和最近结果已将原 `AVAILABLE / IN_PROGRESS / COMPLETED`、`mission_id` 与战果枚举映射为中文显示；权威任务状态 ID 未改变。
-- 用户决定不再对 `b9719a5` 的 C0 横条战斗看板进行产品验收：其技术实现继续保留，但该表现形态不作为外城或未来正式战斗方向。
-- P1-WORLD-MAP-V0 已新增独立外城战役地图 Graybox，从现有城门进入；地图在统一世界坐标中显示黑石城、北坡哨站、南部村庄、河湾粮道和河湾城。
-- 战役地图包含黑石北道、南部驿道、北岭旧道、河湾南路和河湾东关道，分别显示畅通、未侦察、危险或封锁中文状态，并以实线、虚线或阻挡符号共同表达。
-- `WorldMapPresentationModel` 只读取现有城市、首战和告示板任务状态；固定地理配置与运行时进度分离，不创建第二套 `CityState`、`BattleSession`、资源账本或任务状态。
-- 玩家编队兵力摘要来自当前城市真实可用步兵；地图位置和计划路线明确为非持久表现 fixture，不写正式存档、不推进日期、不扣资源、不触发任务或战斗。
-- 战役地图复用现有唯一 `Camera2D` 和根 `_input`，支持节点／道路／编队点击、地图拖动、滚轮缩放、回到黑石城、Esc 关闭侧板／返回内城和只读计划路线。
-- 用户对 P1-WORLD-MAP-V0 的地图形态结论为 `B`：地图方向成立，但默认构图、信息面板遮挡和标识可读性尚未通过 A 级验收；正式行军与编队移动继续冻结。
-- P1-WORLD-MAP-V0A 使用五节点内容边界和当前视口安全区动态计算默认全览，不再写死单一分辨率的 `0.64` 缩放与固定镜头中心。
-- 侧板显示时会动态缩小地图安全区，并把当前节点、道路或编队保持在侧板之外；关闭侧板不反向恢复旧镜头，因此不会产生额外跳跃。
-- 顶栏把“地图全览”和“定位黑石城”拆为两个明确操作；前者关闭侧板并恢复五节点全貌，后者只定位玩家主城。
-- 玩家、敌方、友好和中立增加中文阵营符号；玩家／敌方城池使用更高层级城池轮廓与旗帜，玩家编队改为军旗标记。
-- 畅通、危险、未侦察和封锁道路分别增加 `✓`、`!`、`?`、`×` 与不同线型；计划路线使用带箭头的双层高亮虚线及“尚未出征”标签，不改变权威状态。
-- P1-WORLD-MAP-V0A 仍等待用户重新判断默认首屏、面板打开后的空间和缩放标签可读性；自动布局测试不能替代该产品门禁。
-- P1-WORLD-MAP-V0 尚未实现正式行军、行军计时、粮草消耗、局部战斗、复杂寻路、道路容量、外城经济或正式世界地图存档。
-- `CAMPAIGN_CITY_BATTLE_STATE_BOUNDARY_V0` 已完成只读核验并作为 S0 文档基线冻结：持久城市、战略地图和单次 `BattleSession` 必须是三层不同状态，未来 `CampaignOutcomeResolver` 只能通过各层幂等权威入口协调写回。
-- 当前仓库没有独立 `CityState` 类；`ConstructionController` 是现有城市运行时适配权威。仓库也没有可写战略地图状态、`TheaterState` 或 `CampaignOutcomeResolver`，不得因设计名称出现就声称已经实现。
-- `WorldMapPresentationModel` 仍是固定地理配置与城市只读摘要组成的表现 fixture；玩家编队坐标和计划路线不是战略权威状态。
-- 当前真实单局权威只有 `BattleSession`；`TheaterState` 在 V0 中只是领域称呼，不得新增与 BattleSession 同义的第二份可写状态。
-- 当前 P1-E 正式首战失败会把城防全部计损并设置 `city_fallen`。该旧技术灰盒语义与新冻结的“战时核心被攻破不等于持久内城被摧毁”冲突，已登记为后续实现阻断；本轮没有修改运行时代码。
-- 当前所有城市、战略地图、战斗 ledger 和任务状态仍为进程内存态，没有正式 save schema；本轮没有新增存档字段或迁移。
-- S0 真实工程基线审计已通过用户验收，推荐路径冻结为 `A：继续在现有工程中小步修复`。
-- S0 冻结基线为 Godot `4.5.1.stable.official.f62fdbde1`、主场景 `res://scenes/blank_map.tscn`、`180` 秒／日，以及包含告示板在内的七个固定建筑。
-- S0 全量回归为 `25/25` 个 runner 通过、`1238` 条明确断言通过，另有 `25` 条 runner 总结通过；全部 `PASS` 行合计 `1263`，无失败。
-- S1A.1 已实现并通过独立复审：`ConstructionController` 继续作为唯一城市运行时权威，版本化内存快照只保存第 1～6 日早期城市的稳定源字段。
-- S1A.1 快照使用固定城市身份 `blackstone_city`、整数 schema version 和严格字段／类型／领域校验；容量、占用格、道路连通、建筑启用、威胁与 UI 投影不作为第二份可写状态保存。
-- S1A.1 恢复在第一次修改前捕获旧快照；清理、安装与正式 postcondition 均传播失败。中途释放失败会绕开正常释放路径重建旧权威记录和运行时投影，重复调用不会复制 placement 或复用 ID。
-- S1A.1 故障注入、引用隔离、重复恢复、暂停／运行及 2×／4× 速度恢复已由自动测试覆盖；runner 连续三次执行均为 `126` 条明确断言及 `1` 条总结通过。
-- 当前仍没有磁盘存档、自动加载、崩溃恢复、存档版本迁移或战斗持久化。下一阶段为 `TXWZS.S1A.2`，本轮尚未开始。
-- P1-F1B 仍未开始；建筑移动仍未实现；本轮没有修改 C0 数值、胜负、奖励、P1-F1A 技术契约或 save schema。
+当前停止点是 post-G2 文档收敛。完成本地原子文档 checkpoint 后仍不得进入
+G3；下一项另行授权的工作是
+`M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS`。
 
-## P1 实施状态
+## Git 基线
 
-- 执行门禁：`docs/process/PROJECT_EXECUTION_GATES.md`。
-- 首城闭环研究：`docs/design/P1_00_FIRST_CITY_GAMEPLAY_LOOP_RESEARCH.md`。
-- 首图纵向切片：`docs/design/P1_FIRST_MAP_VERTICAL_SLICE_V0.md`。
-- P1-F 建设数据化：`docs/design/P1_F_CONSTRUCTION_DATAIZATION_V0.md`。
-- 通用内容语法与关卡管线：`docs/architecture/CONTENT_DEFINITION_AND_LEVEL_PIPELINE_V0.md`。
-- C0 战斗事务契约：`docs/architecture/MINIMUM_REAL_COMBAT_CONTRACT_V0.md`。
-- C0 首战灰盒规则：`docs/design/FIRST_BATTLE_GRAYBOX_RULES_V0.md`。
-- C0 测试矩阵：`docs/testing/C0_COMBAT_CONTRACT_TEST_MATRIX.md`。
-- C0 决策门禁：`docs/handoffs/C0_COMBAT_CONTRACT_DECISION_GATE.md`。
-- 首个技术切口已确定：伐木场接入城主府道路网络，从下一日开始产生木材。
-- 完整首图循环为：建设与接路 → 木材／粮食 → 募兵／科技／防御 → 自动时间推进／明确暂停 → 敌军骚扰和增强 → 提前或延后进攻；第 12 日是当前最后一个已定义特殊事件日，不是时间停止点。
-- V0 数值是首轮校准值，真人测试后允许约 `±15%` 调整，不是永久平衡或正式存档承诺。
-- 当前固定城市入口与灰盒建筑为城主府、兵营、粮仓、学院、城门、军令台和告示板。
-- 用户已接受真实战斗／结果契约，并授权 P1-E 正式串联；当前门禁是用户实际体验第 6／7 日、胜利、失败和两种撤退路径。
-- 已完成本地原子提交：
-  - `6fec5ca`：P1-A 道路连通与伐木经济。
-  - `c953b9a`：P1-B 粮食、容量与每日结算。
-  - `45acb9f`：P1-C 威胁时间线及原第 12 日门禁；时间门禁已由后续纠偏替换。
-  - `a685cb8`：P1-D 步兵、将领与最小科技。
-- 上述 P1 运行时代码提交未 push；已接受的文档基线 `b3114c2` 已 push 到 `origin/main`。
+| 字段 | 值 |
+| --- | --- |
+| Branch | `codex/v5-g0-review-g1-contracts-001` |
+| G2 acceptance checkpoint | `af244167f7b0a31f3de2cc34673faa953113b96b` |
+| Upstream | 本地 branch 无 upstream |
+| Remote action | 未 push、未 tag、未 fresh clone |
+| Index | 文档收敛提交前保持空；只按精确路径暂存 |
+| Protected untracked | 精确 8 个 S1A.2 文件 |
 
-## 最终根因与修复
+V5-G2 链：
 
-- 真实 `InputEventMouseMotion.position` 持续变化，但 `relative` 始终为 `(0, 0)`。
-- 原实现以 `relative` 作为唯一位移来源，因此跨过拖动阈值后仍只会执行零位移。
-- 最终修复使用相邻 `event.position` 的差值计算屏幕位移，再根据当前 zoom 换算 Camera2D 世界坐标位移。
+```text
+cd7be2b
+→ e2c1096
+→ 5d659243
+→ fab962c
+→ 4d0fbfc
+→ af24416
+```
 
-## 当前结构
+`fab962c` 的精确 repair 范围：
 
-- 唯一主场景：`res://scenes/blank_map.tscn`。
-- `BlankMapRoot`：`Node2D`，挂载唯一导航脚本。
-- `MapWorld`：`Node2D`，包含地图底板、道路、区域、中心标记和七个固定灰盒建筑／入口。
-- `MapWorld/ConstructionLayer`：包含内存态已放置测试建筑和唯一建造预览。
-- `Camera2D`：负责地图拖动、缩放和边界。
-- `ConstructionController`：负责网格吸附、预览有效性、UI 遮挡投影、右侧建造交互、统一建筑记录和当前城市运行态，不拥有第二条输入入口。
-- `ConstructionController` 同时拥有七个固定建筑／入口与运行时建筑的 placement ID、记录、放置顺序、占用格、资源、日期、军队、将领选择、已研究科技、威胁和当前进程告示板任务状态。
-- 当前可建记录同时保存等级、投入、施工开始日、预计完成日和 `constructing / running` 生命周期；容量、生产与城防只从已完工记录派生。
-- `ConstructionController` 也持有唯一首战状态机：`PREPARATION → WARNING → PENDING → IN_BATTLE → RESOLVED_*`；它不是第二套城市状态。
-- 道路连通、建筑启用原因、资源容量、城防和将领／科技倍率均从上述权威状态与类型化静态定义派生，不保存第二份可写结果。
-- `BuildingSelectionController`：负责固定建筑与运行时测试建筑的统一命中、选择状态、琥珀色描边和详情面板字段，不拥有 `_input`。
-- `MapWorld/ConstructionLayer/SelectionOutline`：唯一选中反馈节点，随地图和 Camera2D 变换。
-- `UI`：`CanvasLayer`，包含固定的顶部状态栏、左侧城市栏、小地图占位、右侧建造入口／模板列表和详情面板，不随 `Camera2D` 移动。
-- `UI/Shell/BuildingDetailPanel`：默认隐藏的 280 x 360 灰盒详情面板，覆盖地图但不改变视口和 Camera2D clamp。
-- `UI/Shell/ConstructionEntryPanel`：右侧常驻建造入口；选中建筑时让位给详情面板。
-- `UI/Shell/ConstructionMenu`：包含道路、伐木场、农田和仓库的最低限度建造入口；瞭望塔定义保留但不进入玩家目录。
-- `UI/Shell/NoticeboardPanel`：独立显示三项告示板任务的背景、目标、风险、首胜奖励、状态和开始入口，不与军令台或通用详情合并。
-- `UI/Shell/CityBar`：以最低限度原生控件显示步兵、征募、一个将领槽、三个科技选项、威胁和第 12 日恢复操作；默认收起，不是正式 UI 设计。
-- `UI/Shell/CityBarToggle`：始终可见的展开／收起入口；收起时 `CityBar` 及其子控件不再参与输入。
-- `UI/Shell/TopStatusBar/PauseButton` 与 `TimeSpeedOption`：提供玩家暂停、1×、2×、4×；战争阻断显示“敌袭冻结”且任何时间控件都不能解除。
-- 原 `UI/Shell/ContextBar` 及其临时建造、派遣、管理占位已完整移除，不保留第二套入口。
-- 旧 `PanContent.position` Control 平移方案已被替换，不保留第二套导航实现。
+```text
+scripts/army/training_queue.gd
+scripts/army/army_registry.gd
+scripts/construction_controller.gd
+tests/run_v5_campaign_persistence_smoke.gd
+```
 
-## 静态默认 UI Shell
+## Gate 状态
 
-- 当前唯一验收视口为 1152 x 648。
-- 顶部状态栏：位置 `(0, 0)`，尺寸 1152 x 48。
-- 左侧城市栏：位置 `(0, 48)`，尺寸 152 x 600。
-- 小地图占位：位置 `(976, 64)`，尺寸 160 x 100。
-- P0-02B-S1 曾包含位置 `(360, 588)`、尺寸 584 x 44 的底部操作栏；P0-06 已将其移除。
-- 静态占位控件忽略鼠标事件；右侧建造控件和可见详情面板接收交互，地图输入仍由根节点脚本统一协调。
-- 左侧 152 px 城市栏遮挡已通过默认收起和安全矩形相机边界修复；展开时玩家仍可把全部建筑拖入无遮挡区域。
-- 建造交互动态识别顶栏、左栏、小地图、右侧建造入口／菜单和详情面板的屏幕遮挡区，不得产生被常驻 UI 挡住而无法确认或取消的建筑落点。
+| Gate / phase | 状态 |
+| --- | --- |
+| V4 | `VERIFIED / FROZEN` |
+| V5-G0 | `VERIFIED` |
+| V5-G1 | `VERIFIED` |
+| V5-G2 | `VERIFIED` |
+| V5 | `IN_PROGRESS` |
+| V5-G3 | `NOT_STARTED` |
+| V5-G4 | `NOT_STARTED` |
+| V5-G5 | `NOT_STARTED` |
+| V5-G6 | `NOT_STARTED` |
+| V5-P4-T005 | `NOT_STARTED` |
+| V5-P6 | `NOT_STARTED` |
+| V5-P7 | `NOT_STARTED` |
+| V6 | `NOT_STARTED` |
 
-## 最小网格建造原型
+精确 16 项 G2 runtime task：
 
-- 当前继续使用 40 世界单位网格；道路为 1 x 1，P1 生产／容量／防御建筑为 2 x 2。
-- 道路即时完成；伐木场、农田、仓库和瞭望塔当前使用一日施工期。施工中占用真实网格但不提前提供生产、容量或城防效果。
-- 网格原点、网格尺寸和 footprint 在唯一建造控制器中集中定义。
-- 屏幕坐标与 `MapWorld` 坐标通过实际 canvas transform 及其逆变换转换，不复制 Camera2D 公式。
-- `occupied_cells` 同时记录七个固定建筑／入口的保守栅格占用和真实成功放置道路／建筑的实际 footprint 世界格。
-- 无效确认不会创建建筑节点或修改占用表；已占用位置显示红色无效预览。
-- 顶栏、左栏、小地图、右侧建造控件和详情面板的遮挡判断动态读取实际 `Control.get_global_rect()`。
-- UI 遮挡只影响当前预览和确认，不会永久写入世界格占用；相机移动后，同一世界格可以重新进入安全区域建造。
-- 普通状态保持原左／中／右键拖动和滚轮缩放；建造状态使用左键确认、中键拖动、滚轮缩放、右键或 `Esc` 取消。
-- 当前 40 世界单位网格、建筑 footprint 和 V0 数值仍是灰盒校准参数，不是正式建筑尺度、最终平衡或存档兼容承诺。
-- 临时测试建筑文字重叠属于灰盒表现，本阶段为 non-blocking。
-- 一日施工期是 P1-F 首轮可逆校准值，不代表最终平衡或正式存档承诺。
+```text
+V5-P2-T002  V5-P2-T003  V5-P2-T005  V5-P2-T006  V5-P2-T007
+V5-P3-T002  V5-P3-T003  V5-P3-T004  V5-P3-T005  V5-P3-T006
+V5-P4-T002  V5-P4-T003  V5-P4-T004
+V5-P5-T003  V5-P5-T004  V5-P5-T005
+```
 
-## 建筑选择与详情面板原型
+它们和 V5-G2 均已 `VERIFIED`。G1 的六项合同任务已在独立 Gate 接受，不
+重复计入。
 
-- 固定灰盒建筑和 `PlacedBuildings` 下已确认的中性测试建筑都通过统一权威记录被选择，不让每栋建筑各自处理输入。
-- 复用现有 8 px 阈值：小于阈值的左键释放执行单击命中，越过阈值只执行地图拖动。
-- 命中检测通过真实 Canvas transform 转换屏幕与地图坐标，不复制 Camera2D 数学。
-- 当前选择、切换、空白取消、Esc 和显式关闭按钮均已成立。
-- 地图拖动和滚轮缩放保留选择；琥珀色描边继续与建筑世界矩形对齐。
-- 详情面板位于 CanvasLayer，固定于 `(856, 176, 280, 360)`，不会随 Camera2D 移动。
-- 面板可见时动态阻止左、中、右键和滚轮穿透；隐藏后原区域立即恢复地图交互。
-- 进入 placing 会清除选择、描边和面板；placing 左键不会同时选择建筑。
-- 选中建筑离开场景树时会安全清除引用、描边和面板。
-- 固定建筑能力为可选择、不可移除、不可移动；运行时测试建筑为可选择、可移除、不可移动。
-- 当前 branch 为 `codex/v5-g0-review-g1-contracts-001`；验收状态与实现基线以本文件所在提交为准。
+## 当前架构事实
 
-## 运行时建筑生命周期与安全移除
+- `ConstructionController` 是城市资源、日期、建设、训练、驻军和恢复的
+  运行时权威入口。
+- 私有 `GarrisonState` 是本城兵种数量唯一源状态；`infantry_count` 是兼容
+  属性，不是第二份存储。
+- `TrainingQueue` 是训练订单唯一源状态；旧三字段仅为只读兼容投影。
+- `ArmyRegistry` 是集合型持久模型；V5 最多一支 active 是校验策略，不是
+  singleton 数据结构。
+- `BattleSession` 只产出 terminal facts；城市写回由绑定的
+  `CombatTransactionCoordinator` 授权。
+- `CampaignSnapshotV2`、V5 codec/store、V1 只读迁移、不可变代次、坏档
+  fallback 和 live apply rollback 已实现。
+- 天下地图 V0 仍是只读表现 fixture，不是持久世界状态。
 
-- 每栋运行时测试建筑由单调递增且删除后不复用的 `placement_id` 标识。
-- 权威记录保存节点、网格原点、占地、实际占用格、选择边界和原型状态；建筑节点 metadata 只保留 `placement_id`。
-- 选择状态只保存 `selected_placement_id`，详情面板始终从权威记录读取。
-- 移除操作先进入确认状态；取消、`Esc`、关闭、空白单击、切换建筑或进入建造均不会删除建筑。
-- 确认移除只释放目标建筑仍归其所有的占用格，同时清除记录、顺序、选择、描边和面板。
-- 删除后原位置通过普通建造流程重新可用；重建获得新的 placement ID。
-- 意外 `tree_exited` 会幂等清理对应记录及仍属于该 ID 的占用格，不影响其他建筑。
-- 当前生命周期仅覆盖内存态中性测试建筑，不包含资源返还、撤销、批量操作、存档或正式建筑规则。
+完整合同见
+[TXWZS_ARCHITECTURE_CONTRACT.md](docs/architecture/TXWZS_ARCHITECTURE_CONTRACT.md)。
 
-## P0-06 统一建筑交互壳
+## Stable ID 与原子性
 
-- 六个固定灰盒建筑各注册一条与运行时建筑同字段的权威记录，节点 metadata 只保存 `placement_id`。
-- 固定建筑保守映射到 40 世界单位网格，用于阻止测试建筑与其重叠；该占用不是正式建筑 footprint 或存档格式承诺。
-- 所有建筑共用统一点击命中、选择描边和右侧详情面板；能力由记录中的 `selectable`、`removable`、`movable` 明确决定，不从节点名推断。
-- 建造入口位于右侧；详情、模板列表与建造中状态在同一区域互斥。
-- 军令台在第 6 日显示北坡敌情和倒计时，第 7 日才显示可执行的“进入北坡战场”和“下令撤退”；备战早期不显示假入口。
-- P0-06 不改变既有 8 px 拖动阈值、Camera2D 导航、滚轮缩放、网格建造和运行时安全移除规则。
+Training/Army sequence：
 
-## P1-A 至 P1-D 已实现纵向切片
+- 必须是 `TYPE_INT`；
+- 必须在 `1..9007199254740991`；
+- 必须大于快照内既有最大 ID；
+- 上限值是合法 exhausted sentinel；
+- `MAX-1` 可分配一次，之后创建失败且零写入。
 
-- 类型化 `BuildingDefinition`、`BuildingCapability`、`ThreatSchedule`、`ThreatEventDefinition`、`UnitRole`、`GeneralArchetype` 和 `TechNode` 只承载静态定义。
-- 道路和生产建筑复用现有 placement、统一建筑记录与占用格；道路从城主府根格 `Vector2i(7, 4)` 按四方向派生连通。
-- 初始城市运行态为第 1 日、100 木材、80 粮食、20 步兵、50 征募上限、10 城防、0 科技点，木材和粮食容量各 160。
-- 伐木场成本 40 木材、完工且联网后产 18 木材／日；农田成本 45 木材、完工且联网后产 22 粮食／日；仓库成本 60 木材并在完工后为两种资源各增加 120 容量；瞭望塔成本 50 木材并在完工后增加 10 城防。
-- 每日结算顺序为：自动日界线校验 → 扣军队维护 → 完成上一日训练 → 生产 → 研究 +1 → 更新敌军／工事 → 压力事件 → 清理一日停产。
-- 第 5、8、10、12 日执行已定义威胁更新；敌军按 32、40、48、56、64 增长。第 12 日只是当前最后一个特殊内容日，城市时间继续进入第 13 日及以后，且不会重复第 12 日事件。
-- 第 9 日检查点是恢复快照，不是第二套运行时权威状态；当前只存在内存态，没有正式存档或迁移。
-- 步兵基础训练每批 5 人、每人 3 粮、下一日完成、每日最多一批；维护为每 5 人 1 粮，供给不足不产生负数或删除士兵。
-- 首图只有一个将领槽：先锋官、守备官、辎重官分别提供攻击、防御或维护修正。
-- 首图开放石器改良、队列操练和轮训征募三个科技；科技前置和成本由静态定义校验，玩家已研究状态只保存在现有运行时权威对象。
-- 第 12 日可使用一次紧急动员：30 粮换 5 步兵；该操作不会自动暂停时间或改变玩家暂停状态。
-- V0 实施未进行数值微调；上述数值仍为用户已接受的首轮校准起点。
+Army sequence exhausted 时，控制器必须在 reservation、transaction、
+registry 或 garrison 写入前失败。
 
-## P1-E 第一次战争闭环
+以下失败边界已独立确认零部分写入：
 
-- 当前结论为“技术闭环通过／产品体验不通过”；以下内容只陈述已成立的状态与事务事实，不代表战场表现或首战乐趣已验收。
-- 首战事件使用稳定 ID `first_war.north_slope.v0`，状态仍保存在唯一 `ConstructionController`。
-- 第 6 日只进入一次 `WARNING`；第 7 日完成一次通用日结算后进入 `PENDING`，清除未完成建造交互并冻结战略时间。
-- 玩家暂停与战争阻断是两个独立状态；`PENDING`、`IN_BATTLE` 和城市失守不能被暂停、1×、2×、4×按钮绕过。
-- `PENDING` 允许查看地图和建筑信息，但建造、拆除、征募、将领变更、研究、紧急动员、检查点恢复和重开等状态修改全部复用同一锁判断。
-- 选择固定军令台后显示当前敌军、工事、可用兵力、粮食、预计出战粮草和城防；第 7 日提供正式进入 C0 或正式撤退事务。
-- 正式城市通过直接引用把当前 `BlankMapRoot` 与唯一 `ConstructionController` 交给 `res://scenes/c0_battle_graybox.tscn`；独立 C0 仍可使用原测试 fixture，二者明确区分。
-- 正式胜利、失败和战场主动撤退均由真实 C0 tick 演算产生；军令台战前撤退也创建正式请求、会话、撤退命令和 `BattleResult`，不是无损跳过。
-- 正式战果在现有原子写回中增加粮草消耗、城防损伤、剩余敌军和首战结果；重复确认、重复返回、重复撤退不能二次修改城市。
-- 胜利把本次敌军威胁降为 0；撤退保留剩余威胁并损伤 5 城防；失败把当前城防降为 0 并进入城市失守。胜利和撤退确认战后摘要后解锁，失败始终锁定。
-- 已结算首战不会在第 8 日由旧威胁时间表重新生成；后续仍执行普通日期、资源和城市逻辑，但本轮没有新增第二场特殊事件。
-- 告示板已在 P1-G1 作为独立小型任务入口加入；它不替代军令台，历战与外城入口仍未实现。
+- malformed 或 stale sequence restore；
+- Training 资源、容量、供养或 exhausted create；
+- Army 容量、active limit 或 exhausted reservation；
+- 重复/冲突结果写回；
+- 非法 V1 migration；
+- invalid store preflight；
+- write、publish、final reread 和 live apply 注入失败。
 
-## C0 最小真实战斗灰盒
+合法 V1 空训练队列允许保留已经验证的历史下单日，并能迁移到 V2。
 
-- P1-E 已复用 C0 形成正式首战入口；C0 的路线意义、节奏、表现和命令手感未通过产品体验门禁，后续正式北坡战场不得只是给当前数字灰盒换皮。
-- 当前城市状态继续由 `ConstructionController` 单一持有；`CombatTransactionCoordinator` 只管理一个临时战斗事务，不是第二套城市或国家 `WorldState`。
-- 出征兵力采用活动预留：战斗期间从可用兵力中排除，但只有结果确认时才按实际伤亡修改城市总兵力。
-- `BattleRequest`、双方不可变快照、`BattleSession`、`BattleOrder`、`BattleResult` 和 `BattleResultApplier` 组成单向事务。
-- 胜利、失败和撤退都产生正式结果；幸存兵力、伤亡、首通和奖励通过稳定结果 ID 只应用一次。
-- 战场临时路线、城门和小队不得进入城市 placement 或 occupied cells。
-- 首战规则为两条路线、最多三支步兵小队、前进／坚守／撤退、0.25 秒固定 tick 和无隐藏随机数的聚合生命演算。
-- 命令使用递增序号并在下一个 tick 边界生效；权威状态只使用整数 tick、整数生命和定点距离，画面刷新不能反向修改战果。
-- 先锋官和守备官只使用 P1-D 已有攻击／防御被动；辎重官不新增战斗效果，继续只影响城市维护。
-- 首次胜利确认应用木材 30、粮食 20；重复确认、重复返回和历史重打均不能重复领取。
-- 当前没有正式存档，C0 只承诺同一进程内的原子性和幂等性；跨进程恢复若需要存档迁移，将触发正式停止条件。
-- 独立灰盒继续标有 `C0 Battle Graybox` 并使用 fixture；正式军令台入口则使用当前城市权威状态，两者复用同一场景和演算，不存在第三个战斗场景。
-- C0 全局退出热修增加常驻返回入口：战前返回会取消 `RESERVED` 预留且不生成战果；战中退出必须确认并按确定性全军撤退结算；战果确认后返回只复用既有幂等返回契约。
-- C0 只用 `_unhandled_input` 接收 Esc，不复制城市 `_input`；退出确认打开时冻结战斗 tick 和小队输入，取消后恢复，重复确认或返回不能二次写回。
-- 战前返回恢复首战 `PENDING`，正式战果返回继续显示既有战后摘要；操作系统窗口关闭仍由 Godot 默认退出路径处理。
-- `BattlePresentationModel` 只把现有请求、会话和任务定义投影为中文路线、小队、敌军和任务目标；读取前后 `BattleSession` digest 必须一致。
-- C0 小队标记现在可以点选，底部只有一套“推进／坚守／撤退”命令；选择仅属于 UI，命令仍通过现有递增序号和下一固定 tick 规则进入唯一 BattleSession。
-- 敌军没有权威移动坐标，V0 只显示在路线尽头并从真实距离派生接敌状态，不用视觉插值伪造敌军移动。
+## V5-G2 验收证据
 
-## 开发运行身份与单实例入口
+fresh reviewer：
 
-- 正式城市验收统一使用仓库根目录的 `RUN_CURRENT_TXWZS.command`。
-- 启动器每次实时读取 branch、7 位 commit 和 dirty 状态，固定启动 `res://scenes/blank_map.tscn`，不硬编码用户目录。
-- 标准 CITY 窗口标题为 `天下无战事 · CITY · <branch>@<commit> · DEBUG`；dirty 工作区额外显示 `DIRTY`。
-- C0 使用有效身份参数独立启动时显示 `BATTLE-C0`；绕过标准身份参数直接运行的 debug 场景显示 `DEBUG · UNIDENTIFIED`，不得用于版本验收。
-- 启动器只关闭自己登记、且进程命令同时匹配仓库路径和唯一启动凭据的旧实例；遇到未登记的同仓库 GUI 进程会拒绝再启动。
-- PID、启动凭据、branch、commit、dirty、scene、时间和日志只写入 `/tmp`，不进入仓库或游戏权威状态。
-- 运行身份不修改日期、暂停、资源、建筑、战斗、输入、存档或 P1-E／P1-F 状态。
+```text
+/root/v5_g2_boundary_fresh_independent_reviewer_003
+```
 
-## 尺寸与导航
+独立结果：
 
-- 地图真实尺寸由 `MapWorld/MapBoard.size` 读取，为 2200 x 1400。
-- 默认运行视口为 1152 x 648；最终以本轮 Godot 4.5.1 运行记录为准。
-- 初始相机以地图中心对齐当前安全矩形；默认收起侧栏时为 `(1100, 676)`，初始缩放为 `1.0`。
-- 左键、中键和右键均可启动拖动；移动阈值为 8 像素。
-- 滚轮缩放范围为 `0.6–1.6`，每档 `0.1`，以鼠标所在地图位置为缩放中心。
-- 相机边界根据地图尺寸、顶部栏、当前侧栏状态和 zoom 动态计算；地图覆盖安全矩形，建筑可移入无遮挡区域。
+| 项 | 结果 |
+| --- | --- |
+| boundary probe | 29/29，exit 0 |
+| P5 persistence | 51/51，exit 0 |
+| G2 focused | 6/6，185 assertions |
+| tracked | 33/33，1739 assertions |
+| all-present | 35/35，1871 assertions / 1905 PASS |
+| V5 cold workers | A/B/C 0/0/0 |
+| S1A.2 cold workers | A/B/C 0/0/0 |
+| city / Blackstone / C0 | exit 0，error signatures 0 |
+| editor | exit 0，error signatures 0 |
+| diff checks | exit 0 |
 
-## 明确未实现
+上述统计与要求基线无差异。最终验收报告见
+[TXWZS_V5_G2_FINAL_ACCEPTANCE.md](docs/reports/TXWZS_V5_G2_FINAL_ACCEPTANCE.md)。
 
-- 未实现惯性、回弹、真实小地图、正式美术或正式存档；军令台只接入固定的北坡首战，不是通用战役选择系统。
-- 未实现或宣称触控板 `InputEventPanGesture` 支持。
-- 未实现建筑移动、升级、批量操作、撤回、多城市、后续时代兵种、装备、正式科技树 UI 或历战入口。
-- 未实现外城、多战役、随机事件、通用失败重开或第二场特殊战争。
-- 未实现任何 L2／L3 升级定义或升级操作；界面明确显示“下一等级：当前切片未开放”，不伪造成本和收益。
-- 未实现建设结果在正式北坡战场中的完整空间表现、正式战场反馈、首图平衡模拟或 P1-F 最终用户体验门禁。
+## S1A.2 保护
 
-## 验证边界
+裁决保持 `CONDITIONAL_REUSE_ACCEPTED`：复用存储机制与 V1 只读输入，不
+采用 V1 writer/schema。
 
-- 自动验证：主场景、资源、地图/视口尺寸、Camera2D position/zoom、输入路径、松开停止、zoom 上下限、四向边界、固定 UI。
-- Godot 4.5.1 辅助验证记录：视口 1152 x 648、地图 2200 x 1400、初始相机 `(1100, 700)`；左/中/右阈值拖动、松开停止、可见建筑屏幕坐标变化、固定 UI、zoom `0.6–1.6` 和四向边界通过。
-- P0-03B-S1 自动验证：40 单位网格、3 x 2 六格占地、首次放置、重复占用拒绝、右键取消、`Esc` 取消、四个常驻 UI 遮挡区拒绝确认、UI 遮挡不写入 occupancy，以及相机移动后同一世界格重新可建。
-- P0-04B-S1 自动验证：选择、切换、空白取消、Esc、关闭按钮、8 px 点击／拖动分流、0.6／1.0／1.6 zoom 命中、面板防穿透、动态遮挡、建造互斥及失效引用清理通过。
-- P0-05 自动验证：权威建筑记录、placement ID 单调递增、占用格所有权、确认／取消分流、精确移除、重复移除幂等、原位重建、意外离树清理和既有闭环回归通过。
-- P0-06 自动验证：六个固定建筑统一注册、统一记录字段与唯一 placement ID、固定能力限制、固定占用拒绝重叠、统一选择与详情、军令台中性说明、右侧建造入口／模板列表防穿透、底栏完整移除、运行时安全移除和 P0-05 回归通过。
-- P1-A 自动验证：类型化道路／伐木场定义、四向路网、未接路停用、断路停产、恢复后次日生产、资源不足原子拒绝。
-- P1-B 自动验证：农田与仓库定义、粮食生产、维护后容量封顶、每日明细、仓库扩容和容量来源移除。
-- P1-C 自动验证：第 5／8／10／12 日边界、敌军与工事公开、城防减损、确定性停产、第 9 日检查点，以及第 12 日后继续通用日结算且不重复特殊事件。
-- P1-D 自动验证：基础／轮训征募、次日训练、军粮维护与供给恢复、一个将领槽、三个将领修正、科技前置、石器增产、检查点字段和一次紧急动员。
-- P1-A 至 P1-D 原回归全部继续通过；Godot 4.5.1 headless 主场景启动和 editor scan 无脚本、场景或资源错误。
-- C0 自动验证：兵力事务、五个日期快照、命令 tick 边界、100 次确定性重放、胜利／失败／撤退、双路线、首通奖励、重复确认／返回、历史重打、非法事务无部分写入、战场不污染城市和不同画面采样频率下一致。
-- C0 退出热修自动验证：战前按钮与 Esc 零战果返回、战中 Esc 确认／取消、全军撤退一次性写回、重复确认／返回防重入、战果待确认不可绕过、胜利／失败／撤退返回回归、城市输入与镜头恢复，以及默认窗口关闭未被拦截。
-- P1-G1 自动验证：三项 mission schema 与 ID、告示板任务卡、唯一活动 BattleSession、三种差异化目标胜负、战前零结算返回、胜利／失败／撤退写回、结果与首胜奖励幂等、重玩不重复奖励、瞭望塔目录资格及全部既有回归。
-- P1-G2 自动验证：表现投影不修改 BattleSession、单一选择与命令路径、两路敌军和接敌、粮车生命与危险方向、斥候发现前隐藏及发现后撤离提示、无测试按钮、无第二个 `_input`，以及 1152×648、1280×720、1920×1080 主要区域无裁切。
-- P1-E 自动验证：第 6 日一次性预警、第 7 日战争阻断、战略操作锁、军令台情报、正式 C0 入口、胜利／失败／战场撤退／军令台撤退、粮草与城防后果、战果幂等、战后解锁或城市失守，以及独立 C0 fixture 回归。
-- C0-E 全量回归共 13 个 Godot smoke runner 全部通过；主场景 headless smoke、editor scan、资源引用和节点唯一性检查通过。
-- 当前完整回归共 `26/26` 个 Godot smoke runner 通过：`1364` 条明确断言通过，另有 `26` 条 runner 总结通过，全部 `PASS` 行合计 `1390`；S1A.1 覆盖严格快照契约、引用隔离、确定性派生、真实 apply 阶段故障回滚、重复恢复、稳定 ID、时间状态与恢复后继续日结算，既有 P0／P1／C0 回归继续通过。
-- C0 AI 非 headless smoke 实际操作得到：Tick 640 侧门胜利（幸存 25、伤亡 25、木材 +30、粮食 +20）、Tick 720 超时失败（幸存 26、伤亡 24）和 Tick 135 主动撤退（幸存 50、伤亡 0）。
-- AI smoke 只证明当前灰盒可操作和事务写回可见，不代表用户已经接受路线意义、战斗节奏、命令反馈或手感。
-- 用户人工验收：实体地图拖动与滚轮缩放通过；可以进入建造并成功放置测试建筑。
-- P0-04B-S1 用户人工验收：用户于 2026-07-25 完成 10 项实体鼠标测试并全部确认正常，详见 `docs/reports/P0_04B_BUILDING_SELECTION_PHYSICAL_ACCEPTANCE.md`。
-- P0-05 用户人工验收：用户于 2026-07-25 完成 16 项实体鼠标测试并反馈暂未发现问题，详见 `docs/reports/P0_05_RUNTIME_BUILDING_LIFECYCLE_PHYSICAL_ACCEPTANCE.md`。
-- P0-06 用户验收：用户于 2026-07-25 接受当前结果作为阶段版本，详见 `docs/reports/P0_06_UNIFIED_BUILDING_INTERACTION_STAGE_ACCEPTANCE.md`；未将该整体接受扩写为完整逐项实体测试。
-- 截图观察：已占用位置显示红色无效预览。
-- 未经用户实体确认：本轮第 6 日预警可读性、第 7 日军令台操作、正式 C0 入口、胜利、失败、两种撤退和战后摘要手感；这些项目当前只有自动测试和截图证据。
-- 未经用户实体确认：建设目录的数据密度、一日施工节奏、施工／完工反馈、军令台准备建议是否易懂，以及经济／征募／防御是否已经形成真实取舍。
-- 未经用户实体确认：C0 的“进入战斗 → Esc → 取消 → 再次 Esc → 确认撤退 → 返回内城”实体键鼠路径；自动测试不替代该阻断缺陷的真人复测。
-- 未经用户实体确认：点击告示板、三项任务的实际操作可读性、任务目标进度、胜利／失败／撤退返回手感及瞭望塔目录消失；当前只有自动测试证据。
-- 未经用户实体确认：P1-G2 的战场空间是否足够易读、小队实体点击是否顺手、最近战况是否足以解释胜负，以及清剿／护送／侦察三类任务的视觉差异；当前只有自动测试和 AI GUI smoke 证据。
+| 文件 | SHA-256 |
+| --- | --- |
+| `scripts/state/early_city_save_store_v1.gd` | `c751fe6c3fcedfb50d7db3c1af16a56b6c2cf0ed1eadeb42c6b849328ebf5d98` |
+| `scripts/state/early_city_save_store_v1.gd.uid` | `8ec3208713fc5a9d53246b776a51789fc3f12512ce75443ac20dee3d2ad2ce5b` |
+| `scripts/state/early_city_snapshot_disk_codec_v1.gd` | `3901e1e8526c4ba76f1d89214b644a4332c06dee60e08defe30fc3071d2154a2` |
+| `scripts/state/early_city_snapshot_disk_codec_v1.gd.uid` | `4a9e8af7f5e92ec16dd273d90a0cf2807f31d16999d5469e995beb43333cb91a` |
+| `tests/run_s1a2_early_city_disk_roundtrip_smoke.gd` | `6912b485c6784c6832ca25883b3179a56e8faa988f18e2418eb534dc8daa03b0` |
+| `tests/run_s1a2_early_city_disk_roundtrip_smoke.gd.uid` | `3d13df34c2c938cbe7f50e83bd064b97d8cb4ca79c2310675ef0583dea138e30` |
+| `tests/s1a2_early_city_disk_worker.gd` | `6ef1b3a0559679d20c13678f0aef4f5d25c690ae3ce4acc4b5376e08f236eb87` |
+| `tests/s1a2_early_city_disk_worker.gd.uid` | `a51e76f958ebce3933ca4091a9acb45ba50047f1ca5e32c6f41c7d3360c96764` |
+
+八文件必须继续是唯一 untracked、unstaged，前后哈希不变。
+
+## 主控计划
+
+- Plan version：`1.0.2-v5-g2-fresh-review-accepted-003`
+- Workbook：13 sheets
+- Formula errors：0
+- Workbook ↔ 5 CSV：`totalMismatches=0`
+- V5 进度：75% VERIFIED
+- 唯一 Gate 边界：停止于 G2，不进入 G3
+
+权威计划文件：
+
+- [TXWZS_MASTER_DEVELOPMENT_CONTROL.xlsx](docs/planning/TXWZS_MASTER_DEVELOPMENT_CONTROL.xlsx)
+- [TXWZS_MASTER_DEVELOPMENT_CONTROL.md](docs/planning/TXWZS_MASTER_DEVELOPMENT_CONTROL.md)
+- `docs/planning/csv/` 下五份镜像。
+
+## 当前运行与验证
+
+Godot：`4.5.1.stable.official.f62fdbde1`；project feature set `4.5`。
+
+正式 CITY 入口：
+
+```text
+RUN_CURRENT_TXWZS.command
+```
+
+Headless：
+
+```sh
+GODOT=/Applications/Godot.app/Contents/MacOS/Godot
+"$GODOT" --headless --path . --scene res://scenes/blank_map.tscn --quit-after 5
+"$GODOT" --headless --path . --scene res://scenes/blackstone_expedition_mvp.tscn --quit-after 5
+"$GODOT" --headless --path . --scene res://scenes/c0_battle_graybox.tscn --quit-after 5
+"$GODOT" --headless --path . --editor --quit
+```
+
+单个测试：
+
+```sh
+"$GODOT" --headless --path . --script res://tests/run_v5_vertical_loop_smoke.gd
+```
+
+窗口中的 `branch@commit`、`DEBUG`、`DIRTY`、`UNIDENTIFIED`、`CITY` 和
+`BATTLE-C0` 必须按 README 的身份规则解释。自动输入和截图不能替代真实
+鼠标体验。
+
+## 文档与恢复
+
+活跃文档只有：
+
+- `README.md`
+- `CURRENT_STATE.md`
+- `docs/architecture/TXWZS_ARCHITECTURE_CONTRACT.md`
+- `docs/planning/TXWZS_MASTER_DEVELOPMENT_CONTROL.md`
+- `docs/reports/TXWZS_V5_G2_FINAL_ACCEPTANCE.md`
+- `docs/reports/TXWZS_POST_G2_DOCUMENTATION_CONVERGENCE.md`
+- `CHANGELOG.md`
+- `docs/MIGRATION_HANDOFF.md`
+- `AGENTS.md`
+
+被删除的历史 Markdown 仍可从 `af24416` 或更早 Git 历史恢复。没有创建
+`docs/archive`，也没有重写 Git 历史。
+
+## 下一步与禁止项
+
+下一项在用户另行授权后执行：
+
+```text
+M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS
+```
+
+当前禁止：
+
+- 进入 G3；
+- 修改运行时代码、场景、资源或测试语义；
+- stage S1A.2；
+- push、tag、fresh clone、部署；
+- 清理或迁移存档；
+- 把测试通过扩写为用户体验或发布结论。
