@@ -2,18 +2,24 @@
 
 ## 当前阶段
 
-- `V5_G2_REPAIRED_PENDING_INDEPENDENT_REVIEW`
+- `V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED`
 
 ## 验收状态
 
+- 2026-07-31，fresh reviewer `/root/v5_g2_boundary_fresh_independent_reviewer_003` 在正式 worktree 绑定完整提交链 `cd7be2b → e2c1096 → 5d659243 → fab962c → 4d0fbfc`，独立签发唯一 verdict：`V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED`。
+- 独立动态证据：新临时边界 probe 29/29；正式 P5 persistence runner 51/51；string／float／null／容器／负数／零／INT64_MAX sequence 均拒绝且零部分恢复；MAX-1→successor→exhausted sentinel 正确；Army exhaustion 在 reservation／transaction／garrison 写入前失败；合法 V1 空队列历史日只读迁移成功；非法迁移、创建、恢复和 store preflight 均零部分写入。临时 probe 已删除，未暂存、未提交。
+- 完整现场回归与要求基线精确一致：G2 focused 6/6、185 条；tracked 33/33、1739 条；all-present 35/35、1871 条／1905 PASS；V5 与 S1A.2 cold workers A/B/C 均 exit 0；正式城市、黑石堡、C0、editor、worktree/repair `git diff --check` 均 exit 0，错误签名 0。
+- `fab962c` 精确四文件 repair 已独立接受：`scripts/army/training_queue.gd`、`scripts/army/army_registry.gd`、`scripts/construction_controller.gd`、`tests/run_v5_campaign_persistence_smoke.gd`。未发现新实质缺陷；不需要新源码修复。
+- S1A.2 八文件前后 SHA-256 不变，仍是唯一 untracked、unstaged；本结论不把 V1 文件采用为 V5 writer/schema，`CONDITIONAL_REUSE_ACCEPTED` 边界不变。
+- 独立验收报告见 `docs/reports/TXWZS_V5_G2_STABLE_ID_BOUNDARY_REPAIR_FRESH_INDEPENDENT_REVIEW_003.md`。精确 16 项任务和 V5-G2 已同步为 `VERIFIED`；本轮只形成报告、状态、主控 XLSX／Markdown／五 CSV 的本地 acceptance checkpoint，随后停止，不进入 G3，不 push、不部署、不清理既有 Markdown。
 - 2026-07-31，新的独立 reviewer `/root/v5_g2_repair_independent_reviewer_002` 在正式 worktree `/Users/m1-meng/.codex/worktrees/3231/godot-天下无战事2` 绑定 `cd7be2b → e2c1096 → 5d659243`。同一正式 codec/store/restore 对抗用例在 `cd7be2b` 动态复现 Training／Army `.000001` 覆盖，在 `e2c1096` 确认原 rollback 已拒绝。
-- 本轮同时确认 `e2c1096` 仍接受字符串／浮点 sequence、未封堵持久化上限与 successor 边界，并让“无 active order、保留历史下单日”的合法 V1→V2 迁移失败。因此 reviewer 按 verdict B 完成最小 follow-up repair `fab962c0a84024e7034c32e9d5c39debc1659c5f`，但不得自签接受；当前仍为 `V5_G2_REPAIRED_PENDING_INDEPENDENT_REVIEW`。
+- 本轮同时确认 `e2c1096` 仍接受字符串／浮点 sequence、未封堵持久化上限与 successor 边界，并让“无 active order、保留历史下单日”的合法 V1→V2 迁移失败。因此 reviewer 按 verdict B 完成最小 follow-up repair `fab962c0a84024e7034c32e9d5c39debc1659c5f`，但不得自签接受；该轮终态为 `V5_G2_REPAIRED_PENDING_INDEPENDENT_REVIEW`，后由 fresh review 003 独立关闭。
 - `fab962c` 要求 stable-ID sequence 为整数，显式处理 exact-persistence exhausted sentinel，在 Army reservation 写权威状态前阻断 sequence exhaustion，并恢复合法 V1 空队列历史迁移。永久 P5 runner 现为 51 条断言，且在 `cd7be2b`／`e2c1096` 生产语义下分别暴露原 rollback 与新边界回退。
 - 最终回归：G2 focused 6/6、185 条明确断言；tracked 33/33、1739 条；all-present 35/35、1871 条／1905 条 PASS；正式城市、黑石堡、C0、editor scan、`git diff --check` 均 exit 0，最终错误签名 0。
 - 主控 XLSX、Markdown 与五份 CSV 未改动，Git blob 与已验证的 `5d659243` 规划 checkpoint 完全相同：13 sheets、公式错误 0、`totalMismatches=0` 的同源关系保持；精确 16 项仍为 `IMPLEMENTED_PENDING_REVIEW`，V5-G2 未 VERIFIED，G3–G6／P6／P7／V6 未启动。S1A.2 八文件前后 SHA-256 不变且仍是唯一 untracked、unstaged。
 - 新复审证据见 `docs/reports/TXWZS_V5_G2_STABLE_ID_SEQUENCE_REPAIR_INDEPENDENT_REVIEW_002.md`。下一唯一 Gate 为 `V5-G2 Stable-ID Boundary Repair Fresh Independent Review`，不得先进入 G3。
 - 2026-07-30，独立 reviewer `/root/v5_g2_independent_reviewer` 绑定原始 G2 candidate `cd7be2b4e65f453889c5f49a4922f788cca08a68`、parent `ee32d8445b11260a26501768da2c58abca78a113` 与 40-file tracked scope，复现了 checksum-valid snapshot 可倒退 `next_order_sequence`／`next_army_sequence` 并在恢复后复用稳定 ID 的缺陷。
-- 同轮最小修复让 `TrainingQueue` 和 `ArmyRegistry` 恢复校验拒绝任何不大于既有最大稳定 ID 的序列，并给 P5 增加两条对抗断言。精确三文件原子 repair commit 为 `e2c1096f858d571d4621b93174d3848406b42ffa`，parent 为原始 G2 candidate `cd7be2b4e65f453889c5f49a4922f788cca08a68`。修复 reviewer 不得自行接受，当前统一 verdict 为 `V5_G2_REPAIRED_PENDING_INDEPENDENT_REVIEW`；G3/G4/G5/G6/P6/V6 均未启动。
+- 同轮最小修复让 `TrainingQueue` 和 `ArmyRegistry` 恢复校验拒绝任何不大于既有最大稳定 ID 的序列，并给 P5 增加两条对抗断言。精确三文件原子 repair commit 为 `e2c1096f858d571d4621b93174d3848406b42ffa`，parent 为原始 G2 candidate `cd7be2b4e65f453889c5f49a4922f788cca08a68`。修复 reviewer 不得自行接受，该轮 verdict 为 `V5_G2_REPAIRED_PENDING_INDEPENDENT_REVIEW`；后续 `fab962c` 与 fresh review 003 已关闭该门，G3/G4/G5/G6/P6/V6 仍未启动。
 - 纵向闭环 20 条断言继续通过。V5 六个专项 runner 为 6/6、168 条明确断言；tracked 为 33/33、1722 条明确断言；all-present 为 35/35、1854 条明确断言／1888 条 PASS 行。正式城市、黑石堡、C0 场景和 editor scan 均 exit 0，最终错误签名为 0。
 - P2/P3/P4/P5 本地 checkpoints 分别为 `023f11a`、`a95f510`、`8a6e65a`、`ee32d84`；原始 G2 candidate 为 `cd7be2b`。S1A.2 八个受保护文件在复审及修复前后 SHA-256 完全不变，继续 untracked、unstaged。
 - 主控工作簿与 Markdown／五份 CSV 镜像已同步到 `1.0.1-v5-g2-repair-001`：16 个 G2 runtime tasks 仍为 `IMPLEMENTED_PENDING_REVIEW`，V5-G2 Gate 未标 VERIFIED，V4/G0/G1 与 V6 状态保持不变。工作簿 13/13 sheets 已重新渲染，公式错误扫描为 0，工作簿与五份 CSV 逐值比对 `totalMismatches=0`；`roadmap.csv` 重导后保持 byte-identical。
@@ -40,7 +46,7 @@
 - V5-G1 候选形成时实现了六项合同：TrainingQueue 源状态、战略时间／暂停／战争阻断／场景切换矩阵、可持久化 ArmyState 集合、遭遇事实与权威写回、S1A.2 只读复用裁决、V5 schema／迁移失败／回滚边界；其候选状态曾为 `IMPLEMENTED_PENDING_INDEPENDENT_REVIEW`，现已由后续独立复审接受为 `VERIFIED`。
 - G1 静态合同与当前代码所有权校验为 51/51；最终 V5 专项 27 条断言、tracked 29/29 共 1601 条断言、all-present 30/30 共 1713 条断言／1742 条 PASS 行通过；正式主场景、黑石堡、editor scan、工作簿 38 项持久化校验、`git diff --check` 和最终错误签名扫描均通过。证据目录：`/tmp/txwzs-v5-g1-contracts-001.0QQ8C8`。
 - 主控工作簿及 Markdown／五份 CSV 镜像已同步到计划版本 `0.8.0-v5-g0-review-g1-contracts-001`：P0/P1 十一项和 V5-G0 为 VERIFIED；六项 G1 任务为 IMPLEMENTED_PENDING_REVIEW；V5 进度为 11/44（25% VERIFIED）。
-- 在 G1 候选形成当时，V5-G2 仍是 `NOT AUTHORIZED`；该历史状态已由后续 G1 独立接受和条件授权取代。当前 V4 仍为 `VERIFIED / FROZEN`，V5-G2 为 `REPAIRED_PENDING_INDEPENDENT_REVIEW`，V6 `NOT STARTED`。
+- 在 G1 候选形成当时，V5-G2 仍是 `NOT AUTHORIZED`；该历史状态已由后续 G1 独立接受、条件授权和 G2 fresh independent acceptance 取代。当前 V4 仍为 `VERIFIED / FROZEN`，V5-G2 为 `VERIFIED`，V6 `NOT STARTED`。
 - 2026-07-30，V5 已从冻结的 V4 checkpoint `5357c28` 开始首个实质切片；P0 基线／所有权／数据合同与 P1 单兵种驻军实现已完成，原始候选为 `IMPLEMENTED_PENDING_REVIEW`，尚未标记 V5 Gate VERIFIED。
 - `ConstructionController` 继续是唯一城市运行时写入者；新增私有 `GarrisonState` 作为本城兵种数量源，旧 `infantry_count` 是兼容属性而不是第二份存储。
 - 当前只公开既有 `UnitRole` 的稳定 ID `unit_role.infantry_basic`；没有复制战斗数值、增加第二兵种或创建第二套 `CityState`。

@@ -2,13 +2,13 @@
 
 ## Control Metadata
 
-- Plan version: 1.0.1-v5-g2-repair-001
-- Updated: 2026-07-30
+- Plan version: 1.0.2-v5-g2-fresh-review-accepted-003
+- Updated: 2026-07-31
 - Workbook: docs/planning/TXWZS_MASTER_DEVELOPMENT_CONTROL.xlsx
 - Canonical editing rule: edit the workbook first, then export Markdown/CSV in the same planning change.
 - Fact authority: Git, code, configuration, tests, and identified runtime evidence override this plan.
-- Current phase: V4 VERIFIED / FROZEN; V5-G0 VERIFIED; V5-G1 VERIFIED; V5-G2 REPAIRED_PENDING_INDEPENDENT_REVIEW
-- Unique next gate: fresh independent review of the V5-G2 repair candidate; do not enter G3/G4/G5/G6/V6 first
+- Current phase: V4 VERIFIED / FROZEN; V5-G0 VERIFIED; V5-G1 VERIFIED; V5-G2 VERIFIED; V5 IN_PROGRESS
+- Unique next action: stop at the V5-G2 acceptance checkpoint and await separately authorized Markdown convergence; do not enter G3/G4/G5/G6/V6
 - Gate instances: 63 (V4–V12 × G0–G6)
 - Requirements / tasks / tests: 25 / 88 / 69
 - P0 uncovered requirements: 0
@@ -17,7 +17,7 @@
 
 | Field | Value |
 | --- | --- |
-| Branch / parent HEAD | codex/v5-g0-review-g1-contracts-001@e2c1096 repair checkpoint |
+| Branch / reviewed HEAD | codex/v5-g0-review-g1-contracts-001@4d0fbfc5aefe07509db115f8f4f68e22aeda8a98 |
 | Upstream | none for the local branch; no push |
 | V4 checkpoint | 5357c28 (`feat: freeze verified V4 milestone`) |
 | V5 repair candidate | bd15fca, parent 242f793, independently accepted |
@@ -30,18 +30,20 @@
 | V5 P4 checkpoint | `8a6e65a` (`feat: implement V5 encounter settlement`) |
 | V5 P5 checkpoint | `ee32d84` (`feat: implement V5 campaign persistence`) |
 | V5 G2 candidate | `cd7be2b`, parent `ee32d84`; independent review found stable-ID sequence rollback |
-| V5 G2 repair checkpoint | `e2c1096f858d571d4621b93174d3848406b42ffa`, parent `cd7be2b`; exact three code/test files |
-| V5 G2 review verdict | `V5_G2_REPAIRED_PENDING_INDEPENDENT_REVIEW`; repair reviewer cannot self-accept |
+| V5 G2 reviewed chain | `cd7be2b` → `e2c1096` → `5d659243` → `fab962c` → `4d0fbfc`; all ancestor checks passed |
+| V5 G2 repair checkpoint | `fab962c0a84024e7034c32e9d5c39debc1659c5f`; exact four-file repair: training queue, army registry, construction controller, P5 smoke |
+| V5 G2 review verdict | `V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED`; fresh reviewer `/root/v5_g2_boundary_fresh_independent_reviewer_003` |
 | Protected untracked | 8 S1A.2 files |
 | G0 boundary probe | 10 explicit assertions: dispatchable 10; reserve 12 rejects without writes; reserve 10 succeeds |
 | G0 V5 focused | 27 explicit assertions, all passed |
 | G0 tracked regression | 29/29 runners, 1601 explicit assertions, 0 error signatures |
 | G0 all-present regression | 30/30 runners, 1713 explicit assertions / 1742 PASS lines, 0 error signatures |
 | G0 evidence | /tmp/txwzs-v5-g0-review-002.BlGA2l |
-| G2 V5 focused | 6/6 runners, 168 explicit assertions |
-| G2 tracked regression | 33/33 runners, 1722 explicit assertions |
-| G2 all-present regression | 35/35 runners, 1854 explicit assertions / 1888 PASS lines |
-| G2 evidence | durable: atomic repair commit + `docs/reports/TXWZS_V5_G2_RUNTIME_PACKAGE_INDEPENDENT_REVIEW_001.md`; command/exit statistics are session records without retained per-run log directory |
+| G2 fresh boundary probe | 29/29 assertions; P5 permanent runner 51/51 |
+| G2 V5 focused | 6/6 runners, 185 explicit assertions |
+| G2 tracked regression | 33/33 runners, 1739 explicit assertions |
+| G2 all-present regression | 35/35 runners, 1871 explicit assertions / 1905 PASS lines |
+| G2 evidence | `docs/reports/TXWZS_V5_G2_STABLE_ID_BOUNDARY_REPAIR_FRESH_INDEPENDENT_REVIEW_003.md`; cold A/B/C 0/0/0, formal scenes/editor/diff/error scans all clean |
 
 The `/tmp` evidence is session-local, not the durable rollback point. The durable V4 rollback point is the local V4 checkpoint commit containing this revision and its parent. The eight protected S1A.2 files remain outside that checkpoint.
 
@@ -53,14 +55,14 @@ The `/tmp` evidence is session-local, not the durable rollback point. The durabl
 - V4 stores marching armies in the scene script. `_marching_armies` is an array, but the implementation only updates element 0 and blocks concurrent commands.
 - WorldMapPresentationModel is a read-only fixture, not persistent strategic state.
 - S1A.1 memory snapshots are accepted. S1A.2 remains `CONDITIONAL_REUSE_ACCEPTED`: V5 reused validation and immutable-generation mechanics through separate V2 files, while all eight protected V1 files stayed hash-identical, untracked, and unstaged.
-- G0 independent review accepted `bd15fca`; G1 independent review accepted `b3a7f03`. G2 review of `cd7be2b` found checksum-valid sequence rollback could reuse stable training-order and army IDs. The reviewer applied the minimal validator repair and full regression, but cannot self-accept it; G2 remains pending a fresh independent review.
+- G0 independent review accepted `bd15fca`; G1 independent review accepted `b3a7f03`. G2 review of `cd7be2b` found checksum-valid sequence rollback could reuse stable training-order and army IDs. The later four-file repair `fab962c` closed type, range, exhaustion, pre-write and legal V1 migration boundaries; fresh Review 003 independently accepted it at reviewed checkpoint `4d0fbfc`.
 
 ## V4–V12 Roadmap
 
 | Phase | Name | Player result | Detail level | Status | Progress |
 | --- | --- | --- | --- | --- | ---: |
 | V4 | 派遣主链路冻结 | 玩家从己方驻军节点选路线、选比例、完成可见行军并得到一次性到达结算。 | Work-package | VERIFIED / FROZEN | 100% |
-| V5 | 单兵种战争底座＋城内训练补兵 | 城市能真实训练步兵；驻军可派出；伤亡、幸存、驻扎/返回写回；保存重载后保持一致。 | Detailed | IN_PROGRESS | 39% VERIFIED |
+| V5 | 单兵种战争底座＋城内训练补兵 | 城市能真实训练步兵；驻军可派出；伤亡、幸存、驻扎/返回写回；保存重载后保持一致。 | Detailed | IN_PROGRESS | 75% VERIFIED |
 | V6 | 持久外城战区＋多军队数据模型 | 多支军队可以在持久外城道路上行军、驻扎、支援、进攻、返回，重进场景后位置与进度一致。 | Medium | NOT_STARTED | 0% |
 | V7 | 步兵遭遇战 | 两军在道路或据点相遇时进入可读、可决策的步兵遭遇战，结果写回军队与战区。 | Work-package | NOT_STARTED | 0% |
 | V8 | 围城状态＋战事内城 | 军队抵达敌城后形成围城；进入临时战事内城，城墙/城门/核心代表战役，不摧毁常态内城布局。 | Work-package | NOT_STARTED | 0% |
@@ -88,7 +90,7 @@ The `/tmp` evidence is session-local, not the durable rollback point. The durabl
 - P1 uses a private `GarrisonState` under the existing `ConstructionController`, preserves `infantry_count` as a compatibility property, reuses `UnitRole`, adds a dispatchable read model, exposes “驻军 / 可派” in the city sidebar, and has a 27-assertion focused runner.
 - G1 adds six independently accepted contract artifacts: TrainingQueue source state; strategic-time/scene matrix; ArmyState collection; encounter facts/writeback; S1A.2 reuse decision; and V5 save schema/migration/rollback.
 - G2 implements the contracted `TrainingQueue`, collection-based `ArmyRegistry`, Army encounter settlement adapter, `CampaignSnapshotV2`, `SaveEnvelopeV1`, V1 read-only migration, immutable generations, cold-process recovery, and rollback. Independent review repaired sequence validators so a restored snapshot cannot reuse an existing stable training-order or army ID.
-- The 16 runtime tasks remain `IMPLEMENTED_PENDING_REVIEW`. Repair-agent tests are evidence, not independent acceptance. This candidate adds no second unit, multi-active policy, enemy AI, siege, new battle source, P6 UI package, or V6 work.
+- The exact 16 G2 runtime tasks are independently accepted and `VERIFIED`. This acceptance adds no second unit, multi-active policy, enemy AI, siege, new battle source, P6 UI package, or V6 work; P4-T005, P6/P7 and G3–G6 remain unstarted.
 
 ## V6 Medium Plan
 
@@ -121,12 +123,14 @@ and the protected S1A.2 hashes.
 
 The user's conditional authorization activated V5-G2. P2/P3/P4/P5 and the
 automated vertical loop are implemented. Review of original candidate
-`cd7be2b` reproduced a critical stable-ID sequence rollback defect. The same
-review task applied a minimal repair and completed focused, tracked,
-all-present, formal-scene, editor, and workbook regressions. The ledger is
-`REPAIRED_PENDING_INDEPENDENT_REVIEW`: it must not be marked VERIFIED, and
-G3/G4/G5/G6/V6 must not begin, before a fresh reviewer binds and reruns the
-repair candidate.
+`cd7be2b` reproduced a critical stable-ID sequence rollback defect. The repair
+chain ended at `fab962c`, adding strict type/range/exhaustion checks, pre-write
+Army failure, legal V1 empty-queue migration and permanent adversarial tests.
+Fresh reviewer `/root/v5_g2_boundary_fresh_independent_reviewer_003` bound
+`cd7be2b → e2c1096 → 5d659243 → fab962c → 4d0fbfc`, reran the boundary probe
+and full regression, and issued `V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED`.
+Only the exact 16 runtime tasks and V5-G2 are VERIFIED; G3/G4/G5/G6/V6 remain
+NOT_STARTED.
 
 Independent review must bind the reviewer task identity, reviewed commit/patch/hash, findings, implementer response, and re-review result. Main-agent evidence is labeled PASS_MAIN_AGENT until independently rerun.
 
@@ -153,10 +157,11 @@ Independent review must bind the reviewer task identity, reviewed commit/patch/h
 - G1 artifacts: `docs/architecture/V5_TRAINING_QUEUE_SOURCE_STATE_CONTRACT_V0.md`, `V5_STRATEGIC_TIME_SCENE_MATRIX_CONTRACT_V0.md`, `V5_ARMY_STATE_COLLECTION_CONTRACT_V0.md`, `V5_ENCOUNTER_OUTCOME_FACTS_CONTRACT_V0.md`, `V5_SAVE_SCHEMA_MIGRATION_ROLLBACK_CONTRACT_V0.md`, and `docs/reports/TXWZS_V5_S1A2_REUSE_DECISION_001.md`.
 - G1 validation matrix: `docs/testing/V5_G1_CONTRACT_TEST_MATRIX.md`.
 - G1 independent review: `docs/reports/TXWZS_V5_G1_CONTRACT_PACKAGE_INDEPENDENT_REVIEW_001.md`; verdict `V5_G1_CONTRACT_PACKAGE_REVIEW_ACCEPTED`.
-- G1 status is `VERIFIED`; original G2 candidate `cd7be2b` did not pass review. The repaired candidate is `REPAIRED_PENDING_INDEPENDENT_REVIEW` and has no acceptance verdict.
+- G1 is `VERIFIED`; original G2 candidate `cd7be2b` did not pass review. The later four-file repair `fab962c` was independently accepted at reviewed document checkpoint `4d0fbfc`.
 - G2 implementation reports: `TXWZS_V5_P2_TRAINING_TIME_IMPLEMENTATION_001.md`, `TXWZS_V5_P3_ARMY_STATE_IMPLEMENTATION_001.md`, `TXWZS_V5_P4_ENCOUNTER_WRITEBACK_IMPLEMENTATION_001.md`, `TXWZS_V5_P5_CAMPAIGN_PERSISTENCE_IMPLEMENTATION_001.md`, and `TXWZS_V5_G2_RUNTIME_PACKAGE_001.md`.
 - G2 independent review and repair report: `docs/reports/TXWZS_V5_G2_RUNTIME_PACKAGE_INDEPENDENT_REVIEW_001.md`; verdict `V5_G2_REPAIRED_PENDING_INDEPENDENT_REVIEW`.
-- G2 atomic repair checkpoint: `e2c1096f858d571d4621b93174d3848406b42ffa`, parent `cd7be2b4e65f453889c5f49a4922f788cca08a68`; exact scope is `army_registry.gd`, `training_queue.gd`, and `run_v5_campaign_persistence_smoke.gd`.
+- G2 boundary follow-up repair checkpoint: `fab962c0a84024e7034c32e9d5c39debc1659c5f`; exact scope is `training_queue.gd`, `army_registry.gd`, `construction_controller.gd`, and `run_v5_campaign_persistence_smoke.gd`.
+- G2 fresh independent acceptance: `docs/reports/TXWZS_V5_G2_STABLE_ID_BOUNDARY_REPAIR_FRESH_INDEPENDENT_REVIEW_003.md`; reviewer `/root/v5_g2_boundary_fresh_independent_reviewer_003`; verdict `V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED`.
 
 ## Four-Layer Architecture
 
