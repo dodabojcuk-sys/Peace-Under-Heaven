@@ -8,9 +8,9 @@ V4 已冻结，V5-G0、G1、G2 已 `VERIFIED`，V5 整体仍为 `IN_PROGRESS`。
 G3–G6、P6、P7、V6 尚未启动。
 
 post-G2 文档收敛已在 `b1ad4a0` 完成。当前唯一获授权的工作是
-`M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS`；该工作只允许同步
-迁移元数据、建立 GitHub branch/tag 基线并完成 fresh-clone readiness
-验证，不得进入 G3。
+`TXWZS2_P0_01_ONE_CITY_NATIONAL_STATE_READ_MODEL_SEAM`：它只增加从
+`ConstructionController` V5 权威快照导出的一城只读投影与自动测试，不引入
+第二写入者、状态树、存档、Autoload、场景或 UI，也不推进 G3。
 
 ## Git 基线
 
@@ -226,16 +226,16 @@ GODOT=/Applications/Godot.app/Contents/MacOS/Godot
 
 ## 下一步与禁止项
 
-当前只执行：
+本轮完成的已授权范围：
 
 ```text
-M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS
+TXWZS2_P0_01_ONE_CITY_NATIONAL_STATE_READ_MODEL_SEAM
 ```
 
 当前禁止：
 
 - 进入 G3；
-- 修改运行时代码、场景、资源或测试语义；
+- 将一城只读投影扩展为国家写入、多城市、存档迁移、驻军、战役或 UI；
 - stage S1A.2；
 - force push、批量推送其他 refs、部署；
 - 清理或迁移存档；
