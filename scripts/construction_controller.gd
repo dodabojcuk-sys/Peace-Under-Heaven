@@ -67,6 +67,12 @@ const V5_ARMY_DISPATCH_ADAPTER = preload(
 const V5_CAMPAIGN_SNAPSHOT = preload(
 	"res://scripts/state/v5_campaign_snapshot.gd"
 )
+const NATION_STATE = preload(
+	"res://scripts/state/nation_state.gd"
+)
+const V5_NATIONAL_RESOURCE_ADAPTER = preload(
+	"res://scripts/state/v5_national_resource_adapter.gd"
+)
 const NOTICEBOARD_MISSIONS: Array[MissionDefinition] = [
 	preload("res://resources/definitions/missions/outskirts_sweep.tres"),
 	preload("res://resources/definitions/missions/supply_relief.tres"),
@@ -272,9 +278,22 @@ var preview_origin_cell := Vector2i.ZERO
 var preview_valid := false
 var preview_invalid_reason := ""
 var current_day := 1
-var wood := 100
-var food := 80
-var tech_points := 0
+var _nation_state: NationState = NATION_STATE.new()
+var wood: int:
+	get:
+		return _nation_state.get_resource(&"wood")
+	set(value):
+		_set_legacy_resource_balance(&"wood", value)
+var food: int:
+	get:
+		return _nation_state.get_resource(&"food")
+	set(value):
+		_set_legacy_resource_balance(&"food", value)
+var tech_points: int:
+	get:
+		return _nation_state.get_resource(&"tech_points")
+	set(value):
+		_set_legacy_resource_balance(&"tech_points", value)
 var _garrison_state: GarrisonState = GARRISON_STATE.new(
 	&"blackstone_city",
 	INFANTRY_ROLE.role_id,
@@ -415,6 +434,75 @@ func _ready() -> void:
 	_update_first_war_state_for_current_day()
 	_sync_construction_ui()
 	_refresh_city_ui()
+
+
+func get_nation_state() -> NationState:
+	return _nation_state
+
+
+func _set_legacy_resource_balance(
+	resource_id: StringName,
+	value: int
+) -> void:
+	var result := _nation_state.replace_resource_balance_compatibility(
+		NationState.BLACKSTONE_CITY_ID,
+		resource_id,
+		value,
+		&"construction_controller_compatibility_setter"
+	)
+	if not bool(result.success):
+		push_error(
+			"Resource compatibility setter rejected %s: %s"
+			% [resource_id, result.error_id]
+		)
+
+
+func _commit_national_resources(
+	entries: Array[Dictionary],
+	reason: StringName,
+	local_commit: Callable = Callable()
+) -> bool:
+	return bool(_nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		entries,
+		reason,
+		local_commit
+	).success)
+
+
+func _replace_national_resources(
+	resources: Dictionary,
+	source: StringName
+) -> bool:
+	return bool(_nation_state.hydrate_shared_resources(
+		resources.duplicate(true),
+		source
+	).success)
+
+
+func _commit_national_resource_targets(
+	targets: Dictionary,
+	reason: StringName
+) -> bool:
+	var entries: Array[Dictionary] = []
+	for resource_id_value in targets.keys():
+		var resource_id := StringName(resource_id_value)
+		var before := _nation_state.get_resource(resource_id)
+		var after := int(targets[resource_id_value])
+		if after == before:
+			continue
+		entries.append({
+			"resource_id": resource_id,
+			"operation": (
+				NationState.RESOURCE_OPERATION_ADD
+				if after > before
+				else NationState.RESOURCE_OPERATION_SPEND
+			),
+			"amount": absi(after - before),
+		})
+	if entries.is_empty():
+		return true
+	return _commit_national_resources(entries, reason)
 
 
 func _process(delta: float) -> void:
@@ -573,7 +661,10 @@ func place_definition_at_cell(
 		complete_immediately
 		or definition.build_days <= 0
 	)
-	if not _register_runtime_placement_record(
+	var register_commit := Callable(
+		self,
+		"_register_runtime_placement_record"
+	).bind(
 		placement_id,
 		origin_cell,
 		definition,
@@ -585,13 +676,37 @@ func place_definition_at_cell(
 			current_day
 			if starts_completed
 			else current_day + definition.build_days
-		),
-	):
+		)
+	)
+	if charge_cost:
+		var construction_cost_entries: Array[Dictionary] = []
+		if definition.wood_cost > 0:
+			construction_cost_entries.append({
+				"resource_id": &"wood",
+				"operation": NationState.RESOURCE_OPERATION_SPEND,
+				"amount": definition.wood_cost,
+			})
+		if definition.food_cost > 0:
+			construction_cost_entries.append({
+				"resource_id": &"food",
+				"operation": NationState.RESOURCE_OPERATION_SPEND,
+				"amount": definition.food_cost,
+			})
+		var paid := (
+			bool(register_commit.call())
+			if construction_cost_entries.is_empty()
+			else _commit_national_resources(
+				construction_cost_entries,
+				&"construction_placement",
+				register_commit
+			)
+		)
+		if not paid:
+			_next_placement_id = placement_id
+			return -1
+	elif not bool(register_commit.call()):
 		_next_placement_id = placement_id
 		return -1
-	if charge_cost:
-		wood -= definition.wood_cost
-		food -= definition.food_cost
 	_refresh_placed_building_visual(placement_id)
 	_refresh_city_ui()
 	city_state_changed.emit()
@@ -1084,7 +1199,6 @@ func _advance_day_boundary(
 	var construction_completed := _complete_construction_for_current_day()
 	var maintenance_required := get_maintenance_food_cost()
 	var maintenance_paid := mini(food, maintenance_required)
-	food -= maintenance_paid
 	supply_shortage = maintenance_paid < maintenance_required
 	var training_completed := _complete_training_for_current_day()
 	var wood_income := 0
@@ -1110,11 +1224,38 @@ func _advance_day_boundary(
 
 	var wood_capacity := get_resource_capacity(&"wood")
 	var food_capacity := get_resource_capacity(&"food")
+	var food_after_maintenance := food - maintenance_paid
 	var accepted_wood := mini(wood_income, maxi(wood_capacity - wood, 0))
-	var accepted_food := mini(food_income, maxi(food_capacity - food, 0))
-	wood += accepted_wood
-	food += accepted_food
-	tech_points += 1
+	var accepted_food := mini(
+		food_income,
+		maxi(food_capacity - food_after_maintenance, 0)
+	)
+	var day_entries: Array[Dictionary] = []
+	if maintenance_paid > 0:
+		day_entries.append({
+			"resource_id": &"food",
+			"operation": NationState.RESOURCE_OPERATION_SPEND,
+			"amount": maintenance_paid,
+		})
+	if accepted_wood > 0:
+		day_entries.append({
+			"resource_id": &"wood",
+			"operation": NationState.RESOURCE_OPERATION_ADD,
+			"amount": accepted_wood,
+		})
+	if accepted_food > 0:
+		day_entries.append({
+			"resource_id": &"food",
+			"operation": NationState.RESOURCE_OPERATION_ADD,
+			"amount": accepted_food,
+		})
+	day_entries.append({
+		"resource_id": &"tech_points",
+		"operation": NationState.RESOURCE_OPERATION_ADD,
+		"amount": 1,
+	})
+	if not _commit_national_resources(day_entries, &"day_end_settlement"):
+		return false
 	last_daily_breakdown = {
 		"maintenance_food": maintenance_paid,
 		"maintenance_required": maintenance_required,
@@ -1353,18 +1494,12 @@ func export_v5_campaign_snapshot() -> Dictionary:
 		or not _active_army_encounter.is_empty()
 	):
 		return {}
-	var snapshot := {
-		"schema_version": V5CampaignSnapshot.SCHEMA_VERSION,
-		"snapshot_kind": V5CampaignSnapshot.SNAPSHOT_KIND,
-		"city_id": V5CampaignSnapshot.CITY_ID,
-		"city": {
+	var legacy_city := V5_NATIONAL_RESOURCE_ADAPTER.project_into_legacy_city(
+		{
 			"current_day": current_day,
 			"day_elapsed_milliseconds": (
 				get_day_elapsed_milliseconds()
 			),
-			"wood": wood,
-			"food": food,
-			"tech_points": tech_points,
 			"recruitment_cap": recruitment_cap,
 			"selected_general_id": selected_general_id,
 			"researched_tech_ids": researched_tech_ids.duplicate(),
@@ -1377,6 +1512,15 @@ func export_v5_campaign_snapshot() -> Dictionary:
 				"%dx" % roundi(city_time_speed)
 			),
 		},
+		_nation_state
+	)
+	if legacy_city.is_empty():
+		return {}
+	var snapshot := {
+		"schema_version": V5CampaignSnapshot.SCHEMA_VERSION,
+		"snapshot_kind": V5CampaignSnapshot.SNAPSHOT_KIND,
+		"city_id": V5CampaignSnapshot.CITY_ID,
+		"city": legacy_city,
 		"placements": _export_v5_placements(),
 		"next_placement_id": _next_placement_id,
 		"garrison": {
@@ -1931,11 +2075,22 @@ func _apply_validated_early_city_snapshot(
 
 func _install_early_city_snapshot(snapshot: Dictionary) -> Dictionary:
 	var city: Dictionary = snapshot.city
+	var legacy_resources := (
+		V5_NATIONAL_RESOURCE_ADAPTER.extract_legacy_city_resources(city)
+	)
+	if (
+		legacy_resources.is_empty()
+		or not _replace_national_resources(
+			legacy_resources,
+			&"legacy_city_snapshot_hydration"
+		)
+	):
+		return {
+			"success": false,
+			"error": "无法水合国家共享资源",
+		}
 	current_day = int(city.current_day)
 	day_elapsed_seconds = float(city.day_elapsed_seconds)
-	wood = int(city.wood)
-	food = int(city.food)
-	tech_points = int(city.tech_points)
 	infantry_count = int(city.infantry_count)
 	recruitment_cap = int(city.recruitment_cap)
 	selected_general_id = StringName(city.selected_general_id)
@@ -2829,9 +2984,13 @@ func apply_battle_result_atomic(
 		"food_after": next_food,
 	}
 
+	if not _commit_national_resource_targets(
+		{&"wood": next_wood, &"food": next_food},
+		&"battle_result_settlement"
+	):
+		_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
+		return {}
 	infantry_count = next_infantry
-	wood = next_wood
-	food = next_food
 	if request.formal_city_entry:
 		city_defense_damage += defense_damage
 		enemy_count = next_enemy_count
@@ -3175,21 +3334,34 @@ func request_training(
 	var food_cost := (
 		requested_quantity * INFANTRY_ROLE.recruit_food_per_unit
 	)
-	var order := _training_queue.enqueue(
-		StringName(unit_definition_id),
-		requested_quantity,
-		current_day,
-		current_day + 1,
-		food_cost
+	var transaction: Dictionary = _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{
+			"resource_id": &"food",
+			"operation": NationState.RESOURCE_OPERATION_SPEND,
+			"amount": food_cost,
+		}],
+		&"training_order",
+		Callable(_training_queue, "enqueue").bind(
+			StringName(unit_definition_id),
+			requested_quantity,
+			current_day,
+			current_day + 1,
+			food_cost
+		)
 	)
-	if order.is_empty():
-		_last_training_failure_id = &"TRAINING_QUEUE_COMMIT"
+	if not bool(transaction.success):
+		_last_training_failure_id = (
+			&"TRAINING_QUEUE_COMMIT"
+			if transaction.error_id == &"LOCAL_COMMIT_REJECTED"
+			else &"RESOURCE_TRANSACTION_COMMIT"
+		)
 		return {
 			"success": false,
 			"error_id": _last_training_failure_id,
 			"order": {},
 		}
-	food -= food_cost
+	var order: Dictionary = transaction.local_commit_result.duplicate(true)
 	_last_training_failure_id = &""
 	_refresh_city_ui()
 	city_state_changed.emit()
@@ -3295,7 +3467,15 @@ func research_tech(tech_id: StringName) -> bool:
 	if not can_research_tech(tech_id):
 		return false
 	var tech := get_tech_definition(tech_id)
-	tech_points -= tech.cost
+	if not _commit_national_resources(
+		[{
+			"resource_id": &"tech_points",
+			"operation": NationState.RESOURCE_OPERATION_SPEND,
+			"amount": tech.cost,
+		}],
+		&"technology_research"
+	):
+		return false
 	researched_tech_ids.append(tech_id)
 	_refresh_city_ui()
 	city_state_changed.emit()
@@ -3329,7 +3509,15 @@ func emergency_mobilization() -> bool:
 		or food < EMERGENCY_MOBILIZATION_FOOD_COST
 	):
 		return false
-	food -= EMERGENCY_MOBILIZATION_FOOD_COST
+	if not _commit_national_resources(
+		[{
+			"resource_id": &"food",
+			"operation": NationState.RESOURCE_OPERATION_SPEND,
+			"amount": EMERGENCY_MOBILIZATION_FOOD_COST,
+		}],
+		&"emergency_mobilization"
+	):
+		return false
 	infantry_count += EMERGENCY_MOBILIZATION_INFANTRY
 	emergency_mobilization_used = true
 	_refresh_city_ui()
@@ -3399,7 +3587,18 @@ func grant_blackstone_mvp_victory_reward(
 		requested_wood,
 		maxi(get_resource_capacity(&"wood") - wood, 0)
 	)
-	wood += accepted_wood
+	if (
+		accepted_wood > 0
+		and not _commit_national_resources(
+			[{
+				"resource_id": &"wood",
+				"operation": NationState.RESOURCE_OPERATION_ADD,
+				"amount": accepted_wood,
+			}],
+			&"blackstone_mvp_victory_reward"
+		)
+	):
+		return 0
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return accepted_wood
@@ -3417,9 +3616,15 @@ func restore_readiness_checkpoint() -> bool:
 		return false
 	_clear_runtime_placements()
 	current_day = int(_readiness_checkpoint.day)
-	wood = int(_readiness_checkpoint.wood)
-	food = int(_readiness_checkpoint.food)
-	tech_points = int(_readiness_checkpoint.tech_points)
+	if not _commit_national_resource_targets(
+		{
+			&"wood": int(_readiness_checkpoint.wood),
+			&"food": int(_readiness_checkpoint.food),
+			&"tech_points": int(_readiness_checkpoint.tech_points),
+		},
+		&"readiness_checkpoint_restore"
+	):
+		return false
 	infantry_count = int(_readiness_checkpoint.infantry_count)
 	recruitment_cap = int(_readiness_checkpoint.recruitment_cap)
 	selected_general_id = StringName(
@@ -3481,9 +3686,11 @@ func restart_first_map() -> bool:
 		return false
 	_clear_runtime_placements()
 	current_day = 1
-	wood = 100
-	food = 80
-	tech_points = 0
+	if not _replace_national_resources(
+		NationState.DEFAULT_SHARED_RESOURCES,
+		&"new_game_restart"
+	):
+		return false
 	infantry_count = 20
 	recruitment_cap = BASE_RECRUITMENT_CAP
 	selected_general_id = &""
@@ -3570,7 +3777,18 @@ func _apply_threat_event(threat_event: ThreatEventDefinition) -> void:
 			else threat_event.insufficient_food_loss
 		)
 		var actual_loss := mini(loss, food)
-		food -= actual_loss
+		if (
+			actual_loss > 0
+			and not _commit_national_resources(
+				[{
+					"resource_id": &"food",
+					"operation": NationState.RESOURCE_OPERATION_SPEND,
+					"amount": actual_loss,
+				}],
+				&"threat_food_harassment"
+			)
+		):
+			return
 		last_daily_breakdown.event_food_loss = actual_loss
 	elif (
 		threat_event.event_type == &"production_disruption"
@@ -5073,8 +5291,13 @@ func _get_first_war_objective_text() -> String:
 
 
 func _enforce_resource_capacity() -> void:
-	wood = mini(wood, get_resource_capacity(&"wood"))
-	food = mini(food, get_resource_capacity(&"food"))
+	_commit_national_resource_targets(
+		{
+			&"wood": mini(wood, get_resource_capacity(&"wood")),
+			&"food": mini(food, get_resource_capacity(&"food")),
+		},
+		&"resource_capacity_enforcement"
+	)
 
 
 func _definition_world_size(definition: BuildingDefinition) -> Vector2:

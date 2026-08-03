@@ -2,15 +2,20 @@
 
 ## 结论
 
-`V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED`
+`TXWZS2_R2C_01_AUTHORITATIVE_NATIONAL_RESOURCE_CONVERGENCE_COMPLETE`
 
 V4 已冻结，V5-G0、G1、G2 已 `VERIFIED`，V5 整体仍为 `IN_PROGRESS`。
 G3–G6、P6、P7、V6 尚未启动。
 
-post-G2 文档收敛已在 `b1ad4a0` 完成。当前唯一获授权的工作是
-`TXWZS2_P0_01_ONE_CITY_NATIONAL_STATE_READ_MODEL_SEAM`：它只增加从
-`ConstructionController` V5 权威快照导出的一城只读投影与自动测试，不引入
-第二写入者、状态树、存档、Autoload、场景或 UI，也不推进 G3。
+R2C-01 已将国家共享资源的运行时所有权收敛到单一 `NationState`。生产场景
+仍由现有 `ConstructionController` 编排，但建造、日结、训练、科研和兼容属性
+全部委托同一个国家资源事务入口。`blackstone_city` 与 `riverbend_city` 已进入
+正式运行时城市注册边界；P0-01 继续提供一城只读兼容投影。
+
+V5 schema 和磁盘 topology 未升级。旧 `blackstone_city` 资源字段仅作为兼容
+序列化载体，在 load 时通过临时 DTO 水合 `NationState`，save 时从
+`NationState` 投影。`riverbend_city` 的完整城市局部状态尚未进入 V5 持久化，
+不在本轮声称完成。
 
 ## Git 基线
 
@@ -77,8 +82,13 @@ V5-P5-T003  V5-P5-T004  V5-P5-T005
 
 ## 当前架构事实
 
-- `ConstructionController` 是城市资源、日期、建设、训练、驻军和恢复的
-  运行时权威入口。
+- `NationState` 是国家共享木材、粮食和科技点的唯一运行时 authority；所有
+  正式资源变化经过 `commit_resource_transaction()`。
+- `ConstructionController` 是日期、建设、训练、驻军和恢复的业务编排入口；
+  `wood`、`food`、`tech_points` 仅是委托到 `NationState` 的兼容属性，不持有
+  第二份余额。
+- 一次正式城市场景运行只构造一个 `NationState`，同时注册
+  `blackstone_city` 与 `riverbend_city`；两城局部运行时状态实例彼此隔离。
 - 私有 `GarrisonState` 是本城兵种数量唯一源状态；`infantry_count` 是兼容
   属性，不是第二份存储。
 - `TrainingQueue` 是训练订单唯一源状态；旧三字段仅为只读兼容投影。
@@ -229,13 +239,15 @@ GODOT=/Applications/Godot.app/Contents/MacOS/Godot
 本轮完成的已授权范围：
 
 ```text
-TXWZS2_P0_01_ONE_CITY_NATIONAL_STATE_READ_MODEL_SEAM
+TXWZS2_R2C-01_V4_AUTHORITATIVE_NATIONAL_RESOURCE_CONVERGENCE
 ```
 
 当前禁止：
 
 - 进入 G3；
-- 将一城只读投影扩展为国家写入、多城市、存档迁移、驻军、战役或 UI；
+- 开始 R2C-02 外部行动/战役生命周期、R2C-03 永久占领或 P0-02；
+- 将 `riverbend_city` 完整局部状态写入 V5，或未经裁决升级 V6；
+- 扩展驻军、战役、占领、道路、补给、UI、场景或资产；
 - stage S1A.2；
 - force push、批量推送其他 refs、部署；
 - 清理或迁移存档；

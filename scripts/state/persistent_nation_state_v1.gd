@@ -23,6 +23,7 @@ static func read(city_authority: Object) -> Dictionary:
 	if (
 		not city_authority.has_method("export_v5_campaign_snapshot")
 		or not city_authority.has_method("validate_v5_campaign_snapshot")
+		or not city_authority.has_method("get_nation_state")
 	):
 		return _failure(
 			&"UNSUPPORTED_CITY_AUTHORITY",
@@ -60,11 +61,26 @@ static func read(city_authority: Object) -> Dictionary:
 			"城市权威 V5 快照缺少稳定城市身份或城市数据"
 		)
 	var city: Dictionary = Dictionary(snapshot.city).duplicate(true)
-	var shared_resources := {
-		&"food": int(city.food),
-		&"tech_points": int(city.tech_points),
-		&"wood": int(city.wood),
-	}
+	var nation_state = city_authority.call("get_nation_state")
+	if (
+		nation_state == null
+		or not is_instance_valid(nation_state)
+		or not nation_state.has_method("get_shared_resources")
+	):
+		return _failure(
+			&"INVALID_NATION_AUTHORITY",
+			"城市组合根未提供国家状态权威"
+		)
+	var shared_resources = nation_state.call("get_shared_resources")
+	if (
+		typeof(shared_resources) != TYPE_DICTIONARY
+		or Dictionary(shared_resources).keys().size()
+			!= SHARED_RESOURCE_IDS.size()
+	):
+		return _failure(
+			&"INVALID_NATION_RESOURCES",
+			"国家状态权威未提供完整共享资源"
+		)
 	return {
 		"success": true,
 		"error_id": &"",
@@ -76,7 +92,7 @@ static func read(city_authority: Object) -> Dictionary:
 			"city_id": city_id,
 			"city_ids": [city_id],
 			"shared_resource_ids": SHARED_RESOURCE_IDS.duplicate(),
-			"shared_resources": shared_resources.duplicate(true),
+			"shared_resources": Dictionary(shared_resources).duplicate(true),
 			"cities_by_id": {city_id: snapshot.duplicate(true)},
 		}.duplicate(true),
 	}
