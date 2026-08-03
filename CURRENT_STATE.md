@@ -2,10 +2,15 @@
 
 ## 结论
 
-`TXWZS2_R2C_02_FIRST_WAR_RUNTIME_OPERATION_LIFECYCLE_COMPLETE`
+`TXWZS2_V5_G3_REFRESHED_FULL_REGRESSION_AND_TRACEABILITY_ACCEPTED`
 
-V4 已冻结，V5-G0、G1、G2 已 `VERIFIED`，V5 整体仍为 `IN_PROGRESS`。
-G3–G6、P6、P7、V6 尚未启动。
+V4 已冻结，V5-G0、G1、G2、G3 已 `VERIFIED`，V5 整体仍为 `IN_PROGRESS`。
+G4–G6、P6、V6 尚未启动；P7 仅其 G3 的 T001–T003 已 `VERIFIED`。
+
+`712dcbd8e092ff844c4274a2f3a3c260d29998e7` 是本次 refreshed G3 的
+validated source head。G3 在仓库外隔离 tree、隔离 `user://` 与 Godot 4.5.1 下
+重跑了全部动态发现 runner、focused 回归、editor parse/import 与三个正式场景
+smoke；它不构成 G4 实际窗口、G5 独立复查、G6 用户试玩或 V5 冻结。
 
 R2C-01 已将国家共享资源的运行时所有权收敛到单一 `NationState`。生产场景
 仍由现有 `ConstructionController` 编排，但建造、日结、训练、科研和兼容属性
@@ -33,6 +38,7 @@ ledger、ID sequence 或持久战区；Riverbend 没有 owner、faction、驻军
 | Post-G2 documentation convergence | `b1ad4a09e202904aced9262104545867a97573cb` |
 | P0-01 national read-model seam | `81fe8a8f479b05952a910b53e66dd4608582dc27` |
 | R2C-01 national resource convergence | `a0406ede852da687ed5033a24471b43f7ebdf2ab` |
+| R2C-02 First War lifecycle / validated G3 source | `712dcbd8e092ff844c4274a2f3a3c260d29998e7` |
 | Upstream | 本地 branch 无 upstream |
 | Remote action | M4 仅使用显式 branch/tag refs；结果以 `git ls-remote` 与 fresh clone 现场证据为准 |
 | Index | 只按精确路径暂存；不得 stage S1A.2 |
@@ -54,6 +60,7 @@ cd7be2b
 → cb7c87ba
 → 81fe8a8f
 → a0406ede
+→ 712dcbd8
 ```
 
 `fab962c` 的精确 repair 范围：
@@ -74,13 +81,13 @@ tests/run_v5_campaign_persistence_smoke.gd
 | V5-G1 | `VERIFIED` |
 | V5-G2 | `VERIFIED` |
 | V5 | `IN_PROGRESS` |
-| V5-G3 | `NOT_STARTED` |
+| V5-G3 | `VERIFIED` |
 | V5-G4 | `NOT_STARTED` |
 | V5-G5 | `NOT_STARTED` |
 | V5-G6 | `NOT_STARTED` |
-| V5-P4-T005 | `NOT_STARTED` |
+| V5-P4-T005 | `VERIFIED` |
 | V5-P6 | `NOT_STARTED` |
-| V5-P7 | `NOT_STARTED` |
+| V5-P7 | `T001–T003 VERIFIED; T004–T007 NOT_STARTED` |
 | V6 | `NOT_STARTED` |
 
 精确 16 项 G2 runtime task：
@@ -192,12 +199,13 @@ untracked 路径，未被 stage、恢复或迁移。
 
 ## 主控计划
 
-- Plan version：`1.0.2-v5-g2-fresh-review-accepted-003`
+- Plan version：`1.0.3-v5-g3-refreshed-full-regression-accepted-001`
 - Workbook：13 sheets
 - Formula errors：0
 - Workbook ↔ 5 CSV：`totalMismatches=0`
-- V5 进度：75% VERIFIED
-- R2C-02 是 G2 后、刷新 G3 前的已授权纠偏提交；G3 尚未启动
+- V5 进度：84% VERIFIED（37/44）
+- R2C-02 是 G2 后的已授权纠偏提交，并已成为 `712dcbd8` refreshed G3 基线；G3
+  通过不提前启动 G4、G5、G6、R2C-03 或 V6
 
 权威计划文件：
 
@@ -244,6 +252,7 @@ GODOT=/Applications/Godot.app/Contents/MacOS/Godot
 - `docs/architecture/TXWZS_ARCHITECTURE_CONTRACT.md`
 - `docs/planning/TXWZS_MASTER_DEVELOPMENT_CONTROL.md`
 - `docs/reports/TXWZS_V5_G2_FINAL_ACCEPTANCE.md`
+- `docs/reports/TXWZS_V5_G3_REFRESHED_FULL_REGRESSION.md`
 - `docs/reports/TXWZS_POST_G2_DOCUMENTATION_CONVERGENCE.md`
 - `CHANGELOG.md`
 - `docs/MIGRATION_HANDOFF.md`
@@ -254,10 +263,11 @@ GODOT=/Applications/Godot.app/Contents/MacOS/Godot
 
 ## 下一步与禁止项
 
-本轮完成的已授权范围：
+已完成的最近两个已授权范围：
 
 ```text
 TXWZS2_R2C-02_FIRST_WAR_RUNTIME_OPERATION_LIFECYCLE
+TXWZS2_V5_G3_REFRESHED_FULL_REGRESSION_AND_TRACEABILITY_ACCEPTANCE
 ```
 
 ```text
@@ -265,13 +275,13 @@ P0_02_DISPOSITION=ABSORBED_AND_CLOSED_BY_R2C_01_V4
 R2C02_SEQUENCE=PRE_G3_CORRECTIVE_SLICE
 ```
 
-下一步只能是 refreshed V5-G3 的单独授权。R2C-03 不自动成为下一步；永久
+下一步只能是单独授权的 V5-G4 real-window gate。R2C-03 不自动成为下一步；永久
 occupation 留在 V9。persistent external theater 与 mid-operation restart 留在
 V6，本轮不声称已完成它们。
 
 当前禁止：
 
-- 进入 G3，除非获得 refreshed V5-G3 的单独授权；
+- 进入 G4、G5 或 G6，除非分别获得授权；
 - 开始 R2C-03 永久占领或重开 P0-02；
 - 将 `riverbend_city` 完整局部状态写入 V5，或未经裁决升级 V6；
 - 扩展驻军、战役、占领、道路、补给、UI、场景或资产；

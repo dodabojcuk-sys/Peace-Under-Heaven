@@ -2,19 +2,21 @@
 
 ## Control Metadata
 
-- Plan version: `1.0.2-v5-g2-fresh-review-accepted-003`
-- Updated: `2026-07-31`
+- Plan version: `1.0.3-v5-g3-refreshed-full-regression-accepted-001`
+- Updated: `2026-08-03`
 - Canonical workbook:
   `docs/planning/TXWZS_MASTER_DEVELOPMENT_CONTROL.xlsx`
 - Five direct CSV mirrors: `docs/planning/csv/`
 - Requirements / tasks / tests: `25 / 88 / 69`
 - Gate instances: `63` (`V4–V12 × G0–G6`)
-- Current phase: V4 `VERIFIED / FROZEN`; V5-G0/G1/G2 `VERIFIED`;
+- Current phase: V4 `VERIFIED / FROZEN`; V5-G0/G1/G2/G3 `VERIFIED`;
   V5 `IN_PROGRESS`
 - Post-G2 documentation convergence checkpoint:
   `b1ad4a09e202904aced9262104545867a97573cb`
-- Unique next action: `M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS`
-- Not authorized: G3–G6, P6, P7, V6, deployment
+- Refreshed G3 validated source head:
+  `712dcbd8e092ff844c4274a2f3a3c260d29998e7`
+- Unique next action: `WAITING_FOR_V5_G4_REAL_WINDOW_AUTHORIZATION`
+- Not authorized: G4–G6, P6, remaining P7, V6, deployment
 
 Git、代码、配置、测试和识别明确的运行时证据高于本计划。工作簿是结构化
 主控；本 Markdown 是人类可读摘要；五份 CSV 是工作簿指定表的逐值镜像。
@@ -30,6 +32,7 @@ Git、代码、配置、测试和识别明确的运行时证据高于本计划�
 | V5-G2 original candidate | `cd7be2b` |
 | V5-G2 repair chain | `cd7be2b → e2c1096 → 5d659243 → fab962c → 4d0fbfc` |
 | V5-G2 acceptance checkpoint | `af244167f7b0a31f3de2cc34673faa953113b96b` |
+| Refreshed G3 validated source | `712dcbd8e092ff844c4274a2f3a3c260d29998e7` |
 | Post-G2 documentation convergence | `b1ad4a09e202904aced9262104545867a97573cb` |
 | V5-G2 verdict | `V5_G2_RUNTIME_PACKAGE_REVIEW_ACCEPTED` |
 | Protected untracked | exact 8 S1A.2 files |
@@ -47,7 +50,7 @@ Durable evidence:
 | Phase | Player result | Detail | Status | Progress |
 | --- | --- | --- | --- | ---: |
 | V4 | 可见派遣、行军、失败/胜利与一次性到达结算 | Work-package | `VERIFIED / FROZEN` | 100% |
-| V5 | 单兵种训练、驻军、派遣、战果写回、保存重载一致 | Detailed | `IN_PROGRESS` | 75% VERIFIED |
+| V5 | 单兵种训练、驻军、派遣、战果写回、保存重载一致 | Detailed | `IN_PROGRESS` | 84% VERIFIED |
 | V6 | 持久外城战区与多军队数据模型 | Medium | `NOT_STARTED` | 0% |
 | V7 | 步兵遭遇战 | Work-package | `NOT_STARTED` | 0% |
 | V8 | 围城状态与战事内城 | Work-package | `NOT_STARTED` | 0% |
@@ -78,10 +81,10 @@ produce infantry
 | P1 单兵种与驻军 | 6 | `VERIFIED` |
 | P2 训练与时间 | 7 | G1 contracts + G2 runtime `VERIFIED` |
 | P3 派遣与军队 | 6 | G1 contract + G2 runtime `VERIFIED` |
-| P4 战果写回 | 5 | T001 contract、T002–T004 runtime `VERIFIED`; T005 `NOT_STARTED` |
+| P4 战果写回 | 5 | T001 contract、T002–T005 runtime/regression `VERIFIED` |
 | P5 存档与迁移 | 5 | G1 decisions/contracts + G2 runtime `VERIFIED` |
 | P6 最小军备 UI | 3 | `NOT_STARTED` |
-| P7 验证与冻结 | 7 | `NOT_STARTED` |
+| P7 验证与冻结 | 7 | T001–T003 G3 `VERIFIED`; T004–T007 `NOT_STARTED` |
 
 ### Exact G2 runtime tasks
 
@@ -92,7 +95,8 @@ V5-P4-T002  V5-P4-T003  V5-P4-T004
 V5-P5-T003  V5-P5-T004  V5-P5-T005
 ```
 
-这 16 项和 V5-G2 已独立接受。没有因此接受 P4-T005、P6、P7 或 G3。
+这 16 项和 V5-G2 已独立接受。refreshed G3 另接受 P4-T005 与 P7-T001–T003；
+没有因此接受 P6、P7-T004–T007 或 G4–G6。
 
 ## Gate Model
 
@@ -114,7 +118,7 @@ G0 baseline
 | V5-G0 | `VERIFIED` | 单兵种、驻军源状态、容量阻断、独立复查 |
 | V5-G1 | `VERIFIED` | 六项架构合同、51/51 baseline、30/30 cross-contract |
 | V5-G2 | `VERIFIED` | fresh stable-ID review、focused/tracked/all-present |
-| V5-G3 | `NOT_STARTED` | 不由本轮重复回归自动推进 |
+| V5-G3 | `VERIFIED` | `712dcbd8` 隔离全量回归、traceability、editor/scene smoke 通过 |
 | V5-G4 | `NOT_STARTED` | 真实窗口垂直闭环尚未执行 |
 | V5-G5 | `NOT_STARTED` | 阶段级独立复查尚未执行 |
 | V5-G6 | `NOT_STARTED` | 用户试玩和 V5 冻结尚未执行 |
@@ -174,7 +178,7 @@ writer lock、上一有效代次恢复和 V1 read-only import 思路。八个 V1
 - Formula-error matches: `0`
 - Five CSV mirror mismatches: `0`
 - Markdown title and current Gate data match plan version
-  `1.0.2-v5-g2-fresh-review-accepted-003`
+  `1.0.3-v5-g3-refreshed-full-regression-accepted-001`
 
 Mirrors:
 
@@ -191,13 +195,12 @@ docs/planning/csv/risks_and_decisions.csv
 
 ## Next Control Point
 
-post-G2 文档收敛已在 `b1ad4a0` 完成。当前唯一获授权任务是：
+refreshed G3 在 `712dcbd8` 隔离基线已通过。下一步需要单独用户授权：
 
 ```text
-M4_MIGRATION_TAG_AND_GITHUB_FRESH_CLONE_READINESS
+WAITING_FOR_V5_G4_REAL_WINDOW_AUTHORIZATION
 ```
 
-该任务仅允许 migration metadata sync、指定 branch/tag 的原子推送和 GitHub
-fresh-clone readiness 验证；不得进入 G3。仓库根目录必须在运行时通过
-`git rev-parse --show-toplevel` 获取，M1 linked-worktree 绝对路径不是运行
-或迁移依赖。
+G4 只允许真实窗口验证，不能以本次 headless 回归代替。G5、G6、R2C-03 与 V6
+仍未授权；仓库根目录必须在运行时通过 `git rev-parse --show-toplevel` 获取，M1
+linked-worktree 绝对路径不是运行或迁移依赖。

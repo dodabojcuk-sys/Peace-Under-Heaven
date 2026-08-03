@@ -5,6 +5,16 @@
 
 ## Unreleased
 
+### V5-G3 — refreshed full regression and traceability
+
+- `712dcbd8e092ff844c4274a2f3a3c260d29998e7` 在仓库外隔离副本和隔离
+  `user://` 下通过 refreshed G3：37/37 动态发现 runner、1819 条 `PASS:`、
+  P0-01 10/10、R2C-02 focused 20/20、V5 persistence 51/51，以及 editor 与
+  blank_map/Blackstone/C0 headless smoke。
+- G3 接受 V5-P4-T005 与 V5-P7-T001–T003 的回归/追溯工作；不新增游戏功能，
+  不修改 V5 schema、storage version、snapshot topology、场景、UI、资源或资产。
+- G4 实际窗口、G5 独立复查、G6 用户试玩/冻结、R2C-03 和 V6 均未启动。
+
 ### R2C-02 — First War runtime lifecycle
 
 - 复用既有 `ArmyRegistry`、`ConstructionController` 与绑定的
