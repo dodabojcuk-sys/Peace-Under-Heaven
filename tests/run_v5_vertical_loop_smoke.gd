@@ -149,24 +149,24 @@ func _run() -> void:
 		city.get_committed_world_infantry_total()
 	)
 	var summary: Dictionary = coordinator.confirm_result()
-	var stationed: Dictionary = city.get_army_state(
+	var returning: Dictionary = city.get_army_state(
 		StringName(army.army_id)
 	)
 	_check(
 		not summary.is_empty()
 			and summary.disposition
-				== ArmyRegistry.DISPOSITION_STATIONED_TARGET
-			and stationed.phase == ArmyRegistry.PHASE_CLOSED
-			and stationed.last_applied_result_id == result.result_id,
-		"城市权威入口一次性把胜利事实写为目标驻扎"
+				== ArmyRegistry.DISPOSITION_RETURNING_HOME
+			and returning.phase == ArmyRegistry.PHASE_RETURNING
+			and returning.last_applied_result_id == result.result_id,
+		"城市权威入口一次性把胜利幸存者写为返乡军队"
 	)
 	_check(
 		city.get_committed_world_infantry_total()
 				== world_before_settlement - result.casualty_count
-			and stationed.units_by_definition_id[
+			and returning.units_by_definition_id[
 				city.INFANTRY_ROLE.role_id
 			] == result.survivor_count,
-		"战果写回后驻军、Army 幸存与伤亡继续守恒"
+		"战果写回后 Army 幸存与伤亡继续守恒"
 	)
 	var settled_truth := _settlement_truth(city)
 	_check(
@@ -207,11 +207,11 @@ func _run() -> void:
 		StringName(army.army_id)
 	)
 	_check(
-		restored_army.phase == ArmyRegistry.PHASE_CLOSED
+		restored_army.phase == ArmyRegistry.PHASE_RETURNING
 			and restored_army.last_applied_result_id == result.result_id
 			and reloaded.get_committed_world_infantry_total()
 				== city.get_committed_world_infantry_total(),
-		"恢复后的 closed Army、result ID 与世界兵力不重复结算"
+		"恢复后的 returning Army、result ID 与世界兵力不重复结算"
 	)
 	_check(
 		not _contains_forbidden_value(save_snapshot),

@@ -2,7 +2,7 @@
 
 ## 结论
 
-`TXWZS2_R2C_01_AUTHORITATIVE_NATIONAL_RESOURCE_CONVERGENCE_COMPLETE`
+`TXWZS2_R2C_02_FIRST_WAR_RUNTIME_OPERATION_LIFECYCLE_COMPLETE`
 
 V4 已冻结，V5-G0、G1、G2 已 `VERIFIED`，V5 整体仍为 `IN_PROGRESS`。
 G3–G6、P6、P7、V6 尚未启动。
@@ -17,6 +17,13 @@ V5 schema 和磁盘 topology 未升级。旧 `blackstone_city` 资源字段仅�
 `NationState` 投影。`riverbend_city` 的完整城市局部状态尚未进入 V5 持久化，
 不在本轮声称完成。
 
+R2C-02 在既有 `ArmyRegistry`、`ConstructionController` 和绑定的
+`CombatTransactionCoordinator` 上完成一条固定的无头 First War 运行时闭环：
+`blackstone_city` 派遣至 `riverbend_city`，由 `BattleSession` 产出 terminal
+facts，所有幸存者经既有返乡 phase 回到黑石堡。它没有新增 operation aggregate、
+ledger、ID sequence 或持久战区；Riverbend 没有 owner、faction、驻军或局部状态
+变化。本轮没有既定资源后果。
+
 ## Git 基线
 
 | 字段 | 值 |
@@ -24,10 +31,15 @@ V5 schema 和磁盘 topology 未升级。旧 `blackstone_city` 资源字段仅�
 | Branch | `codex/v5-g0-review-g1-contracts-001` |
 | G2 acceptance checkpoint | `af244167f7b0a31f3de2cc34673faa953113b96b` |
 | Post-G2 documentation convergence | `b1ad4a09e202904aced9262104545867a97573cb` |
+| P0-01 national read-model seam | `81fe8a8f479b05952a910b53e66dd4608582dc27` |
+| R2C-01 national resource convergence | `a0406ede852da687ed5033a24471b43f7ebdf2ab` |
 | Upstream | 本地 branch 无 upstream |
 | Remote action | M4 仅使用显式 branch/tag refs；结果以 `git ls-remote` 与 fresh clone 现场证据为准 |
 | Index | 只按精确路径暂存；不得 stage S1A.2 |
-| Protected untracked | 精确 8 个 S1A.2 文件 |
+| Porcelain / tracked worktree | clean |
+| Nonignored untracked | `0` |
+| Named protected S1A.2 present | `0` |
+| Ignored generated `.godot/**` | `82`（实施前现场计数） |
 
 V5-G2 链：
 
@@ -39,6 +51,9 @@ cd7be2b
 → 4d0fbfc
 → af24416
 → b1ad4a0
+→ cb7c87ba
+→ 81fe8a8f
+→ a0406ede
 ```
 
 `fab962c` 的精确 repair 范围：
@@ -96,6 +111,8 @@ V5-P5-T003  V5-P5-T004  V5-P5-T005
   singleton 数据结构。
 - `BattleSession` 只产出 terminal facts；城市写回由绑定的
   `CombatTransactionCoordinator` 授权。
+- R2C-02 固定 First War army path 不建立目标驻扎：所有幸存者进入既有
+  `RETURNING` phase，随后只回补 `blackstone_city` 的 `GarrisonState`。
 - `CampaignSnapshotV2`、V5 codec/store、V1 只读迁移、不可变代次、坏档
   fallback 和 live apply rollback 已实现。
 - 天下地图 V0 仍是只读表现 fixture，不是持久世界状态。
@@ -170,7 +187,8 @@ fresh reviewer：
 | `tests/s1a2_early_city_disk_worker.gd` | `6ef1b3a0559679d20c13678f0aef4f5d25c690ae3ce4acc4b5376e08f236eb87` |
 | `tests/s1a2_early_city_disk_worker.gd.uid` | `a51e76f958ebce3933ca4091a9acb45ba50047f1ca5e32c6f41c7d3360c96764` |
 
-八文件必须继续是唯一 untracked、unstaged，前后哈希不变。
+上述八文件保留为历史 G2 保护证据；当前 Candidate 现场不存在这些 named
+untracked 路径，未被 stage、恢复或迁移。
 
 ## 主控计划
 
@@ -179,7 +197,7 @@ fresh reviewer：
 - Formula errors：0
 - Workbook ↔ 5 CSV：`totalMismatches=0`
 - V5 进度：75% VERIFIED
-- 唯一 Gate 边界：停止于 G2，不进入 G3
+- R2C-02 是 G2 后、刷新 G3 前的已授权纠偏提交；G3 尚未启动
 
 权威计划文件：
 
@@ -239,13 +257,22 @@ GODOT=/Applications/Godot.app/Contents/MacOS/Godot
 本轮完成的已授权范围：
 
 ```text
-TXWZS2_R2C-01_V4_AUTHORITATIVE_NATIONAL_RESOURCE_CONVERGENCE
+TXWZS2_R2C-02_FIRST_WAR_RUNTIME_OPERATION_LIFECYCLE
 ```
+
+```text
+P0_02_DISPOSITION=ABSORBED_AND_CLOSED_BY_R2C_01_V4
+R2C02_SEQUENCE=PRE_G3_CORRECTIVE_SLICE
+```
+
+下一步只能是 refreshed V5-G3 的单独授权。R2C-03 不自动成为下一步；永久
+occupation 留在 V9。persistent external theater 与 mid-operation restart 留在
+V6，本轮不声称已完成它们。
 
 当前禁止：
 
-- 进入 G3；
-- 开始 R2C-02 外部行动/战役生命周期、R2C-03 永久占领或 P0-02；
+- 进入 G3，除非获得 refreshed V5-G3 的单独授权；
+- 开始 R2C-03 永久占领或重开 P0-02；
 - 将 `riverbend_city` 完整局部状态写入 V5，或未经裁决升级 V6；
 - 扩展驻军、战役、占领、道路、补给、UI、场景或资产；
 - stage S1A.2；

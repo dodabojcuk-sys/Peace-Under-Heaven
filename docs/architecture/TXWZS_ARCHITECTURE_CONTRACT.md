@@ -33,7 +33,7 @@ V5 建立集合型 `ArmyRegistry`，不能把“当前最多一支 active”固�
 
 | 事实 | 唯一写入者 | 允许读取者 | 禁止路径 |
 | --- | --- | --- | --- |
-| 城市资源、日期、建设、科技 | `ConstructionController` | 城市 UI、快照、协调器 | UI 或表现节点直接改写 |
+| 国家共享资源 | `NationState`（经 `commit_resource_transaction()`） | `ConstructionController`、城市 UI、快照、协调器 | UI 或表现节点直接改写，或第二资源账本 |
 | 本城步兵驻军 | `ConstructionController` 持有的私有 `GarrisonState` | UI、训练、派遣、快照 | 第二套 `CityState` 或独立 `infantry_count` 存储 |
 | `infantry_count` | `GarrisonState` 的兼容属性 | 旧 C0/P1/S1A.1 调用方 | 作为独立源状态 |
 | 训练订单 | `TrainingQueue` | 城市 read model、快照 | 旧三字段或 UI 自建队列 |
@@ -195,6 +195,11 @@ V5 最多一支 active 是 validator policy。抵达、结算和返回必须幂�
 - 失败后关闭军队；
 - 首次胜利奖励等城市策略输出。
 
+R2C-02 的固定无头 First War army vertical slice 是该通用策略的受限例外：不建立
+目标城市驻扎、owner、faction 或局部状态。无论 terminal outcome，只要有幸存者，
+`ArmyRegistry` 就以现有 `RETURNING` phase 回到 `blackstone_city`；零幸存者关闭
+原军队记录。它不新增 operation aggregate、ledger、ID sequence 或持久外城战区。
+
 重复同一结果是幂等；相同事务的冲突结果必须拒绝；任何未通过校验的结果
 不得部分扣兵、加资源、推进时间或清理 ledger。
 
@@ -318,7 +323,8 @@ AI 在已授权阶段内可自行做低风险拆分、实现、测试、修复�
 - 第二兵种；
 - 多支 active 军队；
 - 敌方战略 AI；
-- 正式遭遇战、攻城和战事内城；
+- 正式遭遇战、攻城和战事内城；R2C-02 的固定 headless First War lifecycle
+  已完成，但不授权扩展为通用战区；
 - 新的持久世界状态；
 - P6 军备 UI、P7 冻结、G3–G6；
 - V6 及以后；

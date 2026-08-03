@@ -87,24 +87,24 @@ func _run() -> void:
 		not victory_summary.is_empty()
 			and victory_summary.army_id == victory_army.army_id
 			and victory_summary.disposition
-				== ArmyRegistry.DISPOSITION_STATIONED_TARGET
+				== ArmyRegistry.DISPOSITION_RETURNING_HOME
 			and victory_summary.survivor_count
 				== victory_result.survivor_count,
-		"胜利事实一次性写回为目标驻扎策略"
+		"胜利事实一次性写回为返乡策略"
 	)
-	var stationed: Dictionary = city.get_army_state(
+	var returning_victory: Dictionary = city.get_army_state(
 		StringName(victory_army.army_id)
 	)
 	_check(
-		stationed.phase == ArmyRegistry.PHASE_CLOSED
-			and stationed.last_applied_result_id
+		returning_victory.phase == ArmyRegistry.PHASE_RETURNING
+			and returning_victory.last_applied_result_id
 				== victory_result.result_id
-			and stationed.units_by_definition_id[
+			and returning_victory.units_by_definition_id[
 				city.INFANTRY_ROLE.role_id
 			] == victory_result.survivor_count
 			and city.get_committed_world_infantry_total()
 				== 20 - victory_result.casualty_count,
-		"目标驻扎保留幸存者事实且伤亡后世界总兵力守恒"
+		"返乡军队保留幸存者事实且伤亡后世界总兵力守恒"
 	)
 	var after_victory := _settlement_truth(city)
 	_check(
@@ -120,7 +120,12 @@ func _run() -> void:
 			and _settlement_truth(city) == after_victory,
 		"同事务冲突 result ID 无法绕过协调器权威"
 	)
-	_complete_coordinator_return(coordinator)
+	_complete_returning_army(
+		city,
+		coordinator,
+		StringName(victory_army.army_id),
+		StringName(victory_army.transaction_id)
+	)
 
 	var before_retreat_world: int = (
 		city.get_committed_world_infantry_total()
@@ -328,6 +333,25 @@ func _complete_coordinator_return(
 	coordinator.complete_return_to_city(
 		int(contract.city_input_restore_frame)
 	)
+
+
+func _complete_returning_army(
+	city: Node,
+	coordinator: CombatTransactionCoordinator,
+	army_id: StringName,
+	transaction_id: StringName
+) -> void:
+	_complete_coordinator_return(coordinator)
+	var returning: Dictionary = city.get_army_state(army_id)
+	if StringName(returning.get("phase", &"")) != ArmyRegistry.PHASE_RETURNING:
+		return
+	city.advance_army_strategic_time(
+		army_id,
+		transaction_id,
+		0,
+		int(returning.duration_milliseconds)
+	)
+	city.complete_returned_army_to_garrison(army_id, transaction_id)
 
 
 func _settlement_truth(city: Node) -> Dictionary:

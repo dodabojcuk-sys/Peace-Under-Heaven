@@ -3082,12 +3082,11 @@ func _apply_army_battle_result_atomic(
 		survivor_units[INFANTRY_ROLE.role_id] = (
 			battle_result.survivor_count
 		)
+	# An external First War result never establishes a destination garrison.
+	# ArmyRegistry remains the sole owner of the composition while every
+	# surviving unit returns through the existing home-return transition.
 	var disposition := ArmyRegistry.DISPOSITION_CLOSED_LOST
-	if battle_result.outcome == BattleOutcome.Value.VICTORY:
-		disposition = ArmyRegistry.DISPOSITION_STATIONED_TARGET
-	elif battle_result.outcome == BattleOutcome.Value.RETREAT:
-		if battle_result.survivor_count <= 0:
-			return {}
+	if battle_result.survivor_count > 0:
 		disposition = ArmyRegistry.DISPOSITION_RETURNING_HOME
 	var registry_probe := ArmyRegistry.new()
 	if (

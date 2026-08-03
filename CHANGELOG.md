@@ -5,6 +5,16 @@
 
 ## Unreleased
 
+### R2C-02 — First War runtime lifecycle
+
+- 复用既有 `ArmyRegistry`、`ConstructionController` 与绑定的
+  `CombatTransactionCoordinator` 完成固定无头 First War 纵向闭环。
+- First War army terminal settlement 的幸存者统一进入既有返乡 phase，只回补
+  `blackstone_city`；不在 `riverbend_city` 建立驻扎、归属、派系或局部状态写入。
+- 新增 focused lifecycle smoke，并更新 V5 army encounter/vertical-loop 回归以
+  验证返乡守恒；未修改 V5 schema、codec、store、场景、UI、资源或项目设置。
+- `P0_02` 已由 R2C-01 v4 吸收并关闭；下一步仍需单独授权 refreshed V5-G3。
+
 ### Documentation
 
 - 将 76 份、14,940 行、706,926 字节的 Markdown 基线收敛为 9 份活跃文档。
