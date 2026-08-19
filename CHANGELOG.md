@@ -5,6 +5,19 @@
 
 ## Unreleased
 
+### Product successor UI-R0
+
+- Established the isolated `codex/product-successor-inner-city-r0` branch and
+  rebuilt the `blank_map` inner-city shell with a native Godot theme,
+  responsive operating rail, shared-resource summary, build catalog, and
+  building context panel.
+- The upgrade affordance is an explicit no-writer gate: confirm/cancel returns
+  to the existing record and does not mutate buildings, resources, or saves.
+- Added a focused UI-R0 smoke and updated existing viewport/selection tests to
+  assert the new visible-by-default city rail and safe-area interaction.
+- No Canonical, legacy, RG-O1 v1, project settings, schema, or remote state was
+  modified; G4–G6, R2C-03, and V6 remain not started.
+
 ### V5-G3 — refreshed full regression and traceability
 
 - `712dcbd8e092ff844c4274a2f3a3c260d29998e7` 在仓库外隔离副本和隔离

@@ -104,6 +104,17 @@ func _run() -> void:
 	await process_frame
 	for fixed_id in fixed_ids:
 		selection.clear_selection()
+		var fixed_record_for_focus: Dictionary = construction.get_building_record(
+			fixed_id
+		)
+		var fixed_building_for_focus: CanvasItem = construction.get_building_node(
+			fixed_id
+		)
+		scene.center_world_position_in_safe_area(
+			fixed_building_for_focus.global_position
+				+ (fixed_record_for_focus.selection_bounds as Rect2).get_center()
+		)
+		await process_frame
 		var screen_center := _building_screen_center(
 			construction,
 			fixed_id

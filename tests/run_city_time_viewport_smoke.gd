@@ -246,27 +246,29 @@ func _run() -> void:
 	construction.restart_first_map()
 	var placement_snapshot := _placement_origins(construction)
 	_check(
-		not scene.is_city_bar_expanded()
-			and not city_bar.visible
-			and city_bar_toggle.visible,
-		"左侧栏默认收起且切换入口始终可见"
-	)
-	scene.set_city_bar_expanded(true)
-	await process_frame
-	_check(
 		scene.is_city_bar_expanded()
 			and city_bar.visible
-			and city_bar_toggle.text == "收起",
-		"左侧栏可以展开"
+			and city_bar_toggle.visible,
+		"一城经营视图默认展开且切换入口始终可见"
+	)
+	scene.set_city_bar_expanded(false)
+	await process_frame
+	_check(
+		not scene.is_city_bar_expanded()
+			and not city_bar.visible
+			and city_bar_toggle.text == "展开",
+		"城市序列可以收起"
 	)
 	_check(
 		placement_snapshot == _placement_origins(construction),
-		"展开侧栏不修改建筑 placement"
+		"收起城市序列不修改建筑 placement"
 	)
 	_check(
 		not construction.is_city_time_paused(),
-		"展开侧栏不会改变时间运行状态"
+		"收起城市序列不会改变时间运行状态"
 	)
+	scene.set_city_bar_expanded(true)
+	await process_frame
 
 	var all_buildings_fit := true
 	for placement_id in construction.get_placement_ids():
@@ -288,7 +290,7 @@ func _run() -> void:
 			break
 	_check(
 		all_buildings_fit,
-		"展开后全部建筑都能通过相机拖动进入安全可见区域"
+		"默认展开后全部建筑都能通过相机拖动进入安全可见区域"
 	)
 
 	scene.set_city_bar_expanded(false)

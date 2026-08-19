@@ -1,5 +1,14 @@
 # 当前状态
 
+## Product successor UI-R0
+
+`codex/product-successor-inner-city-r0` is the only mutable product branch.
+It adds an accepted one-city inner-city presentation slice on top of the frozen
+forensic baseline: responsive overview, native build catalog, building detail,
+and a non-mutating upgrade gate. `NationState` and the existing construction
+authority remain the only resource and placement owners. This does not start
+G4–G6, R2C-03, V6, legacy cleanup, or any save/schema migration.
+
 ## 结论
 
 `TXWZS2_V5_G3_REFRESHED_FULL_REGRESSION_AND_TRACEABILITY_ACCEPTED`

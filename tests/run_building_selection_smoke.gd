@@ -51,10 +51,15 @@ func _run() -> void:
 	_check(not selection_outline.visible, "选择描边初始隐藏")
 
 	var panel_rect := detail_panel.get_global_rect()
-	_check(panel_rect.position.is_equal_approx(Vector2(856.0, 176.0)),
-		"详情面板参考位置为 (856, 176)")
-	_check(panel_rect.size.is_equal_approx(Vector2(280.0, 360.0)),
-		"详情面板尺寸为 280 x 360")
+	_check(
+		panel_rect.position.x > root.size.x * 0.5
+			and panel_rect.position.y >= 70.0,
+		"响应式详情面板固定在地图右侧安全区"
+	)
+	_check(
+		panel_rect.size.x >= 290.0 and panel_rect.size.y >= 440.0,
+		"详情面板为建筑状态与升级门禁保留可读空间"
+	)
 	_check(not panel_rect.intersects(minimap.get_global_rect()),
 		"详情面板不与小地图重叠")
 	_check(construction_entry.visible, "初始显示右侧建造入口")
@@ -110,6 +115,31 @@ func _run() -> void:
 			"状态：停用：未接入道路"
 		),
 		"面板显示真实前置和未接路原因"
+	)
+	var upgrade_button: Button = detail_panel.get_node("UpgradeButton")
+	var upgrade_confirmation: Control = detail_panel.get_node(
+		"UpgradeConfirmation"
+	)
+	var record_before_upgrade: Dictionary = construction.get_building_record(
+		first_placement_id
+	)
+	var wood_before_upgrade: int = construction.wood
+	upgrade_button.emit_signal("pressed")
+	_check(
+		upgrade_confirmation.visible and selection.is_awaiting_upgrade_confirmation(),
+		"无升级 writer 时仍可查看明确的升级门禁确认"
+	)
+	_check(
+		construction.get_building_record(first_placement_id) == record_before_upgrade
+			and construction.wood == wood_before_upgrade,
+		"升级门禁确认不伪造建筑、资源或存档写入"
+	)
+	(detail_panel.get_node("UpgradeConfirmation/CancelUpgradeButton") as Button).emit_signal(
+		"pressed"
+	)
+	_check(
+		not upgrade_confirmation.visible and selection.has_selection(),
+		"升级门禁可取消并返回同一建筑详情"
 	)
 
 	var second_center := _building_screen_center(
