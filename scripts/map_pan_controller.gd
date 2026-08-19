@@ -31,7 +31,7 @@ var active_drag_button: int = -1
 var last_pointer_screen := Vector2.ZERO
 var pending_drag_delta := Vector2.ZERO
 var is_dragging := false
-var city_bar_expanded := false
+var city_bar_expanded := true
 var world_map_open := false
 var mvp_expedition_open := false
 var _city_camera_position := Vector2.ZERO
@@ -66,7 +66,9 @@ func _ready() -> void:
 		_refresh_blackstone_mvp_entry
 	)
 	campaign_world_map.configure(construction_controller)
-	set_city_bar_expanded(false)
+	# The product successor begins with the only active city's operating context
+	# visible. This is presentation state only; city authority remains unchanged.
+	set_city_bar_expanded(true)
 	_refresh_blackstone_mvp_entry()
 	call_deferred("_initialize_camera")
 

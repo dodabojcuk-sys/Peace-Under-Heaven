@@ -5,6 +5,7 @@ enum SelectionState {
 	NONE,
 	SELECTED,
 	REMOVE_CONFIRM,
+	UPGRADE_CONFIRM,
 }
 
 const SELECTION_OUTLINE_MARGIN := 4.0
@@ -23,6 +24,21 @@ const NOTICEBOARD_TEMPLATE_ID := &"noticeboard"
 @onready var footprint: Label = $"../UI/Shell/BuildingDetailPanel/Footprint"
 @onready var prototype_status: Label = $"../UI/Shell/BuildingDetailPanel/PrototypeStatus"
 @onready var description: Label = $"../UI/Shell/BuildingDetailPanel/Description"
+@onready var upgrade_status_card: Label = (
+	$"../UI/Shell/BuildingDetailPanel/UpgradeStatusCard"
+)
+@onready var upgrade_button: Button = (
+	$"../UI/Shell/BuildingDetailPanel/UpgradeButton"
+)
+@onready var upgrade_confirmation: Control = (
+	$"../UI/Shell/BuildingDetailPanel/UpgradeConfirmation"
+)
+@onready var confirm_upgrade_button: Button = (
+	$"../UI/Shell/BuildingDetailPanel/UpgradeConfirmation/ConfirmUpgradeButton"
+)
+@onready var cancel_upgrade_button: Button = (
+	$"../UI/Shell/BuildingDetailPanel/UpgradeConfirmation/CancelUpgradeButton"
+)
 @onready var close_button: Button = $"../UI/Shell/BuildingDetailPanel/CloseButton"
 @onready var remove_button: Button = $"../UI/Shell/BuildingDetailPanel/RemoveButton"
 @onready var first_war_actions: Control = (
@@ -58,6 +74,9 @@ var selected_placement_id := -1
 
 func _ready() -> void:
 	close_button.pressed.connect(clear_selection)
+	upgrade_button.pressed.connect(request_upgrade_confirmation)
+	confirm_upgrade_button.pressed.connect(confirm_upgrade_gate)
+	cancel_upgrade_button.pressed.connect(cancel_upgrade_confirmation)
 	remove_button.pressed.connect(request_removal_confirmation)
 	confirm_remove_button.pressed.connect(confirm_removal)
 	cancel_remove_button.pressed.connect(cancel_removal_confirmation)
@@ -115,6 +134,7 @@ func clear_selection() -> void:
 	detail_panel.visible = false
 	noticeboard_panel.visible = false
 	removal_confirmation.visible = false
+	upgrade_confirmation.visible = false
 	first_war_actions.visible = false
 	city_gate_actions.visible = false
 	construction_controller.set_detail_panel_active(false)
@@ -131,6 +151,33 @@ func has_selection() -> bool:
 
 func is_awaiting_removal_confirmation() -> bool:
 	return state == SelectionState.REMOVE_CONFIRM and has_selection()
+
+
+func is_awaiting_upgrade_confirmation() -> bool:
+	return state == SelectionState.UPGRADE_CONFIRM and has_selection()
+
+
+func request_upgrade_confirmation() -> void:
+	if not has_selection() or is_awaiting_removal_confirmation():
+		return
+	state = SelectionState.UPGRADE_CONFIRM
+	_show_upgrade_confirmation()
+
+
+func cancel_upgrade_confirmation() -> void:
+	if not is_awaiting_upgrade_confirmation():
+		return
+	state = SelectionState.SELECTED
+	_show_selected_presentation()
+
+
+func confirm_upgrade_gate() -> void:
+	if not is_awaiting_upgrade_confirmation():
+		return
+	# The current city authority deliberately exposes no building upgrade writer.
+	# This confirmation must never simulate an upgrade, cost, or save mutation.
+	state = SelectionState.SELECTED
+	_show_selected_presentation()
 
 
 func request_removal_confirmation() -> void:
@@ -169,6 +216,9 @@ func confirm_removal() -> bool:
 
 
 func handle_escape() -> bool:
+	if is_awaiting_upgrade_confirmation():
+		cancel_upgrade_confirmation()
+		return true
 	if is_awaiting_removal_confirmation():
 		cancel_removal_confirmation()
 		return true
@@ -293,6 +343,10 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 	remove_button.disabled = (
 		construction_controller.is_city_action_locked_for_battle()
 	)
+	upgrade_status_card.text = "升级状态\n%s\n%s" % [
+		str(build_data.level_text),
+		str(build_data.next_level_text),
+	]
 
 
 func _show_selected_presentation() -> void:
@@ -317,6 +371,7 @@ func _show_selected_presentation() -> void:
 		and bool(record.get("removable", false))
 	)
 	removal_confirmation.visible = false
+	upgrade_confirmation.visible = false
 	detail_panel.visible = true
 
 
@@ -325,6 +380,15 @@ func _show_removal_confirmation() -> void:
 	for control in _get_detail_controls():
 		control.visible = false
 	removal_confirmation.visible = true
+	detail_panel.visible = true
+
+
+func _show_upgrade_confirmation() -> void:
+	panel_title.text = "升级门禁"
+	for control in _get_detail_controls():
+		control.visible = false
+	removal_confirmation.visible = false
+	upgrade_confirmation.visible = true
 	detail_panel.visible = true
 
 
@@ -345,6 +409,8 @@ func _get_standard_detail_controls() -> Array[Control]:
 		footprint,
 		prototype_status,
 		description,
+		upgrade_status_card,
+		upgrade_button,
 		remove_button,
 	]
 

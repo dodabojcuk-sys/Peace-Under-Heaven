@@ -5,6 +5,8 @@
 [ext_resource type="Script" path="res://scripts/building_selection_controller.gd" id="3_selection"]
 [ext_resource type="PackedScene" path="res://scenes/world_map_v0.tscn" id="4_world_map"]
 [ext_resource type="PackedScene" path="res://scenes/blackstone_expedition_mvp.tscn" id="5_mvp"]
+[ext_resource type="Script" path="res://scripts/inner_city_ui_r0.gd" id="6_inner_city_ui"]
+[ext_resource type="Theme" path="res://resources/ui/inner_city_theme.tres" id="7_inner_city_theme"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top_bar"]
 bg_color = Color(0.847059, 0.831373, 0.796078, 1)
@@ -457,6 +459,8 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 mouse_filter = 2
+theme = ExtResource("7_inner_city_theme")
+script = ExtResource("6_inner_city_ui")
 
 [node name="TopStatusBar" type="Panel" parent="UI/Shell"]
 layout_mode = 0
@@ -1077,12 +1081,35 @@ text = "前置：建成后需接入道路才生效
 状态：施工中"
 autowrap_mode = 2
 
+[node name="UpgradeStatusCard" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 316.0
+offset_right = 260.0
+offset_bottom = 376.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 12
+text = "升级状态\n当前权威未提供升级写入命令"
+autowrap_mode = 2
+
+[node name="UpgradeButton" type="Button" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 386.0
+offset_right = 260.0
+offset_bottom = 420.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 12
+text = "查看升级门禁"
+
 [node name="RemoveButton" type="Button" parent="UI/Shell/BuildingDetailPanel"]
 layout_mode = 0
 offset_left = 20.0
-offset_top = 314.0
+offset_top = 430.0
 offset_right = 260.0
-offset_bottom = 346.0
+offset_bottom = 464.0
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_colors/font_color = Color(0.364706, 0.24, 0.2, 1)
@@ -1091,6 +1118,50 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
 theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
 text = "移除建筑（原型）"
+
+[node name="UpgradeConfirmation" type="Control" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="ConfirmationText" type="Label" parent="UI/Shell/BuildingDetailPanel/UpgradeConfirmation"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 88.0
+offset_right = 260.0
+offset_bottom = 226.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="ConfirmUpgradeButton" type="Button" parent="UI/Shell/BuildingDetailPanel/UpgradeConfirmation"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 250.0
+offset_right = 132.0
+offset_bottom = 286.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 12
+text = "保持当前等级"
+
+[node name="CancelUpgradeButton" type="Button" parent="UI/Shell/BuildingDetailPanel/UpgradeConfirmation"]
+layout_mode = 0
+offset_left = 148.0
+offset_top = 250.0
+offset_right = 260.0
+offset_bottom = 286.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 12
+text = "返回详情"
 
 [node name="FirstWarActions" type="Control" parent="UI/Shell/BuildingDetailPanel"]
 visible = false
