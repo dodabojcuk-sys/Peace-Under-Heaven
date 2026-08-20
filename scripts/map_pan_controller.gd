@@ -20,6 +20,10 @@ const MVP_VICTORY_WOOD_REWARD := 20
 @onready var top_status_bar: Control = $UI/Shell/TopStatusBar
 @onready var city_bar: Control = $UI/Shell/CityBar
 @onready var city_bar_toggle: Button = $UI/Shell/CityBarToggle
+@onready var minimap: CityMinimapR1 = $UI/Shell/MinimapPlaceholder
+@onready var construction_entry_panel: Control = $UI/Shell/ConstructionEntryPanel
+@onready var construction_menu: Control = $UI/Shell/ConstructionMenu
+@onready var building_detail_panel: Control = $UI/Shell/BuildingDetailPanel
 @onready var expedition_entry_button: Button = (
 	$UI/Shell/BuildingDetailPanel/FirstWarActions/MvpExpeditionButton
 )
@@ -66,11 +70,12 @@ func _ready() -> void:
 		_refresh_blackstone_mvp_entry
 	)
 	campaign_world_map.configure(construction_controller)
-	# The product successor begins with the only active city's operating context
-	# visible. This is presentation state only; city authority remains unchanged.
-	set_city_bar_expanded(true)
+	# R1 moves city operation into the right build rail. The legacy left rail is
+	# collapsible context, not a second permanent panel competing with the city.
+	set_city_bar_expanded(false)
 	_refresh_blackstone_mvp_entry()
 	call_deferred("_initialize_camera")
+	call_deferred("_refresh_minimap")
 
 
 func _input(event: InputEvent) -> void:
@@ -102,6 +107,10 @@ func _input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventKey:
+		if event.pressed and not event.echo and event.keycode == KEY_R:
+			if construction_controller.rotate_preview():
+				get_viewport().set_input_as_handled()
+			return
 		if event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
 			if (
 				construction_controller.handle_escape()
@@ -139,7 +148,8 @@ func _handle_construction_input(event: InputEvent) -> void:
 			_stop_drag()
 			get_viewport().set_input_as_handled()
 		elif event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-			construction_controller.confirm_current_preview()
+			# The right rail owns confirmation; map clicks only move the ghost.
+			construction_controller.update_preview(event.position)
 			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion:
 		_handle_drag_motion(event)
@@ -191,6 +201,7 @@ func _handle_drag_motion(event: InputEventMouseMotion) -> void:
 	pending_drag_delta = Vector2.ZERO
 	camera.position -= screen_delta / camera.zoom.x
 	_clamp_camera()
+	_refresh_minimap()
 
 
 func _handle_zoom(event: InputEventMouseButton) -> void:
@@ -209,6 +220,7 @@ func _handle_zoom(event: InputEventMouseButton) -> void:
 	camera.zoom = Vector2.ONE * new_zoom
 	camera.position = world_under_cursor - cursor_from_center / new_zoom
 	_clamp_camera()
+	_refresh_minimap()
 
 
 func _initialize_camera() -> void:
@@ -216,6 +228,7 @@ func _initialize_camera() -> void:
 	camera.zoom = Vector2.ONE
 	center_world_position_in_safe_area(map_board.size * 0.5)
 	_clamp_camera()
+	_refresh_minimap()
 
 
 func _stop_drag() -> void:
@@ -267,9 +280,18 @@ func get_navigation_safe_rect() -> Rect2:
 		top = maxf(top, top_status_bar.get_global_rect().end.y)
 	if city_bar_expanded and city_bar.is_visible_in_tree():
 		left = maxf(left, city_bar.get_global_rect().end.x)
+	var right := viewport_rect.end.x
+	for rail_control in [
+		minimap,
+		construction_entry_panel,
+		construction_menu,
+		building_detail_panel,
+	]:
+		if rail_control.is_visible_in_tree():
+			right = minf(right, rail_control.get_global_rect().position.x)
 	return Rect2(
 		Vector2(left, top),
-		Vector2(viewport_rect.end.x - left, viewport_rect.end.y - top)
+		Vector2(right - left, viewport_rect.end.y - top)
 	)
 
 
@@ -279,6 +301,7 @@ func center_world_position_in_safe_area(world_position: Vector2) -> void:
 	camera.position = world_position - (
 		(safe_center - viewport_center) / camera.zoom.x
 	)
+	_refresh_minimap()
 
 
 func focus_world_rect_in_safe_area(
@@ -295,6 +318,7 @@ func focus_world_rect_in_safe_area(
 		camera.zoom = Vector2.ONE * target_zoom
 	center_world_position_in_safe_area(world_rect.get_center())
 	_clamp_camera()
+	_refresh_minimap()
 
 
 func _clamp_camera() -> void:
@@ -487,6 +511,17 @@ func _refresh_blackstone_mvp_entry() -> void:
 
 func _on_viewport_size_changed() -> void:
 	_clamp_camera()
+	_refresh_minimap()
+
+
+func _refresh_minimap() -> void:
+	if not is_instance_valid(minimap):
+		return
+	minimap.update_world_view(
+		camera.position,
+		camera.zoom.x,
+		get_navigation_safe_rect()
+	)
 
 
 func _handle_world_map_input(event: InputEvent) -> void:

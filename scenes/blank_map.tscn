@@ -1,4 +1,4 @@
-[gd_scene load_steps=13 format=3 uid="uid://blankmap00"]
+[gd_scene load_steps=17 format=3 uid="uid://blankmap00"]
 
 [ext_resource type="Script" path="res://scripts/map_pan_controller.gd" id="1_map_pan"]
 [ext_resource type="Script" path="res://scripts/construction_controller.gd" id="2_construction"]
@@ -7,6 +7,9 @@
 [ext_resource type="PackedScene" path="res://scenes/blackstone_expedition_mvp.tscn" id="5_mvp"]
 [ext_resource type="Script" path="res://scripts/inner_city_ui_r0.gd" id="6_inner_city_ui"]
 [ext_resource type="Theme" path="res://resources/ui/inner_city_theme.tres" id="7_inner_city_theme"]
+[ext_resource type="Script" path="res://scripts/regular_city_spatial_foundation.gd" id="8_regular_city"]
+[ext_resource type="Script" path="res://scripts/city_minimap_r1.gd" id="9_city_minimap"]
+[ext_resource type="Script" path="res://scripts/placement_grid_r1.gd" id="10_placement_grid"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top_bar"]
 bg_color = Color(0.847059, 0.831373, 0.796078, 1)
@@ -80,6 +83,9 @@ corner_radius_bottom_left = 4
 script = ExtResource("1_map_pan")
 
 [node name="MapWorld" type="Node2D" parent="."]
+
+[node name="RegularCitySpatialFoundation" type="Node2D" parent="MapWorld"]
+script = ExtResource("8_regular_city")
 
 [node name="Camera2D" type="Camera2D" parent="."]
 position = Vector2(1100, 700)
@@ -426,6 +432,9 @@ default_color = Color(0.72, 0.56, 0.25, 1)
 [node name="ConstructionPreview" type="Node2D" parent="MapWorld/ConstructionLayer"]
 visible = false
 z_index = 2
+
+[node name="PlacementGrid" type="Node2D" parent="MapWorld/ConstructionLayer/ConstructionPreview"]
+script = ExtResource("10_placement_grid")
 
 [node name="Body" type="Polygon2D" parent="MapWorld/ConstructionLayer/ConstructionPreview"]
 polygon = PackedVector2Array(0, 0, 120, 0, 120, 80, 0, 80)
@@ -779,6 +788,7 @@ offset_right = 1136.0
 offset_bottom = 164.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_minimap")
+script = ExtResource("9_city_minimap")
 
 [node name="Label" type="Label" parent="UI/Shell/MinimapPlaceholder"]
 layout_mode = 0
@@ -789,7 +799,7 @@ offset_bottom = 20.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
 theme_override_font_sizes/font_size = 10
-text = "小地图（占位）"
+text = "部署概览 · 黑石城"
 
 [node name="ViewportFrame" type="Panel" parent="UI/Shell/MinimapPlaceholder"]
 layout_mode = 0
@@ -842,6 +852,44 @@ text = "建造中：测试建筑
 右键 / Esc 取消"
 horizontal_alignment = 1
 vertical_alignment = 1
+
+[node name="PlacementOrientation" type="Label" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 0
+offset_left = 8.0
+offset_top = 48.0
+offset_right = 152.0
+offset_bottom = 70.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "朝向：北"
+
+[node name="RotateButton" type="Button" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 0
+offset_left = 8.0
+offset_top = 76.0
+offset_right = 80.0
+offset_bottom = 110.0
+text = "旋转 R"
+
+[node name="ConfirmPlacementButton" type="Button" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 0
+offset_left = 84.0
+offset_top = 76.0
+offset_right = 152.0
+offset_bottom = 110.0
+text = "确认"
+
+[node name="CancelPlacementButton" type="Button" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 0
+offset_left = 8.0
+offset_top = 116.0
+offset_right = 152.0
+offset_bottom = 150.0
+text = "取消 Esc"
 
 [node name="ConstructionMenu" type="Panel" parent="UI/Shell"]
 visible = false

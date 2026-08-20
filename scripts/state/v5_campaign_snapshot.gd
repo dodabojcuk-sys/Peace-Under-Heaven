@@ -2,7 +2,7 @@ class_name V5CampaignSnapshot
 extends RefCounted
 
 
-const SCHEMA_VERSION := 2
+const SCHEMA_VERSION := 3
 const SNAPSHOT_KIND := &"campaign_authoritative"
 const CITY_ID := "blackstone_city"
 const ROOT_KEYS := [
@@ -45,6 +45,17 @@ const PLACEMENT_KEYS := [
 	"disabled_until_day",
 	"construction_started_day",
 	"construction_complete_day",
+	"orientation",
+]
+const V2_PLACEMENT_KEYS := [
+	"placement_id",
+	"definition_id",
+	"origin_cell",
+	"lifecycle_state",
+	"built_day",
+	"disabled_until_day",
+	"construction_started_day",
+	"construction_complete_day",
 ]
 const LEDGER_KEYS := [
 	"committed_results_by_id",
@@ -69,10 +80,10 @@ static func validate_structure(
 			"未知未来 CampaignSnapshot schema"
 		)
 	if not _has_exact_keys(snapshot, ROOT_KEYS):
-		return _failure(&"INVALID_ROOT", "V2 根字段不完整或含未知字段")
+		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段不完整或含未知字段")
 	if (
 		typeof(snapshot.schema_version) != TYPE_INT
-		or int(snapshot.schema_version) != SCHEMA_VERSION
+		or int(snapshot.schema_version) not in [2, SCHEMA_VERSION]
 		or typeof(snapshot.snapshot_kind) != TYPE_STRING_NAME
 		or StringName(snapshot.snapshot_kind) != SNAPSHOT_KIND
 		or typeof(snapshot.city_id) != TYPE_STRING
@@ -85,30 +96,36 @@ static func validate_structure(
 		or typeof(snapshot.army_registry) != TYPE_DICTIONARY
 		or typeof(snapshot.settlement_ledger) != TYPE_DICTIONARY
 	):
-		return _failure(&"INVALID_ROOT", "V2 根字段类型或身份错误")
+		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段类型或身份错误")
 	if not _is_persistence_value(snapshot):
 		return _failure(
 			&"FORBIDDEN_PERSISTENCE_VALUE",
-			"V2 不得包含运行时或表现对象"
+			"CampaignSnapshot 不得包含运行时或表现对象"
 		)
-	var city_result := _validate_city(snapshot.city)
+	var normalized := snapshot.duplicate(true)
+	if int(normalized.schema_version) == 2:
+		var migration := _migrate_v2_orientation_defaults(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	var city_result := _validate_city(normalized.city)
 	if not bool(city_result.valid):
 		return city_result
 	var placement_result := _validate_placements(
-		snapshot.placements,
-		int(snapshot.next_placement_id),
-		int(snapshot.city.current_day)
+		normalized.placements,
+		int(normalized.next_placement_id),
+		int(normalized.city.current_day)
 	)
 	if not bool(placement_result.valid):
 		return placement_result
 	var garrison_result := _validate_garrison(
-		snapshot.garrison,
+		normalized.garrison,
 		allowed_unit_definition_ids
 	)
 	if not bool(garrison_result.valid):
 		return garrison_result
 	var queue_result := TrainingQueue.validate_snapshot(
-		snapshot.training_queue
+		normalized.training_queue
 	)
 	if not bool(queue_result.valid):
 		return _failure(
@@ -116,7 +133,7 @@ static func validate_structure(
 			"TrainingQueue 校验失败"
 		)
 	var army_result := ArmyRegistry.validate_snapshot(
-		snapshot.army_registry,
+		normalized.army_registry,
 		allowed_unit_definition_ids,
 		true
 	)
@@ -125,23 +142,23 @@ static func validate_structure(
 			StringName(army_result.error_id),
 			"ArmyRegistry 校验失败"
 		)
-	var ledger_result := _validate_ledger(snapshot.settlement_ledger)
+	var ledger_result := _validate_ledger(normalized.settlement_ledger)
 	if not bool(ledger_result.valid):
 		return ledger_result
 	var garrison_total := 0
 	for count in Dictionary(
-		snapshot.garrison.unit_counts_by_definition_id
+		normalized.garrison.unit_counts_by_definition_id
 	).values():
 		garrison_total += int(count)
 	var queued_total := 0
 	for order in Dictionary(
-		snapshot.training_queue.orders_by_id
+		normalized.training_queue.orders_by_id
 	).values():
 		if StringName(order.phase) == TrainingQueue.PHASE_QUEUED:
 			queued_total += int(order.quantity)
 	if (
 		garrison_total + queued_total
-			> int(snapshot.city.recruitment_cap)
+			> int(normalized.city.recruitment_cap)
 	):
 		return _failure(
 			&"CAPACITY_CONSERVATION",
@@ -151,7 +168,27 @@ static func validate_structure(
 		"valid": true,
 		"error_id": &"",
 		"error": "",
-		"snapshot": snapshot.duplicate(true),
+		"snapshot": normalized,
+	}
+
+
+static func _migrate_v2_orientation_defaults(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	for index in range(normalized.placements.size()):
+		var placement_value = normalized.placements[index]
+		if not placement_value is Dictionary:
+			return _failure(&"INVALID_PLACEMENTS", "V2 placement 必须为字典")
+		var placement: Dictionary = placement_value
+		if not _has_exact_keys(placement, V2_PLACEMENT_KEYS):
+			return _failure(&"INVALID_PLACEMENTS", "V2 placement 字段不完整")
+		placement.orientation = 0
+		normalized.placements[index] = placement
+	normalized.schema_version = SCHEMA_VERSION
+	return {
+		"valid": true,
+		"error_id": &"",
+		"error": "",
+		"snapshot": normalized,
 	}
 
 
@@ -211,7 +248,7 @@ static func migrate_v1(
 				"%dx" % roundi(float(source.city.city_time_speed))
 			),
 		},
-		"placements": source.placements.duplicate(true),
+		"placements": _migrate_v1_placements(source.placements),
 		"next_placement_id": int(source.next_placement_id),
 		"garrison": {
 			"schema_version": GarrisonState.SCHEMA_VERSION,
@@ -250,6 +287,15 @@ static func empty_settlement_ledger() -> Dictionary:
 		"next_battle_transaction_sequence": 1,
 		"next_army_dispatch_transaction_sequence": 1,
 	}
+
+
+static func _migrate_v1_placements(placements: Array) -> Array[Dictionary]:
+	var migrated: Array[Dictionary] = []
+	for placement_value in placements:
+		var placement: Dictionary = Dictionary(placement_value).duplicate(true)
+		placement.orientation = 0
+		migrated.append(placement)
+	return migrated
 
 
 static func _validate_city(city: Dictionary) -> Dictionary:
@@ -316,6 +362,9 @@ static func _validate_placements(
 			or typeof(placement.lifecycle_state) != TYPE_STRING_NAME
 			or StringName(placement.lifecycle_state)
 				not in [&"constructing", &"running"]
+			or typeof(placement.orientation) != TYPE_INT
+			or int(placement.orientation) < 0
+			or int(placement.orientation) > 3
 		):
 			return _failure(&"INVALID_PLACEMENTS", "placement 身份非法")
 		for day_key in [

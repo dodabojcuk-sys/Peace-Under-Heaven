@@ -315,7 +315,8 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 		str(build_data.level_text),
 		str(build_data.next_level_text),
 	]
-	grid_position.text = "投入：%s｜工期：%s" % [
+	grid_position.text = "朝向：%s｜投入：%s｜工期：%s" % [
+		_construction_orientation_text(int(record.get("orientation", 0))),
 		str(build_data.investment_text),
 		str(build_data.duration_text),
 	]
@@ -373,6 +374,10 @@ func _show_selected_presentation() -> void:
 	removal_confirmation.visible = false
 	upgrade_confirmation.visible = false
 	detail_panel.visible = true
+
+
+func _construction_orientation_text(orientation: int) -> String:
+	return ["北", "东", "南", "西"][clampi(orientation, 0, 3)]
 
 
 func _show_removal_confirmation() -> void:

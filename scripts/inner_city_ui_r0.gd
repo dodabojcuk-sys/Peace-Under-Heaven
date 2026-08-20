@@ -29,6 +29,10 @@ const DANGER := Color("df8d7f")
 @onready var construction_entry: Panel = $ConstructionEntryPanel
 @onready var build_entry_button: Button = $ConstructionEntryPanel/BuildEntryButton
 @onready var build_mode_status: Label = $ConstructionEntryPanel/BuildModeStatus
+@onready var placement_orientation: Label = $ConstructionEntryPanel/PlacementOrientation
+@onready var rotate_button: Button = $ConstructionEntryPanel/RotateButton
+@onready var confirm_placement_button: Button = $ConstructionEntryPanel/ConfirmPlacementButton
+@onready var cancel_placement_button: Button = $ConstructionEntryPanel/CancelPlacementButton
 @onready var construction_menu: Panel = $ConstructionMenu
 @onready var detail_panel: Panel = $BuildingDetailPanel
 @onready var noticeboard_panel: Panel = $NoticeboardPanel
@@ -40,15 +44,17 @@ func _ready() -> void:
 	_layout_for_viewport()
 	get_viewport().size_changed.connect(_layout_for_viewport)
 	construction_controller.city_state_changed.connect(_refresh_read_model)
+	construction_controller.construction_presentation_changed.connect(
+		_layout_for_viewport
+	)
 	_refresh_read_model()
 	call_deferred("_restore_product_overview")
 
 
 func _restore_product_overview() -> void:
-	# MapPanController initializes after this child and restores its legacy collapsed
-	# rail. The product successor has one active city, so its operating summary is
-	# intentionally visible by default without creating another state owner.
-	city_bar.visible = true
+	# R1 makes the right build rail the sole permanent city-operation surface.
+	# The legacy city context can still be explicitly opened without owning state.
+	city_bar.visible = false
 	city_bar_toggle.visible = true
 
 
@@ -78,13 +84,13 @@ func _apply_visual_tokens() -> void:
 
 
 func _apply_static_copy() -> void:
-	city_bar.visible = true
+	city_bar.visible = false
 	city_bar_toggle.visible = true
 	city_title.text = "城市序列"
 	city_current.text = "黑石城\n经营中"
 	city_two.text = "河湾城\n战略目标"
 	city_three.text = "下一城市\n未解锁"
-	minimap_label.text = "部署概览\n当前视野：黑石城"
+	minimap_label.text = "部署概览 · 黑石城"
 	build_entry_button.text = "建造目录"
 	build_mode_status.text = "已选蓝图\n点击地块确认 · Esc 取消"
 	$ConstructionMenu/Title.text = "可建造蓝图"
@@ -129,8 +135,8 @@ func _layout_for_viewport() -> void:
 	var height := viewport_size.y
 	var edge := clampf(width * 0.015, 16.0, 32.0)
 	var top_height := clampf(height * 0.078, 66.0, 82.0)
-	var left_width := clampf(width * 0.17, 205.0, 270.0)
-	var right_width := clampf(width * 0.235, 290.0, 380.0)
+	var left_width := clampf(width * 0.17, 205.0, 250.0)
+	var right_width := clampf(width * 0.23, 278.0, 340.0)
 	var rail_top := top_height + edge
 
 	top_status_bar.position = Vector2.ZERO
@@ -181,25 +187,33 @@ func _layout_for_viewport() -> void:
 	$CityBar/ThreatDetail.size = Vector2(left_width - 32.0, 94.0)
 
 	minimap.position = Vector2(width - right_width - edge, rail_top)
-	minimap.size = Vector2(right_width, 88.0)
-	minimap_label.position = Vector2(16.0, 14.0)
-	minimap_label.size = Vector2(right_width - 32.0, 52.0)
-	$MinimapPlaceholder/ViewportFrame.position = Vector2(right_width - 90.0, 33.0)
-	$MinimapPlaceholder/ViewportFrame.size = Vector2(54.0, 34.0)
+	minimap.size = Vector2(right_width, 128.0)
+	minimap_label.position = Vector2(14.0, 8.0)
+	minimap_label.size = Vector2(right_width - 28.0, 20.0)
+	$MinimapPlaceholder/ViewportFrame.visible = false
 
-	construction_entry.position = Vector2(width - right_width - edge, rail_top + 102.0)
-	construction_entry.size = Vector2(right_width, 66.0)
+	var is_placing: bool = bool(construction_controller.is_placing())
+	construction_entry.position = Vector2(width - right_width - edge, rail_top + 140.0)
+	construction_entry.size = Vector2(right_width, 174.0 if is_placing else 66.0)
 	build_entry_button.position = Vector2(12.0, 12.0)
 	build_entry_button.size = Vector2(right_width - 24.0, 42.0)
-	build_mode_status.position = Vector2(14.0, 10.0)
-	build_mode_status.size = Vector2(right_width - 28.0, 46.0)
+	build_mode_status.position = Vector2(14.0, 12.0)
+	build_mode_status.size = Vector2(right_width - 28.0, 28.0)
+	placement_orientation.position = Vector2(14.0, 46.0)
+	placement_orientation.size = Vector2(right_width - 28.0, 22.0)
+	rotate_button.position = Vector2(14.0, 76.0)
+	rotate_button.size = Vector2((right_width - 42.0) * 0.5, 34.0)
+	confirm_placement_button.position = Vector2(22.0 + (right_width - 42.0) * 0.5, 76.0)
+	confirm_placement_button.size = Vector2((right_width - 42.0) * 0.5, 34.0)
+	cancel_placement_button.position = Vector2(14.0, 118.0)
+	cancel_placement_button.size = Vector2(right_width - 28.0, 34.0)
 
-	construction_menu.position = Vector2(width - right_width - edge, rail_top + 180.0)
-	construction_menu.size = Vector2(right_width, minf(405.0, height - rail_top - 192.0))
+	construction_menu.position = Vector2(width - right_width - edge, rail_top + 218.0)
+	construction_menu.size = Vector2(right_width, minf(390.0, height - rail_top - 230.0))
 	_layout_catalog(right_width)
 
-	detail_panel.position = Vector2(width - right_width - edge, rail_top + 102.0)
-	detail_panel.size = Vector2(right_width, minf(610.0, height - rail_top - 116.0))
+	detail_panel.position = Vector2(width - right_width - edge, rail_top + 140.0)
+	detail_panel.size = Vector2(right_width, minf(610.0, height - rail_top - 154.0))
 	_layout_detail(right_width)
 
 

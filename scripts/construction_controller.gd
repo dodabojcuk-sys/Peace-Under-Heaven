@@ -3,6 +3,7 @@ extends Node
 
 signal placing_started
 signal construction_interaction_started
+signal construction_presentation_changed
 signal building_removed(placement_id: int)
 signal city_state_changed
 
@@ -34,6 +35,14 @@ const PREVIEW_VALID_COLOR := Color(0.31, 0.62, 0.43, 0.72)
 const PREVIEW_INVALID_COLOR := Color(0.72, 0.31, 0.28, 0.72)
 const PREVIEW_VALID_OUTLINE := Color(0.12, 0.34, 0.2, 1.0)
 const PREVIEW_INVALID_OUTLINE := Color(0.42, 0.12, 0.1, 1.0)
+const ORIENTATION_NORTH := 0
+const ORIENTATION_EAST := 1
+const ORIENTATION_SOUTH := 2
+const ORIENTATION_WEST := 3
+const ORIENTATION_NAMES := ["北", "东", "南", "西"]
+const CITY_GRID_RULES = preload(
+	"res://scripts/city_sandbox/city_grid_rules.gd"
+)
 const ROAD_DEFINITION: BuildingDefinition = preload(
 	"res://resources/definitions/buildings/road.tres"
 )
@@ -185,6 +194,9 @@ const PRESET_BUILDING_DEFINITIONS := [
 @onready var preview_label: Label = (
 	$"../MapWorld/ConstructionLayer/ConstructionPreview/Label"
 )
+@onready var placement_grid: PlacementGridR1 = (
+	$"../MapWorld/ConstructionLayer/ConstructionPreview/PlacementGrid"
+)
 @onready var construction_entry_panel: Control = (
 	$"../UI/Shell/ConstructionEntryPanel"
 )
@@ -193,6 +205,18 @@ const PRESET_BUILDING_DEFINITIONS := [
 )
 @onready var build_mode_status: Label = (
 	$"../UI/Shell/ConstructionEntryPanel/BuildModeStatus"
+)
+@onready var placement_orientation_label: Label = (
+	$"../UI/Shell/ConstructionEntryPanel/PlacementOrientation"
+)
+@onready var rotate_placement_button: Button = (
+	$"../UI/Shell/ConstructionEntryPanel/RotateButton"
+)
+@onready var confirm_placement_button: Button = (
+	$"../UI/Shell/ConstructionEntryPanel/ConfirmPlacementButton"
+)
+@onready var cancel_placement_button: Button = (
+	$"../UI/Shell/ConstructionEntryPanel/CancelPlacementButton"
 )
 @onready var construction_menu: Control = $"../UI/Shell/ConstructionMenu"
 @onready var road_button: Button = $"../UI/Shell/ConstructionMenu/RoadButton"
@@ -275,6 +299,7 @@ const PRESET_BUILDING_DEFINITIONS := [
 
 var state := ConstructionState.IDLE
 var preview_origin_cell := Vector2i.ZERO
+var preview_orientation := ORIENTATION_NORTH
 var preview_valid := false
 var preview_invalid_reason := ""
 var current_day := 1
@@ -401,6 +426,9 @@ func _ready() -> void:
 		_on_definition_button_pressed.bind(WATCHTOWER_DEFINITION.definition_id)
 	)
 	close_construction_menu_button.pressed.connect(cancel_build_interaction)
+	rotate_placement_button.pressed.connect(rotate_preview)
+	confirm_placement_button.pressed.connect(confirm_current_preview)
+	cancel_placement_button.pressed.connect(cancel_placing)
 	pause_button.pressed.connect(toggle_city_time_paused)
 	time_speed_option.item_selected.connect(_on_time_speed_selected)
 	recruit_button.pressed.connect(queue_training)
@@ -522,11 +550,13 @@ func open_construction_menu() -> void:
 		return
 	state = ConstructionState.CHOOSING_TEMPLATE
 	_selected_definition = null
+	preview_orientation = ORIENTATION_NORTH
 	construction_preview.visible = false
 	preview_valid = false
 	preview_invalid_reason = ""
 	_sync_construction_ui()
 	construction_interaction_started.emit()
+	construction_presentation_changed.emit()
 
 
 func begin_placing(screen_position: Vector2) -> void:
@@ -547,11 +577,13 @@ func begin_placing_definition(
 		return false
 	_selected_definition = definition
 	state = ConstructionState.PLACING
+	preview_orientation = ORIENTATION_NORTH
 	construction_preview.visible = true
-	_apply_preview_geometry(definition)
+	_apply_preview_geometry(definition, preview_orientation)
 	_sync_construction_ui()
 	update_preview(screen_position)
 	placing_started.emit()
+	construction_presentation_changed.emit()
 	return true
 
 
@@ -560,10 +592,12 @@ func cancel_placing() -> void:
 		return
 	state = ConstructionState.IDLE
 	_selected_definition = null
+	preview_orientation = ORIENTATION_NORTH
 	construction_preview.visible = false
 	preview_valid = false
 	preview_invalid_reason = ""
 	_sync_construction_ui()
+	construction_presentation_changed.emit()
 
 
 func cancel_build_interaction() -> void:
@@ -571,10 +605,12 @@ func cancel_build_interaction() -> void:
 		return
 	state = ConstructionState.IDLE
 	_selected_definition = null
+	preview_orientation = ORIENTATION_NORTH
 	construction_preview.visible = false
 	preview_valid = false
 	preview_invalid_reason = ""
 	_sync_construction_ui()
+	construction_presentation_changed.emit()
 
 
 func handle_escape() -> bool:
@@ -611,7 +647,7 @@ func update_preview(screen_position: Vector2) -> void:
 	var map_local_position := screen_to_map_local(screen_position)
 	preview_origin_cell = map_position_to_origin_cell(
 		map_local_position,
-		_selected_definition.footprint
+		get_rotated_footprint(_selected_definition, preview_orientation)
 	)
 	_refresh_preview_for_current_cell()
 
@@ -626,30 +662,70 @@ func confirm_current_preview() -> bool:
 	var placement_id := place_definition_at_cell(
 		_selected_definition.definition_id,
 		preview_origin_cell,
-		true
+		true,
+		false,
+		preview_orientation
 	)
 	if placement_id < 0:
 		return false
-	_refresh_preview_for_current_cell()
+	# Confirmation commits through the existing authority, then clears every
+	# placement-only presentation state so cancellation cannot leak orientation.
+	cancel_placing()
 	return true
+
+
+func rotate_preview() -> bool:
+	if not is_placing() or _selected_definition == null:
+		return false
+	preview_orientation = posmod(preview_orientation + 1, 4)
+	_apply_preview_geometry(_selected_definition, preview_orientation)
+	_refresh_preview_for_current_cell()
+	_sync_construction_ui()
+	construction_presentation_changed.emit()
+	return true
+
+
+func get_preview_orientation() -> int:
+	return preview_orientation
+
+
+func get_rotated_footprint(
+	definition: BuildingDefinition,
+	orientation: int
+) -> Vector2i:
+	if definition == null:
+		return Vector2i.ZERO
+	var result: Dictionary = CITY_GRID_RULES.get_rotated_footprint(
+		definition.footprint,
+		orientation
+	)
+	if not bool(result.get("valid", false)):
+		return Vector2i.ZERO
+	return Vector2i(result.footprint)
 
 
 func place_definition_at_cell(
 	definition_id: StringName,
 	origin_cell: Vector2i,
 	charge_cost := true,
-	complete_immediately := false
+	complete_immediately := false,
+	orientation := ORIENTATION_NORTH
 ) -> int:
 	if is_city_action_locked_for_battle():
 		return -1
 	var definition := get_definition(definition_id)
 	if definition == null:
 		return -1
+	if orientation < ORIENTATION_NORTH or orientation > ORIENTATION_WEST:
+		return -1
+	if get_rotated_footprint(definition, orientation) == Vector2i.ZERO:
+		return -1
 	var validation := evaluate_origin_cell_for_definition(
 		origin_cell,
 		definition,
 		false,
-		charge_cost
+		charge_cost,
+		orientation
 	)
 	if not bool(validation.valid):
 		return -1
@@ -668,6 +744,7 @@ func place_definition_at_cell(
 		placement_id,
 		origin_cell,
 		definition,
+		orientation,
 		&"running" if starts_completed else &"constructing",
 		current_day,
 		0,
@@ -1581,6 +1658,7 @@ func _export_v5_placements() -> Array[Dictionary]:
 			"construction_complete_day": int(
 				record.construction_complete_day
 			),
+			"orientation": int(record.get("orientation", ORIENTATION_NORTH)),
 		})
 	return placements
 
@@ -1744,6 +1822,17 @@ func _apply_validated_v5_campaign_snapshot(
 	var garrison_counts: Dictionary = (
 		snapshot.garrison.unit_counts_by_definition_id
 	)
+	var compatibility_placements: Array[Dictionary] = []
+	var orientations_by_placement_id: Dictionary = {}
+	for placement_value in snapshot.placements:
+		var persisted_placement: Dictionary = placement_value
+		var placement_id := int(persisted_placement.placement_id)
+		orientations_by_placement_id[placement_id] = int(
+			persisted_placement.get("orientation", ORIENTATION_NORTH)
+		)
+		var legacy_placement := persisted_placement.duplicate(true)
+		legacy_placement.erase("orientation")
+		compatibility_placements.append(legacy_placement)
 	var compatibility_snapshot := {
 		"city": {
 			"current_day": int(city.current_day),
@@ -1781,7 +1870,7 @@ func _apply_validated_v5_campaign_snapshot(
 				String(city.city_time_speed_id).trim_suffix("x")
 			),
 		},
-		"placements": snapshot.placements.duplicate(true),
+		"placements": compatibility_placements,
 		"next_placement_id": int(snapshot.next_placement_id),
 	}
 	var clear_result := _clear_runtime_placements_for_snapshot_restore()
@@ -1792,7 +1881,8 @@ func _apply_validated_v5_campaign_snapshot(
 			"error": clear_result.error,
 		}
 	var city_install := _install_early_city_snapshot(
-		compatibility_snapshot
+		compatibility_snapshot,
+		orientations_by_placement_id
 	)
 	if not bool(city_install.success):
 		return {
@@ -2073,7 +2163,10 @@ func _apply_validated_early_city_snapshot(
 	}
 
 
-func _install_early_city_snapshot(snapshot: Dictionary) -> Dictionary:
+func _install_early_city_snapshot(
+	snapshot: Dictionary,
+	orientations_by_placement_id: Dictionary = {}
+) -> Dictionary:
 	var city: Dictionary = snapshot.city
 	var legacy_resources := (
 		V5_NATIONAL_RESOURCE_ADAPTER.extract_legacy_city_resources(city)
@@ -2118,7 +2211,11 @@ func _install_early_city_snapshot(snapshot: Dictionary) -> Dictionary:
 	first_war_warning_count = 0
 	_update_first_war_state_for_current_day()
 	for placement_value in snapshot.placements:
-		if not _restore_runtime_placement_from_snapshot(placement_value):
+		var placement_id := int(placement_value.placement_id)
+		if not _restore_runtime_placement_from_snapshot(
+			placement_value,
+			int(orientations_by_placement_id.get(placement_id, ORIENTATION_NORTH))
+		):
 			return {
 				"success": false,
 				"error": "无法安装 placement %d" % int(
@@ -2163,7 +2260,8 @@ func _clear_runtime_placements_for_snapshot_restore() -> Dictionary:
 
 
 func _restore_runtime_placement_from_snapshot(
-	placement: Dictionary
+	placement: Dictionary,
+	orientation := ORIENTATION_NORTH
 ) -> bool:
 	var placement_id := int(placement.placement_id)
 	var definition := get_definition(StringName(placement.definition_id))
@@ -2172,6 +2270,7 @@ func _restore_runtime_placement_from_snapshot(
 		placement_id,
 		origin_cell,
 		definition,
+		orientation,
 		StringName(placement.lifecycle_state),
 		int(placement.built_day),
 		int(placement.disabled_until_day),
@@ -2184,6 +2283,7 @@ func _register_runtime_placement_record(
 	placement_id: int,
 	origin_cell: Vector2i,
 	definition: BuildingDefinition,
+	orientation: int,
 	lifecycle_state: StringName,
 	built_day: int,
 	disabled_until_day: int,
@@ -2192,9 +2292,12 @@ func _register_runtime_placement_record(
 ) -> bool:
 	if definition == null or _building_records_by_id.has(placement_id):
 		return false
+	var footprint := get_rotated_footprint(definition, orientation)
+	if footprint == Vector2i.ZERO:
+		return false
 	var footprint_cells := get_footprint_cells(
 		origin_cell,
-		definition.footprint
+		footprint
 	)
 	for cell in footprint_cells:
 		if _occupied_cells.has(cell):
@@ -2202,7 +2305,9 @@ func _register_runtime_placement_record(
 	var building := _create_placed_building_node(
 		placement_id,
 		origin_cell,
-		definition
+		definition,
+		footprint,
+		orientation
 	)
 	if (
 		not is_instance_valid(building)
@@ -2221,11 +2326,13 @@ func _register_runtime_placement_record(
 		"building_type": definition.building_type,
 		"description": definition.description,
 		"origin_cell": origin_cell,
-		"footprint": definition.footprint,
+		"footprint": footprint,
+		"base_footprint": definition.footprint,
+		"orientation": orientation,
 		"occupied_footprint_cells": footprint_cells.duplicate(),
 		"selection_bounds": Rect2(
 			Vector2.ZERO,
-			_definition_world_size(definition)
+			Vector2(footprint) * GRID_SIZE
 		),
 		"lifecycle_state": lifecycle_state,
 		"prototype_status": (
@@ -4377,22 +4484,26 @@ func evaluate_origin_cell_for_definition(
 	origin_cell: Vector2i,
 	definition: BuildingDefinition,
 	check_ui := true,
-	check_resources := true
+	check_resources := true,
+	orientation := ORIENTATION_NORTH
 ) -> Dictionary:
 	if definition == null:
 		return _validation_result(false, "缺少建筑定义")
+	var footprint := get_rotated_footprint(definition, orientation)
+	if footprint == Vector2i.ZERO:
+		return _validation_result(false, "建筑朝向非法")
 	var footprint_cells := get_footprint_cells(
 		origin_cell,
-		definition.footprint
+		footprint
 	)
-	if not _footprint_is_inside_map(origin_cell, definition.footprint):
+	if not _footprint_is_inside_map(origin_cell, footprint):
 		return _validation_result(false, "超出地图")
 	for cell in footprint_cells:
 		if _occupied_cells.has(cell):
 			return _validation_result(false, "位置已占用")
 	var screen_rect := get_footprint_screen_rect(
 		origin_cell,
-		definition.footprint
+		footprint
 	)
 	if check_ui:
 		if not _screen_rect_is_inside_viewport(screen_rect):
@@ -4457,7 +4568,9 @@ func _refresh_preview_for_current_cell() -> void:
 	var validation := evaluate_origin_cell_for_definition(
 		preview_origin_cell,
 		_selected_definition,
-		true
+		true,
+		true,
+		preview_orientation
 	)
 	preview_valid = validation.valid
 	preview_invalid_reason = validation.reason
@@ -4469,9 +4582,10 @@ func _refresh_preview_for_current_cell() -> void:
 		PREVIEW_VALID_OUTLINE if preview_valid else PREVIEW_INVALID_OUTLINE
 	)
 	preview_label.text = (
-		"%s L%d\n%s · %s\n可放置" % [
+		"%s L%d · 朝%s\n%s · %s\n可放置" % [
 			_selected_definition.display_name,
 			_selected_definition.level,
+			ORIENTATION_NAMES[preview_orientation],
 			_get_definition_compact_cost_text(_selected_definition),
 			(
 				"即时"
@@ -4482,20 +4596,27 @@ func _refresh_preview_for_current_cell() -> void:
 			),
 		]
 		if preview_valid
-		else "%s L%d\n%s" % [
+		else "%s L%d · 朝%s\n%s" % [
 			_selected_definition.display_name,
 			_selected_definition.level,
+			ORIENTATION_NAMES[preview_orientation],
 			preview_invalid_reason,
 		]
 	)
+	_sync_construction_ui()
 
 
-func _apply_preview_geometry(definition: BuildingDefinition) -> void:
-	var world_size := _definition_world_size(definition)
+func _apply_preview_geometry(
+	definition: BuildingDefinition,
+	orientation: int
+) -> void:
+	var footprint := get_rotated_footprint(definition, orientation)
+	var world_size := Vector2(footprint) * GRID_SIZE
 	preview_body.polygon = _rectangle_polygon(world_size)
 	preview_outline.points = _rectangle_outline_points(world_size)
 	preview_label.size = world_size
 	preview_label.position = Vector2.ZERO
+	placement_grid.configure_grid(footprint, GRID_SIZE)
 
 
 func _footprint_is_inside_map(
@@ -4551,19 +4672,64 @@ func _validation_result(
 func _create_placed_building_node(
 	placement_id: int,
 	origin_cell: Vector2i,
-	definition: BuildingDefinition
+	definition: BuildingDefinition,
+	footprint: Vector2i,
+	orientation: int
 ) -> Node2D:
 	var building := Node2D.new()
 	building.name = "Placement%03d" % placement_id
 	building.position = cell_to_map_local(origin_cell)
 	building.set_meta("placement_id", placement_id)
-	var world_size := _definition_world_size(definition)
+	var world_size := Vector2(footprint) * GRID_SIZE
+	var is_road := definition.placement_kind == PLACEMENT_KIND_ROAD
+	var roof_lift := 0.0 if is_road else minf(18.0, world_size.y * 0.22)
+
+	var shadow := Polygon2D.new()
+	shadow.name = "Shadow"
+	shadow.polygon = PackedVector2Array([
+		Vector2(8.0, 12.0),
+		Vector2(world_size.x + 8.0, 12.0),
+		Vector2(world_size.x + 8.0, world_size.y + 12.0),
+		Vector2(8.0, world_size.y + 12.0),
+	])
+	shadow.color = Color(0.12, 0.14, 0.13, 0.28)
+	building.add_child(shadow)
+
+	var foundation := Polygon2D.new()
+	foundation.name = "Foundation"
+	foundation.polygon = _rectangle_polygon(world_size)
+	foundation.color = Color("766b56") if not is_road else definition.body_color.darkened(0.18)
+	building.add_child(foundation)
 
 	var body := Polygon2D.new()
 	body.name = "Body"
-	body.polygon = _rectangle_polygon(world_size)
+	body.polygon = PackedVector2Array([
+		Vector2(5.0, roof_lift + 5.0),
+		Vector2(world_size.x - 5.0, roof_lift + 5.0),
+		Vector2(world_size.x - 5.0, world_size.y - 5.0),
+		Vector2(5.0, world_size.y - 5.0),
+	])
 	body.color = definition.body_color
 	building.add_child(body)
+
+	if not is_road:
+		var roof := Polygon2D.new()
+		roof.name = "Roof"
+		roof.polygon = PackedVector2Array([
+			Vector2(5.0, roof_lift + 5.0),
+			Vector2(world_size.x * 0.5, 2.0),
+			Vector2(world_size.x - 5.0, roof_lift + 5.0),
+			Vector2(world_size.x - 12.0, roof_lift + 22.0),
+			Vector2(12.0, roof_lift + 22.0),
+		])
+		roof.color = definition.body_color.lightened(0.14)
+		building.add_child(roof)
+
+		var entrance := Polygon2D.new()
+		entrance.name = "Entrance"
+		entrance.polygon = _entrance_polygon(world_size, orientation)
+		entrance.color = Color("202926")
+		building.add_child(entrance)
 
 	var outline := Line2D.new()
 	outline.name = "Outline"
@@ -4574,8 +4740,8 @@ func _create_placed_building_node(
 
 	var label := Label.new()
 	label.name = "Label"
-	label.position = Vector2(3.0, 3.0)
-	label.size = world_size - Vector2(6.0, 6.0)
+	label.position = Vector2(5.0, roof_lift + 6.0)
+	label.size = world_size - Vector2(10.0, roof_lift + 10.0)
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	label.text = definition.display_name
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -4591,8 +4757,53 @@ func _create_placed_building_node(
 	)
 	building.add_child(label)
 
+	var construction_marker := Line2D.new()
+	construction_marker.name = "ConstructionMarker"
+	construction_marker.points = PackedVector2Array([
+		Vector2(8.0, 8.0),
+		Vector2(world_size.x - 8.0, world_size.y - 8.0),
+		Vector2(8.0, world_size.y - 8.0),
+		Vector2(world_size.x - 8.0, 8.0),
+	])
+	construction_marker.width = 3.0
+	construction_marker.default_color = Color("f2c36d")
+	building.add_child(construction_marker)
+
 	placed_buildings.add_child(building)
 	return building
+
+
+func _entrance_polygon(world_size: Vector2, orientation: int) -> PackedVector2Array:
+	var width := minf(20.0, world_size.x * 0.3)
+	match orientation:
+		ORIENTATION_NORTH:
+			return PackedVector2Array([
+				Vector2(world_size.x * 0.5 - width * 0.5, 0.0),
+				Vector2(world_size.x * 0.5 + width * 0.5, 0.0),
+				Vector2(world_size.x * 0.5 + width * 0.5, 10.0),
+				Vector2(world_size.x * 0.5 - width * 0.5, 10.0),
+			])
+		ORIENTATION_EAST:
+			return PackedVector2Array([
+				Vector2(world_size.x - 10.0, world_size.y * 0.5 - width * 0.5),
+				Vector2(world_size.x, world_size.y * 0.5 - width * 0.5),
+				Vector2(world_size.x, world_size.y * 0.5 + width * 0.5),
+				Vector2(world_size.x - 10.0, world_size.y * 0.5 + width * 0.5),
+			])
+		ORIENTATION_SOUTH:
+			return PackedVector2Array([
+				Vector2(world_size.x * 0.5 - width * 0.5, world_size.y - 10.0),
+				Vector2(world_size.x * 0.5 + width * 0.5, world_size.y - 10.0),
+				Vector2(world_size.x * 0.5 + width * 0.5, world_size.y),
+				Vector2(world_size.x * 0.5 - width * 0.5, world_size.y),
+			])
+		_:
+			return PackedVector2Array([
+				Vector2(0.0, world_size.y * 0.5 - width * 0.5),
+				Vector2(10.0, world_size.y * 0.5 - width * 0.5),
+				Vector2(10.0, world_size.y * 0.5 + width * 0.5),
+				Vector2(0.0, world_size.y * 0.5 + width * 0.5),
+			])
 
 
 func _refresh_placed_building_visual(placement_id: int) -> void:
@@ -4604,6 +4815,9 @@ func _refresh_placed_building_visual(placement_id: int) -> void:
 	if building == null or definition == null:
 		return
 	var body := building.get_node_or_null("Body") as Polygon2D
+	var foundation := building.get_node_or_null("Foundation") as Polygon2D
+	var roof := building.get_node_or_null("Roof") as Polygon2D
+	var construction_marker := building.get_node_or_null("ConstructionMarker") as Line2D
 	var outline := building.get_node_or_null("Outline") as Line2D
 	var label := building.get_node_or_null("Label") as Label
 	var is_constructing := (
@@ -4615,6 +4829,20 @@ func _refresh_placed_building_visual(placement_id: int) -> void:
 			if is_constructing
 			else definition.body_color
 		)
+	if foundation != null:
+		foundation.color = (
+			Color("8a7658")
+			if is_constructing
+			else Color("766b56")
+		)
+	if roof != null:
+		roof.color = (
+			definition.body_color.lightened(0.04)
+			if is_constructing
+			else definition.body_color.lightened(0.16)
+		)
+	if construction_marker != null:
+		construction_marker.visible = is_constructing
 	if outline != null:
 		outline.default_color = (
 			Color(0.72, 0.57, 0.28, 1.0)
@@ -4992,10 +5220,23 @@ func _sync_construction_ui() -> void:
 	build_entry_button.visible = state != ConstructionState.PLACING
 	build_entry_button.disabled = is_city_action_locked_for_battle()
 	build_mode_status.visible = state == ConstructionState.PLACING
+	placement_orientation_label.visible = state == ConstructionState.PLACING
+	rotate_placement_button.visible = state == ConstructionState.PLACING
+	confirm_placement_button.visible = state == ConstructionState.PLACING
+	cancel_placement_button.visible = state == ConstructionState.PLACING
 	if state == ConstructionState.PLACING and _selected_definition != null:
-		build_mode_status.text = "建造中：%s\n右键 / Esc 取消" % (
-			_selected_definition.display_name
-		)
+		build_mode_status.text = "建造：%s · %s" % [
+			_selected_definition.display_name,
+			_get_definition_compact_cost_text(_selected_definition),
+		]
+		placement_orientation_label.text = "朝向：%s · 占地 %d × %d" % [
+			ORIENTATION_NAMES[preview_orientation],
+			get_rotated_footprint(_selected_definition, preview_orientation).x,
+			get_rotated_footprint(_selected_definition, preview_orientation).y,
+		]
+		confirm_placement_button.disabled = not preview_valid
+		cancel_placement_button.disabled = false
+		rotate_placement_button.disabled = false
 	construction_menu.visible = (
 		not _detail_panel_active
 		and state == ConstructionState.CHOOSING_TEMPLATE
