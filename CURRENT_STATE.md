@@ -3,11 +3,16 @@
 ## Product successor UI-R0
 
 `codex/product-successor-inner-city-r0` is the only mutable product branch.
-It adds an accepted one-city inner-city presentation slice on top of the frozen
-forensic baseline: responsive overview, native build catalog, building detail,
-and a non-mutating upgrade gate. `NationState` and the existing construction
-authority remain the only resource and placement owners. This does not start
-G4–G6, R2C-03, V6, legacy cleanup, or any save/schema migration.
+R1 extends its one-city inner-city presentation slice with a regular
+axial/ward graybox spatial foundation, a responsive right construction rail,
+minimap, four-way authoritative building orientation, and V5-compatible
+orientation persistence. `NationState` and the existing construction authority
+remain the only resource and placement owners. This does not start G4–G6,
+R2C-03, V6, legacy cleanup, or a broader save/schema migration.
+
+`VISUAL_STATUS=GRAYBOX_SPATIAL_FOUNDATION`
+
+`FINAL_BUILDING_ART=NOT_STARTED_BY_SCOPE`
 
 ## 结论
 

@@ -93,8 +93,8 @@ func _run() -> void:
 		"详情名称来自权威记录")
 	_check(
 		detail_panel.get_node("TargetType").text.contains("当前等级：L1")
-			and detail_panel.get_node("GridPosition").text
-				== "投入：木材 40｜工期：1 日"
+		and detail_panel.get_node("GridPosition").text
+			== "朝向：北｜投入：木材 40｜工期：1 日"
 			and detail_panel.get_node("Footprint").text
 				== "当前效果：木材 +18/日",
 		"详情显示权威等级、投入、工期和当前效果"

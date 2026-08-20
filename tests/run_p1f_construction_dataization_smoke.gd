@@ -93,8 +93,8 @@ func _run() -> void:
 	_check(
 		detail_panel.get_node("TargetType").text
 			== "当前等级：L1\n下一等级：当前切片未开放"
-			and detail_panel.get_node("GridPosition").text
-				== "投入：木材 40｜工期：1 日"
+		and detail_panel.get_node("GridPosition").text
+				== "朝向：北｜投入：木材 40｜工期：1 日"
 			and detail_panel.get_node("Footprint").text
 				== "当前效果：木材 +18/日"
 			and detail_panel.get_node("PrototypeStatus").text.contains(

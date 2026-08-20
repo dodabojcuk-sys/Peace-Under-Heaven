@@ -5,6 +5,18 @@
 
 ## Unreleased
 
+### Regular City Spatial Foundation R1
+
+- Replaced the flat default inner-city backdrop with a regular axial/ward
+  graybox spatial layer, a compact civic court, passive ward volumes, and
+  four rotations of one city-gate component.
+- Moved the formal construction flow into a responsive right rail with a
+  minimap, real catalog, placement controls, and reused building detail.
+- Added authority-backed building orientation and legacy V5 snapshot fallback
+  to north; no second building/resource owner or upgrade writer was added.
+- Final building art, organic garden city, camera view rotation, road traffic,
+  G4–G6, R2C-03, V6, push, and deployment remain out of scope.
+
 ### Product successor UI-R0
 
 - Established the isolated `codex/product-successor-inner-city-r0` branch and

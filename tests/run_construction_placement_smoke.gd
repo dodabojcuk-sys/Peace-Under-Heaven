@@ -169,17 +169,23 @@ func _run() -> void:
 	_check(controller.preview_valid, "左键路由测试位置有效")
 	var placing_left_camera_position := camera.position
 	var placement_count_before_left: int = controller.get_building_count()
+	var confirm_placement_button: Button = scene.get_node(
+		"UI/Shell/ConstructionEntryPanel/ConfirmPlacementButton"
+	)
 	var placing_left_press := InputEventMouseButton.new()
 	placing_left_press.button_index = MOUSE_BUTTON_LEFT
 	placing_left_press.pressed = true
 	placing_left_press.position = Vector2(860.0, 500.0)
 	scene._input(placing_left_press)
-	_check(controller.get_building_count() == placement_count_before_left + 1,
-		"placing 左键通过唯一输入入口确认放置")
+	_check(controller.get_building_count() == placement_count_before_left,
+		"placing 左键只更新 ghost；确认权归右侧纵栏")
 	_check(camera.position.is_equal_approx(placing_left_camera_position),
 		"placing 左键不移动 Camera2D")
-	_check(controller.is_placing(), "确认一次后保持 placing 以便连续放置")
-	controller.cancel_placing()
+	_check(controller.is_placing(), "左键更新 ghost 后保持 placing")
+	confirm_placement_button.emit_signal("pressed")
+	_check(controller.get_building_count() == placement_count_before_left + 1,
+		"右侧确认按钮通过唯一权威建造命令落位")
+	_check(not controller.is_placing(), "确认后清除 ghost 与临时旋转状态")
 
 	var idle_camera_position := camera.position
 	var left_press := InputEventMouseButton.new()

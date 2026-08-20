@@ -130,10 +130,14 @@ func _input(event: InputEvent) -> void:
 
 func _handle_construction_input(event: InputEvent) -> void:
 	if event is InputEventKey:
-		if event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
-			construction_controller.cancel_placing()
-			_stop_drag()
-			get_viewport().set_input_as_handled()
+		if event.pressed and not event.echo:
+			if event.keycode == KEY_R:
+				construction_controller.rotate_preview()
+				get_viewport().set_input_as_handled()
+			elif event.keycode == KEY_ESCAPE:
+				construction_controller.cancel_placing()
+				_stop_drag()
+				get_viewport().set_input_as_handled()
 		return
 
 	if event is InputEventMouseButton:

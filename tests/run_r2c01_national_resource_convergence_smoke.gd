@@ -295,7 +295,7 @@ func _check_p0_01_and_v5_compatibility(
 	_check(
 		not snapshot.is_empty()
 			and snapshot.schema_version == V5Snapshot.SCHEMA_VERSION
-			and V5Snapshot.SCHEMA_VERSION == 2
+			and V5Snapshot.SCHEMA_VERSION == 3
 			and int(snapshot.city.wood) == nation.get_resource(&"wood")
 			and int(snapshot.city.food) == nation.get_resource(&"food")
 			and int(snapshot.city.tech_points)

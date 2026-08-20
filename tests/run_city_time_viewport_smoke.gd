@@ -246,10 +246,11 @@ func _run() -> void:
 	construction.restart_first_map()
 	var placement_snapshot := _placement_origins(construction)
 	_check(
-		scene.is_city_bar_expanded()
-			and city_bar.visible
-			and city_bar_toggle.visible,
-		"一城经营视图默认展开且切换入口始终可见"
+			not scene.is_city_bar_expanded()
+				and not city_bar.visible
+				and city_bar_toggle.visible
+				and scene.get_node("UI/Shell/ConstructionEntryPanel").visible,
+		"右侧城建栏默认展开且城市切换入口始终可见"
 	)
 	scene.set_city_bar_expanded(false)
 	await process_frame

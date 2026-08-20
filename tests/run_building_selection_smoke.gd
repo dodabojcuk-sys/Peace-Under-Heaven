@@ -57,7 +57,7 @@ func _run() -> void:
 		"响应式详情面板固定在地图右侧安全区"
 	)
 	_check(
-		panel_rect.size.x >= 290.0 and panel_rect.size.y >= 440.0,
+		panel_rect.size.x >= 278.0 and panel_rect.size.y >= 390.0,
 		"详情面板为建筑状态与升级门禁保留可读空间"
 	)
 	_check(not panel_rect.intersects(minimap.get_global_rect()),
@@ -102,8 +102,8 @@ func _run() -> void:
 	)
 	_check(
 		detail_panel.get_node("GridPosition").text
-			== "投入：木材 40｜工期：1 日",
-		"面板显示真实投入和施工时间"
+			== "朝向：北｜投入：木材 40｜工期：1 日",
+		"面板显示真实朝向、投入和施工时间"
 	)
 	_check(
 		detail_panel.get_node("Footprint").text
@@ -152,7 +152,7 @@ func _run() -> void:
 	_check(
 		detail_panel.get_node("TargetName").text == "伐木场"
 			and detail_panel.get_node("GridPosition").text
-				== "投入：木材 40｜工期：1 日",
+				== "朝向：北｜投入：木材 40｜工期：1 日",
 		"切换选择后面板保持与新权威记录一致"
 	)
 
@@ -273,8 +273,15 @@ func _run() -> void:
 	placing_left.pressed = true
 	placing_left.position = Vector2(700.0, 500.0)
 	scene._input(placing_left)
+	_check(construction.get_building_count() == placement_count_before,
+		"placing 左键只更新预览，不会绕过右侧确认")
+	_check(construction.is_placing(), "左键更新预览后仍保持 placing 状态")
+	var confirm_button: Button = scene.get_node("UI/Shell/ConstructionEntryPanel/ConfirmPlacementButton")
+	confirm_button.emit_signal("pressed")
+	await process_frame
 	_check(construction.get_building_count() == placement_count_before + 1,
-		"placing 左键仍只确认有效建造")
+		"右侧确认按钮通过权威建造命令落成建筑")
+	_check(not construction.is_placing(), "右侧确认后退出 placing 状态")
 	_check(not selection.has_selection(), "placing 左键不会同时选择建筑")
 	construction.cancel_placing()
 	_check(not construction_preview.visible, "退出 placing 后建造预览隐藏")

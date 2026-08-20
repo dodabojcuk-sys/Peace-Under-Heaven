@@ -12,6 +12,15 @@ const GATE_LAYOUT := [
 	{"name": "WestGate", "position": Vector2(54.0, 700.0), "orientation": 3},
 ]
 
+const BUILDING_LABELS := {
+	"Manor": "城主府",
+	"Barracks": "兵营",
+	"Granary": "粮仓",
+	"Academy": "书院",
+	"CommandPlatform": "军令台",
+	"Noticeboard": "告示板",
+}
+
 var _fixed_building_proxies: Array[Dictionary] = []
 
 
@@ -29,7 +38,6 @@ func _collect_fixed_building_proxies() -> void:
 		"Barracks",
 		"Granary",
 		"Academy",
-		"CityGate",
 		"CommandPlatform",
 		"Noticeboard",
 	]:
@@ -82,20 +90,49 @@ func _draw() -> void:
 	_draw_ward(Rect2(1430.0, 770.0, 580.0, 430.0), Color("cec5a9"))
 	_draw_road(Rect2(1020.0, 74.0, 160.0, 1252.0))
 	_draw_road(Rect2(74.0, 630.0, 2052.0, 140.0))
-	draw_rect(Rect2(930.0, 540.0, 340.0, 320.0), Color("b89352"), true)
-	draw_rect(Rect2(930.0, 540.0, 340.0, 320.0), Color("755c35"), false, 5.0)
+	# This is an open civic court rather than a foreground gate: it anchors the
+	# axial roads without becoming a dominant facade in the default viewport.
+	var civic_courtyard := Rect2(1010.0, 610.0, 180.0, 150.0)
+	draw_rect(civic_courtyard, Color("b89352"), true)
+	draw_rect(civic_courtyard, Color("755c35"), false, 4.0)
+	draw_rect(civic_courtyard.grow(-24.0), Color("d8cda8"), true)
+	draw_circle(civic_courtyard.get_center(), 18.0, Color("a57d3e"))
 	for proxy in _fixed_building_proxies:
 		_draw_graybox_building(
 			Rect2(proxy.rect),
 			Color(proxy.color),
-			str(proxy.name)
+			str(BUILDING_LABELS.get(str(proxy.name), str(proxy.name)))
 		)
 
 
 func _draw_ward(rect: Rect2, color: Color) -> void:
 	draw_rect(rect, color, true)
 	draw_rect(rect.grow(-20.0), Color("dcd4ba"), false, 3.0)
-	draw_rect(Rect2(rect.get_center() - Vector2(38.0, 26.0), Vector2(76.0, 52.0)), Color("aeb08f"), true)
+	# These are non-interactive ward volumes, not selectable production
+	# buildings. They make the foundation read as a city before art production.
+	for local_rect in [
+		Rect2(54.0, 60.0, 100.0, 72.0),
+		Rect2(rect.size.x - 174.0, 74.0, 112.0, 78.0),
+		Rect2(rect.size.x * 0.5 - 54.0, rect.size.y - 126.0, 108.0, 74.0),
+	]:
+		_draw_ambient_volume(
+			Rect2(rect.position + local_rect.position, local_rect.size)
+		)
+
+
+func _draw_ambient_volume(rect: Rect2) -> void:
+	var shadow := Rect2(rect.position + Vector2(10.0, 13.0), rect.size)
+	draw_rect(shadow, Color(0.17, 0.17, 0.14, 0.18), true)
+	draw_rect(rect, Color("a29b7e"), true)
+	var roof := PackedVector2Array([
+		rect.position,
+		rect.position + Vector2(rect.size.x * 0.5, -18.0),
+		rect.position + Vector2(rect.size.x, 0.0),
+		rect.position + Vector2(rect.size.x, 24.0),
+		rect.position + Vector2(0.0, 24.0),
+	])
+	draw_colored_polygon(roof, Color("c2ad7b"))
+	draw_rect(rect, Color("756c56"), false, 2.0)
 
 
 func _draw_road(rect: Rect2) -> void:

@@ -29,21 +29,22 @@ func _run() -> void:
 	var construction_menu: Panel = shell.get_node("ConstructionMenu")
 	var build_entry: Button = shell.get_node("ConstructionEntryPanel/BuildEntryButton")
 	var detail: Panel = shell.get_node("BuildingDetailPanel")
+	var expedition: Control = scene.get_node("UI/BlackstoneExpeditionMvp")
 
 	_check(city.get_nation_state() != null, "资源行只读取现有国家权威")
-	_check(city_rail.visible and city_rail.get_node("Title").text == "城市序列",
-		"一城经营视图默认显示城市序列")
+	_check(not city_rail.visible,
+		"R1 默认不常驻左侧城市序列，避免与右侧城建栏争夺地图")
+	_check(not expedition.visible,
+		"正常启动链默认进入正式内城，外城入口按需打开")
 	_check(
 		resource_summary.text.contains("国家共享资源")
 			and resource_summary.text.contains("木材"),
 		"资源行显示权威国家共享资源"
 	)
 	_check(
-		detail.size.x >= 290.0
-			and not detail.get_global_rect().intersects(
-				city_rail.get_global_rect()
-			),
-		"1280 宽度下详情与城市序列保持安全分区"
+		detail.size.x >= 278.0
+			and detail.get_global_rect().position.x > root.size.x * 0.5,
+		"1280 宽度下详情复用右侧安全栏，不挤压城市为多面板"
 	)
 
 	build_entry.emit_signal("pressed")
