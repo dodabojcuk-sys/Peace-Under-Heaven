@@ -5,6 +5,24 @@ extends Node2D
 const CityGateComponent = preload("res://scripts/city_gate_component_r1.gd")
 
 const MAP_SIZE := Vector2(2200.0, 1400.0)
+const GRID_SIZE := 40.0
+const MAP_GRID_SIZE := Vector2i(55, 35)
+# The regular-city profile is the one spatial source for the graybox road
+# surface and its gameplay cell projection.  Rendering and construction query
+# these same cell ranges; neither side maintains a second road map.
+const ROAD_LAYOUT_RECTS := [
+	Rect2i(Vector2i(2, 13), Vector2i(51, 2)),
+	Rect2i(Vector2i(28, 2), Vector2i(2, 31)),
+]
+const CIVIC_COURT_RECT := Rect2i(Vector2i(22, 7), Vector2i(6, 4))
+const GATE_SLOT_RECTS := [
+	Rect2i(Vector2i(26, 0), Vector2i(3, 2)),
+	Rect2i(Vector2i(53, 16), Vector2i(2, 3)),
+	Rect2i(Vector2i(26, 33), Vector2i(3, 2)),
+	Rect2i(Vector2i(0, 16), Vector2i(2, 3)),
+]
+const LEGACY_RUNTIME_ROAD_ROOT := Vector2i(7, 4)
+const FORMAL_ROAD_ROOT := Vector2i(28, 13)
 const GATE_LAYOUT := [
 	{"name": "NorthGate", "position": Vector2(1100.0, 54.0), "orientation": 0},
 	{"name": "EastGate", "position": Vector2(2146.0, 700.0), "orientation": 1},
@@ -22,14 +40,99 @@ const BUILDING_LABELS := {
 }
 
 var _fixed_building_proxies: Array[Dictionary] = []
+var _formal_road_cells: Dictionary = {}
+var _formal_reserved_cells: Dictionary = {}
+var _formal_wall_cells: Dictionary = {}
+var _formal_gate_cells: Dictionary = {}
 
 
 func _ready() -> void:
 	z_index = -1
+	_build_spatial_cell_projection()
 	_collect_fixed_building_proxies()
 	_hide_legacy_visual_layer()
 	_install_gate_instances()
 	queue_redraw()
+
+
+func _build_spatial_cell_projection() -> void:
+	_formal_road_cells.clear()
+	_formal_reserved_cells.clear()
+	_formal_wall_cells.clear()
+	_formal_gate_cells.clear()
+	for road_rect in ROAD_LAYOUT_RECTS:
+		for y in range(road_rect.position.y, road_rect.end.y):
+			for x in range(road_rect.position.x, road_rect.end.x):
+				_formal_road_cells[Vector2i(x, y)] = true
+	for y in range(CIVIC_COURT_RECT.position.y, CIVIC_COURT_RECT.end.y):
+		for x in range(CIVIC_COURT_RECT.position.x, CIVIC_COURT_RECT.end.x):
+			_formal_reserved_cells[Vector2i(x, y)] = true
+	for x in range(MAP_GRID_SIZE.x):
+		_formal_wall_cells[Vector2i(x, 0)] = true
+		_formal_wall_cells[Vector2i(x, MAP_GRID_SIZE.y - 1)] = true
+	for y in range(MAP_GRID_SIZE.y):
+		_formal_wall_cells[Vector2i(0, y)] = true
+		_formal_wall_cells[Vector2i(MAP_GRID_SIZE.x - 1, y)] = true
+	for gate_rect in GATE_SLOT_RECTS:
+		for y in range(gate_rect.position.y, gate_rect.end.y):
+			for x in range(gate_rect.position.x, gate_rect.end.x):
+				_formal_gate_cells[Vector2i(x, y)] = true
+
+
+func get_formal_road_cells() -> Dictionary:
+	return _formal_road_cells.duplicate(true)
+
+
+func get_formal_reserved_cells() -> Dictionary:
+	return _formal_reserved_cells.duplicate(true)
+
+
+func get_formal_wall_cells() -> Dictionary:
+	return _formal_wall_cells.duplicate(true)
+
+
+func get_formal_gate_cells() -> Dictionary:
+	return _formal_gate_cells.duplicate(true)
+
+
+func is_formal_road_cell(cell: Vector2i) -> bool:
+	return _formal_road_cells.has(cell)
+
+
+func is_formal_reserved_cell(cell: Vector2i) -> bool:
+	return _formal_reserved_cells.has(cell)
+
+
+func is_formal_wall_cell(cell: Vector2i) -> bool:
+	return _formal_wall_cells.has(cell)
+
+
+func is_formal_gate_cell(cell: Vector2i) -> bool:
+	return _formal_gate_cells.has(cell)
+
+
+func get_road_root_cells() -> Array[Vector2i]:
+	# The legacy seed keeps existing road fixtures/save validation valid while
+	# the formal city profile contributes its own connected center root.
+	return [FORMAL_ROAD_ROOT, LEGACY_RUNTIME_ROAD_ROOT]
+
+
+func get_formal_road_rects() -> Array[Rect2]:
+	var rects: Array[Rect2] = []
+	for cell_rect in ROAD_LAYOUT_RECTS:
+		rects.append(_cell_rect(cell_rect))
+	return rects
+
+
+func get_civic_court_rect() -> Rect2:
+	return _cell_rect(CIVIC_COURT_RECT)
+
+
+func _cell_rect(cell_rect: Rect2i) -> Rect2:
+	return Rect2(
+		Vector2(cell_rect.position) * GRID_SIZE,
+		Vector2(cell_rect.size) * GRID_SIZE
+	)
 
 
 func _collect_fixed_building_proxies() -> void:
@@ -88,11 +191,11 @@ func _draw() -> void:
 	_draw_ward(Rect2(150.0, 770.0, 620.0, 430.0), Color("cec5a9"))
 	_draw_ward(Rect2(835.0, 770.0, 530.0, 430.0), Color("c8bea2"))
 	_draw_ward(Rect2(1430.0, 770.0, 580.0, 430.0), Color("cec5a9"))
-	_draw_road(Rect2(1020.0, 74.0, 160.0, 1252.0))
-	_draw_road(Rect2(74.0, 630.0, 2052.0, 140.0))
+	for road_rect in get_formal_road_rects():
+		_draw_road(road_rect)
 	# This is an open civic court rather than a foreground gate: it anchors the
 	# axial roads without becoming a dominant facade in the default viewport.
-	var civic_courtyard := Rect2(1010.0, 610.0, 180.0, 150.0)
+	var civic_courtyard := get_civic_court_rect()
 	draw_rect(civic_courtyard, Color("b89352"), true)
 	draw_rect(civic_courtyard, Color("755c35"), false, 4.0)
 	draw_rect(civic_courtyard.grow(-24.0), Color("d8cda8"), true)

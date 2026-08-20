@@ -308,3 +308,32 @@ V6，本轮不声称已完成它们。
 - force push、批量推送其他 refs、部署；
 - 清理或迁移存档；
 - 把测试通过扩写为用户体验或发布结论。
+
+## R2A road-lot-entrance semantic closure
+
+R2A is implemented on the active product-successor branch from
+`86e25a47d14a2c5041518d2e67a06268eef25503`. The regular-city foundation now
+owns the formal road/reserved/wall/gate cell projection used by both graybox
+rendering and construction validation. `CityGridRules` is the shared entrance
+adapter for the existing `road_anchor_offsets` definitions and all four
+orientations.
+
+The authority remains `ConstructionController` plus the existing V5 snapshot
+and save-store path. No operational flag, writer, autoload, schema version,
+scene, resource cost, or road-construction tool was added. Legal disconnected
+lots remain buildable but amber/disabled after completion until their derived
+entrance contacts a connected formal road; protected cells and existing
+buildings fail with concrete reasons.
+
+Verification for this slice: the focused R2A road/lot/entrance runner passes
+16/16; all 40 discovered smoke runners (the existing 39 plus the focused
+runner) pass with 0 failures; Godot 4.5.1 editor parse/import and the formal
+blank_map, Blackstone, and C0 headless smokes exit 0. Native 1440x900 evidence
+also covers road rejection, amber disconnected placement, west-facing green
+placement, native confirmation, construction, completion, and connected detail.
+Versioned save/load re-derivation remains covered by the focused headless test;
+the current shell exposes no user-facing save button, so no claim is made that
+the visual shell itself provides a save action.
+
+R2B player road construction, road removal, traffic/pathfinding, organic garden
+city, final art, G4, push, and deployment remain not started.

@@ -146,7 +146,7 @@ func _run() -> void:
 
 	var placement_id: int = controller.place_definition_at_cell(
 		&"building.logging_camp.t1",
-		Vector2i(22, 14),
+		Vector2i(20, 20),
 		false,
 		true,
 		1

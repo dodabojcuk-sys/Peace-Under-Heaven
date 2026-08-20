@@ -47,3 +47,28 @@ single city authority; `NationState` remains the resource authority.
 - No multi-city switching, national writer, building upgrade writer, V5 schema
   change, save migration, scene replacement, campaign redesign, asset import,
   or legacy cleanup.
+
+## R2A road, lot, and entrance semantics
+
+The regular-city graybox now exposes one spatial projection from
+`RegularCitySpatialFoundation`: its formal road rectangles, civic reserved
+cells, wall ring, and four gate slots drive both the road drawing and the
+construction queries. `ConstructionController` consumes copies of that
+projection; it does not maintain a second road or lot map.
+
+Ordinary building placement rejects road, wall, gate-slot, reserved-court, and
+existing-building overlap. UI occlusion remains an input blocker, while an
+existing occupied cell retains its authoritative `位置已占用` reason even when
+that cell is outside the current camera.
+
+Road-serving definitions use the existing `road_anchor_offsets` adapter and
+`CityGridRules` to derive one entrance cell and facing for each N/E/S/W
+orientation. A legal lot may be disconnected and is shown amber; a lot whose
+derived entrance touches the formal connected road set is green. Operational
+status is derived from completion plus that entrance contact and is never
+persisted as a separate save field. Legacy snapshots without orientation keep
+the existing north-facing fallback.
+
+The preview and selected-building diagnostic marker is intentionally graybox
+only. Player road construction, road removal, traffic/pathfinding, organic
+garden layouts, and final building art remain out of scope for R2A.

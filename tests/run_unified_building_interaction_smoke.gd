@@ -254,7 +254,7 @@ func _run() -> void:
 		"底栏删除后原区域没有透明 Control 阻挡地图")
 
 	var fixed_count_before_runtime: int = construction.get_building_count()
-	var runtime_id: int = construction._create_runtime_building(Vector2i(25, 15))
+	var runtime_id: int = construction._create_runtime_building(Vector2i(20, 20))
 	var runtime_record: Dictionary = construction.get_building_record(runtime_id)
 	_check(runtime_record.placement_kind == construction.PLACEMENT_KIND_PLACED,
 		"运行时建筑使用 placed 能力记录")

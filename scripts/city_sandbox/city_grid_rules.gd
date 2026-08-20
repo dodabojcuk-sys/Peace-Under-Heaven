@@ -75,6 +75,50 @@ static func resolve_entrance(
 	}
 
 
+static func get_definition_entrance_adapter(
+	footprint_size: Vector2i,
+	road_anchor_offsets: Array[Vector2i]
+) -> Dictionary:
+	# Building definitions store the exterior road-contact cells.  Resolve one
+	# deterministic perimeter adapter in compass order so all consumers use the
+	# same entrance semantics without treating every possible anchor as a second
+	# entrance or a second state owner.
+	var edge_specs := [
+		{"edge": Vector2i.UP, "predicate": &"top"},
+		{"edge": Vector2i.RIGHT, "predicate": &"right"},
+		{"edge": Vector2i.DOWN, "predicate": &"bottom"},
+		{"edge": Vector2i.LEFT, "predicate": &"left"},
+	]
+	for edge_spec in edge_specs:
+		var edge: Vector2i = edge_spec.edge
+		for offset_value in road_anchor_offsets:
+			var offset := Vector2i(offset_value)
+			if edge_spec.predicate == &"top" and offset.y == -1 and offset.x >= 0 and offset.x < footprint_size.x:
+				return {
+					"entrance_cell": Vector2i(offset.x, 0),
+					"entrance_facing": edge,
+				}
+			if edge_spec.predicate == &"right" and offset.x == footprint_size.x and offset.y >= 0 and offset.y < footprint_size.y:
+				return {
+					"entrance_cell": Vector2i(footprint_size.x - 1, offset.y),
+					"entrance_facing": edge,
+				}
+			if edge_spec.predicate == &"bottom" and offset.y == footprint_size.y and offset.x >= 0 and offset.x < footprint_size.x:
+				return {
+					"entrance_cell": Vector2i(offset.x, footprint_size.y - 1),
+					"entrance_facing": edge,
+				}
+			if edge_spec.predicate == &"left" and offset.x == -1 and offset.y >= 0 and offset.y < footprint_size.y:
+				return {
+					"entrance_cell": Vector2i(0, offset.y),
+					"entrance_facing": edge,
+				}
+	return {
+		"entrance_cell": Vector2i.ZERO,
+		"entrance_facing": Vector2i.UP,
+	}
+
+
 static func get_covered_cells(
 	origin_cell: Vector2i,
 	footprint_size: Vector2i

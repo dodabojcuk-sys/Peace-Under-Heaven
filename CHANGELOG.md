@@ -5,6 +5,21 @@
 
 ## Unreleased
 
+### R2A road-lot-entrance semantic closure
+
+- Unified the regular-city graybox road rectangles, reserved court, wall ring,
+  and gate slots with the construction controller's spatial queries.
+- Added deterministic `road_anchor_offsets` entrance adaptation through
+  `CityGridRules`, so footprint rotation, entrance facing, and road contact
+  remain one derived model for preview, placement, and operational status.
+- Kept disconnected legal lots buildable with an amber warning, rejected
+  ordinary buildings on roads/protected cells, and added a lightweight
+  placement/selected entrance marker without changing save schema or adding a
+  second writer.
+- Added the focused R2A smoke and retained the existing 39-runner regression
+  contract; player road construction, traffic, organic city layouts, final art,
+  G4, push, and deployment remain out of scope.
+
 ### R1C native mouse construction closure
 
 - Fixed right-rail pointer routing so hovering or clicking the native confirm

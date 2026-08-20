@@ -28,12 +28,13 @@ const GRID_ORIGIN := Vector2.ZERO
 const PLACEMENT_KIND_FIXED := &"fixed"
 const PLACEMENT_KIND_PLACED := &"placed"
 const PLACEMENT_KIND_ROAD := &"road"
-const ROAD_ROOT_CELLS: Array[Vector2i] = [Vector2i(7, 4)]
 const BASE_RESOURCE_CAPACITY := 160
 const UI_SAFETY_MARGIN := 8.0
 const PREVIEW_VALID_COLOR := Color(0.31, 0.62, 0.43, 0.72)
+const PREVIEW_DISCONNECTED_COLOR := Color(0.78, 0.57, 0.2, 0.76)
 const PREVIEW_INVALID_COLOR := Color(0.72, 0.31, 0.28, 0.72)
 const PREVIEW_VALID_OUTLINE := Color(0.12, 0.34, 0.2, 1.0)
+const PREVIEW_DISCONNECTED_OUTLINE := Color(0.48, 0.29, 0.08, 1.0)
 const PREVIEW_INVALID_OUTLINE := Color(0.42, 0.12, 0.1, 1.0)
 const ORIENTATION_NORTH := 0
 const ORIENTATION_EAST := 1
@@ -183,6 +184,9 @@ const PRESET_BUILDING_DEFINITIONS := [
 
 @onready var map_world: Node2D = $"../MapWorld"
 @onready var map_board: Control = $"../MapWorld/MapBoard"
+@onready var city_spatial_foundation: RegularCitySpatialFoundation = (
+	$"../MapWorld/RegularCitySpatialFoundation"
+)
 @onready var placed_buildings: Node2D = $"../MapWorld/ConstructionLayer/PlacedBuildings"
 @onready var construction_preview: Node2D = $"../MapWorld/ConstructionLayer/ConstructionPreview"
 @onready var preview_body: Polygon2D = (
@@ -302,6 +306,9 @@ var preview_origin_cell := Vector2i.ZERO
 var preview_orientation := ORIENTATION_NORTH
 var preview_valid := false
 var preview_invalid_reason := ""
+var preview_connection_state: StringName = &"not_required"
+var preview_entrance_info: Dictionary = {}
+var preview_entrance_marker: Polygon2D
 var current_day := 1
 var _nation_state: NationState = NATION_STATE.new()
 var wood: int:
@@ -456,6 +463,11 @@ func _ready() -> void:
 		start_button.pressed.connect(
 			start_noticeboard_mission.bind(mission.mission_id)
 		)
+	preview_entrance_marker = Polygon2D.new()
+	preview_entrance_marker.name = "PreviewEntranceMarker"
+	preview_entrance_marker.z_index = 2
+	preview_entrance_marker.visible = false
+	construction_preview.add_child(preview_entrance_marker)
 	construction_preview.visible = false
 	_configure_time_speed_options()
 	_update_threat_for_current_day(false)
@@ -554,6 +566,9 @@ func open_construction_menu() -> void:
 	construction_preview.visible = false
 	preview_valid = false
 	preview_invalid_reason = ""
+	preview_connection_state = &"not_required"
+	preview_entrance_info = {}
+	preview_entrance_marker.visible = false
 	_sync_construction_ui()
 	construction_interaction_started.emit()
 	construction_presentation_changed.emit()
@@ -596,6 +611,9 @@ func cancel_placing() -> void:
 	construction_preview.visible = false
 	preview_valid = false
 	preview_invalid_reason = ""
+	preview_connection_state = &"not_required"
+	preview_entrance_info = {}
+	preview_entrance_marker.visible = false
 	_sync_construction_ui()
 	construction_presentation_changed.emit()
 
@@ -1982,7 +2000,8 @@ func validate_early_city_snapshot(snapshot: Dictionary) -> Dictionary:
 		"map_grid_size": map_grid_size,
 		"base_resource_capacity": BASE_RESOURCE_CAPACITY,
 		"threat_schedule": FIRST_MAP_THREAT_SCHEDULE,
-		"road_root_cells": ROAD_ROOT_CELLS,
+		"road_root_cells": city_spatial_foundation.get_road_root_cells(),
+		"formal_road_cells": city_spatial_foundation.get_formal_road_cells(),
 		"seconds_per_day": SECONDS_PER_DAY,
 		"allowed_time_speeds": CITY_TIME_SPEEDS,
 		"allowed_training_batches": (
@@ -4286,7 +4305,33 @@ func get_building_record(placement_id: int) -> Dictionary:
 	var status := get_operational_status(placement_id)
 	result.operational_state = status.state
 	result.prototype_status = status.label
+	var entrance_info := get_building_entrance_info(placement_id)
+	if not entrance_info.is_empty():
+		result.entrance_cell = entrance_info.get("entrance_cell", Vector2i.ZERO)
+		result.entrance_facing = entrance_info.get(
+			"entrance_facing",
+			Vector2i.ZERO
+		)
+		result.road_contact_cell = entrance_info.get(
+			"road_contact_cell",
+			Vector2i.ZERO
+		)
+		result.entrance_connection_state = entrance_info.get(
+			"connection_state",
+			&"not_required"
+		)
 	return result
+
+
+func set_building_diagnostic_visible(placement_id: int, visible: bool) -> void:
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
+	if record.is_empty():
+		return
+	var building := record.get("node") as Node2D
+	if not is_instance_valid(building):
+		return
+	building.set_meta("show_entrance_marker", visible)
+	_refresh_placed_building_visual(placement_id)
 
 
 func get_building_node(placement_id: int) -> CanvasItem:
@@ -4334,9 +4379,14 @@ func get_operational_status(placement_id: int) -> Dictionary:
 	if bool(record.requires_road) and not is_building_connected_to_road(
 		placement_id
 	):
-		return {"state": &"disabled", "label": "停用：未接入道路"}
+		return {
+			"state": &"disabled",
+			"label": "停用：未接入道路 · 入口未接路",
+		}
 	if record.placement_kind == PLACEMENT_KIND_FIXED:
 		return {"state": &"fixed", "label": "固定 / 可选择"}
+	if bool(record.requires_road):
+		return {"state": &"operational", "label": "运行中：入口已接路"}
 	return {"state": &"operational", "label": "运行中"}
 
 
@@ -4349,16 +4399,14 @@ func is_building_connected_to_road(placement_id: int) -> bool:
 	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if record.is_empty() or not bool(record.requires_road):
 		return not record.is_empty()
-	var connected_roads := get_connected_road_cells()
-	var origin: Vector2i = record.origin_cell
-	for offset in record.road_anchor_offsets:
-		if connected_roads.has(origin + Vector2i(offset)):
-			return true
-	return false
+	var entrance_info := get_building_entrance_info(placement_id)
+	return bool(entrance_info.get("connected", false))
 
 
 func get_connected_road_cells() -> Dictionary:
 	var road_cells: Dictionary = {}
+	for cell in city_spatial_foundation.get_formal_road_cells():
+		road_cells[Vector2i(cell)] = true
 	for placement_id in _placement_order:
 		var record: Dictionary = _building_records_by_id.get(placement_id, {})
 		if (
@@ -4368,25 +4416,10 @@ func get_connected_road_cells() -> Dictionary:
 			for cell in record.occupied_footprint_cells:
 				road_cells[cell] = true
 
-	var connected: Dictionary = {}
-	var frontier: Array[Vector2i] = []
-	for root_cell in ROAD_ROOT_CELLS:
-		if road_cells.has(root_cell):
-			connected[root_cell] = true
-			frontier.append(root_cell)
-	while not frontier.is_empty():
-		var current: Vector2i = frontier.pop_front()
-		for direction in [
-			Vector2i.LEFT,
-			Vector2i.RIGHT,
-			Vector2i.UP,
-			Vector2i.DOWN,
-		]:
-			var neighbor: Vector2i = current + Vector2i(direction)
-			if road_cells.has(neighbor) and not connected.has(neighbor):
-				connected[neighbor] = true
-				frontier.append(neighbor)
-	return connected
+	return CITY_GRID_RULES.get_connected_road_cells(
+		road_cells,
+		city_spatial_foundation.get_road_root_cells()
+	)
 
 
 func remove_placed_building(placement_id: int) -> bool:
@@ -4471,6 +4504,90 @@ func get_footprint_cells(
 	return cells
 
 
+func get_formal_road_cells() -> Dictionary:
+	return city_spatial_foundation.get_formal_road_cells()
+
+
+func get_formal_reserved_cells() -> Dictionary:
+	return city_spatial_foundation.get_formal_reserved_cells()
+
+
+func get_formal_wall_cells() -> Dictionary:
+	return city_spatial_foundation.get_formal_wall_cells()
+
+
+func get_formal_gate_cells() -> Dictionary:
+	return city_spatial_foundation.get_formal_gate_cells()
+
+
+func get_entrance_info_for_definition(
+	origin_cell: Vector2i,
+	definition: BuildingDefinition,
+	orientation := ORIENTATION_NORTH
+) -> Dictionary:
+	if definition == null:
+		return {"valid": false, "error": &"missing_definition"}
+	# Definitions describe their allowed perimeter contacts through
+	# road_anchor_offsets.  Select one stable adapter from that definition, then
+	# let CityGridRules rotate the adapter with the real footprint so the contact
+	# cell, facing, and occupied shape remain one deterministic query.
+	var adapter := CITY_GRID_RULES.get_definition_entrance_adapter(
+		definition.footprint,
+		definition.road_anchor_offsets
+	)
+	var resolved: Dictionary = CITY_GRID_RULES.resolve_entrance(
+		origin_cell,
+		definition.footprint,
+		Vector2i(adapter.entrance_cell),
+		Vector2i(adapter.entrance_facing),
+		orientation
+	)
+	if not bool(resolved.get("valid", false)):
+		return resolved
+	var connected_roads := get_connected_road_cells()
+	resolved["connected"] = connected_roads.has(
+		Vector2i(resolved.road_contact_cell)
+	)
+	resolved["connection_state"] = (
+		&"connected"
+		if bool(resolved.connected)
+		else &"disconnected"
+	)
+	return resolved
+
+
+func get_building_entrance_info(placement_id: int) -> Dictionary:
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
+	if record.is_empty():
+		return {}
+	var definition := get_definition(StringName(record.definition_id))
+	if definition == null or not bool(record.requires_road):
+		return {
+			"valid": true,
+			"required": false,
+			"connection_state": &"not_required",
+		}
+	var result := get_entrance_info_for_definition(
+		Vector2i(record.origin_cell),
+		definition,
+		int(record.orientation)
+	)
+	result["required"] = true
+	return result
+
+
+func _get_spatial_block_reason(cell: Vector2i) -> String:
+	if city_spatial_foundation.is_formal_reserved_cell(cell):
+		return "占用保留区域"
+	if city_spatial_foundation.is_formal_gate_cell(cell):
+		return "占用城门槽位"
+	if city_spatial_foundation.is_formal_wall_cell(cell):
+		return "占用城墙"
+	if city_spatial_foundation.is_formal_road_cell(cell):
+		return "占用道路"
+	return ""
+
+
 func evaluate_origin_cell(origin_cell: Vector2i) -> Dictionary:
 	var definition := (
 		_selected_definition
@@ -4498,13 +4615,17 @@ func evaluate_origin_cell_for_definition(
 	)
 	if not _footprint_is_inside_map(origin_cell, footprint):
 		return _validation_result(false, "超出地图")
-	for cell in footprint_cells:
-		if _occupied_cells.has(cell):
-			return _validation_result(false, "位置已占用")
 	var screen_rect := get_footprint_screen_rect(
 		origin_cell,
 		footprint
 	)
+	# Existing-building occupancy is authoritative even when the camera places
+	# the fixed record outside the visible canvas.  Protected spatial cells stay
+	# below the UI check so an explicit UI overlap still reports its actionable
+	# input blocker rather than a hidden road/wall beneath the panel.
+	for cell in footprint_cells:
+		if _occupied_cells.has(cell):
+			return _validation_result(false, "位置已占用", screen_rect)
 	if check_ui:
 		if not _screen_rect_is_inside_viewport(screen_rect):
 			return _validation_result(false, "超出可操作区域", screen_rect)
@@ -4514,15 +4635,39 @@ func evaluate_origin_cell_for_definition(
 				and ui_control.get_global_rect().grow(
 					UI_SAFETY_MARGIN
 				).intersects(screen_rect)
-			):
+				):
 				return _validation_result(false, "被界面遮挡", screen_rect)
+	for cell in footprint_cells:
+		var spatial_reason := _get_spatial_block_reason(cell)
+		if not spatial_reason.is_empty():
+			return _validation_result(false, spatial_reason, screen_rect)
 	if check_resources and not _can_pay_definition(definition):
 		return _validation_result(
 			false,
 			"木材不足（需要 %d）" % definition.wood_cost,
 			screen_rect
 		)
-	return _validation_result(true, "", screen_rect)
+	var entrance_info := get_entrance_info_for_definition(
+		origin_cell,
+		definition,
+		orientation
+	)
+	var connection_state: StringName = &"not_required"
+	if definition.requires_road:
+		if not bool(entrance_info.get("valid", false)):
+			return _validation_result(false, "入口定义非法", screen_rect)
+		connection_state = StringName(
+			entrance_info.get("connection_state", &"disconnected")
+		)
+	return _validation_result(
+		true,
+		"",
+		screen_rect,
+		{
+			"connection_state": connection_state,
+			"entrance_info": entrance_info,
+		}
+	)
 
 
 func get_footprint_screen_rect(
@@ -4574,15 +4719,38 @@ func _refresh_preview_for_current_cell() -> void:
 	)
 	preview_valid = validation.valid
 	preview_invalid_reason = validation.reason
+	preview_connection_state = StringName(
+		validation.get("connection_state", &"not_required")
+	)
+	preview_entrance_info = Dictionary(
+		validation.get("entrance_info", {})
+	)
 	construction_preview.position = cell_to_map_local(preview_origin_cell)
+	var preview_is_connected := (
+		preview_connection_state == &"connected"
+		or preview_connection_state == &"not_required"
+	)
 	preview_body.color = (
-		PREVIEW_VALID_COLOR if preview_valid else PREVIEW_INVALID_COLOR
+		PREVIEW_INVALID_COLOR
+		if not preview_valid
+		else (
+			PREVIEW_VALID_COLOR
+			if preview_is_connected
+			else PREVIEW_DISCONNECTED_COLOR
+		)
 	)
 	preview_outline.default_color = (
-		PREVIEW_VALID_OUTLINE if preview_valid else PREVIEW_INVALID_OUTLINE
+		PREVIEW_INVALID_OUTLINE
+		if not preview_valid
+		else (
+			PREVIEW_VALID_OUTLINE
+			if preview_is_connected
+			else PREVIEW_DISCONNECTED_OUTLINE
+		)
 	)
+	_update_preview_entrance_marker()
 	preview_label.text = (
-		"%s L%d · 朝%s\n%s · %s\n可放置" % [
+		"%s L%d · 朝%s\n%s · %s\n%s" % [
 			_selected_definition.display_name,
 			_selected_definition.level,
 			ORIENTATION_NAMES[preview_orientation],
@@ -4594,6 +4762,7 @@ func _refresh_preview_for_current_cell() -> void:
 					current_day + _selected_definition.build_days
 				)
 			),
+			_preview_connection_label(),
 		]
 		if preview_valid
 		else "%s L%d · 朝%s\n%s" % [
@@ -4604,6 +4773,59 @@ func _refresh_preview_for_current_cell() -> void:
 		]
 	)
 	_sync_construction_ui()
+
+
+func get_preview_connection_state() -> StringName:
+	return preview_connection_state
+
+
+func _preview_connection_label() -> String:
+	if not preview_valid:
+		return preview_invalid_reason
+	if preview_connection_state == &"connected":
+		return "入口已接路 · 可放置"
+	if preview_connection_state == &"disconnected":
+		return "可建，但入口未接路"
+	return "可放置"
+
+
+func _update_preview_entrance_marker() -> void:
+	if preview_entrance_marker == null:
+		return
+	if not is_placing() or _selected_definition == null:
+		preview_entrance_marker.visible = false
+		return
+	var footprint := get_rotated_footprint(
+		_selected_definition,
+		preview_orientation
+	)
+	if footprint == Vector2i.ZERO or preview_entrance_info.is_empty():
+		preview_entrance_marker.visible = false
+		return
+	var entrance_cell := Vector2i(
+		preview_entrance_info.get("entrance_cell", Vector2i.ZERO)
+	)
+	var facing := Vector2i(
+		preview_entrance_info.get("entrance_facing", Vector2i.UP)
+	)
+	var center := (Vector2(entrance_cell) + Vector2(0.5, 0.5)) * GRID_SIZE
+	var tip := center + Vector2(facing) * 12.0
+	var side := Vector2(-facing.y, facing.x) * 7.0
+	preview_entrance_marker.polygon = PackedVector2Array([
+		tip,
+		center - Vector2(facing) * 4.0 + side,
+		center - Vector2(facing) * 4.0 - side,
+	])
+	preview_entrance_marker.color = (
+		PREVIEW_INVALID_OUTLINE
+		if not preview_valid
+		else (
+			PREVIEW_VALID_OUTLINE
+			if preview_connection_state != &"disconnected"
+			else PREVIEW_DISCONNECTED_OUTLINE
+		)
+	)
+	preview_entrance_marker.visible = true
 
 
 func _apply_preview_geometry(
@@ -4660,13 +4882,16 @@ func _get_ui_occlusion_controls() -> Array[Control]:
 func _validation_result(
 	valid: bool,
 	reason: String,
-	screen_rect := Rect2()
+	screen_rect := Rect2(),
+	extra: Dictionary = {}
 ) -> Dictionary:
-	return {
+	var result := {
 		"valid": valid,
 		"reason": reason,
 		"screen_rect": screen_rect,
 	}
+	result.merge(extra, true)
+	return result
 
 
 func _create_placed_building_node(
@@ -4730,6 +4955,16 @@ func _create_placed_building_node(
 		entrance.polygon = _entrance_polygon(world_size, orientation)
 		entrance.color = Color("202926")
 		building.add_child(entrance)
+
+		var entrance_marker := Polygon2D.new()
+		entrance_marker.name = "EntranceMarker"
+		entrance_marker.polygon = _entrance_marker_polygon(
+			world_size,
+			footprint,
+			orientation
+		)
+		entrance_marker.visible = false
+		building.add_child(entrance_marker)
 
 	var outline := Line2D.new()
 	outline.name = "Outline"
@@ -4806,6 +5041,36 @@ func _entrance_polygon(world_size: Vector2, orientation: int) -> PackedVector2Ar
 			])
 
 
+func _entrance_marker_polygon(
+	world_size: Vector2,
+	_footprint: Vector2i,
+	orientation: int
+) -> PackedVector2Array:
+	var width := minf(18.0, minf(world_size.x, world_size.y) * 0.28)
+	var depth := 12.0
+	var center := Vector2.ZERO
+	var facing := Vector2.UP
+	match orientation:
+		ORIENTATION_NORTH:
+			center = Vector2(world_size.x * 0.5, 0.0)
+			facing = Vector2.UP
+		ORIENTATION_EAST:
+			center = Vector2(world_size.x, world_size.y * 0.5)
+			facing = Vector2.RIGHT
+		ORIENTATION_SOUTH:
+			center = Vector2(world_size.x * 0.5, world_size.y)
+			facing = Vector2.DOWN
+		_:
+			center = Vector2(0.0, world_size.y * 0.5)
+			facing = Vector2.LEFT
+	var side := Vector2(-facing.y, facing.x) * (width * 0.5)
+	return PackedVector2Array([
+		center + facing * depth,
+		center - facing * 2.0 + side,
+		center - facing * 2.0 - side,
+	])
+
+
 func _refresh_placed_building_visual(placement_id: int) -> void:
 	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if record.is_empty():
@@ -4817,6 +5082,9 @@ func _refresh_placed_building_visual(placement_id: int) -> void:
 	var body := building.get_node_or_null("Body") as Polygon2D
 	var foundation := building.get_node_or_null("Foundation") as Polygon2D
 	var roof := building.get_node_or_null("Roof") as Polygon2D
+	var entrance_marker := building.get_node_or_null(
+		"EntranceMarker"
+	) as Polygon2D
 	var construction_marker := building.get_node_or_null("ConstructionMarker") as Line2D
 	var outline := building.get_node_or_null("Outline") as Line2D
 	var label := building.get_node_or_null("Label") as Label
@@ -4843,6 +5111,19 @@ func _refresh_placed_building_visual(placement_id: int) -> void:
 		)
 	if construction_marker != null:
 		construction_marker.visible = is_constructing
+	if entrance_marker != null:
+		var entrance_info := get_building_entrance_info(placement_id)
+		var connection_state := StringName(
+			entrance_info.get("connection_state", &"not_required")
+		)
+		entrance_marker.color = (
+			PREVIEW_VALID_OUTLINE
+			if connection_state == &"connected"
+			else PREVIEW_DISCONNECTED_OUTLINE
+		)
+		entrance_marker.visible = bool(
+			building.get_meta("show_entrance_marker", false)
+		)
 	if outline != null:
 		outline.default_color = (
 			Color(0.72, 0.57, 0.28, 1.0)
@@ -5227,9 +5508,10 @@ func _sync_construction_ui() -> void:
 	confirm_placement_button.visible = state == ConstructionState.PLACING
 	cancel_placement_button.visible = state == ConstructionState.PLACING
 	if state == ConstructionState.PLACING and _selected_definition != null:
-		build_mode_status.text = "建造：%s · %s" % [
+		build_mode_status.text = "建造：%s · %s · %s" % [
 			_selected_definition.display_name,
 			_get_definition_compact_cost_text(_selected_definition),
+			_preview_connection_label(),
 		]
 		placement_orientation_label.text = "朝向：%s · 占地 %d × %d" % [
 			ORIENTATION_NAMES[preview_orientation],

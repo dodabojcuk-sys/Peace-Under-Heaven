@@ -81,7 +81,10 @@ func _run() -> void:
 	camera.position = Vector2(1100.0, 700.0)
 	await process_frame
 
-	var safe_screen_position := Vector2(680.0, 390.0)
+	var safe_screen_position: Vector2 = controller.map_local_to_screen(
+		controller.cell_to_map_local(Vector2i(20, 20))
+		+ controller.TEST_BUILDING_WORLD_SIZE * 0.5
+	)
 	controller.begin_placing(safe_screen_position)
 	_check(controller.is_placing(), "建造入口进入 placing")
 	_check(preview.visible, "placing 状态显示预览")
@@ -165,7 +168,11 @@ func _run() -> void:
 	scene._input(right_event)
 	_check(not controller.is_placing(), "右键通过唯一输入入口取消")
 
-	controller.begin_placing(Vector2(860.0, 500.0))
+	var left_route_screen: Vector2 = controller.map_local_to_screen(
+		controller.cell_to_map_local(Vector2i(15, 20))
+		+ controller.TEST_BUILDING_WORLD_SIZE * 0.5
+	)
+	controller.begin_placing(left_route_screen)
 	_check(controller.preview_valid, "左键路由测试位置有效")
 	var placing_left_camera_position := camera.position
 	var placement_count_before_left: int = controller.get_building_count()
@@ -175,7 +182,7 @@ func _run() -> void:
 	var placing_left_press := InputEventMouseButton.new()
 	placing_left_press.button_index = MOUSE_BUTTON_LEFT
 	placing_left_press.pressed = true
-	placing_left_press.position = Vector2(860.0, 500.0)
+	placing_left_press.position = left_route_screen
 	scene._input(placing_left_press)
 	_check(controller.get_building_count() == placement_count_before_left,
 		"placing 左键只更新 ghost；确认权归右侧纵栏")

@@ -84,9 +84,16 @@ func _run() -> void:
 		road_ids.append(road_id)
 		_check(road_id > 0, "道路格 %s 放置成功" % cell)
 
+	var connected_roads: Dictionary = construction.get_connected_road_cells()
+	var all_runtime_roads_connected := true
+	for road_cell in road_cells:
+		if not connected_roads.has(road_cell):
+			all_runtime_roads_connected = false
 	_check(
-		construction.get_connected_road_cells().size() == road_cells.size(),
-		"从城主府根格派生完整四向路网"
+		all_runtime_roads_connected
+			and connected_roads.size()
+				>= construction.get_formal_road_cells().size() + road_cells.size(),
+		"从正式道路与城主府根格共同派生完整四向路网"
 	)
 	_check(
 		not construction.is_building_operational(logging_id),

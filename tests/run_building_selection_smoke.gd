@@ -66,10 +66,10 @@ func _run() -> void:
 	_check(not scene.has_node("UI/Shell/ContextBar"), "底部操作栏已经移除")
 
 	var first_placement_id: int = construction._create_runtime_building(
-		Vector2i(25, 15)
+		Vector2i(20, 20)
 	)
 	var second_placement_id: int = construction._create_runtime_building(
-		Vector2i(30, 18)
+		Vector2i(35, 23)
 	)
 	_check(placed_buildings.get_child_count() == 2, "测试创建两栋已放置建筑")
 	var first_building: Node2D = construction.get_building_node(first_placement_id)

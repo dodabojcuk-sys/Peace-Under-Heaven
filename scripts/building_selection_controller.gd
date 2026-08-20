@@ -111,8 +111,14 @@ func select_placement(placement_id: int) -> void:
 		return
 
 	construction_controller.cancel_build_interaction()
+	if selected_placement_id >= 0 and selected_placement_id != placement_id:
+		construction_controller.set_building_diagnostic_visible(
+			selected_placement_id,
+			false
+		)
 	selected_placement_id = placement_id
 	state = SelectionState.SELECTED
+	construction_controller.set_building_diagnostic_visible(placement_id, true)
 	_refresh_selection_outline(record, building)
 	if StringName(record.template_id) == NOTICEBOARD_TEMPLATE_ID:
 		detail_panel.visible = false
@@ -128,6 +134,11 @@ func select_building(building: CanvasItem) -> void:
 
 
 func clear_selection() -> void:
+	if selected_placement_id >= 0:
+		construction_controller.set_building_diagnostic_visible(
+			selected_placement_id,
+			false
+		)
 	selected_placement_id = -1
 	state = SelectionState.NONE
 	selection_outline.visible = false

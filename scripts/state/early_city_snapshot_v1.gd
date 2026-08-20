@@ -42,6 +42,7 @@ const PLACEMENT_KEYS := [
 	"construction_complete_day",
 ]
 const ALLOWED_LIFECYCLE_STATES := [&"constructing", &"running"]
+const CITY_GRID_RULES = preload("res://scripts/city_sandbox/city_grid_rules.gd")
 
 
 static func validate_structure(snapshot: Dictionary) -> Dictionary:
@@ -152,6 +153,10 @@ static func validate_with_context(
 	var wood_capacity := int(context.base_resource_capacity)
 	var food_capacity := int(context.base_resource_capacity)
 	var road_cells: Dictionary = {}
+	for formal_cell in Dictionary(
+		context.get("formal_road_cells", {})
+	):
+		road_cells[Vector2i(formal_cell)] = true
 	var definitions_by_placement: Dictionary = {}
 	var placements_by_id: Dictionary = {}
 	for placement_value in normalized.placements:
@@ -454,10 +459,20 @@ static func _is_placement_operational(
 		return false
 	if not definition.requires_road:
 		return true
-	for offset in definition.road_anchor_offsets:
-		if connected_roads.has(origin_cell + Vector2i(offset)):
-			return true
-	return false
+	var adapter := CITY_GRID_RULES.get_definition_entrance_adapter(
+		definition.footprint,
+		definition.road_anchor_offsets
+	)
+	var entrance := CITY_GRID_RULES.resolve_entrance(
+		origin_cell,
+		definition.footprint,
+		Vector2i(adapter.entrance_cell),
+		Vector2i(adapter.entrance_facing),
+		int(placement.get("orientation", 0))
+	)
+	return bool(entrance.get("valid", false)) and connected_roads.has(
+		Vector2i(entrance.road_contact_cell)
+	)
 
 
 static func get_expected_threat(
