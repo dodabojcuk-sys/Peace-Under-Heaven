@@ -19,6 +19,28 @@ R1C 已关闭正式内城的原生鼠标建造阻断：右侧确认按钮的鼠�
 单击一次进入施工并在正常时间推进后落成。权威建造、资源扣除、取消、V5
 方向存读档和旧 schema 北向兼容均保持原路径；当前视觉仍为灰盒基础。
 
+## R2B player road construction
+
+R2B 在正式 55×35 规则城池中加入玩家铺路工具。正式基础道路仍由
+`RegularCitySpatialFoundation` 提供；玩家新增道路作为
+`ConstructionController` 的普通 V5 placement 增量写入，视觉、N/E/S/W
+连通性、建筑入口状态和存读档均读取同一合并集合，不保存重复的连通或运行
+布尔值，也不升级 V5 schema。
+
+右侧道路入口支持原生鼠标水平/垂直拖拽、局部预览、连接/孤立/阻断文字、一次
+性确认和取消。确认通过现有 `NationState` 木材事务逐格原子写入；取消和
+Escape 不写入、不扣费。道路连接已落成且需要道路的建筑后，状态立即从停用
+派生为运行，生产从下一次权威日结开始生效。道路拓扑以灰盒绘制直线、转角、
+T 型、十字和端点；旧 V5 存档缺少道路 placement 时仍恢复为空增量。
+
+当前本地实现已通过 R2B focused headless smoke、41/41 runner 全量回归、编辑器
+解析和三个正式场景 smoke；实现提交为 `3b6099f`。真实 Godot 窗口的原生鼠标
+hover/drag/click 证据尚未取得：隔离运行进程已绑定本 Successor，但桌面前景仍
+是既有 Godot 项目管理器，Computer Use 无法安全定位临时运行窗口。因此本轮
+保持 `PARTIAL_WITH_EXACT_ROAD_TOOL_BLOCKERS`，不得把自动化测试当作原生鼠标
+通过。道路删除/升级、交通寻路、桥梁坡度、曲线道路、有机城池、正式美术、
+全图旋转、G4、push 和 deploy 仍未启动。
+
 ## 结论
 
 `TXWZS2_V5_G3_REFRESHED_FULL_REGRESSION_AND_TRACEABILITY_ACCEPTED`

@@ -72,3 +72,36 @@ the existing north-facing fallback.
 The preview and selected-building diagnostic marker is intentionally graybox
 only. Player road construction, road removal, traffic/pathfinding, organic
 garden layouts, and final building art remain out of scope for R2A.
+
+## R2B player road construction
+
+R2B adds a player-road delta on top of the formal road projection. The formal
+layout remains owned by `RegularCitySpatialFoundation`; player road cells are
+authoritative runtime placement records owned by `ConstructionController`. The
+rendering projection, flood-fill connectivity, building entrance checks, and
+V5 snapshot export all consume that same union. The base layout is never
+serialized a second time.
+
+The right rail exposes one road tool. A native pointer drag creates a single
+horizontal or vertical draft; diagonal input is rejected with an explicit
+reason, and a second drag is required for a turn. Release only fixes the
+preview. The confirm button invokes the existing resource transaction once;
+cancel and the first Escape clear only the draft, while the second Escape
+leaves road mode. Invalid cells reject the entire path, including occupied
+buildings, construction footprints, civic reserves, walls, gates, bounds, and
+UI-occluded cells. Existing roads are traversable without duplicate cost.
+
+Green and amber previews are derived from the same N/E/S/W flood fill used by
+production buildings. The graybox projection draws straight, corner, T, cross,
+and endpoint topology with one road tile scale. A connected road can activate a
+completed required-road building immediately; production begins on the next
+authoritative time boundary and is never backfilled for a disconnected period.
+
+Player roads reuse the existing V5 placement array and orientation field, so
+the schema version does not change. A legacy snapshot with no road placements
+restores an empty player-road delta. Connectivity and operational status remain
+derived values, not persisted booleans.
+
+R2B deliberately does not add road deletion or upgrade, traffic/pathfinding,
+bridges, slopes, curved roads, full-map camera rotation, organic garden-city
+generation, final art, a second world-state owner, or G4.

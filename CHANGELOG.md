@@ -5,6 +5,22 @@
 
 ## Unreleased
 
+### R2B player road construction
+
+- Added a right-rail road tool with native horizontal/vertical drag previews,
+  explicit connected/isolated/invalid states, atomic confirmation, and
+  Escape/right-click cancellation.
+- Player roads are written through the existing `ConstructionController` and
+  `NationState` transaction, projected with the formal road layout, and
+  persisted as ordinary V5 placement records without a schema bump.
+- Shared road topology now renders straight, corner, T, cross, and endpoint
+  graybox paths; connecting a completed required-road building immediately
+  derives its operational state and starts production on the next day boundary.
+- Added the focused R2B smoke for drag validation, atomic writes, topology,
+  activation, production, persistence, and legacy snapshot compatibility.
+- Road deletion/upgrades, traffic/pathfinding, bridges/slopes, curved roads,
+  organic city layouts, final art, G4, push, and deployment remain out of scope.
+
 ### R2A road-lot-entrance semantic closure
 
 - Unified the regular-city graybox road rectangles, reserved court, wall ring,
