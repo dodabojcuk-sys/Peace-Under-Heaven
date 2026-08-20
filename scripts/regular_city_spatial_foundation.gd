@@ -3,6 +3,7 @@ extends Node2D
 
 
 const CityGateComponent = preload("res://scripts/city_gate_component_r1.gd")
+const CITY_GRID_RULES = preload("res://scripts/city_sandbox/city_grid_rules.gd")
 
 const MAP_SIZE := Vector2(2200.0, 1400.0)
 const GRID_SIZE := 40.0
@@ -44,6 +45,7 @@ var _formal_road_cells: Dictionary = {}
 var _formal_reserved_cells: Dictionary = {}
 var _formal_wall_cells: Dictionary = {}
 var _formal_gate_cells: Dictionary = {}
+var _player_road_cells: Dictionary = {}
 
 
 func _ready() -> void:
@@ -81,6 +83,19 @@ func _build_spatial_cell_projection() -> void:
 
 func get_formal_road_cells() -> Dictionary:
 	return _formal_road_cells.duplicate(true)
+
+
+func get_map_grid_size() -> Vector2i:
+	return MAP_GRID_SIZE
+
+
+func set_player_road_cells(cells: Dictionary) -> void:
+	_player_road_cells.clear()
+	for cell in cells:
+		var typed_cell := Vector2i(cell)
+		if not _formal_road_cells.has(typed_cell):
+			_player_road_cells[typed_cell] = true
+	queue_redraw()
 
 
 func get_formal_reserved_cells() -> Dictionary:
@@ -193,6 +208,7 @@ func _draw() -> void:
 	_draw_ward(Rect2(1430.0, 770.0, 580.0, 430.0), Color("cec5a9"))
 	for road_rect in get_formal_road_rects():
 		_draw_road(road_rect)
+	_draw_player_roads()
 	# This is an open civic court rather than a foreground gate: it anchors the
 	# axial roads without becoming a dominant facade in the default viewport.
 	var civic_courtyard := get_civic_court_rect()
@@ -241,6 +257,34 @@ func _draw_ambient_volume(rect: Rect2) -> void:
 func _draw_road(rect: Rect2) -> void:
 	draw_rect(rect, Color("8f8060"), true)
 	draw_line(rect.position + Vector2(0.0, rect.size.y * 0.5), Vector2(rect.end.x, rect.position.y + rect.size.y * 0.5), Color("c6b889"), 3.0)
+
+
+func _draw_player_roads() -> void:
+	if _player_road_cells.is_empty():
+		return
+	var all_roads := _formal_road_cells.duplicate(true)
+	for cell in _player_road_cells:
+		all_roads[Vector2i(cell)] = true
+	for cell in _player_road_cells:
+		_draw_player_road_tile(Vector2i(cell), all_roads)
+
+
+func _draw_player_road_tile(cell: Vector2i, all_roads: Dictionary) -> void:
+	var rect := Rect2(Vector2(cell) * GRID_SIZE, Vector2.ONE * GRID_SIZE)
+	var mask := CITY_GRID_RULES.get_road_mask(cell, all_roads)
+	var center := rect.get_center()
+	var road_color := Color("958665")
+	draw_rect(rect.grow(-1.0), road_color, true)
+	draw_rect(rect.grow(-1.0), Color("655840"), false, 2.0)
+	draw_circle(center, GRID_SIZE * 0.18, Color("c6b889"))
+	if mask & CITY_GRID_RULES.MASK_NORTH:
+		draw_line(center, Vector2(center.x, rect.position.y), Color("c6b889"), 7.0)
+	if mask & CITY_GRID_RULES.MASK_EAST:
+		draw_line(center, Vector2(rect.end.x, center.y), Color("c6b889"), 7.0)
+	if mask & CITY_GRID_RULES.MASK_SOUTH:
+		draw_line(center, Vector2(center.x, rect.end.y), Color("c6b889"), 7.0)
+	if mask & CITY_GRID_RULES.MASK_WEST:
+		draw_line(center, Vector2(rect.position.x, center.y), Color("c6b889"), 7.0)
 
 
 func _draw_graybox_building(rect: Rect2, color: Color, label: String) -> void:

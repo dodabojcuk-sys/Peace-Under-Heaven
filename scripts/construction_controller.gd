@@ -44,6 +44,9 @@ const ORIENTATION_NAMES := ["北", "东", "南", "西"]
 const CITY_GRID_RULES = preload(
 	"res://scripts/city_sandbox/city_grid_rules.gd"
 )
+const CITY_ROAD_DRAFT = preload(
+	"res://scripts/city_sandbox/city_road_draft.gd"
+)
 const ROAD_DEFINITION: BuildingDefinition = preload(
 	"res://resources/definitions/buildings/road.tres"
 )
@@ -189,6 +192,9 @@ const PRESET_BUILDING_DEFINITIONS := [
 )
 @onready var placed_buildings: Node2D = $"../MapWorld/ConstructionLayer/PlacedBuildings"
 @onready var construction_preview: Node2D = $"../MapWorld/ConstructionLayer/ConstructionPreview"
+@onready var road_preview_visual: RoadPreviewVisual = (
+	$"../MapWorld/ConstructionLayer/ConstructionPreview/RoadPreview"
+)
 @onready var preview_body: Polygon2D = (
 	$"../MapWorld/ConstructionLayer/ConstructionPreview/Body"
 )
@@ -309,6 +315,11 @@ var preview_invalid_reason := ""
 var preview_connection_state: StringName = &"not_required"
 var preview_entrance_info: Dictionary = {}
 var preview_entrance_marker: Polygon2D
+var _road_draft: Dictionary = {}
+var _road_drag_active := false
+var _road_preview_fixed := false
+var _road_drag_start_cell := Vector2i.ZERO
+var _road_drag_current_cell := Vector2i.ZERO
 var current_day := 1
 var _nation_state: NationState = NATION_STATE.new()
 var wood: int:
@@ -472,6 +483,7 @@ func _ready() -> void:
 	_configure_time_speed_options()
 	_update_threat_for_current_day(false)
 	_update_first_war_state_for_current_day()
+	_refresh_road_visual_projection()
 	_sync_construction_ui()
 	_refresh_city_ui()
 
@@ -553,6 +565,16 @@ func is_placing() -> bool:
 	return state == ConstructionState.PLACING
 
 
+func is_road_placing() -> bool:
+	return is_placing() and _selected_definition != null and (
+		_selected_definition.placement_kind == PLACEMENT_KIND_ROAD
+	)
+
+
+func is_road_drag_active() -> bool:
+	return is_road_placing() and _road_drag_active
+
+
 func is_choosing_template() -> bool:
 	return state == ConstructionState.CHOOSING_TEMPLATE
 
@@ -569,6 +591,7 @@ func open_construction_menu() -> void:
 	preview_connection_state = &"not_required"
 	preview_entrance_info = {}
 	preview_entrance_marker.visible = false
+	_reset_road_draft()
 	_sync_construction_ui()
 	construction_interaction_started.emit()
 	construction_presentation_changed.emit()
@@ -590,13 +613,47 @@ func begin_placing_definition(
 	var definition := get_definition(definition_id)
 	if definition == null:
 		return false
+	if definition.placement_kind == PLACEMENT_KIND_ROAD:
+		return begin_road_mode(screen_position)
 	_selected_definition = definition
 	state = ConstructionState.PLACING
 	preview_orientation = ORIENTATION_NORTH
+	_reset_road_draft()
 	construction_preview.visible = true
+	preview_body.visible = true
+	preview_outline.visible = true
+	preview_label.visible = true
+	placement_grid.visible = true
 	_apply_preview_geometry(definition, preview_orientation)
 	_sync_construction_ui()
 	update_preview(screen_position)
+	placing_started.emit()
+	construction_presentation_changed.emit()
+	return true
+
+
+func begin_road_mode(screen_position: Vector2) -> bool:
+	if is_city_action_locked_for_battle():
+		return false
+	var definition := get_definition(ROAD_DEFINITION.definition_id)
+	if definition == null:
+		return false
+	_selected_definition = definition
+	state = ConstructionState.PLACING
+	preview_orientation = ORIENTATION_NORTH
+	_road_draft = {}
+	_road_drag_active = false
+	_road_preview_fixed = false
+	construction_preview.visible = true
+	construction_preview.position = Vector2.ZERO
+	preview_body.visible = false
+	preview_outline.visible = false
+	preview_label.visible = false
+	placement_grid.visible = false
+	preview_entrance_marker.visible = false
+	road_preview_visual.clear_preview()
+	_sync_construction_ui()
+	_update_road_preview_from_screen(screen_position)
 	placing_started.emit()
 	construction_presentation_changed.emit()
 	return true
@@ -614,6 +671,7 @@ func cancel_placing() -> void:
 	preview_connection_state = &"not_required"
 	preview_entrance_info = {}
 	preview_entrance_marker.visible = false
+	_reset_road_draft()
 	_sync_construction_ui()
 	construction_presentation_changed.emit()
 
@@ -627,11 +685,24 @@ func cancel_build_interaction() -> void:
 	construction_preview.visible = false
 	preview_valid = false
 	preview_invalid_reason = ""
+	preview_connection_state = &"not_required"
+	preview_entrance_info = {}
+	preview_entrance_marker.visible = false
+	_reset_road_draft()
 	_sync_construction_ui()
 	construction_presentation_changed.emit()
 
 
 func handle_escape() -> bool:
+	if is_road_placing():
+		if has_road_preview():
+			cancel_road_preview()
+			return true
+		cancel_placing()
+		return true
+	if is_placing():
+		cancel_placing()
+		return true
 	if not is_choosing_template():
 		return false
 	cancel_build_interaction()
@@ -662,6 +733,10 @@ func is_construction_ui_point(screen_position: Vector2) -> bool:
 func update_preview(screen_position: Vector2) -> void:
 	if not is_placing() or _selected_definition == null:
 		return
+	if is_road_placing():
+		if _road_drag_active:
+			_update_road_preview_from_screen(screen_position)
+		return
 	var map_local_position := screen_to_map_local(screen_position)
 	preview_origin_cell = map_position_to_origin_cell(
 		map_local_position,
@@ -677,6 +752,8 @@ func confirm_current_preview() -> bool:
 		or _selected_definition == null
 	):
 		return false
+	if is_road_placing():
+		return confirm_road_preview()
 	var placement_id := place_definition_at_cell(
 		_selected_definition.definition_id,
 		preview_origin_cell,
@@ -690,6 +767,340 @@ func confirm_current_preview() -> bool:
 	# placement-only presentation state so cancellation cannot leak orientation.
 	cancel_placing()
 	return true
+
+
+func begin_road_drag(screen_position: Vector2) -> bool:
+	if not is_road_placing():
+		return false
+	var cell := _screen_to_cell(screen_position)
+	_road_drag_active = true
+	_road_preview_fixed = false
+	_road_drag_start_cell = cell
+	_road_drag_current_cell = cell
+	_update_road_preview_cells([cell])
+	return true
+
+
+func update_road_drag(screen_position: Vector2) -> bool:
+	if not is_road_placing() or not _road_drag_active:
+		return false
+	_road_drag_current_cell = _screen_to_cell(screen_position)
+	_update_road_preview_cells([
+		_road_drag_start_cell,
+		_road_drag_current_cell,
+	])
+	return true
+
+
+func finish_road_drag(screen_position: Vector2) -> bool:
+	if not is_road_placing() or not _road_drag_active:
+		return false
+	_road_drag_active = false
+	_road_preview_fixed = true
+	if not is_construction_ui_point(screen_position):
+		_road_drag_current_cell = _screen_to_cell(screen_position)
+	_update_road_preview_cells([
+		_road_drag_start_cell,
+		_road_drag_current_cell,
+	])
+	return true
+
+
+func has_road_preview() -> bool:
+	return is_road_placing() and not _road_draft.is_empty()
+
+
+func cancel_road_preview() -> void:
+	if not is_road_placing():
+		return
+	_reset_road_draft()
+	_road_drag_active = false
+	_road_preview_fixed = false
+	preview_valid = false
+	preview_invalid_reason = ""
+	preview_connection_state = &"not_required"
+	road_preview_visual.clear_preview()
+	_sync_construction_ui()
+	construction_presentation_changed.emit()
+
+
+func confirm_road_preview() -> bool:
+	if (
+		not is_road_placing()
+		or not _road_preview_fixed
+		or not preview_valid
+		or _road_draft.is_empty()
+	):
+		return false
+	var cells: Array[Vector2i] = _road_draft.unique_cells.duplicate()
+	var result := place_player_road_path(cells)
+	if not bool(result.success):
+		preview_valid = false
+		preview_invalid_reason = str(result.reason)
+		_update_road_preview_cells(_road_draft.sampled_cells)
+		_sync_construction_ui()
+		return false
+	cancel_placing()
+	return true
+
+
+func _update_road_preview_from_screen(screen_position: Vector2) -> void:
+	var cell := _screen_to_cell(screen_position)
+	if _road_drag_active:
+		_road_drag_current_cell = cell
+		_update_road_preview_cells([
+			_road_drag_start_cell,
+			_road_drag_current_cell,
+		])
+	else:
+		_update_road_preview_cells([cell])
+
+
+func _screen_to_cell(screen_position: Vector2) -> Vector2i:
+	return map_position_to_origin_cell(
+		screen_to_map_local(screen_position),
+		Vector2i.ONE
+	)
+
+
+func _update_road_preview_cells(sampled_cells: Array[Vector2i]) -> void:
+	if not is_road_placing():
+		return
+	var draft: Dictionary = CITY_ROAD_DRAFT.build_draft(sampled_cells)
+	var unique_cells: Array[Vector2i] = []
+	for value in draft.get("unique_cells", []):
+		unique_cells.append(Vector2i(value))
+	_road_draft = {
+		"sampled_cells": sampled_cells.duplicate(),
+		"ordered_cells": draft.get("ordered_cells", []).duplicate(),
+		"unique_cells": unique_cells.duplicate(),
+		"valid_axis": bool(draft.get("valid", false)),
+	}
+	if not bool(_road_draft.valid_axis):
+		preview_valid = false
+		preview_invalid_reason = "道路必须水平或垂直拖拽"
+		preview_connection_state = &"invalid"
+		road_preview_visual.set_preview(
+			unique_cells,
+			&"invalid",
+			GRID_SIZE
+		)
+		_sync_construction_ui()
+		return
+	var validation := evaluate_road_path(unique_cells)
+	preview_valid = bool(validation.valid)
+	preview_invalid_reason = str(validation.reason)
+	preview_connection_state = StringName(
+		validation.get("connection_state", &"invalid")
+	)
+	var visual_status := preview_connection_state
+	if not preview_valid:
+		visual_status = &"invalid"
+	road_preview_visual.set_preview(unique_cells, visual_status, GRID_SIZE)
+	_sync_construction_ui()
+	construction_presentation_changed.emit()
+
+
+func _reset_road_draft() -> void:
+	_road_draft = {}
+	_road_drag_active = false
+	_road_preview_fixed = false
+	if is_instance_valid(road_preview_visual):
+		road_preview_visual.clear_preview()
+
+
+func evaluate_road_path(cells: Array[Vector2i]) -> Dictionary:
+	if cells.is_empty():
+		return _road_validation(false, "请选择道路起点和终点")
+	var ordered: Array[Vector2i] = []
+	for cell in cells:
+		if ordered.is_empty() or ordered.back() != cell:
+			ordered.append(cell)
+	for index in range(1, ordered.size()):
+		var delta := ordered[index] - ordered[index - 1]
+		if absi(delta.x) + absi(delta.y) != 1:
+			return _road_validation(false, "道路路径必须保持正交连续")
+	var all_roads := get_all_road_cells()
+	var new_cells: Array[Vector2i] = []
+	var seen_new: Dictionary = {}
+	for cell in ordered:
+		if not _cell_is_inside_city(cell):
+			return _road_validation(false, "道路超出地图边界")
+		if all_roads.has(cell):
+			continue
+		if seen_new.has(cell):
+			continue
+		seen_new[cell] = true
+		new_cells.append(cell)
+		var occupied_id := int(_occupied_cells.get(cell, -1))
+		if occupied_id >= 0:
+			var occupied_record: Dictionary = _building_records_by_id.get(
+				occupied_id,
+				{}
+			)
+			if not occupied_record.is_empty():
+				return _road_validation(false, _road_block_reason(occupied_record))
+		if city_spatial_foundation.is_formal_reserved_cell(cell):
+			return _road_validation(false, "道路占用保留区域")
+		if city_spatial_foundation.is_formal_wall_cell(cell):
+			return _road_validation(false, "道路占用城墙")
+		if city_spatial_foundation.is_formal_gate_cell(cell):
+			return _road_validation(false, "道路占用城门槽位")
+		var screen_rect := get_footprint_screen_rect(cell, Vector2i.ONE)
+		if not _screen_rect_is_inside_viewport(screen_rect):
+			return _road_validation(false, "道路超出可操作区域")
+		for ui_control in _get_ui_occlusion_controls():
+			if (
+				ui_control.is_visible_in_tree()
+				and ui_control.get_global_rect().grow(UI_SAFETY_MARGIN).intersects(screen_rect)
+			):
+				return _road_validation(false, "道路位置被界面遮挡")
+	if new_cells.is_empty():
+		return _road_validation(false, "所选格子已经是道路")
+	var candidate_roads := all_roads.duplicate(true)
+	for cell in new_cells:
+		candidate_roads[cell] = true
+	var connected := CITY_GRID_RULES.get_connected_road_cells(
+		candidate_roads,
+		city_spatial_foundation.get_road_root_cells()
+	)
+	var is_connected := false
+	for cell in new_cells:
+		if connected.has(cell):
+			is_connected = true
+			break
+	var cost := new_cells.size() * ROAD_DEFINITION.wood_cost
+	if wood < cost:
+		return _road_validation(
+			false,
+			"木材不足（需要 %d）" % cost,
+			&"connected" if is_connected else &"isolated",
+			new_cells,
+			cost
+		)
+	return _road_validation(
+		true,
+		"",
+		&"connected" if is_connected else &"isolated",
+		new_cells,
+		cost
+	)
+
+
+func _road_validation(
+	valid: bool,
+	reason: String,
+	connection_state: StringName = &"invalid",
+	new_cells: Array[Vector2i] = [],
+	cost := 0
+) -> Dictionary:
+	return {
+		"valid": valid,
+		"reason": reason,
+		"connection_state": connection_state,
+		"new_cells": new_cells.duplicate(),
+		"cost": cost,
+	}
+
+
+func _road_block_reason(record: Dictionary) -> String:
+	if StringName(record.get("lifecycle_state", &"")) == &"constructing":
+		return "道路穿过施工体"
+	if record.get("placement_kind", &"") == PLACEMENT_KIND_ROAD:
+		return "已经是道路"
+	return "道路穿过建筑占地"
+
+
+func _cell_is_inside_city(cell: Vector2i) -> bool:
+	var map_grid_size: Vector2i = city_spatial_foundation.get_map_grid_size()
+	return (
+		cell.x >= 0
+		and cell.y >= 0
+		and cell.x < map_grid_size.x
+		and cell.y < map_grid_size.y
+	)
+
+
+func place_player_road_path(cells: Array[Vector2i]) -> Dictionary:
+	var validation := evaluate_road_path(cells)
+	if not bool(validation.valid):
+		return validation
+	var new_cells: Array[Vector2i] = []
+	for value in validation.new_cells:
+		new_cells.append(Vector2i(value))
+	var previous_next_id := _next_placement_id
+	var allocated_ids: Array[int] = []
+	for _cell in new_cells:
+		allocated_ids.append(_allocate_placement_id())
+	var registered_ids: Array[int] = []
+	var register_path := func() -> Dictionary:
+		for index in range(new_cells.size()):
+			var registered := _register_runtime_placement_record(
+				allocated_ids[index],
+				new_cells[index],
+				ROAD_DEFINITION,
+				ORIENTATION_NORTH,
+				&"running",
+				current_day,
+				0,
+				current_day,
+				current_day
+			)
+			if not registered:
+				for registered_id in registered_ids:
+					_release_runtime_record(registered_id, true, false)
+				_next_placement_id = previous_next_id
+				return {"success": false, "reason": "道路权威写入被拒绝"}
+			registered_ids.append(allocated_ids[index])
+		return {"success": true, "placement_ids": registered_ids.duplicate()}
+	var paid := _commit_national_resources(
+		[{
+			"resource_id": &"wood",
+			"operation": NationState.RESOURCE_OPERATION_SPEND,
+			"amount": int(validation.cost),
+		}],
+		&"player_road_construction",
+		register_path
+	)
+	if not paid:
+		_next_placement_id = previous_next_id
+		return {"success": false, "reason": "道路资源事务未提交"}
+	_refresh_road_visual_projection()
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {
+		"success": true,
+		"placement_ids": registered_ids.duplicate(),
+		"new_cells": new_cells.duplicate(),
+		"cost": int(validation.cost),
+		"connection_state": validation.connection_state,
+	}
+
+
+func get_road_draft_snapshot() -> Dictionary:
+	return _road_draft.duplicate(true)
+
+
+func get_player_road_cells() -> Dictionary:
+	var result: Dictionary = {}
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if record.is_empty() or record.placement_kind != PLACEMENT_KIND_ROAD:
+			continue
+		for cell in record.occupied_footprint_cells:
+			result[Vector2i(cell)] = true
+	return result
+
+
+func get_all_road_cells() -> Dictionary:
+	var result := city_spatial_foundation.get_formal_road_cells()
+	for cell in get_player_road_cells():
+		result[Vector2i(cell)] = true
+	return result
+
+
+func get_road_mask(cell: Vector2i) -> int:
+	return CITY_GRID_RULES.get_road_mask(cell, get_all_road_cells())
 
 
 func rotate_preview() -> bool:
@@ -2384,6 +2795,7 @@ func _register_runtime_placement_record(
 		CONNECT_ONE_SHOT
 	)
 	_refresh_placed_building_visual(placement_id)
+	_refresh_road_visual_projection()
 	return true
 
 
@@ -4404,22 +4816,15 @@ func is_building_connected_to_road(placement_id: int) -> bool:
 
 
 func get_connected_road_cells() -> Dictionary:
-	var road_cells: Dictionary = {}
-	for cell in city_spatial_foundation.get_formal_road_cells():
-		road_cells[Vector2i(cell)] = true
-	for placement_id in _placement_order:
-		var record: Dictionary = _building_records_by_id.get(placement_id, {})
-		if (
-			not record.is_empty()
-			and record.placement_kind == PLACEMENT_KIND_ROAD
-		):
-			for cell in record.occupied_footprint_cells:
-				road_cells[cell] = true
-
 	return CITY_GRID_RULES.get_connected_road_cells(
-		road_cells,
+		get_all_road_cells(),
 		city_spatial_foundation.get_road_root_cells()
 	)
+
+
+func _refresh_road_visual_projection() -> void:
+	if is_instance_valid(city_spatial_foundation):
+		city_spatial_foundation.set_player_road_cells(get_player_road_cells())
 
 
 func remove_placed_building(placement_id: int) -> bool:
@@ -4448,6 +4853,7 @@ func remove_placed_building(placement_id: int) -> bool:
 			return false
 	_release_runtime_record(placement_id, true)
 	building.queue_free()
+	_refresh_road_visual_projection()
 	_enforce_resource_capacity()
 	_refresh_city_ui()
 	city_state_changed.emit()
@@ -5079,6 +5485,10 @@ func _refresh_placed_building_visual(placement_id: int) -> void:
 	var definition := get_definition(record.definition_id)
 	if building == null or definition == null:
 		return
+	# Player roads are rendered by the shared spatial projection so one tile
+	# network can express straight, corner, T and cross topology.  The
+	# authoritative placement nodes remain for occupancy and persistence only.
+	building.visible = definition.placement_kind != PLACEMENT_KIND_ROAD
 	var body := building.get_node_or_null("Body") as Polygon2D
 	var foundation := building.get_node_or_null("Foundation") as Polygon2D
 	var roof := building.get_node_or_null("Roof") as Polygon2D
@@ -5167,6 +5577,8 @@ func _release_runtime_record(
 			)
 	_building_records_by_id.erase(placement_id)
 	_placement_order.erase(placement_id)
+	if record.placement_kind == PLACEMENT_KIND_ROAD:
+		_refresh_road_visual_projection()
 	if emit_removal_signal:
 		building_removed.emit(placement_id)
 	return true
@@ -5504,23 +5916,50 @@ func _sync_construction_ui() -> void:
 	build_entry_button.disabled = is_city_action_locked_for_battle()
 	build_mode_status.visible = state == ConstructionState.PLACING
 	placement_orientation_label.visible = state == ConstructionState.PLACING
-	rotate_placement_button.visible = state == ConstructionState.PLACING
+	rotate_placement_button.visible = (
+		state == ConstructionState.PLACING and not is_road_placing()
+	)
 	confirm_placement_button.visible = state == ConstructionState.PLACING
 	cancel_placement_button.visible = state == ConstructionState.PLACING
 	if state == ConstructionState.PLACING and _selected_definition != null:
-		build_mode_status.text = "建造：%s · %s · %s" % [
-			_selected_definition.display_name,
-			_get_definition_compact_cost_text(_selected_definition),
-			_preview_connection_label(),
-		]
-		placement_orientation_label.text = "朝向：%s · 占地 %d × %d" % [
-			ORIENTATION_NAMES[preview_orientation],
-			get_rotated_footprint(_selected_definition, preview_orientation).x,
-			get_rotated_footprint(_selected_definition, preview_orientation).y,
-		]
-		confirm_placement_button.disabled = not preview_valid
+		if is_road_placing():
+			var road_cells: Array = _road_draft.get("unique_cells", [])
+			var connection_text := (
+				"已接入城市道路网络"
+				if preview_connection_state == &"connected"
+				else "琥珀：暂未接入主网"
+			)
+			if not preview_valid:
+				connection_text = preview_invalid_reason
+			build_mode_status.text = "道路工具 · 拖拽直线\n长度 %d · %s" % [
+				road_cells.size(),
+				connection_text,
+			]
+			placement_orientation_label.text = (
+				"道路只接受水平 / 垂直路径 · 每格木%d"
+				% ROAD_DEFINITION.wood_cost
+			)
+			confirm_placement_button.text = "确认铺设"
+			confirm_placement_button.disabled = (
+				not preview_valid or not _road_preview_fixed
+			)
+			cancel_placement_button.text = "取消道路 · Esc"
+		else:
+			build_mode_status.text = "建造：%s · %s · %s" % [
+				_selected_definition.display_name,
+				_get_definition_compact_cost_text(_selected_definition),
+				_preview_connection_label(),
+			]
+			placement_orientation_label.text = "朝向：%s · 占地 %d × %d" % [
+				ORIENTATION_NAMES[preview_orientation],
+				get_rotated_footprint(_selected_definition, preview_orientation).x,
+				get_rotated_footprint(_selected_definition, preview_orientation).y,
+			]
+			confirm_placement_button.text = "确认"
+			confirm_placement_button.disabled = not preview_valid
+			cancel_placement_button.text = "取消 Esc"
 		cancel_placement_button.disabled = false
-		rotate_placement_button.disabled = false
+		rotate_placement_button.disabled = is_road_placing()
 	construction_menu.visible = (
 		not _detail_panel_active
 		and state == ConstructionState.CHOOSING_TEMPLATE
@@ -5553,13 +5992,18 @@ func _refresh_construction_catalog_ui() -> void:
 			second_line = "不可建：%s" % str(data.unavailable_reason)
 		elif definition.requires_road:
 			second_line += " · 需道路"
-		button.text = "%s L%d · %s · %s\n%s" % [
-			definition.display_name,
-			definition.level,
-			str(data.compact_cost_text),
-			duration_compact,
-			second_line,
-		]
+		button.text = (
+			"道路工具 · 每格木%d\n拖拽直线 · %s"
+			% [definition.wood_cost, second_line]
+			if definition.placement_kind == PLACEMENT_KIND_ROAD
+			else "%s L%d · %s · %s\n%s" % [
+				definition.display_name,
+				definition.level,
+				str(data.compact_cost_text),
+				duration_compact,
+				second_line,
+			]
+		)
 		button.disabled = not bool(data.can_build)
 		button.tooltip_text = (
 			"投入：%s｜工期：%s\n效果：%s\n前置：%s%s"

@@ -69,6 +69,7 @@ func _ready() -> void:
 	construction_controller.city_state_changed.connect(
 		_refresh_blackstone_mvp_entry
 	)
+	construction_controller.city_state_changed.connect(_refresh_minimap)
 	campaign_world_map.configure(construction_controller)
 	# R1 moves city operation into the right build rail. The legacy left rail is
 	# collapsible context, not a second permanent panel competing with the city.
@@ -132,10 +133,11 @@ func _handle_construction_input(event: InputEvent) -> void:
 	if event is InputEventKey:
 		if event.pressed and not event.echo:
 			if event.keycode == KEY_R:
-				construction_controller.rotate_preview()
+				if not construction_controller.is_road_placing():
+					construction_controller.rotate_preview()
 				get_viewport().set_input_as_handled()
 			elif event.keycode == KEY_ESCAPE:
-				construction_controller.cancel_placing()
+				construction_controller.handle_escape()
 				_stop_drag()
 				get_viewport().set_input_as_handled()
 		return
@@ -148,6 +150,16 @@ func _handle_construction_input(event: InputEvent) -> void:
 		or event is InputEventMouseMotion
 	) and construction_controller.is_construction_ui_point(event.position):
 		if (
+			construction_controller.is_road_placing()
+			and event is InputEventMouseButton
+			and not event.pressed
+			and event.button_index == MOUSE_BUTTON_LEFT
+			and construction_controller.is_road_drag_active()
+		):
+			construction_controller.finish_road_drag(event.position)
+			get_viewport().set_input_as_handled()
+			return
+		if (
 			event is InputEventMouseButton
 			and not event.pressed
 			and event.button_index == active_drag_button
@@ -156,6 +168,9 @@ func _handle_construction_input(event: InputEvent) -> void:
 		return
 
 	if event is InputEventMouseButton:
+		if construction_controller.is_road_placing():
+			_handle_road_construction_button(event)
+			return
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_handle_zoom(event)
 			construction_controller.update_preview(event.position)
@@ -171,8 +186,34 @@ func _handle_construction_input(event: InputEvent) -> void:
 			construction_controller.update_preview(event.position)
 			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion:
-		_handle_drag_motion(event)
-		construction_controller.update_preview(event.position)
+		if construction_controller.is_road_placing():
+			if construction_controller.is_road_drag_active():
+				construction_controller.update_road_drag(event.position)
+		else:
+			_handle_drag_motion(event)
+			construction_controller.update_preview(event.position)
+
+
+func _handle_road_construction_button(event: InputEventMouseButton) -> void:
+	if event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
+		if construction_controller.has_road_preview():
+			construction_controller.cancel_road_preview()
+		else:
+			construction_controller.cancel_placing()
+		get_viewport().set_input_as_handled()
+		return
+	if event.button_index == MOUSE_BUTTON_MIDDLE:
+		_handle_drag_button(event)
+		return
+	if event.button_index != MOUSE_BUTTON_LEFT:
+		return
+	if event.pressed:
+		if not construction_controller.is_construction_ui_point(event.position):
+			construction_controller.begin_road_drag(event.position)
+			get_viewport().set_input_as_handled()
+	else:
+		construction_controller.finish_road_drag(event.position)
+		get_viewport().set_input_as_handled()
 
 
 func _handle_drag_button(event: InputEventMouseButton) -> void:
@@ -534,12 +575,15 @@ func _on_viewport_size_changed() -> void:
 
 
 func _refresh_minimap() -> void:
-	if not is_instance_valid(minimap):
+	if not is_inside_tree() or not is_node_ready() or not is_instance_valid(minimap):
 		return
 	minimap.update_world_view(
 		camera.position,
 		camera.zoom.x,
 		get_navigation_safe_rect()
+	)
+	minimap.set_player_road_cells(
+		construction_controller.get_player_road_cells()
 	)
 
 

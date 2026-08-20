@@ -93,7 +93,7 @@ func _apply_static_copy() -> void:
 	minimap_label.text = "部署概览 · 黑石城"
 	build_entry_button.text = "建造目录"
 	build_mode_status.text = "已选蓝图\n点击地块确认 · Esc 取消"
-	$ConstructionMenu/Title.text = "可建造蓝图"
+	$ConstructionMenu/Title.text = "建造 · 建筑 / 道路"
 	$BuildingDetailPanel/PanelTitle.text = "建筑档案"
 	$BuildingDetailPanel/UpgradeStatusCard.text = (
 		"升级状态\n当前权威未提供升级写入命令\n不会伪造等级或扣除资源"
@@ -194,18 +194,18 @@ func _layout_for_viewport() -> void:
 
 	var is_placing: bool = bool(construction_controller.is_placing())
 	construction_entry.position = Vector2(width - right_width - edge, rail_top + 140.0)
-	construction_entry.size = Vector2(right_width, 174.0 if is_placing else 66.0)
+	construction_entry.size = Vector2(right_width, 206.0 if is_placing else 66.0)
 	build_entry_button.position = Vector2(12.0, 12.0)
 	build_entry_button.size = Vector2(right_width - 24.0, 42.0)
 	build_mode_status.position = Vector2(14.0, 12.0)
-	build_mode_status.size = Vector2(right_width - 28.0, 28.0)
-	placement_orientation.position = Vector2(14.0, 46.0)
+	build_mode_status.size = Vector2(right_width - 28.0, 46.0)
+	placement_orientation.position = Vector2(14.0, 58.0)
 	placement_orientation.size = Vector2(right_width - 28.0, 22.0)
-	rotate_button.position = Vector2(14.0, 76.0)
+	rotate_button.position = Vector2(14.0, 90.0)
 	rotate_button.size = Vector2((right_width - 42.0) * 0.5, 34.0)
-	confirm_placement_button.position = Vector2(22.0 + (right_width - 42.0) * 0.5, 76.0)
+	confirm_placement_button.position = Vector2(22.0 + (right_width - 42.0) * 0.5, 90.0)
 	confirm_placement_button.size = Vector2((right_width - 42.0) * 0.5, 34.0)
-	cancel_placement_button.position = Vector2(14.0, 118.0)
+	cancel_placement_button.position = Vector2(14.0, 132.0)
 	cancel_placement_button.size = Vector2(right_width - 28.0, 34.0)
 
 	construction_menu.position = Vector2(width - right_width - edge, rail_top + 218.0)

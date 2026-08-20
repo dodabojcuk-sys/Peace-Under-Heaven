@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://blankmap00"]
+[gd_scene load_steps=18 format=3 uid="uid://blankmap00"]
 
 [ext_resource type="Script" path="res://scripts/map_pan_controller.gd" id="1_map_pan"]
 [ext_resource type="Script" path="res://scripts/construction_controller.gd" id="2_construction"]
@@ -10,6 +10,7 @@
 [ext_resource type="Script" path="res://scripts/regular_city_spatial_foundation.gd" id="8_regular_city"]
 [ext_resource type="Script" path="res://scripts/city_minimap_r1.gd" id="9_city_minimap"]
 [ext_resource type="Script" path="res://scripts/placement_grid_r1.gd" id="10_placement_grid"]
+[ext_resource type="Script" path="res://scripts/city_sandbox/road_preview_visual.gd" id="11_road_preview"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top_bar"]
 bg_color = Color(0.847059, 0.831373, 0.796078, 1)
@@ -432,6 +433,9 @@ default_color = Color(0.72, 0.56, 0.25, 1)
 [node name="ConstructionPreview" type="Node2D" parent="MapWorld/ConstructionLayer"]
 visible = false
 z_index = 2
+
+[node name="RoadPreview" type="Node2D" parent="MapWorld/ConstructionLayer/ConstructionPreview"]
+script = ExtResource("11_road_preview")
 
 [node name="PlacementGrid" type="Node2D" parent="MapWorld/ConstructionLayer/ConstructionPreview"]
 script = ExtResource("10_placement_grid")

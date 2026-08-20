@@ -260,21 +260,15 @@ func _test_road_drafts() -> void:
 		Vector2i(0, 0),
 		Vector2i(3, 2),
 	])
-	var expected_fast: Array[Vector2i] = [
-		Vector2i(0, 0),
-		Vector2i(1, 0),
-		Vector2i(2, 0),
-		Vector2i(3, 0),
-		Vector2i(3, 1),
-		Vector2i(3, 2),
-	]
 	_check(
 		fast_draft.axis_priority == &"x_then_y",
 		"道路插值固定使用 X 后 Y 轴优先"
 	)
 	_check(
-		fast_draft.ordered_cells == expected_fast,
-		"快速拖动用 Manhattan 插值补齐且无断格"
+		not fast_draft.valid
+			and fast_draft.error == &"road_path_must_be_axis_aligned"
+			and fast_draft.ordered_cells.is_empty(),
+		"单次快速拖动的对角线被阻断，L 型路径需分两次拖拽"
 	)
 
 	var reverse: Array[Vector2i] = RoadDraft.interpolate_segment(
@@ -282,15 +276,8 @@ func _test_road_drafts() -> void:
 		Vector2i(0, 0)
 	)
 	_check(
-		reverse == [
-			Vector2i(3, 2),
-			Vector2i(2, 2),
-			Vector2i(1, 2),
-			Vector2i(0, 2),
-			Vector2i(0, 1),
-			Vector2i(0, 0),
-		],
-		"反向拖动保持同一轴优先规则"
+		reverse.is_empty(),
+		"反向对角拖动同样阻断并保持正交路径合同"
 	)
 
 	var backtrack: Dictionary = RoadDraft.build_draft([
