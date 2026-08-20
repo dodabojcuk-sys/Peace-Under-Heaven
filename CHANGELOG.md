@@ -5,6 +5,17 @@
 
 ## Unreleased
 
+### R1C native mouse construction closure
+
+- Fixed right-rail pointer routing so hovering or clicking the native confirm
+  button no longer invalidates the map placement ghost as `被界面遮挡`.
+- Kept construction confirmation on the existing authoritative writer; native
+  1440×900 evidence records one pressed event, exact wood cost, placement exit,
+  construction, completion, and selectable building details.
+- Added a focused regression assertion for pointer motion over the rail. No
+  save schema, economy values, formal art, Canonical, RG-O1 quarantine, G4,
+  push, or deployment changed.
+
 ### Regular City Spatial Foundation R1
 
 - Replaced the flat default inner-city backdrop with a regular axial/ward

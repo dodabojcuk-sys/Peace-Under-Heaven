@@ -14,6 +14,11 @@ R2C-03, V6, legacy cleanup, or a broader save/schema migration.
 
 `FINAL_BUILDING_ART=NOT_STARTED_BY_SCOPE`
 
+R1C 已关闭正式内城的原生鼠标建造阻断：右侧确认按钮的鼠标悬停不会再被
+`MapPanController` 根输入路由误转成地图预览，合法 placement 可由真实鼠标
+单击一次进入施工并在正常时间推进后落成。权威建造、资源扣除、取消、V5
+方向存读档和旧 schema 北向兼容均保持原路径；当前视觉仍为灰盒基础。
+
 ## 结论
 
 `TXWZS2_V5_G3_REFRESHED_FULL_REGRESSION_AND_TRACEABILITY_ACCEPTED`

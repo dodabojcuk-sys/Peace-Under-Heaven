@@ -96,6 +96,25 @@ func _run() -> void:
 		"从现有真实建筑定义进入 placement")
 	_check(placement_grid.visible and controller.preview_valid,
 		"placement 仅显示局部格线与有效 footprint")
+	var confirm_button: Button = shell.get_node(
+		"ConstructionEntryPanel/ConfirmPlacementButton"
+	)
+	_check(
+		confirm_button.visible and not confirm_button.disabled,
+		"合法 placement 的确认按钮可命中且不被错误禁用"
+	)
+	_check(
+		confirm_button.mouse_filter == Control.MOUSE_FILTER_STOP,
+		"确认按钮使用完整可见区域接收原生鼠标事件"
+	)
+	var preview_before_rail_hover: bool = controller.preview_valid
+	scene._input(_mouse_motion(confirm_button.get_global_rect().get_center()))
+	_check(
+		preview_before_rail_hover
+			and controller.preview_valid
+			and not confirm_button.disabled,
+		"鼠标进入右栏确认按钮不会把合法 ghost 改成界面遮挡"
+	)
 	var before_cancel: Dictionary = controller.export_v5_campaign_snapshot()
 	scene._input(_key_event(KEY_R))
 	_check(controller.get_preview_orientation() == 1,
@@ -194,6 +213,12 @@ func _key_event(keycode: Key) -> InputEventKey:
 	var event := InputEventKey.new()
 	event.keycode = keycode
 	event.pressed = true
+	return event
+
+
+func _mouse_motion(position: Vector2) -> InputEventMouseMotion:
+	var event := InputEventMouseMotion.new()
+	event.position = position
 	return event
 
 
