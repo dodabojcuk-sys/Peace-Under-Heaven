@@ -140,6 +140,21 @@ func _handle_construction_input(event: InputEvent) -> void:
 				get_viewport().set_input_as_handled()
 		return
 
+	# The construction rail owns pointer input over its controls. The root
+	# controller still receives `_input` before Control nodes, so never turn a
+	# button hover/click into a new map preview cell or invalidate a valid ghost.
+	if (
+		event is InputEventMouseButton
+		or event is InputEventMouseMotion
+	) and construction_controller.is_construction_ui_point(event.position):
+		if (
+			event is InputEventMouseButton
+			and not event.pressed
+			and event.button_index == active_drag_button
+		):
+			_stop_drag()
+		return
+
 	if event is InputEventMouseButton:
 		if event.button_index == MOUSE_BUTTON_WHEEL_UP or event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			_handle_zoom(event)
