@@ -715,6 +715,28 @@ func set_detail_panel_active(active: bool) -> void:
 
 
 func is_construction_ui_point(screen_position: Vector2) -> bool:
+	# During a stretched native window run, the OS pointer coordinates can be
+	# expressed in physical pixels while the root input event is evaluated in
+	# viewport coordinates. The GUI layer still resolves the hovered control
+	# correctly, so use that authoritative hit result to keep a rail click from
+	# leaking into map placement before the Button receives its pressed signal.
+	var hovered_control := get_viewport().gui_get_hovered_control()
+	if hovered_control != null:
+		for ui_control in [
+			construction_entry_panel,
+			construction_menu,
+			pause_button,
+			city_bar_toggle,
+			noticeboard_panel,
+		]:
+			if (
+				ui_control.is_visible_in_tree()
+				and (
+					hovered_control == ui_control
+					or ui_control.is_ancestor_of(hovered_control)
+				)
+			):
+				return true
 	for ui_control in [
 		construction_entry_panel,
 		construction_menu,
