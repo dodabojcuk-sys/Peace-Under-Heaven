@@ -14,6 +14,33 @@ R2C-03, V6, legacy cleanup, or a broader save/schema migration.
 
 `FINAL_BUILDING_ART=NOT_STARTED_BY_SCOPE`
 
+## R3A graybox building presence
+
+R3A adds `GrayboxBuildingVisual` as the shared procedural presentation layer
+for fixed buildings, placement ghosts, construction stages, and completed
+runtime buildings. It consumes the existing `ConstructionController` records;
+it does not own resources, roads, lifecycle, orientation persistence, or save
+data. The visual stages are foundation, frame/partial mass, and completed,
+derived from the existing construction start/completion days. N/E/S/W entrance
+markers and rotated footprints are taken from the authoritative controller.
+
+The R3A focused contract covers real building definitions, distinct
+farm/logging-camp/warehouse graybox silhouettes, connected/disconnected
+entrance states, pause stability, V5 orientation restoration, and no state
+mutation. The complete current smoke suite is `42/42 PASS`; editor parse/import
+and the formal `blank_map`, Blackstone, and C0 headless smokes also pass.
+
+`R3A_NATIVE_WINDOW=VERIFIED`
+
+`R3A_EVIDENCE=EXTERNAL_ONLY`
+
+Evidence directory:
+`/Users/m4-zhi/Downloads/txwzs2-r3a-graybox-building-presence-evidence-20260821-v1`
+
+`ORGANIC_GARDEN_CITY=NOT_STARTED_BY_SCOPE`
+
+`FINAL_BUILDING_ART=NOT_STARTED_BY_SCOPE`
+
 R1C 已关闭正式内城的原生鼠标建造阻断：右侧确认按钮的鼠标悬停不会再被
 `MapPanController` 根输入路由误转成地图预览，合法 placement 可由真实鼠标
 单击一次进入施工并在正常时间推进后落成。权威建造、资源扣除、取消、V5

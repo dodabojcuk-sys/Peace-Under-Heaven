@@ -5,6 +5,21 @@
 
 ## Unreleased
 
+### R3A graybox building presence
+
+- Added the shared `GrayboxBuildingVisual` component for footprint-aligned
+  foundations, height/roof/side/shadow volume, entrance direction, selection,
+  connection state, and construction-stage presentation.
+- Routed fixed and runtime buildings through the component without adding a
+  writer, autoload, save field, schema version, asset, or second state tree.
+- Added focused R3A coverage for N/E/S/W geometry, lifecycle stages, pause
+  stability, fallback rendering, distinct real building silhouettes,
+  connected/disconnected entrance states, no state mutation, and V5
+  orientation restore. The complete 42-runner smoke suite passes 42/42.
+- Native evidence is external to Git. The 1920×1080 request rendered as
+  1920×960 on macOS; strict 1080-height pass is not claimed. Organic-garden
+  city, final art, G4, push, and deployment remain out of scope.
+
 ### R2B player road construction
 
 - Added a right-rail road tool with native horizontal/vertical drag previews,
