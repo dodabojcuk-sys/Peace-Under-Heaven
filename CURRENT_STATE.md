@@ -37,9 +37,33 @@ and the formal `blank_map`, Blackstone, and C0 headless smokes also pass.
 Evidence directory:
 `/Users/m4-zhi/Downloads/txwzs2-r3a-graybox-building-presence-evidence-20260821-v1`
 
-`ORGANIC_GARDEN_CITY=NOT_STARTED_BY_SCOPE`
+`ORGANIC_GARDEN_CITY=R3B_ACCEPTED_NATIVE_AND_HEADLESS`
 
 `FINAL_BUILDING_ART=NOT_STARTED_BY_SCOPE`
+
+## R3B dual-city layout profiles
+
+R3B adds the stable `blackstone_city` -> `REGULAR_IMPERIAL` and
+`riverbend_city` -> `ORGANIC_GARDEN` profile mapping through
+`CityLayoutProfileResolver`. Blackstone keeps the accepted regular axial/ward
+layout. Riverbend is a formal world-map entry using an authored orthogonal
+garden layout with offset/T roads, unequal wards, one large reserve, two small
+reserves, an off-centre civic court, and four rotations of the existing single
+`CityGateComponentR1`.
+
+The existing `ConstructionController` remains the sole writer. City switching
+captures and restores only in-memory runtime building and player-road records;
+the national resource ledger remains shared. V5 and early single-city save
+export/restore fail closed while Riverbend is active because no multi-city save
+schema was authorized. The right rail, placement, road tool, minimap,
+selection, Escape behavior, and input routing are reused.
+
+Focused R3B resolver/geometry and dual-city navigation runners pass. The full
+44-runner regression, editor parse/import, formal-scene smokes, native
+Blackstone → Riverbend → native build/rotate/confirm/construction/completion →
+Blackstone flow, and 1280/1440/actual-1920x960 window evidence are captured in
+the external evidence package. No final art, curved roads, traffic, full-map
+rotation, G4, push, or deployment is claimed.
 
 R1C 已关闭正式内城的原生鼠标建造阻断：右侧确认按钮的鼠标悬停不会再被
 `MapPanController` 根输入路由误转成地图预览，合法 placement 可由真实鼠标
@@ -331,6 +355,11 @@ GODOT=/Applications/Godot.app/Contents/MacOS/Godot
 
 ## 下一步与禁止项
 
+R3B is the current accepted successor slice. The profile implementation,
+headless regression, native dual-city flow, and responsive window evidence are
+captured; its local commits are the only remaining repository state transition
+for this turn. After R3B closes, G4 still requires a separate authorization.
+
 已完成的最近两个已授权范围：
 
 ```text
@@ -352,7 +381,7 @@ V6，本轮不声称已完成它们。
 - 进入 G4、G5 或 G6，除非分别获得授权；
 - 开始 R2C-03 永久占领或重开 P0-02；
 - 将 `riverbend_city` 完整局部状态写入 V5，或未经裁决升级 V6；
-- 扩展驻军、战役、占领、道路、补给、UI、场景或资产；
+- 扩展驻军、战役、占领、道路交通、补给、UI、场景或资产；
 - stage S1A.2；
 - force push、批量推送其他 refs、部署；
 - 清理或迁移存档；
