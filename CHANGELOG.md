@@ -5,6 +5,25 @@
 
 ## Unreleased
 
+### R3B dual-city layout profiles
+
+- Added deterministic `REGULAR_IMPERIAL` and `ORGANIC_GARDEN` profiles keyed by
+  the stable `blackstone_city` and `riverbend_city` IDs.
+- Wired the formal world-map Riverbend entry to the existing
+  `ConstructionController`, preserving one building/road/resource authority
+  while isolating runtime placement and player-road state per city in memory.
+- Added an authored orthogonal garden graybox with offset/T roads, unequal
+  wards, three reserves, an off-centre civic court, and the same four rotated
+  `CityGateComponentR1` instances. The minimap reads the active profile's
+  projected roads and reserves.
+- Kept V5 and early single-city save exports fail-closed for Riverbend; no save
+  schema, autoload, resource, asset, or final-art change was introduced.
+- Added focused resolver, geometry, dual-city state, formal navigation, and
+  non-regression coverage. Native runtime evidence is external to Git and was
+  captured at 1280x720, 1440x900, and an actual 1920x960 macOS window for the
+  requested 1920x1080 launch. Final art, curved roads, traffic, full-map
+  rotation, G4, push, and deployment remain out of scope.
+
 ### R3A graybox building presence
 
 - Added the shared `GrayboxBuildingVisual` component for footprint-aligned

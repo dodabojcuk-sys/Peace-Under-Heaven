@@ -86,6 +86,9 @@ const V5_CAMPAIGN_SNAPSHOT = preload(
 const NATION_STATE = preload(
 	"res://scripts/state/nation_state.gd"
 )
+const CITY_LAYOUT_PROFILE_RESOLVER = preload(
+	"res://scripts/city_layout_profile_resolver.gd"
+)
 const V5_NATIONAL_RESOURCE_ADAPTER = preload(
 	"res://scripts/state/v5_national_resource_adapter.gd"
 )
@@ -397,6 +400,8 @@ var last_daily_breakdown := {
 var _occupied_cells: Dictionary = {}
 var _building_records_by_id: Dictionary = {}
 var _placement_order: Array[int] = []
+var _active_city_id: StringName = CITY_LAYOUT_PROFILE_RESOLVER.BLACKSTONE_CITY_ID
+var _city_layout_runtime_states: Dictionary = {}
 var _definitions_by_id: Dictionary = {}
 var _mission_definitions_by_id: Dictionary = {}
 var _generals_by_id: Dictionary = {}
@@ -493,6 +498,214 @@ func _ready() -> void:
 
 func get_nation_state() -> NationState:
 	return _nation_state
+
+
+func get_active_city_id() -> StringName:
+	return _active_city_id
+
+
+func get_active_city_name() -> String:
+	return CITY_LAYOUT_PROFILE_RESOLVER.city_name(_active_city_id)
+
+
+func get_layout_profile_id() -> StringName:
+	if not is_instance_valid(city_spatial_foundation):
+		return CITY_LAYOUT_PROFILE_RESOLVER.resolve_profile_id(_active_city_id)
+	return city_spatial_foundation.get_layout_profile_id()
+
+
+func get_layout_profile_name() -> String:
+	return CITY_LAYOUT_PROFILE_RESOLVER.profile_name(get_layout_profile_id())
+
+
+func get_layout_camera_focus() -> Vector2:
+	return city_spatial_foundation.get_camera_focus()
+
+
+func get_layout_profile_snapshot() -> Dictionary:
+	return city_spatial_foundation.get_layout_profile_snapshot()
+
+
+func switch_city(next_city_id: StringName) -> bool:
+	if not CITY_LAYOUT_PROFILE_RESOLVER.is_known_city(next_city_id):
+		return false
+	if next_city_id == _active_city_id:
+		return true
+	if (
+		is_placing()
+		or _road_drag_active
+		or is_city_action_locked_for_battle()
+		or not _active_battle_reservation.is_empty()
+	):
+		return false
+	var previous_city_id := _active_city_id
+	_capture_city_layout_runtime_state(_active_city_id)
+	var previous_snapshot: Dictionary = _city_layout_runtime_states.get(
+		previous_city_id,
+		{}
+	).duplicate(true)
+	_clear_runtime_placements_for_city_switch()
+	if not city_spatial_foundation.set_city_id(next_city_id):
+		_restore_city_after_switch_failure(previous_city_id, previous_snapshot)
+		return false
+	if not _sync_fixed_records_to_current_profile():
+		_restore_city_after_switch_failure(previous_city_id, previous_snapshot)
+		return false
+	_active_city_id = next_city_id
+	if not _restore_city_layout_runtime_state(
+		_city_layout_runtime_states.get(next_city_id, {})
+	):
+		_restore_city_after_switch_failure(previous_city_id, previous_snapshot)
+		return false
+	_refresh_road_visual_projection()
+	_refresh_city_ui()
+	_sync_construction_ui()
+	construction_presentation_changed.emit()
+	city_state_changed.emit()
+	return true
+
+
+func _restore_city_after_switch_failure(
+	previous_city_id: StringName,
+	previous_snapshot: Dictionary
+) -> void:
+	_clear_runtime_placements_for_city_switch()
+	city_spatial_foundation.set_city_id(previous_city_id)
+	_sync_fixed_records_to_current_profile()
+	_active_city_id = previous_city_id
+	_restore_city_layout_runtime_state(previous_snapshot)
+	_refresh_road_visual_projection()
+
+
+func get_city_layout_state_snapshot() -> Dictionary:
+	return {
+		"city_id": _active_city_id,
+		"layout_profile_id": get_layout_profile_id(),
+		"runtime_placement_ids": _get_runtime_placement_ids(),
+		"player_road_cells": get_player_road_cells(),
+	}
+
+
+func _get_runtime_placement_ids() -> Array[int]:
+	var ids: Array[int] = []
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if (
+			not record.is_empty()
+			and record.placement_kind != PLACEMENT_KIND_FIXED
+		):
+			ids.append(placement_id)
+	return ids
+
+
+func _capture_city_layout_runtime_state(for_city_id: StringName) -> void:
+	var placements: Array[Dictionary] = []
+	for placement_id in _get_runtime_placement_ids():
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		placements.append({
+			"placement_id": placement_id,
+			"definition_id": StringName(record.definition_id),
+			"origin_cell": Vector2i(record.origin_cell),
+			"orientation": int(record.get("orientation", ORIENTATION_NORTH)),
+			"lifecycle_state": StringName(record.lifecycle_state),
+			"built_day": int(record.built_day),
+			"disabled_until_day": int(record.disabled_until_day),
+			"construction_started_day": int(record.construction_started_day),
+			"construction_complete_day": int(record.construction_complete_day),
+		})
+	_city_layout_runtime_states[for_city_id] = {
+		"placements": placements,
+		"next_placement_id": _next_placement_id,
+	}.duplicate(true)
+
+
+func _clear_runtime_placements_for_city_switch() -> void:
+	var runtime_ids := _get_runtime_placement_ids()
+	for placement_id in runtime_ids:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		var building := record.get("node") as Node2D
+		_release_runtime_record(placement_id, true, false)
+		if is_instance_valid(building):
+			if building.get_parent() == placed_buildings:
+				placed_buildings.remove_child(building)
+			building.queue_free()
+
+
+func _restore_city_layout_runtime_state(snapshot: Dictionary) -> bool:
+	if snapshot.is_empty():
+		return true
+	var max_id := _next_placement_id
+	for placement_value in snapshot.get("placements", []):
+		var placement: Dictionary = placement_value
+		var definition := get_definition(StringName(placement.definition_id))
+		if not _register_runtime_placement_record(
+			int(placement.placement_id),
+			Vector2i(placement.origin_cell),
+			definition,
+			int(placement.get("orientation", ORIENTATION_NORTH)),
+			StringName(placement.lifecycle_state),
+			int(placement.built_day),
+			int(placement.disabled_until_day),
+			int(placement.construction_started_day),
+			int(placement.construction_complete_day)
+		):
+			return false
+		max_id = maxi(max_id, int(placement.placement_id) + 1)
+	_next_placement_id = maxi(
+		max_id,
+		int(snapshot.get("next_placement_id", max_id))
+	)
+	return true
+
+
+func _sync_fixed_records_to_current_profile() -> bool:
+	var next_occupied: Dictionary = {}
+	var fixed_updates: Array[Dictionary] = []
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if record.is_empty() or record.placement_kind != PLACEMENT_KIND_FIXED:
+			continue
+		var node := record.get("node") as Node
+		var node_name: String = node.name if node != null else ""
+		var rect := city_spatial_foundation.get_profile_fixed_building_rect(node_name)
+		if rect.size == Vector2.ZERO:
+			return false
+		var origin := Vector2i(
+			floori(rect.position.x / GRID_SIZE),
+			floori(rect.position.y / GRID_SIZE)
+		)
+		var footprint := Vector2i(
+			maxi(1, ceili(rect.size.x / GRID_SIZE)),
+			maxi(1, ceili(rect.size.y / GRID_SIZE))
+		)
+		var cells := get_footprint_cells(origin, footprint)
+		for cell in cells:
+			if next_occupied.has(cell):
+				return false
+			next_occupied[cell] = placement_id
+		fixed_updates.append({
+			"record": record,
+			"node": node,
+			"origin": origin,
+			"footprint": footprint,
+			"cells": cells,
+			"rect": rect,
+		})
+	for update in fixed_updates:
+		var fixed_record: Dictionary = update.record
+		fixed_record.origin_cell = update.origin
+		fixed_record.footprint = update.footprint
+		fixed_record.base_footprint = update.footprint
+		fixed_record.occupied_footprint_cells = update.cells.duplicate()
+		fixed_record.selection_bounds = Rect2(Vector2.ZERO, update.rect.size)
+		var fixed_node: Node = update.node
+		if is_instance_valid(fixed_node):
+			if fixed_node is Control:
+				(fixed_node as Control).position = update.rect.position
+			elif fixed_node is Node2D:
+				(fixed_node as Node2D).position = update.rect.position
+	_occupied_cells = next_occupied
+	return true
 
 
 func _set_legacy_resource_balance(
@@ -1905,6 +2118,9 @@ func _get_production_amount(
 
 func get_city_state() -> Dictionary:
 	return {
+		"city_id": _active_city_id,
+		"city_name": get_active_city_name(),
+		"layout_profile_id": get_layout_profile_id(),
 		"day": current_day,
 		"wood": wood,
 		"food": food,
@@ -1972,6 +2188,8 @@ func get_city_state() -> Dictionary:
 
 
 func export_early_city_snapshot() -> Dictionary:
+	if _active_city_id != CITY_LAYOUT_PROFILE_RESOLVER.BLACKSTONE_CITY_ID:
+		return {}
 	var scope_error := _get_early_city_snapshot_scope_error()
 	if not scope_error.is_empty():
 		return {}
@@ -2033,6 +2251,10 @@ func export_early_city_snapshot() -> Dictionary:
 
 
 func export_v5_campaign_snapshot() -> Dictionary:
+	# V5 remains a Blackstone-scoped schema.  Never serialize Riverbend under
+	# the legacy blackstone city_id until a versioned multi-city schema exists.
+	if _active_city_id != CITY_LAYOUT_PROFILE_RESOLVER.BLACKSTONE_CITY_ID:
+		return {}
 	if (
 		not _active_battle_reservation.is_empty()
 		or not _active_army_dispatch_reservation.is_empty()
@@ -2208,6 +2430,12 @@ func migrate_v1_snapshot_to_v5(
 func restore_v5_campaign_snapshot(
 	snapshot: Dictionary
 ) -> Dictionary:
+	if _active_city_id != CITY_LAYOUT_PROFILE_RESOLVER.BLACKSTONE_CITY_ID:
+		return {
+			"success": false,
+			"error_id": &"CITY_SAVE_SCOPE",
+			"error": "河湾城暂不支持 V5 单城存档写入",
+		}
 	if (
 		not _active_battle_reservation.is_empty()
 		or not _active_army_dispatch_reservation.is_empty()
@@ -2463,6 +2691,12 @@ func validate_early_city_snapshot(snapshot: Dictionary) -> Dictionary:
 
 
 func restore_early_city_snapshot(snapshot: Dictionary) -> Dictionary:
+	if _active_city_id != CITY_LAYOUT_PROFILE_RESOLVER.BLACKSTONE_CITY_ID:
+		return {
+			"success": false,
+			"error": "河湾城暂不支持旧版单城存档恢复",
+		}
+
 	var scope_error := _get_early_city_snapshot_scope_error()
 	if not scope_error.is_empty():
 		return {

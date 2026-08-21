@@ -88,7 +88,7 @@ func _apply_static_copy() -> void:
 	city_bar_toggle.visible = true
 	city_title.text = "城市序列"
 	city_current.text = "黑石城\n经营中"
-	city_two.text = "河湾城\n战略目标"
+	city_two.text = "河湾城\n有机花园城 · 可进入"
 	city_three.text = "下一城市\n未解锁"
 	minimap_label.text = "部署概览 · 黑石城"
 	build_entry_button.text = "建造目录"
@@ -115,7 +115,14 @@ func _refresh_read_model() -> void:
 	var wood: int = int(nation.get_resource(&"wood"))
 	var food: int = int(nation.get_resource(&"food"))
 	resource_summary.text = "国家共享资源  木材 %d · 粮食 %d" % [wood, food]
-	current_city.text = "黑石城  ·  一城经营投影"
+	var city_name := "黑石城"
+	var profile_name := "规则帝城"
+	if construction_controller.has_method("get_active_city_name"):
+		city_name = construction_controller.get_active_city_name()
+	if construction_controller.has_method("get_layout_profile_name"):
+		profile_name = construction_controller.get_layout_profile_name()
+	current_city.text = "%s  ·  %s" % [city_name, profile_name]
+	minimap_label.text = "部署概览 · %s" % city_name
 	var garrison: Dictionary = construction_controller.get_garrison_snapshot()
 	var queue: Dictionary = construction_controller.get_training_queue_snapshot()
 	army_status.text = "驻军 / 训练\n驻军 %d · 可派 %d/%d\n队列 %d · 建造中 %d 项" % [

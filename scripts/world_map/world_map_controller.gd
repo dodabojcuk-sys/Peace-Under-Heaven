@@ -4,6 +4,7 @@ extends Node2D
 
 signal return_to_city_requested
 signal noticeboard_requested
+signal city_entry_requested(city_id: StringName)
 
 const PresentationModel = preload(
 	"res://scripts/world_map/world_map_presentation_model.gd"
@@ -430,9 +431,8 @@ func _show_node_panel(node: Dictionary) -> void:
 		StringName(node.get("id", &"")) == PresentationModel.HOME_NODE_ID
 	)
 	enter_city_button.visible = true
-	enter_city_button.disabled = (
-		StringName(node.get("id", &"")) != PresentationModel.HOME_NODE_ID
-	)
+	var node_id := StringName(node.get("id", &""))
+	enter_city_button.disabled = not _is_formal_city_entry(node_id)
 	view_task_button.visible = not mission_lines.is_empty()
 	view_task_button.disabled = mission_lines.is_empty()
 	action_hint.text = _node_action_hint(node)
@@ -443,6 +443,8 @@ func _node_action_hint(node: Dictionary) -> String:
 	var node_id := StringName(node.get("id", &""))
 	if node_id == PresentationModel.HOME_NODE_ID:
 		return "黑石城可返回内城；编队当前驻扎于此。"
+	if node_id == &"riverbend_city":
+		return "河湾城已注册正式入口；进入有机花园城灰盒布局。"
 	if not _planned_route.is_empty() and _selected_id == node_id:
 		return str(_planned_route.get("status", ""))
 	if StringName(node.get("owner", &"")) == &"ENEMY":
@@ -457,11 +459,16 @@ func _set_selected_node_as_target() -> void:
 
 
 func _enter_selected_city() -> void:
-	if (
-		_selected_kind == &"NODE"
-		and _selected_id == PresentationModel.HOME_NODE_ID
-	):
-		_request_return_to_city()
+	if _selected_kind != &"NODE" or not _is_formal_city_entry(_selected_id):
+		return
+	city_entry_requested.emit(_selected_id)
+
+
+func _is_formal_city_entry(node_id: StringName) -> bool:
+	return (
+		node_id == PresentationModel.HOME_NODE_ID
+		or node_id == &"riverbend_city"
+	)
 
 
 func _view_selected_task() -> void:

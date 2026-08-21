@@ -9,6 +9,9 @@ var _camera_position := MAP_SIZE * 0.5
 var _camera_zoom := 1.0
 var _safe_rect := Rect2(Vector2.ZERO, Vector2(1.0, 1.0))
 var _player_road_cells: Dictionary = {}
+var _layout_profile_id: StringName = &"REGULAR_IMPERIAL"
+var _formal_road_cells: Dictionary = {}
+var _reserved_cells: Dictionary = {}
 
 
 func update_world_view(
@@ -27,6 +30,17 @@ func set_player_road_cells(cells: Dictionary) -> void:
 	queue_redraw()
 
 
+func set_layout_profile(
+	profile_id: StringName,
+	formal_road_cells: Dictionary,
+	reserved_cells: Dictionary
+) -> void:
+	_layout_profile_id = profile_id
+	_formal_road_cells = formal_road_cells.duplicate(true)
+	_reserved_cells = reserved_cells.duplicate(true)
+	queue_redraw()
+
+
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_RESIZED:
 		queue_redraw()
@@ -38,13 +52,31 @@ func _draw() -> void:
 		return
 	draw_rect(map_rect, Color("172422"), true)
 	draw_rect(map_rect, Color("5d918a"), false, 1.5)
-	_draw_map_rect(map_rect, Rect2(1020.0, 74.0, 160.0, 1252.0), Color("958665"))
-	_draw_map_rect(map_rect, Rect2(74.0, 630.0, 2052.0, 140.0), Color("958665"))
-	_draw_map_rect(map_rect, Rect2(930.0, 540.0, 340.0, 320.0), Color("bc9659"))
 	var cell_size := Vector2(
 		map_rect.size.x / 55.0,
 		map_rect.size.y / 35.0
 	)
+	var road_color := (
+		Color("7f9f84")
+		if _layout_profile_id == &"ORGANIC_GARDEN"
+		else Color("958665")
+	)
+	for cell in _formal_road_cells:
+		var formal_rect := Rect2(
+			map_rect.position + Vector2(Vector2i(cell)) * cell_size,
+			cell_size
+		)
+		draw_rect(formal_rect.grow(-0.25), road_color, true)
+	for cell in _reserved_cells:
+		var reserve_rect := Rect2(
+			map_rect.position + Vector2(Vector2i(cell)) * cell_size,
+			cell_size
+		)
+		draw_rect(
+			reserve_rect.grow(-0.25),
+			Color("719b72") if _layout_profile_id == &"ORGANIC_GARDEN" else Color("bc9659"),
+			true
+		)
 	for cell in _player_road_cells:
 		var typed_cell := Vector2i(cell)
 		var road_rect := Rect2(

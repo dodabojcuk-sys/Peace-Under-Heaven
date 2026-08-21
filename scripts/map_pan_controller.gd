@@ -53,6 +53,9 @@ func _ready() -> void:
 	campaign_world_map.return_to_city_requested.connect(
 		return_from_campaign_world_map
 	)
+	campaign_world_map.city_entry_requested.connect(
+		_on_city_entry_requested
+	)
 	campaign_world_map.noticeboard_requested.connect(
 		_on_world_map_noticeboard_requested
 	)
@@ -438,6 +441,25 @@ func return_from_campaign_world_map() -> bool:
 	return true
 
 
+func _on_city_entry_requested(city_id: StringName) -> void:
+	if not world_map_open:
+		return
+	if not construction_controller.has_method("switch_city"):
+		return
+	if not return_from_campaign_world_map():
+		return
+	if not construction_controller.switch_city(city_id):
+		return
+	building_selection_controller.clear_selection()
+	construction_controller.cancel_build_interaction()
+	_city_camera_position = construction_controller.get_layout_camera_focus()
+	_city_camera_zoom = Vector2.ONE
+	camera.position = _city_camera_position
+	camera.zoom = _city_camera_zoom
+	_clamp_camera()
+	_refresh_minimap()
+
+
 func center_world_map_on_home() -> void:
 	if not world_map_open:
 		return
@@ -582,6 +604,12 @@ func _refresh_minimap() -> void:
 		camera.zoom.x,
 		get_navigation_safe_rect()
 	)
+	if construction_controller.has_method("get_layout_profile_id"):
+		minimap.set_layout_profile(
+			construction_controller.get_layout_profile_id(),
+			construction_controller.get_formal_road_cells(),
+			construction_controller.get_formal_reserved_cells()
+		)
 	minimap.set_player_road_cells(
 		construction_controller.get_player_road_cells()
 	)

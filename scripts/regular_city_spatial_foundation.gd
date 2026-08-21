@@ -4,6 +4,7 @@ extends Node2D
 
 const CityGateComponent = preload("res://scripts/city_gate_component_r1.gd")
 const CITY_GRID_RULES = preload("res://scripts/city_sandbox/city_grid_rules.gd")
+const PROFILE_RESOLVER = preload("res://scripts/city_layout_profile_resolver.gd")
 const GRAYBOX_BUILDING_VISUAL = preload(
 	"res://scripts/graybox_building_visual.gd"
 )
@@ -50,10 +51,15 @@ var _formal_reserved_cells: Dictionary = {}
 var _formal_wall_cells: Dictionary = {}
 var _formal_gate_cells: Dictionary = {}
 var _player_road_cells: Dictionary = {}
+var city_id: StringName = PROFILE_RESOLVER.BLACKSTONE_CITY_ID
+var layout_profile_id: StringName = PROFILE_RESOLVER.REGULAR_IMPERIAL
+var _layout_profile: Dictionary = {}
+var _gate_instances: Node2D
 
 
 func _ready() -> void:
 	z_index = -1
+	_load_layout_profile(city_id)
 	_build_spatial_cell_projection()
 	_collect_fixed_building_proxies()
 	_hide_legacy_visual_layer()
@@ -62,25 +68,80 @@ func _ready() -> void:
 	queue_redraw()
 
 
+func get_city_id() -> StringName:
+	return city_id
+
+
+func get_layout_profile_id() -> StringName:
+	return layout_profile_id
+
+
+func get_layout_profile_name() -> String:
+	return PROFILE_RESOLVER.profile_name(layout_profile_id)
+
+
+func get_layout_profile_snapshot() -> Dictionary:
+	return _layout_profile.duplicate(true)
+
+
+func get_camera_focus() -> Vector2:
+	return Vector2(_layout_profile.get("camera_focus", MAP_SIZE * 0.5))
+
+
+func set_city_id(next_city_id: StringName) -> bool:
+	if not PROFILE_RESOLVER.is_known_city(next_city_id):
+		return false
+	if city_id == next_city_id and not _layout_profile.is_empty():
+		return true
+	city_id = next_city_id
+	_load_layout_profile(city_id)
+	if not is_node_ready():
+		return true
+	_build_spatial_cell_projection()
+	_apply_profile_to_legacy_nodes()
+	_sync_fixed_building_proxy_rects()
+	_rebuild_gate_instances()
+	queue_redraw()
+	return true
+
+
+func _load_layout_profile(for_city_id: StringName) -> void:
+	var profile := PROFILE_RESOLVER.get_city_profile(for_city_id)
+	if profile.is_empty():
+		push_error("Unknown city layout profile: %s" % for_city_id)
+		return
+	layout_profile_id = StringName(profile.get("profile_id", &""))
+	_layout_profile = profile
+
+
 func _build_spatial_cell_projection() -> void:
 	_formal_road_cells.clear()
 	_formal_reserved_cells.clear()
 	_formal_wall_cells.clear()
 	_formal_gate_cells.clear()
-	for road_rect in ROAD_LAYOUT_RECTS:
+	var road_rects: Array = _layout_profile.get("road_layout_rects", ROAD_LAYOUT_RECTS)
+	for road_rect in road_rects:
 		for y in range(road_rect.position.y, road_rect.end.y):
 			for x in range(road_rect.position.x, road_rect.end.x):
 				_formal_road_cells[Vector2i(x, y)] = true
-	for y in range(CIVIC_COURT_RECT.position.y, CIVIC_COURT_RECT.end.y):
-		for x in range(CIVIC_COURT_RECT.position.x, CIVIC_COURT_RECT.end.x):
+	var civic_rect: Rect2i = _layout_profile.get(
+		"civic_court_rect",
+		CIVIC_COURT_RECT
+	)
+	for y in range(civic_rect.position.y, civic_rect.end.y):
+		for x in range(civic_rect.position.x, civic_rect.end.x):
 			_formal_reserved_cells[Vector2i(x, y)] = true
+	for reserve_rect in _layout_profile.get("garden_reserve_rects", []):
+		for y in range(reserve_rect.position.y, reserve_rect.end.y):
+			for x in range(reserve_rect.position.x, reserve_rect.end.x):
+				_formal_reserved_cells[Vector2i(x, y)] = true
 	for x in range(MAP_GRID_SIZE.x):
 		_formal_wall_cells[Vector2i(x, 0)] = true
 		_formal_wall_cells[Vector2i(x, MAP_GRID_SIZE.y - 1)] = true
 	for y in range(MAP_GRID_SIZE.y):
 		_formal_wall_cells[Vector2i(0, y)] = true
 		_formal_wall_cells[Vector2i(MAP_GRID_SIZE.x - 1, y)] = true
-	for gate_rect in GATE_SLOT_RECTS:
+	for gate_rect in _layout_profile.get("gate_slot_rects", GATE_SLOT_RECTS):
 		for y in range(gate_rect.position.y, gate_rect.end.y):
 			for x in range(gate_rect.position.x, gate_rect.end.x):
 				_formal_gate_cells[Vector2i(x, y)] = true
@@ -134,18 +195,35 @@ func is_formal_gate_cell(cell: Vector2i) -> bool:
 func get_road_root_cells() -> Array[Vector2i]:
 	# The legacy seed keeps existing road fixtures/save validation valid while
 	# the formal city profile contributes its own connected center root.
-	return [FORMAL_ROAD_ROOT, LEGACY_RUNTIME_ROAD_ROOT]
+	var roots: Array[Vector2i] = []
+	for root in _layout_profile.get(
+		"road_root_cells",
+		[FORMAL_ROAD_ROOT, LEGACY_RUNTIME_ROAD_ROOT]
+	):
+		roots.append(Vector2i(root))
+	return roots
 
 
 func get_formal_road_rects() -> Array[Rect2]:
 	var rects: Array[Rect2] = []
-	for cell_rect in ROAD_LAYOUT_RECTS:
+	for cell_rect in _layout_profile.get("road_layout_rects", ROAD_LAYOUT_RECTS):
 		rects.append(_cell_rect(cell_rect))
 	return rects
 
 
 func get_civic_court_rect() -> Rect2:
-	return _cell_rect(CIVIC_COURT_RECT)
+	return _cell_rect(_layout_profile.get("civic_court_rect", CIVIC_COURT_RECT))
+
+
+func get_garden_reserve_rects() -> Array[Rect2]:
+	var rects: Array[Rect2] = []
+	for cell_rect in _layout_profile.get("garden_reserve_rects", []):
+		rects.append(_cell_rect(cell_rect))
+	return rects
+
+
+func get_profile_fixed_building_rect(node_name: String) -> Rect2:
+	return Rect2(_layout_profile.get("fixed_buildings", {}).get(node_name, Rect2()))
 
 
 func _cell_rect(cell_rect: Rect2i) -> Rect2:
@@ -156,6 +234,7 @@ func _cell_rect(cell_rect: Rect2i) -> Rect2:
 
 
 func _collect_fixed_building_proxies() -> void:
+	_apply_profile_to_legacy_nodes()
 	for node_name in [
 		"Manor",
 		"Barracks",
@@ -176,6 +255,48 @@ func _collect_fixed_building_proxies() -> void:
 		# The original control remains the single fixed-building selection owner.
 		# This foundation only replaces its flat-card visual, never its state.
 		legacy_node.visible = false
+
+
+func _apply_profile_to_legacy_nodes() -> void:
+	var fixed_buildings: Dictionary = _layout_profile.get("fixed_buildings", {})
+	for node_name in fixed_buildings.keys():
+		var legacy_node := get_parent().get_node_or_null(str(node_name)) as ColorRect
+		if legacy_node == null:
+			continue
+		var rect := Rect2(fixed_buildings[node_name])
+		legacy_node.position = rect.position
+		legacy_node.size = rect.size
+
+
+func _sync_fixed_building_proxy_rects() -> void:
+	for proxy in _fixed_building_proxies:
+		var node_name := str(proxy.get("name", ""))
+		var rect := get_profile_fixed_building_rect(node_name)
+		if rect.size == Vector2.ZERO:
+			continue
+		proxy["rect"] = rect
+		var legacy_node := proxy.get("legacy_node") as Control
+		if legacy_node != null:
+			legacy_node.position = rect.position
+			legacy_node.size = rect.size
+		var visual := proxy.get("visual") as GrayboxBuildingVisual
+		if visual != null:
+			visual.position = rect.position
+
+
+func _rebuild_gate_instances() -> void:
+	if is_instance_valid(_gate_instances):
+		_gate_instances.free()
+	var container := Node2D.new()
+	container.name = "GateInstances"
+	add_child(container)
+	_gate_instances = container
+	for gate_data in _layout_profile.get("gate_layout", GATE_LAYOUT):
+		var gate := CityGateComponent.new() as CityGateComponentR1
+		gate.name = str(gate_data.name)
+		gate.position = Vector2(gate_data.position)
+		gate.configure(int(gate_data.orientation), "%s城门" % str(gate_data.name))
+		container.add_child(gate)
 
 
 func _install_fixed_building_visuals() -> void:
@@ -208,6 +329,7 @@ func _install_fixed_building_visuals() -> void:
 			true
 		)
 		add_child(visual)
+		proxy["visual"] = visual
 		_fixed_building_visuals.append(visual)
 		var legacy_node := proxy.legacy_node as ColorRect
 		if legacy_node != null:
@@ -225,18 +347,13 @@ func _hide_legacy_visual_layer() -> void:
 
 
 func _install_gate_instances() -> void:
-	var container := Node2D.new()
-	container.name = "GateInstances"
-	add_child(container)
-	for gate_data in GATE_LAYOUT:
-		var gate := CityGateComponent.new() as CityGateComponentR1
-		gate.name = str(gate_data.name)
-		gate.position = Vector2(gate_data.position)
-		gate.configure(int(gate_data.orientation), "%s城门" % str(gate_data.name))
-		container.add_child(gate)
+	_rebuild_gate_instances()
 
 
 func _draw() -> void:
+	if layout_profile_id == PROFILE_RESOLVER.ORGANIC_GARDEN:
+		_draw_organic_garden_city()
+		return
 	# Regular axial city: walls, a civic axis, and distinct wards. This is a
 	# graybox spatial layer, intentionally without a permanent logic grid.
 	draw_rect(Rect2(Vector2.ZERO, MAP_SIZE), Color("c6bea2"), true)
@@ -258,6 +375,42 @@ func _draw() -> void:
 	draw_rect(civic_courtyard, Color("755c35"), false, 4.0)
 	draw_rect(civic_courtyard.grow(-24.0), Color("d8cda8"), true)
 	draw_circle(civic_courtyard.get_center(), 18.0, Color("a57d3e"))
+
+
+func _draw_organic_garden_city() -> void:
+	# The garden profile stays orthogonal, but its T-junctions, unequal wards,
+	# and reserves break the rigid axial cross without introducing a second grid.
+	draw_rect(Rect2(Vector2.ZERO, MAP_SIZE), Color("b8c7a9"), true)
+	draw_rect(
+		Rect2(Vector2(28.0, 28.0), MAP_SIZE - Vector2(56.0, 56.0)),
+		Color("557060"),
+		false,
+		18.0
+	)
+	draw_rect(Rect2(Vector2(74.0, 74.0), MAP_SIZE - Vector2(148.0, 148.0)), Color("d1d2af"), true)
+	for ward in [
+		[Rect2(130.0, 120.0, 640.0, 420.0), Color("c7c7a4")],
+		[Rect2(820.0, 120.0, 490.0, 420.0), Color("d0caaa")],
+		[Rect2(1450.0, 120.0, 600.0, 420.0), Color("c3c9a4")],
+		[Rect2(130.0, 780.0, 640.0, 430.0), Color("d0caaa")],
+		[Rect2(820.0, 780.0, 490.0, 430.0), Color("c6cda9")],
+		[Rect2(1450.0, 780.0, 600.0, 430.0), Color("d0caaa")],
+	]:
+		_draw_ward(ward[0], ward[1])
+	for reserve_rect in get_garden_reserve_rects():
+		draw_rect(reserve_rect, Color("8fb18b"), true)
+		draw_rect(reserve_rect.grow(-14.0), Color("6f9a77"), false, 4.0)
+		var center := reserve_rect.get_center()
+		for offset in [Vector2(-42.0, -24.0), Vector2(30.0, 18.0), Vector2(4.0, -52.0)]:
+			draw_circle(center + offset, 18.0, Color("6d966c"))
+	for road_rect in get_formal_road_rects():
+		_draw_road(road_rect)
+	_draw_player_roads()
+	var civic_courtyard := get_civic_court_rect()
+	draw_rect(civic_courtyard, Color("a78e60"), true)
+	draw_rect(civic_courtyard, Color("6f5f42"), false, 4.0)
+	draw_rect(civic_courtyard.grow(-22.0), Color("d8cda8"), true)
+	draw_circle(civic_courtyard.get_center(), 18.0, Color("7f9c79"))
 
 
 func _draw_ward(rect: Rect2, color: Color) -> void:
