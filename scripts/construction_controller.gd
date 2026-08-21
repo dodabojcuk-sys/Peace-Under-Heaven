@@ -47,6 +47,9 @@ const CITY_GRID_RULES = preload(
 const CITY_ROAD_DRAFT = preload(
 	"res://scripts/city_sandbox/city_road_draft.gd"
 )
+const GRAYBOX_BUILDING_VISUAL = preload(
+	"res://scripts/graybox_building_visual.gd"
+)
 const ROAD_DEFINITION: BuildingDefinition = preload(
 	"res://resources/definitions/buildings/road.tres"
 )
@@ -559,6 +562,20 @@ func _commit_national_resource_targets(
 
 func _process(delta: float) -> void:
 	advance_city_time(delta * city_time_speed)
+	_refresh_constructing_building_visuals()
+
+
+func _refresh_constructing_building_visuals() -> void:
+	# Only in-progress buildings receive per-frame presentation updates.  The
+	# authoritative record, timers and resource transactions remain untouched.
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if (
+			record.is_empty()
+			or StringName(record.get("lifecycle_state", &"")) != &"constructing"
+		):
+			continue
+		_refresh_placed_building_visual(placement_id)
 
 
 func is_placing() -> bool:
@@ -5329,108 +5346,26 @@ func _create_placed_building_node(
 	footprint: Vector2i,
 	orientation: int
 ) -> Node2D:
-	var building := Node2D.new()
+	var building := GRAYBOX_BUILDING_VISUAL.new() as GrayboxBuildingVisual
 	building.name = "Placement%03d" % placement_id
 	building.position = cell_to_map_local(origin_cell)
 	building.set_meta("placement_id", placement_id)
-	var world_size := Vector2(footprint) * GRID_SIZE
 	var is_road := definition.placement_kind == PLACEMENT_KIND_ROAD
-	var roof_lift := 0.0 if is_road else minf(18.0, world_size.y * 0.22)
-
-	var shadow := Polygon2D.new()
-	shadow.name = "Shadow"
-	shadow.polygon = PackedVector2Array([
-		Vector2(8.0, 12.0),
-		Vector2(world_size.x + 8.0, 12.0),
-		Vector2(world_size.x + 8.0, world_size.y + 12.0),
-		Vector2(8.0, world_size.y + 12.0),
-	])
-	shadow.color = Color(0.12, 0.14, 0.13, 0.28)
-	building.add_child(shadow)
-
-	var foundation := Polygon2D.new()
-	foundation.name = "Foundation"
-	foundation.polygon = _rectangle_polygon(world_size)
-	foundation.color = Color("766b56") if not is_road else definition.body_color.darkened(0.18)
-	building.add_child(foundation)
-
-	var body := Polygon2D.new()
-	body.name = "Body"
-	body.polygon = PackedVector2Array([
-		Vector2(5.0, roof_lift + 5.0),
-		Vector2(world_size.x - 5.0, roof_lift + 5.0),
-		Vector2(world_size.x - 5.0, world_size.y - 5.0),
-		Vector2(5.0, world_size.y - 5.0),
-	])
-	body.color = definition.body_color
-	building.add_child(body)
-
-	if not is_road:
-		var roof := Polygon2D.new()
-		roof.name = "Roof"
-		roof.polygon = PackedVector2Array([
-			Vector2(5.0, roof_lift + 5.0),
-			Vector2(world_size.x * 0.5, 2.0),
-			Vector2(world_size.x - 5.0, roof_lift + 5.0),
-			Vector2(world_size.x - 12.0, roof_lift + 22.0),
-			Vector2(12.0, roof_lift + 22.0),
-		])
-		roof.color = definition.body_color.lightened(0.14)
-		building.add_child(roof)
-
-		var entrance := Polygon2D.new()
-		entrance.name = "Entrance"
-		entrance.polygon = _entrance_polygon(world_size, orientation)
-		entrance.color = Color("202926")
-		building.add_child(entrance)
-
-		var entrance_marker := Polygon2D.new()
-		entrance_marker.name = "EntranceMarker"
-		entrance_marker.polygon = _entrance_marker_polygon(
-			world_size,
-			footprint,
-			orientation
-		)
-		entrance_marker.visible = false
-		building.add_child(entrance_marker)
-
-	var outline := Line2D.new()
-	outline.name = "Outline"
-	outline.points = _rectangle_outline_points(world_size)
-	outline.width = 3.0
-	outline.default_color = definition.outline_color
-	building.add_child(outline)
-
-	var label := Label.new()
-	label.name = "Label"
-	label.position = Vector2(5.0, roof_lift + 6.0)
-	label.size = world_size - Vector2(10.0, roof_lift + 10.0)
-	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	label.text = definition.display_name
-	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	label.add_theme_font_size_override(
-		"font_size",
-		11 if definition.placement_kind == PLACEMENT_KIND_ROAD else 14
+	building.configure(
+		definition.definition_id,
+		definition.display_name,
+		definition.building_type,
+		footprint,
+		orientation,
+		definition.body_color,
+		definition.outline_color,
+		definition.requires_road,
+		is_road,
+		&"running",
+		1.0,
+		&"not_required",
+		false
 	)
-	label.add_theme_color_override(
-		"font_color",
-		Color(0.95, 0.96, 0.93, 1.0)
-	)
-	building.add_child(label)
-
-	var construction_marker := Line2D.new()
-	construction_marker.name = "ConstructionMarker"
-	construction_marker.points = PackedVector2Array([
-		Vector2(8.0, 8.0),
-		Vector2(world_size.x - 8.0, world_size.y - 8.0),
-		Vector2(8.0, world_size.y - 8.0),
-		Vector2(world_size.x - 8.0, 8.0),
-	])
-	construction_marker.width = 3.0
-	construction_marker.default_color = Color("f2c36d")
-	building.add_child(construction_marker)
 
 	placed_buildings.add_child(building)
 	return building
@@ -5504,73 +5439,34 @@ func _refresh_placed_building_visual(placement_id: int) -> void:
 	if record.is_empty():
 		return
 	var building := record.get("node") as Node2D
-	var definition := get_definition(record.definition_id)
-	if building == null or definition == null:
+	if building == null or not is_instance_valid(building):
 		return
-	# Player roads are rendered by the shared spatial projection so one tile
-	# network can express straight, corner, T and cross topology.  The
-	# authoritative placement nodes remain for occupancy and persistence only.
-	building.visible = definition.placement_kind != PLACEMENT_KIND_ROAD
-	var body := building.get_node_or_null("Body") as Polygon2D
-	var foundation := building.get_node_or_null("Foundation") as Polygon2D
-	var roof := building.get_node_or_null("Roof") as Polygon2D
-	var entrance_marker := building.get_node_or_null(
-		"EntranceMarker"
-	) as Polygon2D
-	var construction_marker := building.get_node_or_null("ConstructionMarker") as Line2D
-	var outline := building.get_node_or_null("Outline") as Line2D
-	var label := building.get_node_or_null("Label") as Label
-	var is_constructing := (
-		StringName(record.lifecycle_state) == &"constructing"
+	var visual := building as GrayboxBuildingVisual
+	if visual == null:
+		return
+	var entrance_info := get_building_entrance_info(placement_id)
+	var connection_state := StringName(
+		entrance_info.get("connection_state", &"not_required")
 	)
-	if body != null:
-		body.color = (
-			definition.body_color.lerp(Color(0.66, 0.64, 0.58, 1.0), 0.45)
-			if is_constructing
-			else definition.body_color
-		)
-	if foundation != null:
-		foundation.color = (
-			Color("8a7658")
-			if is_constructing
-			else Color("766b56")
-		)
-	if roof != null:
-		roof.color = (
-			definition.body_color.lightened(0.04)
-			if is_constructing
-			else definition.body_color.lightened(0.16)
-		)
-	if construction_marker != null:
-		construction_marker.visible = is_constructing
-	if entrance_marker != null:
-		var entrance_info := get_building_entrance_info(placement_id)
-		var connection_state := StringName(
-			entrance_info.get("connection_state", &"not_required")
-		)
-		entrance_marker.color = (
-			PREVIEW_VALID_OUTLINE
-			if connection_state == &"connected"
-			else PREVIEW_DISCONNECTED_OUTLINE
-		)
-		entrance_marker.visible = bool(
-			building.get_meta("show_entrance_marker", false)
-		)
-	if outline != null:
-		outline.default_color = (
-			Color(0.72, 0.57, 0.28, 1.0)
-			if is_constructing
-			else definition.outline_color
-		)
-	if label != null:
-		label.text = (
-			"%s\n施工中\n第 %d 日完成" % [
-				definition.display_name,
-				int(record.construction_complete_day),
-			]
-			if is_constructing
-			else definition.display_name
-		)
+	var is_selected := bool(building.get_meta("show_entrance_marker", false))
+	visual.visible = StringName(record.placement_kind) != PLACEMENT_KIND_ROAD
+	visual.update_presentation(
+		StringName(record.lifecycle_state),
+		_get_building_presentation_progress(record),
+		connection_state,
+		is_selected,
+		is_selected
+	)
+
+
+func _get_building_presentation_progress(record: Dictionary) -> float:
+	if StringName(record.get("lifecycle_state", &"")) != &"constructing":
+		return 1.0
+	var started_day := int(record.get("construction_started_day", current_day))
+	var complete_day := int(record.get("construction_complete_day", started_day + 1))
+	var total_days := maxf(float(complete_day - started_day), 1.0)
+	var elapsed_days := float(current_day - started_day) + get_day_progress_ratio()
+	return clampf(elapsed_days / total_days, 0.0, 0.99)
 
 
 func _release_runtime_record(
@@ -5828,6 +5724,12 @@ func _register_fixed_building(
 		ceili(map_rect.end.y / GRID_SIZE)
 	)
 	var placement_id := _allocate_placement_id()
+	var graybox_visual: GrayboxBuildingVisual = null
+	if building.has_meta("graybox_visual"):
+		graybox_visual = building.get_meta("graybox_visual") as GrayboxBuildingVisual
+	var selection_node: CanvasItem = (
+		graybox_visual if graybox_visual != null else building
+	)
 	var record := _base_record()
 	record.merge({
 		"placement_id": placement_id,
@@ -5857,9 +5759,9 @@ func _register_fixed_building(
 		"effect_summary": str(definition.effect_summary),
 		"prerequisite_summary": "初始固定设施",
 		"built_day": 0,
-		"node": building,
+		"node": selection_node,
 	}, true)
-	building.set_meta("placement_id", placement_id)
+	selection_node.set_meta("placement_id", placement_id)
 	_building_records_by_id[placement_id] = record
 	_placement_order.append(placement_id)
 	for cell in footprint_cells:

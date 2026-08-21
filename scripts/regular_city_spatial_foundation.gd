@@ -4,6 +4,9 @@ extends Node2D
 
 const CityGateComponent = preload("res://scripts/city_gate_component_r1.gd")
 const CITY_GRID_RULES = preload("res://scripts/city_sandbox/city_grid_rules.gd")
+const GRAYBOX_BUILDING_VISUAL = preload(
+	"res://scripts/graybox_building_visual.gd"
+)
 
 const MAP_SIZE := Vector2(2200.0, 1400.0)
 const GRID_SIZE := 40.0
@@ -41,6 +44,7 @@ const BUILDING_LABELS := {
 }
 
 var _fixed_building_proxies: Array[Dictionary] = []
+var _fixed_building_visuals: Array[GrayboxBuildingVisual] = []
 var _formal_road_cells: Dictionary = {}
 var _formal_reserved_cells: Dictionary = {}
 var _formal_wall_cells: Dictionary = {}
@@ -53,6 +57,7 @@ func _ready() -> void:
 	_build_spatial_cell_projection()
 	_collect_fixed_building_proxies()
 	_hide_legacy_visual_layer()
+	_install_fixed_building_visuals()
 	_install_gate_instances()
 	queue_redraw()
 
@@ -166,10 +171,47 @@ func _collect_fixed_building_proxies() -> void:
 			"rect": Rect2(legacy_node.position, legacy_node.size),
 			"name": node_name,
 			"color": legacy_node.color,
+			"legacy_node": legacy_node,
 		})
 		# The original control remains the single fixed-building selection owner.
 		# This foundation only replaces its flat-card visual, never its state.
 		legacy_node.visible = false
+
+
+func _install_fixed_building_visuals() -> void:
+	for proxy in _fixed_building_proxies:
+		var visual := GRAYBOX_BUILDING_VISUAL.new() as GrayboxBuildingVisual
+		# Preserve the established node identity used by selection and smoke
+		# contracts; the procedural visual replaces the artwork, not the
+		# authoritative fixed-building name.
+		visual.name = str(proxy.name)
+		visual.position = Rect2(proxy.rect).position
+		var rect := Rect2(proxy.rect)
+		var footprint := Vector2i(
+			maxi(1, ceili(rect.size.x / GRID_SIZE)),
+			maxi(1, ceili(rect.size.y / GRID_SIZE))
+		)
+		var building_type := "固定预置建筑"
+		visual.configure(
+			StringName(str(proxy.name).to_snake_case()),
+			str(BUILDING_LABELS.get(str(proxy.name), str(proxy.name))),
+			building_type,
+			footprint,
+			0,
+			Color(proxy.color),
+			Color(proxy.color).darkened(0.34),
+			false,
+			false,
+			&"fixed",
+			1.0,
+			&"not_required",
+			true
+		)
+		add_child(visual)
+		_fixed_building_visuals.append(visual)
+		var legacy_node := proxy.legacy_node as ColorRect
+		if legacy_node != null:
+			legacy_node.set_meta("graybox_visual", visual)
 
 
 func _hide_legacy_visual_layer() -> void:
@@ -216,12 +258,6 @@ func _draw() -> void:
 	draw_rect(civic_courtyard, Color("755c35"), false, 4.0)
 	draw_rect(civic_courtyard.grow(-24.0), Color("d8cda8"), true)
 	draw_circle(civic_courtyard.get_center(), 18.0, Color("a57d3e"))
-	for proxy in _fixed_building_proxies:
-		_draw_graybox_building(
-			Rect2(proxy.rect),
-			Color(proxy.color),
-			str(BUILDING_LABELS.get(str(proxy.name), str(proxy.name)))
-		)
 
 
 func _draw_ward(rect: Rect2, color: Color) -> void:
@@ -285,22 +321,3 @@ func _draw_player_road_tile(cell: Vector2i, all_roads: Dictionary) -> void:
 		draw_line(center, Vector2(center.x, rect.end.y), Color("c6b889"), 7.0)
 	if mask & CITY_GRID_RULES.MASK_WEST:
 		draw_line(center, Vector2(rect.position.x, center.y), Color("c6b889"), 7.0)
-
-
-func _draw_graybox_building(rect: Rect2, color: Color, label: String) -> void:
-	var shadow := Rect2(rect.position + Vector2(14.0, 18.0), rect.size)
-	draw_rect(shadow, Color(0.14, 0.16, 0.14, 0.28), true)
-	var roof_height := minf(28.0, rect.size.y * 0.28)
-	var roof := PackedVector2Array([
-		rect.position + Vector2(0.0, roof_height),
-		rect.position + Vector2(rect.size.x * 0.5, 0.0),
-		rect.position + Vector2(rect.size.x, roof_height),
-		rect.position + Vector2(rect.size.x, rect.size.y * 0.46),
-		rect.position + Vector2(0.0, rect.size.y * 0.46),
-	])
-	draw_colored_polygon(roof, color.lightened(0.16))
-	draw_rect(Rect2(rect.position + Vector2(0.0, rect.size.y * 0.46), Vector2(rect.size.x, rect.size.y * 0.54)), color.darkened(0.16), true)
-	draw_rect(rect, color.darkened(0.38), false, 3.0)
-	var door := Rect2(rect.get_center() + Vector2(-12.0, rect.size.y * 0.26), Vector2(24.0, 18.0))
-	draw_rect(door, Color("222b29"), true)
-	draw_string(ThemeDB.fallback_font, rect.position + Vector2(10.0, 24.0), label, HORIZONTAL_ALIGNMENT_LEFT, rect.size.x - 20.0, 15, Color("f2efe1"))
