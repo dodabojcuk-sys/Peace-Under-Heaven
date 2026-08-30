@@ -1,5 +1,27 @@
 # Product Successor Decisions
 
+## M0 time, construction, and level pressure
+
+- Strategic time stays in `ConstructionController`; M0 extends its existing
+  pause and 1x/2x/4x path with fixed 1000 ms construction ticks.
+- Timed construction reserves a valid site without full prepayment. Each tick
+  computes cumulative target payment and commits through `NationState`; a
+  failed payment marks the same task `BLOCKED_RESOURCES` and later resources
+  resume it. Zero-duration roads preserve atomic payment.
+- Construction priority is exactly low, normal, or high. Different priorities
+  sort high-first; equal priority uses stable placement ID.
+- Persistent deadline/pressure state is owned by one `CurrentMainlineLevel`.
+  Pressure is monotonic until the level is cleared. Attempt-local battle retry
+  state cannot write or restore the current mainline object.
+- Security only mitigates committed consequences. It cannot clear, decrease, or
+  roll back pressure. Essential survival channels retain a 250-permille floor.
+- Campaign snapshot schema 4 is the authoritative M0 save contract. V3 timed
+  construction is treated as already paid during migration to prevent duplicate
+  charges; V2 first receives its established orientation default.
+- The existing top bar and building detail panel are reused. No permanent large
+  sidebar, second clock/resource/save owner, combat expansion, or UI rewrite is
+  introduced.
+
 ## R3B dual-city layout profiles
 
 - `blackstone_city` remains the default `REGULAR_IMPERIAL` profile. The formal

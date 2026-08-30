@@ -77,56 +77,55 @@ func _run() -> void:
 	_check(city.current_day == 7, "第 7 日正常完成一次日结算")
 	_check(
 		city.get_first_war_state_id() == &"PENDING"
-			and city.is_first_war_time_blocked(),
-		"第 7 日进入敌袭待处理并冻结战略时间"
+			and not city.is_first_war_time_blocked(),
+		"第 7 日进入敌袭待处理但不冻结战略时间"
 	)
 
 	var pending_snapshot: Dictionary = city.get_city_state()
-	city.advance_city_time_for_test(city.SECONDS_PER_DAY * 10.0)
+	city.advance_city_time_for_test(1.0)
 	_check(
 		city.current_day == 7
-			and is_zero_approx(city.day_elapsed_seconds),
-		"大增量不能越过第 7 日战争阻断"
+			and city.get_day_elapsed_milliseconds() == 1000,
+		"主线待处理期间统一时钟继续推进"
 	)
 	_check(
-		city.wood == pending_snapshot.wood
-			and city.food == pending_snapshot.food
-			and city.infantry_count == pending_snapshot.infantry_count,
-		"战争阻断期间不再生产、维护或征募"
+		city.current_day == int(pending_snapshot.day),
+		"一秒推进不会重复触发日结算"
 	)
 	_check(
-		not city.set_city_time_speed(2.0)
-			and city.get_city_time_speed() == 1.0,
-		"倍速按钮不能解除战争阻断"
+		city.set_city_time_speed(2.0)
+			and city.get_city_time_speed() == 2.0,
+		"主线待处理期间仍可切换倍速"
 	)
 	city.toggle_city_time_paused()
 	_check(
-		not city.is_city_time_paused() and city.is_first_war_time_blocked(),
-		"普通暂停状态不能伪装或解除战争阻断"
+		city.is_city_time_paused() and not city.is_first_war_time_blocked(),
+		"普通暂停仍由玩家独立控制"
 	)
+	city.toggle_city_time_paused()
 
-	_check(not city.can_queue_training(), "PENDING 禁止征募")
-	_check(not city.queue_training(), "PENDING 征募调用不修改状态")
-	_check(not city.can_research_tech(&"tech.stone_tools"), "PENDING 禁止研究")
+	_check(city.can_queue_training(), "PENDING 仍允许征募")
+	_check(city.queue_training(), "PENDING 征募沿用正式队列")
+	_check(city.can_research_tech(&"tech.stone_tools"), "PENDING 仍允许研究")
 	_check(
-		not city.select_general(&"general.vanguard"),
-		"PENDING 禁止变更将领"
+		city.select_general(&"general.vanguard"),
+		"PENDING 仍允许变更将领"
 	)
 	_check(
 		city.place_definition_at_cell(
 			&"building.road.t1",
 			removable_cell + Vector2i.RIGHT,
 			false
-		) < 0,
-		"PENDING 禁止建造"
+		) > 0,
+		"PENDING 仍允许建造"
 	)
 	if removable_id >= 0:
-		_check(not city.remove_placed_building(removable_id), "PENDING 禁止拆除")
 		selection.select_placement(removable_id)
 		_check(
-			selection.has_selection() and remove_button.disabled,
-			"PENDING 仍可查看建筑信息但移除入口禁用"
+			selection.has_selection() and not remove_button.disabled,
+			"PENDING 可查看建筑信息且移除入口可用"
 		)
+		_check(city.remove_placed_building(removable_id), "PENDING 仍允许拆除")
 
 	_check(
 		wood_before_pending >= city.wood

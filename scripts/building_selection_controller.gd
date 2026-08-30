@@ -27,6 +27,9 @@ const NOTICEBOARD_TEMPLATE_ID := &"noticeboard"
 @onready var upgrade_status_card: Label = (
 	$"../UI/Shell/BuildingDetailPanel/UpgradeStatusCard"
 )
+@onready var construction_priority_option: OptionButton = (
+	$"../UI/Shell/BuildingDetailPanel/ConstructionPriorityOption"
+)
 @onready var upgrade_button: Button = (
 	$"../UI/Shell/BuildingDetailPanel/UpgradeButton"
 )
@@ -73,6 +76,15 @@ var selected_placement_id := -1
 
 
 func _ready() -> void:
+	construction_priority_option.add_item("施工优先级：高", 2)
+	construction_priority_option.set_item_metadata(0, 2)
+	construction_priority_option.add_item("施工优先级：普通", 1)
+	construction_priority_option.set_item_metadata(1, 1)
+	construction_priority_option.add_item("施工优先级：低", 0)
+	construction_priority_option.set_item_metadata(2, 0)
+	construction_priority_option.item_selected.connect(
+		_on_construction_priority_selected
+	)
 	close_button.pressed.connect(clear_selection)
 	upgrade_button.pressed.connect(request_upgrade_confirmation)
 	confirm_upgrade_button.pressed.connect(confirm_upgrade_gate)
@@ -343,6 +355,7 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 	var is_city_gate := (
 		StringName(record.template_id) == CITY_GATE_TEMPLATE_ID
 	)
+	var is_constructing := StringName(record.lifecycle_state) == &"constructing"
 	for control in _get_standard_detail_controls():
 		control.visible = not is_command_platform and not is_city_gate
 	first_war_actions.visible = is_command_platform
@@ -355,6 +368,19 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 	remove_button.disabled = (
 		construction_controller.is_city_action_locked_for_battle()
 	)
+	construction_priority_option.visible = (
+		not is_command_platform and not is_city_gate and is_constructing
+	)
+	upgrade_status_card.visible = (
+		not is_command_platform and not is_city_gate and not is_constructing
+	)
+	upgrade_button.visible = upgrade_status_card.visible
+	if is_constructing:
+		var priority := int(build_data.construction_priority)
+		for index in range(construction_priority_option.item_count):
+			if int(construction_priority_option.get_item_metadata(index)) == priority:
+				construction_priority_option.select(index)
+				break
 	upgrade_status_card.text = "升级状态\n%s\n%s" % [
 		str(build_data.level_text),
 		str(build_data.next_level_text),
@@ -373,8 +399,16 @@ func _show_selected_presentation() -> void:
 	var is_city_gate := (
 		StringName(record.template_id) == CITY_GATE_TEMPLATE_ID
 	)
+	var is_constructing := StringName(record.lifecycle_state) == &"constructing"
 	for control in _get_standard_detail_controls():
 		control.visible = not is_command_platform and not is_city_gate
+	construction_priority_option.visible = (
+		not is_command_platform and not is_city_gate and is_constructing
+	)
+	upgrade_status_card.visible = (
+		not is_command_platform and not is_city_gate and not is_constructing
+	)
+	upgrade_button.visible = upgrade_status_card.visible
 	first_war_actions.visible = is_command_platform
 	city_gate_actions.visible = is_city_gate
 	remove_button.visible = (
@@ -389,6 +423,15 @@ func _show_selected_presentation() -> void:
 
 func _construction_orientation_text(orientation: int) -> String:
 	return ["北", "东", "南", "西"][clampi(orientation, 0, 3)]
+
+
+func _on_construction_priority_selected(index: int) -> void:
+	if not has_selection():
+		return
+	construction_controller.set_construction_priority(
+		selected_placement_id,
+		int(construction_priority_option.get_item_metadata(index))
+	)
 
 
 func _show_removal_confirmation() -> void:
@@ -425,6 +468,7 @@ func _get_standard_detail_controls() -> Array[Control]:
 		footprint,
 		prototype_status,
 		description,
+		construction_priority_option,
 		upgrade_status_card,
 		upgrade_button,
 		remove_button,

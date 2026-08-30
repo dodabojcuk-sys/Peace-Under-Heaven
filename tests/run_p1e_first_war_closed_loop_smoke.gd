@@ -193,9 +193,9 @@ func _check_formal_outcome(
 	_check(city.acknowledge_first_war_result(), "%s 摘要可确认一次" % expected_outcome)
 	if expected_outcome == &"DEFEAT":
 		_check(
-			city.is_first_war_time_blocked()
+			not city.is_first_war_time_blocked()
 				and city.get_first_war_state_id() == &"RESOLVED_DEFEAT",
-			"城市失守确认后仍冻结战略时间"
+			"失败摘要确认后解除战略时间阻断，避免永久死档"
 		)
 	else:
 		_check(

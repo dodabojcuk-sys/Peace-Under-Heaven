@@ -577,13 +577,14 @@ text = "暂停"
 [node name="AlertSummary" type="Label" parent="UI/Shell/TopStatusBar"]
 layout_mode = 0
 offset_left = 864.0
-offset_top = 12.0
+offset_top = 5.0
 offset_right = 1137.0
-offset_bottom = 31.0
+offset_bottom = 43.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 11
 text = "预警  无"
+vertical_alignment = 1
 
 [node name="CityBar" type="Panel" parent="UI/Shell"]
 visible = false
@@ -1145,6 +1146,17 @@ theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
 theme_override_font_sizes/font_size = 12
 text = "升级状态\n当前权威未提供升级写入命令"
 autowrap_mode = 2
+
+[node name="ConstructionPriorityOption" type="OptionButton" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 0
+offset_left = 20.0
+offset_top = 316.0
+offset_right = 260.0
+offset_bottom = 350.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 12
 
 [node name="UpgradeButton" type="Button" parent="UI/Shell/BuildingDetailPanel"]
 layout_mode = 0

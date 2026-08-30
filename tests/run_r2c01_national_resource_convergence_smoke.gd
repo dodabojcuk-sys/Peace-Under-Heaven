@@ -247,11 +247,12 @@ func _check_production_resource_paths(
 		Vector2i(10, 7),
 		true
 	)
+	city.advance_city_time_for_test(5.0)
 	_check(
 		logging_id > 0
 			and nation.get_resource(&"wood") < wood_before
-			and last_resource_transaction.reason == &"construction_placement",
-		"建造消费经 NationState 事务入口"
+			and last_resource_transaction.reason == &"construction_progress",
+		"施工增量消费经 NationState 事务入口"
 	)
 	var tech_before := nation.get_resource(&"tech_points")
 	_check(
@@ -295,7 +296,7 @@ func _check_p0_01_and_v5_compatibility(
 	_check(
 		not snapshot.is_empty()
 			and snapshot.schema_version == V5Snapshot.SCHEMA_VERSION
-			and V5Snapshot.SCHEMA_VERSION == 3
+			and V5Snapshot.SCHEMA_VERSION == 4
 			and int(snapshot.city.wood) == nation.get_resource(&"wood")
 			and int(snapshot.city.food) == nation.get_resource(&"food")
 			and int(snapshot.city.tech_points)

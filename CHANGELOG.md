@@ -5,6 +5,23 @@
 
 ## Unreleased
 
+### M0 time, construction, and level pressure
+
+- Reused the authoritative strategic clock for pause and 1x/2x/4x, adding
+  deterministic 1000 ms construction ticks, incremental `NationState` payment,
+  missing-resource pause/resume, and three-level task priority.
+- Added a persistent current-mainline deadline with five pressure stages,
+  security mitigation, committed permanent losses, and essential anti-softlock
+  floors without adding another settlement or save owner.
+- Upgraded campaign snapshots to schema 4 with exact M0 state, V2/V3 migration,
+  and duplicate-payment prevention for legacy construction.
+- Reused the compact top HUD and building detail panel for deadline, pressure,
+  security, progress/payment, missing material, and priority feedback.
+- Added eight-scenario M0 coverage and updated superseded freeze/prepayment
+  contracts; the complete 45-runner regression and native target-resolution
+  evidence pass. No video, push, merge, deploy, final art, or broader MVP freeze
+  is claimed.
+
 ### R3B dual-city layout profiles
 
 - Added deterministic `REGULAR_IMPERIAL` and `ORGANIC_GARDEN` profiles keyed by

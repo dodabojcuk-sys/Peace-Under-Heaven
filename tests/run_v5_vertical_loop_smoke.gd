@@ -53,12 +53,12 @@ func _run() -> void:
 		blocked_advance == 0
 			and city.current_day == blocked_truth.day
 			and city.get_day_elapsed_milliseconds()
-				== 180000
+				== 179999
 			and city.food == blocked_truth.food
 			and city.infantry_count == blocked_truth.garrison
 			and city.get_training_queue_snapshot()
 				== blocked_truth.queue,
-		"边界容量故障使时间停在日界且结算、驻军和队列零写入"
+		"边界容量故障使时间停在最后可表示毫秒且结算、驻军和队列零写入"
 	)
 	city.recruitment_cap = 50
 	_check(

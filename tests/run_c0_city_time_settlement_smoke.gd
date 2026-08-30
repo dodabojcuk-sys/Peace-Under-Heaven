@@ -269,8 +269,10 @@ func _check_formal_outcome_time_settlement(
 	var before: Dictionary = city.get_city_state()
 	_check(
 		city.advance_city_time_for_test(1.0) == 0
-			and city.get_city_state() == before,
-		"%s pending 期间普通城市时间保持冻结" % expected_outcome
+			and city.current_day == int(before.day)
+			and city.get_day_elapsed_milliseconds()
+				== int(before.day_elapsed_milliseconds) + 1000,
+		"%s 主线待处理期间城市时间继续推进" % expected_outcome
 	)
 	_check(city.enter_first_war_battle(), "%s 进入正式 C0" % expected_outcome)
 	var battle := city.get_formal_battle_scene() as C0BattleGraybox
@@ -413,13 +415,23 @@ func _check_cross_day_reward_order() -> void:
 	var daily_income := int(city.get_last_daily_breakdown().wood_income)
 	var expected_reward := mini(
 		30,
-		maxi(wood_capacity - (wood_before + daily_income), 0)
+		maxi(
+			wood_capacity - (
+				wood_before + daily_income
+				- int(city.get_last_daily_breakdown().event_wood_loss)
+			),
+			0
+		)
 	)
 	_check(
 		int(summary.city_time_advanced_days) >= 1
 			and daily_income > 0
 			and int(summary.accepted_wood_reward) == expected_reward
-			and city.wood == wood_before + daily_income + expected_reward,
+			and city.wood == (
+				wood_before + daily_income
+				- int(city.get_last_daily_breakdown().event_wood_loss)
+				+ expected_reward
+			),
 		"跨日时先补算生产，再按战后容量应用奖励；奖励不倒流参与生产"
 	)
 	scene.queue_free()

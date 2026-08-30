@@ -92,6 +92,12 @@ const CITY_LAYOUT_PROFILE_RESOLVER = preload(
 const V5_NATIONAL_RESOURCE_ADAPTER = preload(
 	"res://scripts/state/v5_national_resource_adapter.gd"
 )
+const MAINLINE_PRESSURE_PROFILE: MainlinePressureProfile = preload(
+	"res://resources/definitions/mainline/m0_first_level_pressure.tres"
+)
+const CURRENT_MAINLINE_LEVEL = preload(
+	"res://scripts/state/current_mainline_level.gd"
+)
 const NOTICEBOARD_MISSIONS: Array[MissionDefinition] = [
 	preload("res://resources/definitions/missions/outskirts_sweep.tres"),
 	preload("res://resources/definitions/missions/supply_relief.tres"),
@@ -119,6 +125,10 @@ const EMERGENCY_MOBILIZATION_FOOD_COST := 30
 const EMERGENCY_MOBILIZATION_INFANTRY := 5
 const SECONDS_PER_DAY := 180.0
 const MILLISECONDS_PER_DAY := 180000
+const CONSTRUCTION_TICK_MILLISECONDS := 1000
+const CONSTRUCTION_PRIORITY_LOW := 0
+const CONSTRUCTION_PRIORITY_NORMAL := 1
+const CONSTRUCTION_PRIORITY_HIGH := 2
 const CITY_TIME_SPEEDS := [1.0, 2.0, 4.0]
 const FIRST_WAR_EVENT_ID := &"first_war.north_slope.v0"
 const FIRST_WAR_WARNING_DAY := 6
@@ -385,6 +395,11 @@ var first_war_state := FirstWarState.PREPARATION
 var first_war_warning_count := 0
 var city_fallen := false
 var city_defense_damage := 0
+var city_security := MAINLINE_PRESSURE_PROFILE.default_security
+var _current_mainline_level: CurrentMainlineLevel = (
+	CURRENT_MAINLINE_LEVEL.new(MAINLINE_PRESSURE_PROFILE)
+)
+var _construction_completed_since_last_day := 0
 var last_daily_breakdown := {
 	"maintenance_food": 0,
 	"maintenance_required": 0,
@@ -1405,14 +1420,11 @@ func place_definition_at_cell(
 		origin_cell,
 		definition,
 		false,
-		charge_cost,
+		charge_cost and (complete_immediately or definition.build_days <= 0),
 		orientation
 	)
 	if not bool(validation.valid):
 		return -1
-	if charge_cost and not _can_pay_definition(definition):
-		return -1
-
 	var placement_id := _allocate_placement_id()
 	var starts_completed := (
 		complete_immediately
@@ -1434,9 +1446,12 @@ func place_definition_at_cell(
 			current_day
 			if starts_completed
 			else current_day + definition.build_days
-		)
+		),
+		charge_cost
 	)
-	if charge_cost:
+	# Immediate construction preserves the existing atomic transaction. Timed
+	# construction reserves the site first and pays cumulative cost per tick.
+	if charge_cost and starts_completed:
 		var construction_cost_entries: Array[Dictionary] = []
 		if definition.wood_cost > 0:
 			construction_cost_entries.append({
@@ -1503,14 +1518,24 @@ func advance_city_time(simulation_delta: float) -> int:
 			0
 		)
 		if remaining_milliseconds < milliseconds_until_boundary:
+			_advance_construction_between(
+				elapsed_milliseconds,
+				remaining_milliseconds
+			)
 			elapsed_milliseconds += remaining_milliseconds
 			remaining_milliseconds = 0
 			break
 
+		_advance_construction_between(
+			elapsed_milliseconds,
+			milliseconds_until_boundary
+		)
 		remaining_milliseconds -= milliseconds_until_boundary
 		elapsed_milliseconds = 0
 		if not _advance_day_boundary():
-			elapsed_milliseconds = MILLISECONDS_PER_DAY
+			# Keep the clock at the last representable instant before the
+			# boundary so clearing a preflight blocker can retry deterministically.
+			elapsed_milliseconds = MILLISECONDS_PER_DAY - 1
 			break
 		advanced_days += 1
 		if is_first_war_time_blocked():
@@ -1538,9 +1563,17 @@ func _advance_city_time_for_battle_settlement(
 			MILLISECONDS_PER_DAY - elapsed_milliseconds
 		)
 		if remaining_milliseconds < milliseconds_until_boundary:
+			_advance_construction_between(
+				elapsed_milliseconds,
+				remaining_milliseconds
+			)
 			elapsed_milliseconds += remaining_milliseconds
 			remaining_milliseconds = 0
 			break
+		_advance_construction_between(
+			elapsed_milliseconds,
+			milliseconds_until_boundary
+		)
 		remaining_milliseconds -= milliseconds_until_boundary
 		elapsed_milliseconds = 0
 		if not _advance_day_boundary(true):
@@ -1560,8 +1593,14 @@ func advance_city_frame_for_test(real_delta: float) -> int:
 
 
 func advance_one_day_for_test() -> bool:
-	day_elapsed_seconds = 0.0
-	return _advance_day_boundary()
+	var remaining := float(
+		MILLISECONDS_PER_DAY - get_day_elapsed_milliseconds()
+	) / 1000.0
+	var was_paused := city_time_paused
+	city_time_paused = false
+	var advanced := advance_city_time(remaining) == 1
+	city_time_paused = was_paused
+	return advanced
 
 
 func get_day_elapsed_milliseconds() -> int:
@@ -1605,11 +1644,13 @@ func get_city_time_speed() -> float:
 
 
 func is_first_war_time_blocked() -> bool:
-	return first_war_state in [
-		FirstWarState.PENDING,
-		FirstWarState.IN_BATTLE,
-		FirstWarState.RESOLVED_DEFEAT,
-	]
+	return (
+		first_war_state == FirstWarState.IN_BATTLE
+		or (
+			_first_war_pending_outcome != &""
+			and not _first_war_result_acknowledged
+		)
+	)
 
 
 func get_first_war_state_id() -> StringName:
@@ -1634,6 +1675,7 @@ func get_first_war_state_id() -> StringName:
 func resolve_first_war_for_test(outcome: StringName) -> bool:
 	if outcome == &"VICTORY":
 		first_war_state = FirstWarState.RESOLVED_VICTORY
+		_current_mainline_level.mark_cleared(current_day)
 	elif outcome == &"RETREAT":
 		first_war_state = FirstWarState.RESOLVED_RETREAT
 	elif outcome == &"DEFEAT":
@@ -1902,6 +1944,7 @@ func acknowledge_first_war_result() -> bool:
 		return false
 	if _first_war_pending_outcome == &"VICTORY":
 		first_war_state = FirstWarState.RESOLVED_VICTORY
+		_current_mainline_level.mark_cleared(current_day)
 	elif _first_war_pending_outcome == &"RETREAT":
 		first_war_state = FirstWarState.RESOLVED_RETREAT
 	elif _first_war_pending_outcome == &"DEFEAT":
@@ -1954,6 +1997,7 @@ func _advance_day_boundary(
 	if not _can_complete_training_for_day(current_day + 1):
 		return false
 	current_day += 1
+	_current_mainline_level.advance_to_day(current_day)
 	var construction_completed := _complete_construction_for_current_day()
 	var maintenance_required := get_maintenance_food_cost()
 	var maintenance_paid := mini(food, maintenance_required)
@@ -2026,6 +2070,7 @@ func _advance_day_boundary(
 		"event_food_loss": 0,
 		"stopped_placement_id": -1,
 	}
+	_apply_mainline_pressure_for_current_day()
 	_update_threat_for_current_day(true)
 	_clear_expired_production_stops()
 	if current_day == 9:
@@ -2038,6 +2083,71 @@ func _advance_day_boundary(
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return true
+
+
+func _apply_mainline_pressure_for_current_day() -> void:
+	var event := _current_mainline_level.build_pressure_event(
+		current_day,
+		city_security
+	)
+	if event.is_empty():
+		return
+	var requested_losses: Dictionary = event.losses
+	var actual_losses := {
+		"wood": mini(wood, int(requested_losses.get("wood", 0))),
+		"food": mini(food, int(requested_losses.get("food", 0))),
+		"city_defense_damage": int(
+			requested_losses.get("city_defense_damage", 0)
+		),
+	}
+	event.losses = actual_losses
+	var entries: Array[Dictionary] = []
+	for resource_id in [&"wood", &"food"]:
+		var amount := int(actual_losses[resource_id])
+		if amount > 0:
+			entries.append({
+				"resource_id": resource_id,
+				"operation": NationState.RESOURCE_OPERATION_SPEND,
+				"amount": amount,
+			})
+	var local_commit := func() -> Dictionary:
+		if not _current_mainline_level.commit_pressure_event(event):
+			return {"success": false}
+		city_defense_damage += int(actual_losses.city_defense_damage)
+		last_daily_breakdown.event_wood_loss += int(actual_losses.wood)
+		last_daily_breakdown.event_food_loss += int(actual_losses.food)
+		return {"success": true}
+	if entries.is_empty():
+		local_commit.call()
+	else:
+		_commit_national_resources(entries, &"mainline_pressure", local_commit)
+
+
+func get_mainline_pressure_state() -> Dictionary:
+	return {
+		"level_id": _current_mainline_level.level_id,
+		"deadline_day": _current_mainline_level.deadline_day,
+		"days_remaining": maxi(
+			_current_mainline_level.deadline_day - current_day,
+			0
+		),
+		"overdue_days": maxi(
+			current_day - _current_mainline_level.deadline_day,
+			0
+		),
+		"stage_id": _current_mainline_level.pressure_stage_id,
+		"stage_name": MAINLINE_PRESSURE_PROFILE.get_stage_display_name(current_day),
+		"cleared": _current_mainline_level.cleared,
+		"security": city_security,
+		"construction_modifier_permille": get_pressure_modifier_permille(&"construction"),
+		"production_modifier_permille": get_pressure_modifier_permille(&"production"),
+		"permanent_losses": _current_mainline_level.permanent_losses.duplicate(true),
+	}
+
+
+func set_city_security_for_test(value: int) -> void:
+	city_security = clampi(value, 0, 100)
+	_refresh_city_ui()
 
 
 func _can_complete_training_for_day(boundary_day: int) -> bool:
@@ -2084,20 +2194,147 @@ func _complete_training_for_current_day() -> int:
 
 
 func _complete_construction_for_current_day() -> int:
-	var completed := 0
+	var completed := _construction_completed_since_last_day
+	_construction_completed_since_last_day = 0
+	return completed
+
+
+func _advance_construction_between(
+	start_elapsed_milliseconds: int,
+	duration_milliseconds: int
+) -> void:
+	if duration_milliseconds <= 0:
+		return
+	var end_elapsed := start_elapsed_milliseconds + duration_milliseconds
+	var tick_count := (
+		floori(float(end_elapsed) / CONSTRUCTION_TICK_MILLISECONDS)
+		- floori(float(start_elapsed_milliseconds) / CONSTRUCTION_TICK_MILLISECONDS)
+	)
+	for _tick in range(tick_count):
+		_advance_construction_tick()
+
+
+func _advance_construction_tick() -> void:
+	var ordered_ids := _get_ordered_construction_ids()
+	for placement_id in ordered_ids:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if record.is_empty() or StringName(record.lifecycle_state) != &"constructing":
+			continue
+		var required := int(record.construction_required_milliseconds)
+		var progress := int(record.construction_progress_milliseconds)
+		var modifier := get_pressure_modifier_permille(&"construction")
+		var progress_delta := maxi(
+			roundi(float(CONSTRUCTION_TICK_MILLISECONDS * modifier) / 1000.0),
+			1
+		)
+		var next_progress := mini(progress + progress_delta, required)
+		var total_costs: Dictionary = record.construction_total_costs
+		var paid_costs: Dictionary = record.construction_paid_costs
+		var entries: Array[Dictionary] = []
+		var next_paid := paid_costs.duplicate(true)
+		var missing_ids: Array[StringName] = []
+		for resource_id in total_costs:
+			var target_paid := (
+				int(total_costs[resource_id])
+				if next_progress >= required
+				else floori(
+					float(int(total_costs[resource_id]) * next_progress)
+					/ float(required)
+				)
+			)
+			var amount := target_paid - int(paid_costs.get(resource_id, 0))
+			if amount <= 0:
+				continue
+			if _nation_state.get_resource(StringName(resource_id)) < amount:
+				missing_ids.append(StringName(resource_id))
+				continue
+			entries.append({
+				"resource_id": StringName(resource_id),
+				"operation": NationState.RESOURCE_OPERATION_SPEND,
+				"amount": amount,
+			})
+			next_paid[resource_id] = target_paid
+		if not missing_ids.is_empty():
+			record.construction_state = &"BLOCKED_RESOURCES"
+			record.construction_missing_resource_ids = missing_ids
+			record.prototype_status = "缺料暂停"
+			continue
+		var local_commit := func() -> Dictionary:
+			record.construction_progress_milliseconds = next_progress
+			record.construction_paid_costs = next_paid.duplicate(true)
+			record.construction_missing_resource_ids = []
+			record.construction_state = &"ACTIVE"
+			if next_progress >= required:
+				record.lifecycle_state = &"running"
+				record.construction_state = &"COMPLETED"
+				record.prototype_status = "运行中"
+				_construction_completed_since_last_day += 1
+			return {"success": true}
+		var committed := (
+			bool(local_commit.call().success)
+			if entries.is_empty()
+			else _commit_national_resources(
+				entries,
+				&"construction_progress",
+				local_commit
+			)
+		)
+		if committed:
+			_refresh_placed_building_visual(placement_id)
+
+
+func _get_ordered_construction_ids() -> Array[int]:
+	var result: Array[int] = []
 	for placement_id in _placement_order:
 		var record: Dictionary = _building_records_by_id.get(placement_id, {})
-		if (
-			record.is_empty()
-			or StringName(record.lifecycle_state) != &"constructing"
-			or int(record.construction_complete_day) > current_day
-		):
-			continue
-		record.lifecycle_state = &"running"
-		record.prototype_status = "运行中"
-		completed += 1
-		_refresh_placed_building_visual(placement_id)
-	return completed
+		if not record.is_empty() and StringName(record.lifecycle_state) == &"constructing":
+			result.append(placement_id)
+	result.sort_custom(func(left: int, right: int) -> bool:
+		var left_priority := int(_building_records_by_id[left].construction_priority)
+		var right_priority := int(_building_records_by_id[right].construction_priority)
+		return left_priority > right_priority if left_priority != right_priority else left < right
+	)
+	return result
+
+
+func set_construction_priority(placement_id: int, priority: int) -> bool:
+	if priority not in [
+		CONSTRUCTION_PRIORITY_LOW,
+		CONSTRUCTION_PRIORITY_NORMAL,
+		CONSTRUCTION_PRIORITY_HIGH,
+	]:
+		return false
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
+	if record.is_empty() or StringName(record.lifecycle_state) != &"constructing":
+		return false
+	record.construction_priority = priority
+	city_state_changed.emit()
+	return true
+
+
+func get_pressure_modifier_permille(channel_id: StringName) -> int:
+	var value := 1000
+	if not _current_mainline_level.cleared:
+		if channel_id == &"construction":
+			value = MAINLINE_PRESSURE_PROFILE.get_construction_modifier_permille(current_day)
+		elif channel_id in [
+			&"production",
+			&"food_minimum",
+			&"basic_repair",
+			&"medical_care",
+			&"basic_training",
+			&"war_supply",
+		]:
+			value = MAINLINE_PRESSURE_PROFILE.get_production_modifier_permille(current_day)
+	if channel_id in [
+		&"food_minimum",
+		&"basic_repair",
+		&"medical_care",
+		&"basic_training",
+		&"war_supply",
+	]:
+		value = maxi(value, MAINLINE_PRESSURE_PROFILE.essential_floor_permille)
+	return value
 
 
 func _get_production_amount(
@@ -2113,6 +2350,10 @@ func _get_production_amount(
 		amount = roundi(
 			float(amount) * (1.0 + stone_tools.effect_amount)
 		)
+	amount = maxi(
+		floori(float(amount * get_pressure_modifier_permille(&"production")) / 1000.0),
+		0
+	)
 	return amount
 
 
@@ -2278,6 +2519,7 @@ func export_v5_campaign_snapshot() -> Dictionary:
 			"city_time_speed_id": StringName(
 				"%dx" % roundi(city_time_speed)
 			),
+			"security": city_security,
 		},
 		_nation_state
 	)
@@ -2317,6 +2559,7 @@ func export_v5_campaign_snapshot() -> Dictionary:
 				_next_army_dispatch_transaction_sequence
 			),
 		},
+		"mainline_level": _current_mainline_level.get_snapshot(),
 	}
 	var validation := validate_v5_campaign_snapshot(snapshot)
 	return (
@@ -2349,6 +2592,23 @@ func _export_v5_placements() -> Array[Dictionary]:
 				record.construction_complete_day
 			),
 			"orientation": int(record.get("orientation", ORIENTATION_NORTH)),
+			"construction_state": StringName(record.construction_state),
+			"construction_progress_milliseconds": int(
+				record.construction_progress_milliseconds
+			),
+			"construction_required_milliseconds": int(
+				record.construction_required_milliseconds
+			),
+			"construction_total_costs": Dictionary(
+				record.construction_total_costs
+			).duplicate(true),
+			"construction_paid_costs": Dictionary(
+				record.construction_paid_costs
+			).duplicate(true),
+			"construction_priority": int(record.construction_priority),
+			"construction_missing_resource_ids": Array(
+				record.construction_missing_resource_ids
+			).duplicate(),
 		})
 	return placements
 
@@ -2363,6 +2623,23 @@ func validate_v5_campaign_snapshot(
 	if not bool(structural.valid):
 		return structural
 	var candidate: Dictionary = structural.snapshot
+	var mainline: Dictionary = candidate.mainline_level
+	if (
+		StringName(mainline.level_id) != MAINLINE_PRESSURE_PROFILE.level_id
+		or int(mainline.deadline_day) != MAINLINE_PRESSURE_PROFILE.deadline_day
+		or (
+			not bool(mainline.cleared)
+			and StringName(mainline.pressure_stage_id)
+				!= MAINLINE_PRESSURE_PROFILE.get_stage_id(
+					int(candidate.city.current_day)
+				)
+		)
+	):
+		return {
+			"valid": false,
+			"error_id": &"MAINLINE_PROFILE_MISMATCH",
+			"error": "CampaignSnapshot 主线配置与当前 M0 profile 不一致",
+		}
 	var selected_general := StringName(
 		candidate.city.selected_general_id
 	)
@@ -2520,14 +2797,34 @@ func _apply_validated_v5_campaign_snapshot(
 	)
 	var compatibility_placements: Array[Dictionary] = []
 	var orientations_by_placement_id: Dictionary = {}
+	var construction_by_placement_id: Dictionary = {}
 	for placement_value in snapshot.placements:
 		var persisted_placement: Dictionary = placement_value
 		var placement_id := int(persisted_placement.placement_id)
 		orientations_by_placement_id[placement_id] = int(
 			persisted_placement.get("orientation", ORIENTATION_NORTH)
 		)
+		construction_by_placement_id[placement_id] = {
+			"construction_state": StringName(persisted_placement.construction_state),
+			"construction_progress_milliseconds": int(persisted_placement.construction_progress_milliseconds),
+			"construction_required_milliseconds": int(persisted_placement.construction_required_milliseconds),
+			"construction_total_costs": Dictionary(persisted_placement.construction_total_costs).duplicate(true),
+			"construction_paid_costs": Dictionary(persisted_placement.construction_paid_costs).duplicate(true),
+			"construction_priority": int(persisted_placement.construction_priority),
+			"construction_missing_resource_ids": Array(persisted_placement.construction_missing_resource_ids).duplicate(),
+		}
 		var legacy_placement := persisted_placement.duplicate(true)
-		legacy_placement.erase("orientation")
+		for key in [
+			"orientation",
+			"construction_state",
+			"construction_progress_milliseconds",
+			"construction_required_milliseconds",
+			"construction_total_costs",
+			"construction_paid_costs",
+			"construction_priority",
+			"construction_missing_resource_ids",
+		]:
+			legacy_placement.erase(key)
 		compatibility_placements.append(legacy_placement)
 	var compatibility_snapshot := {
 		"city": {
@@ -2586,6 +2883,24 @@ func _apply_validated_v5_campaign_snapshot(
 			"error_id": &"CITY_APPLY_FAILED",
 			"error": city_install.error,
 		}
+	for placement_id in construction_by_placement_id:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if record.is_empty():
+			return {
+				"success": false,
+				"error_id": &"CONSTRUCTION_APPLY_FAILED",
+				"error": "施工状态 placement 缺失",
+			}
+		record.merge(construction_by_placement_id[placement_id], true)
+	city_security = int(city.security)
+	var restored_mainline := CURRENT_MAINLINE_LEVEL.new(MAINLINE_PRESSURE_PROFILE)
+	if not restored_mainline.restore_snapshot(snapshot.mainline_level):
+		return {
+			"success": false,
+			"error_id": &"MAINLINE_APPLY_FAILED",
+			"error": "主线压力状态恢复失败",
+		}
+	_current_mainline_level = restored_mainline
 	_next_placement_id = int(snapshot.next_placement_id)
 	if (
 		allow_test_failure
@@ -2991,7 +3306,8 @@ func _register_runtime_placement_record(
 	built_day: int,
 	disabled_until_day: int,
 	construction_started_day: int,
-	construction_complete_day: int
+	construction_complete_day: int,
+	construction_cost_enabled := false
 ) -> bool:
 	if definition == null or _building_records_by_id.has(placement_id):
 		return false
@@ -3020,6 +3336,19 @@ func _register_runtime_placement_record(
 			building.queue_free()
 		return false
 	var record := _base_record()
+	var required_milliseconds := maxi(
+		definition.build_days * MILLISECONDS_PER_DAY,
+		0
+	)
+	var starts_completed := lifecycle_state != &"constructing"
+	var total_costs: Dictionary = {}
+	if construction_cost_enabled and definition.wood_cost > 0:
+		total_costs[&"wood"] = definition.wood_cost
+	if construction_cost_enabled and definition.food_cost > 0:
+		total_costs[&"food"] = definition.food_cost
+	var paid_costs: Dictionary = {}
+	if starts_completed:
+		paid_costs = total_costs.duplicate(true)
 	record.merge({
 		"placement_id": placement_id,
 		"placement_kind": definition.placement_kind,
@@ -3055,6 +3384,15 @@ func _register_runtime_placement_record(
 		"build_days": definition.build_days,
 		"construction_started_day": construction_started_day,
 		"construction_complete_day": construction_complete_day,
+		"construction_state": &"COMPLETED" if starts_completed else &"ACTIVE",
+		"construction_progress_milliseconds": (
+			required_milliseconds if starts_completed else 0
+		),
+		"construction_required_milliseconds": required_milliseconds,
+		"construction_total_costs": total_costs,
+		"construction_paid_costs": paid_costs,
+		"construction_priority": CONSTRUCTION_PRIORITY_NORMAL,
+		"construction_missing_resource_ids": [],
 		"built_day": built_day,
 		"disabled_until_day": disabled_until_day,
 		"node": building,
@@ -4520,6 +4858,11 @@ func restart_first_map() -> bool:
 	first_war_warning_count = 0
 	city_fallen = false
 	city_defense_damage = 0
+	city_security = MAINLINE_PRESSURE_PROFILE.default_security
+	_current_mainline_level = CURRENT_MAINLINE_LEVEL.new(
+		MAINLINE_PRESSURE_PROFILE
+	)
+	_construction_completed_since_last_day = 0
 	_first_war_pending_outcome = &""
 	_first_war_result_acknowledged = false
 	_readiness_checkpoint = {}
@@ -4569,7 +4912,6 @@ func _update_first_war_state_for_current_day() -> void:
 		return
 	if current_day >= FIRST_WAR_PENDING_DAY:
 		first_war_state = FirstWarState.PENDING
-		cancel_build_interaction()
 		return
 	if (
 		current_day >= FIRST_WAR_WARNING_DAY
@@ -4768,15 +5110,27 @@ func get_building_data(placement_id: int) -> Dictionary:
 		effect_text = str(definition_data.effect_text)
 		prerequisite_text = str(definition_data.prerequisite_text)
 		if StringName(record.lifecycle_state) == &"constructing":
-			var total_days := maxi(int(record.build_days), 1)
-			var elapsed_days := clampi(
-				current_day - int(record.construction_started_day),
-				0,
-				total_days
+			var required := maxi(int(record.construction_required_milliseconds), 1)
+			var progress_percent := floori(
+				float(int(record.construction_progress_milliseconds))
+				/ float(required) * 100.0
 			)
-			progress_text = "施工 %d/%d 日 · 预计第 %d 日完成" % [
-				elapsed_days,
-				total_days,
+			var paid_parts: Array[String] = []
+			for resource_id in record.construction_total_costs:
+				paid_parts.append("%s %d/%d" % [
+					"木" if StringName(resource_id) == &"wood" else "粮",
+					int(record.construction_paid_costs.get(resource_id, 0)),
+					int(record.construction_total_costs[resource_id]),
+				])
+			var state_text := (
+				"缺料暂停"
+				if StringName(record.construction_state) == &"BLOCKED_RESOURCES"
+				else "施工中"
+			)
+			progress_text = "%s · %d%% · 已扣 %s · 预计第 %d 日完成" % [
+				state_text,
+				progress_percent,
+				"无" if paid_parts.is_empty() else "、".join(paid_parts),
 				int(record.construction_complete_day),
 			]
 		else:
@@ -4798,6 +5152,12 @@ func get_building_data(placement_id: int) -> Dictionary:
 		"progress_text": progress_text,
 		"status_text": str(status.label),
 		"upgrade_available": false,
+		"construction_priority": int(
+			record.get("construction_priority", CONSTRUCTION_PRIORITY_NORMAL)
+		),
+		"construction_state": StringName(
+			record.get("construction_state", &"COMPLETED")
+		),
 	}
 
 
@@ -4912,6 +5272,8 @@ func _get_definition_unavailable_reason(
 ) -> String:
 	if is_city_action_locked_for_battle():
 		return "敌袭待处理"
+	if definition.build_days > 0:
+		return ""
 	var reasons: Array[String] = []
 	if wood < definition.wood_cost:
 		reasons.append("缺木%d" % (definition.wood_cost - wood))
@@ -5393,7 +5755,7 @@ func _refresh_preview_for_current_cell() -> void:
 		preview_origin_cell,
 		_selected_definition,
 		true,
-		true,
+		_selected_definition.build_days <= 0,
 		preview_orientation
 	)
 	preview_valid = validation.valid
@@ -6029,6 +6391,13 @@ func _base_record() -> Dictionary:
 		"build_days": 0,
 		"construction_started_day": 0,
 		"construction_complete_day": 0,
+		"construction_state": &"COMPLETED",
+		"construction_progress_milliseconds": 0,
+		"construction_required_milliseconds": 0,
+		"construction_total_costs": {},
+		"construction_paid_costs": {},
+		"construction_priority": CONSTRUCTION_PRIORITY_NORMAL,
+		"construction_missing_resource_ids": [],
 		"effect_summary": "",
 		"prerequisite_summary": "",
 		"requires_road": false,
@@ -6189,7 +6558,18 @@ func _refresh_city_ui() -> void:
 	_refresh_time_ui()
 	daily_report.text = last_daily_report
 	var threat_state := get_threat_state()
-	alert_summary.text = _get_first_war_objective_text()
+	var mainline := get_mainline_pressure_state()
+	alert_summary.text = (
+		"主线已完成 · 压力解除"
+		if bool(mainline.cleared)
+		else "主线期限 第%d日 · %s%d日\n压力 %s · 治安 %d" % [
+			int(mainline.deadline_day),
+			"剩余" if int(mainline.overdue_days) == 0 else "逾期",
+			int(mainline.days_remaining) if int(mainline.overdue_days) == 0 else int(mainline.overdue_days),
+			str(mainline.stage_name),
+			int(mainline.security),
+		]
+	)
 	_refresh_first_war_ui()
 	threat_detail.text = (
 		"城防 %d\n当前敌军 %d · 工事 %d\n%s"

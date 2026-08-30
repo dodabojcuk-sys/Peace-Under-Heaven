@@ -204,15 +204,15 @@ func _run() -> void:
 		construction.is_building_operational(logging_id)
 			and construction.get_operational_status(logging_id).label
 			.contains("运行中：入口已接路")
-			and construction.wood == wood_before_day + 18,
-		"连接道路使既有生产建筑在下一日运行并产出"
+			and construction.wood == wood_before_day - 40 + 18,
+		"连接道路使施工增量付清后在下一日运行并产出"
 	)
 
 	var snapshot: Dictionary = construction.export_v5_campaign_snapshot()
 	_check(
-		int(snapshot.schema_version) == 3
+		int(snapshot.schema_version) == 4
 			and snapshot.placements.size() >= 5,
-		"玩家道路复用现有 V5 placement 持久化而不升 schema"
+		"玩家道路复用 V4 placement 持久化"
 	)
 	var restored_scene := CITY_SCENE.instantiate()
 	root.add_child(restored_scene)

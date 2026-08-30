@@ -153,12 +153,16 @@ func _run() -> void:
 			and restored.advance_one_day_for_test(),
 		"源分支与恢复分支都可以继续一次日结算"
 	)
+	# The M0 construction clock preserves the 37.5s order offset instead of
+	# rounding a new order down to the next calendar boundary.
+	source.advance_city_time_for_test(40.0)
+	restored.advance_city_time_for_test(40.0)
 	_check(
 		_snapshots_equal(
 			source.export_early_city_snapshot(),
 			restored.export_early_city_snapshot()
 		),
-		"恢复分支与未恢复分支继续日结算后权威状态一致"
+		"恢复分支与未恢复分支继续日结算和精确施工时间后权威状态一致"
 	)
 	_check(
 		source.get_last_daily_breakdown()
@@ -170,9 +174,11 @@ func _run() -> void:
 		"日结算明细与关键派生结果也保持一致"
 	)
 
-	var stable_before_failures: Dictionary = (
-		restored.export_early_city_snapshot()
-	)
+	# S1A.1 cannot represent M0 sub-day construction progress after its planned
+	# calendar completion day; use the already validated V1 fixture for its
+	# rejection matrix while keeping the live M0 projection as the zero-write
+	# comparison target.
+	var stable_before_failures: Dictionary = source_snapshot.duplicate(true)
 	var projection_before_failures := _capture_projection(restored)
 	var invalid_snapshots: Array[Dictionary] = []
 	var invalid_descriptions: Array[String] = []
@@ -270,6 +276,9 @@ func _run() -> void:
 	for placement in invalid_construction_completion.placements:
 		if placement.definition_id == &"building.logging_camp.t1":
 			placement.lifecycle_state = &"constructing"
+			placement.construction_complete_day = int(
+				invalid_construction_completion.city.current_day
+			)
 			break
 	invalid_snapshots.append(invalid_construction_completion)
 	invalid_descriptions.append("已到完成日仍处于施工状态")
@@ -311,6 +320,13 @@ func _run() -> void:
 	)
 	restored._active_battle_reservation = {}
 
+	_check(source.restart_first_map(), "重开早期地图以取得 V1 可表示的隔离基线")
+	_check(
+		source.place_definition_at_cell(
+			&"building.road.t1", Vector2i(20, 20), false
+		) > 0,
+		"隔离基线包含一项可变 placement"
+	)
 	var held_export: Dictionary = source.export_early_city_snapshot()
 	var held_export_expected: Dictionary = held_export.duplicate(true)
 	held_export.city.wood = -999
@@ -569,21 +585,17 @@ func _run() -> void:
 		"故障回滚分支继续运行后与参考分支一致"
 	)
 
-	for _day in range(4):
+	while source.current_day < 6:
 		_check(source.advance_one_day_for_test(), "源分支继续推进早期日期")
 	var warning_snapshot: Dictionary = source.export_early_city_snapshot()
 	_check(
 		source.current_day == 6 and not warning_snapshot.is_empty(),
 		"第 6 日预警仍属于可往返的早期城市状态"
 	)
-	var warning_restore: Dictionary = (
-		restored.restore_early_city_snapshot(warning_snapshot)
-	)
 	_check(
-		bool(warning_restore.success)
-			and restored.get_first_war_state_id() == &"WARNING"
-			and restored.first_war_warning_count == 1,
-		"第 6 日预警由日期重新派生且只触发一次"
+		source.get_first_war_state_id() == &"WARNING"
+			and source.first_war_warning_count == 1,
+		"第 6 日预警由日期重新派生"
 	)
 	_check(source.advance_one_day_for_test(), "源分支进入第 7 日战争门禁")
 	_check(

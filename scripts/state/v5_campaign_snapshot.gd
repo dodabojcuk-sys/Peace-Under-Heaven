@@ -2,7 +2,7 @@ class_name V5CampaignSnapshot
 extends RefCounted
 
 
-const SCHEMA_VERSION := 3
+const SCHEMA_VERSION := 4
 const SNAPSHOT_KIND := &"campaign_authoritative"
 const CITY_ID := "blackstone_city"
 const ROOT_KEYS := [
@@ -15,6 +15,12 @@ const ROOT_KEYS := [
 	"garrison",
 	"training_queue",
 	"army_registry",
+	"settlement_ledger",
+	"mainline_level",
+]
+const V3_ROOT_KEYS := [
+	"schema_version", "snapshot_kind", "city_id", "city", "placements",
+	"next_placement_id", "garrison", "training_queue", "army_registry",
 	"settlement_ledger",
 ]
 const CITY_KEYS := [
@@ -30,6 +36,13 @@ const CITY_KEYS := [
 	"emergency_mobilization_used",
 	"city_time_paused",
 	"city_time_speed_id",
+	"security",
+]
+const V3_CITY_KEYS := [
+	"current_day", "day_elapsed_milliseconds", "wood", "food",
+	"tech_points", "recruitment_cap", "selected_general_id",
+	"researched_tech_ids", "supply_shortage", "emergency_mobilization_used",
+	"city_time_paused", "city_time_speed_id",
 ]
 const GARRISON_KEYS := [
 	"schema_version",
@@ -46,6 +59,18 @@ const PLACEMENT_KEYS := [
 	"construction_started_day",
 	"construction_complete_day",
 	"orientation",
+	"construction_state",
+	"construction_progress_milliseconds",
+	"construction_required_milliseconds",
+	"construction_total_costs",
+	"construction_paid_costs",
+	"construction_priority",
+	"construction_missing_resource_ids",
+]
+const V3_PLACEMENT_KEYS := [
+	"placement_id", "definition_id", "origin_cell", "lifecycle_state",
+	"built_day", "disabled_until_day", "construction_started_day",
+	"construction_complete_day", "orientation",
 ]
 const V2_PLACEMENT_KEYS := [
 	"placement_id",
@@ -79,11 +104,15 @@ static func validate_structure(
 			&"FUTURE_SCHEMA_VERSION",
 			"未知未来 CampaignSnapshot schema"
 		)
-	if not _has_exact_keys(snapshot, ROOT_KEYS):
+	var source_version := int(snapshot.get("schema_version", 0))
+	if (
+		(source_version == SCHEMA_VERSION and not _has_exact_keys(snapshot, ROOT_KEYS))
+		or (source_version in [2, 3] and not _has_exact_keys(snapshot, V3_ROOT_KEYS))
+	):
 		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段不完整或含未知字段")
 	if (
 		typeof(snapshot.schema_version) != TYPE_INT
-		or int(snapshot.schema_version) not in [2, SCHEMA_VERSION]
+		or int(snapshot.schema_version) not in [2, 3, SCHEMA_VERSION]
 		or typeof(snapshot.snapshot_kind) != TYPE_STRING_NAME
 		or StringName(snapshot.snapshot_kind) != SNAPSHOT_KIND
 		or typeof(snapshot.city_id) != TYPE_STRING
@@ -105,6 +134,11 @@ static func validate_structure(
 	var normalized := snapshot.duplicate(true)
 	if int(normalized.schema_version) == 2:
 		var migration := _migrate_v2_orientation_defaults(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if int(normalized.schema_version) == 3:
+		var migration := _migrate_v3_m0_defaults(normalized)
 		if not bool(migration.valid):
 			return migration
 		normalized = migration.snapshot
@@ -145,6 +179,8 @@ static func validate_structure(
 	var ledger_result := _validate_ledger(normalized.settlement_ledger)
 	if not bool(ledger_result.valid):
 		return ledger_result
+	if not CurrentMainlineLevel.validate_snapshot(normalized.mainline_level):
+		return _failure(&"INVALID_MAINLINE_LEVEL", "主线压力快照非法")
 	var garrison_total := 0
 	for count in Dictionary(
 		normalized.garrison.unit_counts_by_definition_id
@@ -183,13 +219,73 @@ static func _migrate_v2_orientation_defaults(snapshot: Dictionary) -> Dictionary
 			return _failure(&"INVALID_PLACEMENTS", "V2 placement 字段不完整")
 		placement.orientation = 0
 		normalized.placements[index] = placement
-	normalized.schema_version = SCHEMA_VERSION
+	normalized.schema_version = 3
 	return {
 		"valid": true,
 		"error_id": &"",
 		"error": "",
 		"snapshot": normalized,
 	}
+
+
+static func _migrate_v3_m0_defaults(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized.city, V3_CITY_KEYS):
+		return _failure(&"INVALID_CITY", "V3 city 字段不完整")
+	normalized.city.security = 50
+	for index in range(normalized.placements.size()):
+		var placement_value = normalized.placements[index]
+		if not placement_value is Dictionary:
+			return _failure(&"INVALID_PLACEMENTS", "V3 placement 必须为字典")
+		var placement: Dictionary = placement_value
+		if not _has_exact_keys(placement, V3_PLACEMENT_KEYS):
+			return _failure(&"INVALID_PLACEMENTS", "V3 placement 字段不完整")
+		var required := maxi(
+			(int(placement.construction_complete_day) - int(placement.construction_started_day)) * 180000,
+			0
+		)
+		var completed := StringName(placement.lifecycle_state) == &"running"
+		placement.construction_state = &"COMPLETED" if completed else &"ACTIVE"
+		placement.construction_progress_milliseconds = required if completed else clampi(
+			(int(normalized.city.current_day) - int(placement.construction_started_day)) * 180000,
+			0,
+			required
+		)
+		placement.construction_required_milliseconds = required
+		# V3 paid atomically before placement. Empty totals preserve that payment
+		# and prevent a migrated construction from being charged a second time.
+		placement.construction_total_costs = {}
+		placement.construction_paid_costs = {}
+		placement.construction_priority = 1
+		placement.construction_missing_resource_ids = []
+		normalized.placements[index] = placement
+	normalized.mainline_level = {
+		"level_id": &"first_map.main_assault.v0",
+		"activated_day": 1,
+		"deadline_day": 7,
+		"pressure_stage_id": StringName(
+			"PRESSURE_%d" % _m0_stage_index(int(normalized.city.current_day))
+		),
+		"cleared": false,
+		"cleared_day": 0,
+		"applied_event_ids": {},
+		"permanent_losses": {"wood": 0, "food": 0, "city_defense_damage": 0},
+	}
+	normalized.schema_version = SCHEMA_VERSION
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _m0_stage_index(current_day: int) -> int:
+	var overdue := maxi(current_day - 7, 0)
+	if overdue >= 7:
+		return 4
+	if overdue >= 5:
+		return 3
+	if overdue >= 3:
+		return 2
+	if overdue >= 1:
+		return 1
+	return 0
 
 
 static func migrate_v1(
@@ -247,6 +343,7 @@ static func migrate_v1(
 			"city_time_speed_id": StringName(
 				"%dx" % roundi(float(source.city.city_time_speed))
 			),
+			"security": 50,
 		},
 		"placements": _migrate_v1_placements(source.placements),
 		"next_placement_id": int(source.next_placement_id),
@@ -260,6 +357,18 @@ static func migrate_v1(
 		"training_queue": queue.get_snapshot(),
 		"army_registry": ArmyRegistry.new().get_snapshot(),
 		"settlement_ledger": empty_settlement_ledger(),
+		"mainline_level": {
+			"level_id": &"first_map.main_assault.v0",
+			"activated_day": 1,
+			"deadline_day": 7,
+			"pressure_stage_id": StringName(
+				"PRESSURE_%d" % _m0_stage_index(int(source.city.current_day))
+			),
+			"cleared": false,
+			"cleared_day": 0,
+			"applied_event_ids": {},
+			"permanent_losses": {"wood": 0, "food": 0, "city_defense_damage": 0},
+		},
 	}
 	var candidate_result = v2_validator.call(candidate.duplicate(true))
 	if (
@@ -294,6 +403,18 @@ static func _migrate_v1_placements(placements: Array) -> Array[Dictionary]:
 	for placement_value in placements:
 		var placement: Dictionary = Dictionary(placement_value).duplicate(true)
 		placement.orientation = 0
+		var required := maxi(
+			(int(placement.construction_complete_day) - int(placement.construction_started_day)) * 180000,
+			0
+		)
+		var completed := StringName(placement.lifecycle_state) == &"running"
+		placement.construction_state = &"COMPLETED" if completed else &"ACTIVE"
+		placement.construction_progress_milliseconds = required if completed else 0
+		placement.construction_required_milliseconds = required
+		placement.construction_total_costs = {}
+		placement.construction_paid_costs = {}
+		placement.construction_priority = 1
+		placement.construction_missing_resource_ids = []
 		migrated.append(placement)
 	return migrated
 
@@ -308,6 +429,7 @@ static func _validate_city(city: Dictionary) -> Dictionary:
 		"food",
 		"tech_points",
 		"recruitment_cap",
+		"security",
 	]:
 		if typeof(city[key]) != TYPE_INT:
 			return _failure(&"INVALID_CITY", "V2 city 整数字段错误")
@@ -319,6 +441,8 @@ static func _validate_city(city: Dictionary) -> Dictionary:
 		or int(city.food) < 0
 		or int(city.tech_points) < 0
 		or int(city.recruitment_cap) <= 0
+		or int(city.security) < 0
+		or int(city.security) > 100
 		or typeof(city.selected_general_id) != TYPE_STRING_NAME
 		or typeof(city.researched_tech_ids) != TYPE_ARRAY
 		or typeof(city.supply_shortage) != TYPE_BOOL
@@ -365,6 +489,18 @@ static func _validate_placements(
 			or typeof(placement.orientation) != TYPE_INT
 			or int(placement.orientation) < 0
 			or int(placement.orientation) > 3
+			or typeof(placement.construction_state) != TYPE_STRING_NAME
+			or StringName(placement.construction_state) not in [&"ACTIVE", &"BLOCKED_RESOURCES", &"COMPLETED"]
+			or typeof(placement.construction_progress_milliseconds) != TYPE_INT
+			or typeof(placement.construction_required_milliseconds) != TYPE_INT
+			or int(placement.construction_progress_milliseconds) < 0
+			or int(placement.construction_required_milliseconds) < 0
+			or int(placement.construction_progress_milliseconds) > int(placement.construction_required_milliseconds)
+			or typeof(placement.construction_total_costs) != TYPE_DICTIONARY
+			or typeof(placement.construction_paid_costs) != TYPE_DICTIONARY
+			or typeof(placement.construction_priority) != TYPE_INT
+			or int(placement.construction_priority) not in [0, 1, 2]
+			or typeof(placement.construction_missing_resource_ids) != TYPE_ARRAY
 		):
 			return _failure(&"INVALID_PLACEMENTS", "placement 身份非法")
 		for day_key in [
@@ -384,6 +520,35 @@ static func _validate_placements(
 		if int(placement.built_day) > current_day:
 			return _failure(&"INVALID_PLACEMENTS", "placement 晚于当前日")
 		seen[int(placement.placement_id)] = true
+		if (
+			Dictionary(placement.construction_total_costs).size()
+				!= Dictionary(placement.construction_paid_costs).size()
+			or (
+				StringName(placement.lifecycle_state) == &"running"
+				and StringName(placement.construction_state) != &"COMPLETED"
+			)
+			or (
+				StringName(placement.lifecycle_state) == &"constructing"
+				and StringName(placement.construction_state) == &"COMPLETED"
+			)
+		):
+			return _failure(&"INVALID_PLACEMENTS", "placement 施工状态不一致")
+		for resource_id in placement.construction_total_costs:
+			if (
+				StringName(resource_id) not in [&"wood", &"food"]
+				or typeof(placement.construction_total_costs[resource_id]) != TYPE_INT
+				or int(placement.construction_total_costs[resource_id]) < 0
+				or typeof(placement.construction_paid_costs.get(resource_id, null)) != TYPE_INT
+				or int(placement.construction_paid_costs[resource_id]) < 0
+				or int(placement.construction_paid_costs[resource_id]) > int(placement.construction_total_costs[resource_id])
+			):
+				return _failure(&"INVALID_PLACEMENTS", "placement 施工扣料非法")
+		for missing_id in placement.construction_missing_resource_ids:
+			if (
+				typeof(missing_id) != TYPE_STRING_NAME
+				or StringName(missing_id) not in [&"wood", &"food"]
+			):
+				return _failure(&"INVALID_PLACEMENTS", "placement 缺料身份非法")
 		maximum_id = maxi(maximum_id, int(placement.placement_id))
 	if next_placement_id <= maximum_id:
 		return _failure(&"INVALID_PLACEMENTS", "next placement 未单调")

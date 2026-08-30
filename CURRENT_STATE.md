@@ -1,5 +1,32 @@
 # 当前状态
 
+## M0 time, construction, and level pressure slice
+
+The conditionally authorized M0 slice is implemented on the isolated
+`codex/txwzs-m0-time-build-pressure-r0` branch. `ConstructionController`
+remains the only strategic time and placement writer, and `NationState` remains
+the only shared-resource writer. Timed buildings now advance on fixed 1000 ms
+ticks, pay cumulative costs incrementally, pause on missing resources, resume
+without losing progress, and expose high/normal/low priority.
+
+`CurrentMainlineLevel` owns the persistent day-7 deadline, five monotonic
+pressure stages, committed permanent losses, clear state, and event IDs.
+Security mitigates consequences without clearing or reversing pressure; five
+essential channels retain a 25% anti-softlock floor. V5 campaign persistence is
+schema 4 with explicit V2/V3 migration and exact M0 roundtrip coverage.
+
+The final 45-runner regression, editor import, formal headless scene smokes,
+V5 cold-process persistence, and native 1440x900/1280x720 evidence pass. Video
+was not recorded. This is local-only engineering evidence pending Founder
+review, not an overall MVP freeze, merge, push, deployment, or authorization to
+start subsequent game systems.
+
+`M0_TIME_BUILD_PRESSURE=PASS_LOCAL_ONLY_PENDING_FOUNDER_REVIEW`
+
+`M0_FULL_REGRESSION=45_OF_45_PASS`
+
+`M0_VIDEO=NOT_RECORDED`
+
 ## Product successor UI-R0
 
 `codex/product-successor-inner-city-r0` is the only mutable product branch.

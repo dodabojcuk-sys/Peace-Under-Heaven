@@ -104,8 +104,8 @@ func _run() -> void:
 	_check(construction.advance_one_day_for_test(), "可以推进到下一日")
 	_check(
 		construction.is_building_operational(logging_id)
-			and construction.wood == wood_before_day + 18,
-		"第 2 日完工后，接通的伐木场产生 18 木材"
+			and construction.wood == wood_before_day - 40 + 18,
+		"第 2 日增量付清 40 木后，接通的伐木场产生 18 木材"
 	)
 	_check(construction.current_day == 2, "日期从第 1 日推进到第 2 日")
 
@@ -139,15 +139,16 @@ func _run() -> void:
 		&"building.logging_camp.t1",
 		Vector2i(20, 24)
 	)
-	_check(rejected_id < 0, "木材不足时原子拒绝建造")
+	_check(rejected_id > 0, "木材不足时仍建立可恢复施工订单")
 	_check(
-		construction.get_building_count() == count_before_insufficient,
-		"资源不足不创建节点或权威记录"
+		construction.get_building_count() == count_before_insufficient + 1
+			and StringName(construction.get_building_record(rejected_id).construction_state) == &"ACTIVE",
+		"缺料订单创建权威记录并等待首个应付阈值"
 	)
 	_check(
 		construction.get_building_count()
-			== initial_count + 1 + 1 + road_cells.size(),
-		"最终记录只包含固定建筑、孤立道路、伐木场和当前路网"
+			== initial_count + 1 + 2 + road_cells.size(),
+		"最终记录包含固定建筑、道路和两项施工订单"
 	)
 
 	scene.queue_free()

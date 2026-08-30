@@ -135,19 +135,18 @@ func _run() -> void:
 	_check(city.queue_training(), "战争阻断前可建立合格训练单")
 	city.day_elapsed_seconds = city.SECONDS_PER_DAY - 0.001
 	city.first_war_state = city.FirstWarState.PENDING
-	var blocked_queue: Dictionary = city.get_training_queue_snapshot()
 	_check(
-		city.advance_city_time_for_test(1000.0) == 0
-			and city.current_day == 1
-			and city.infantry_count == 20
-			and city.get_training_queue_snapshot() == blocked_queue,
-		"战争待决阻断期间战略时间和训练源状态完全冻结"
+		city.advance_city_time_for_test(0.001) == 1
+			and city.current_day == 2
+			and city.infantry_count == 25
+			and city.training_queued_count == 0,
+		"主线待处理期间统一时钟与训练日界线继续推进"
 	)
 	city.first_war_state = city.FirstWarState.PREPARATION
 	_check(
-		city.advance_city_time_for_test(0.001) == 1
-			and city.infantry_count == 25,
-		"战争阻断解除后不补算墙钟时间，只消费新授权时间"
+		city.advance_city_time_for_test(1.0) == 0
+			and city.get_day_elapsed_milliseconds() == 1000,
+		"状态切换后只消费新授权的一秒时间"
 	)
 
 	_check(city.restart_first_map(), "场景切换用例重置状态")
@@ -285,5 +284,5 @@ func _finish() -> void:
 		print("V5_TRAINING_QUEUE_SMOKE PASS")
 		quit(0)
 		return
-	print("V5_TRAINING_QUEUE_SMOKE FAIL: %s" % failures)
+	print("V5_TRAINING_QUEUE_SMOKE FAIL: %s" % str(failures))
 	quit(1)

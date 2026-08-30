@@ -69,8 +69,8 @@ func _run() -> void:
 		"资源、容量和防御三种现有建筑进入同一 placement 权威记录"
 	)
 	_check(
-		city.wood == 50,
-		"建造原子扣除仓库已有定义中的 40、60、50 木材"
+		city.wood == 200,
+		"下达三项施工单时不再原子预扣 40、60、50 木材"
 	)
 	_check(
 		city.get_construction_in_progress_count() == 3
@@ -119,9 +119,9 @@ func _run() -> void:
 		"第 2 日统一完成施工并启用生产、容量和城防"
 	)
 	_check(
-		city.wood == wood_before_settlement + 18
+		city.wood == wood_before_settlement - 150 + 18
 			and int(city.get_last_daily_breakdown().construction_completed) == 3,
-		"完成日按现有规则结算 18 木材并报告三项完工"
+		"完成日前增量付清 150 木并结算 18 木材，报告三项完工"
 	)
 	_check(
 		city.get_building_node(logging_id).get_node("Label").text == "伐木场",
@@ -155,10 +155,10 @@ func _run() -> void:
 		&"building.logging_camp.t1"
 	)
 	_check(
-		logging_button.disabled
-			and "不可建：缺木40" in logging_button.text
-			and str(logging_definition_data.unavailable_reason) == "缺木40",
-		"资源不足时建造目录直接显示缺口并禁用入口"
+		not logging_button.disabled
+			and bool(logging_definition_data.can_build)
+			and str(logging_definition_data.unavailable_reason).is_empty(),
+		"资源不足时建造目录仍允许下单，缺料在施工 tick 暂停"
 	)
 
 	scene.queue_free()
