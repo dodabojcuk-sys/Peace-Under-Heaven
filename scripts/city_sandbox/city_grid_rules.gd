@@ -6,6 +6,117 @@ const MASK_NORTH := 1
 const MASK_EAST := 2
 const MASK_SOUTH := 4
 const MASK_WEST := 8
+const REASON_NONE := &""
+const REASON_OUT_OF_BOUNDS := &"OUT_OF_BOUNDS"
+const REASON_BUILDING_OVERLAP := &"BUILDING_OVERLAP"
+const REASON_ROAD_OVERLAP := &"ROAD_OVERLAP"
+const REASON_IMMOVABLE_OBJECT_OVERLAP := &"IMMOVABLE_OBJECT_OVERLAP"
+const REASON_INVALID_ENTRANCE := &"INVALID_ENTRANCE"
+
+
+static func evaluate_placement_legality(
+	placement_kind: StringName,
+	cells: Array[Vector2i],
+	bounds: Rect2i,
+	occupied_cells: Dictionary,
+	placement_kinds_by_id: Dictionary,
+	road_cells: Dictionary,
+	reserved_cells: Dictionary,
+	wall_cells: Dictionary,
+	gate_cells: Dictionary,
+	ignore_placement_id := -1
+) -> Dictionary:
+	var conflicting_cells: Array[Vector2i] = []
+	var conflicting_ids: Array[int] = []
+	for cell in cells:
+		if not bounds.has_point(cell):
+			conflicting_cells.append(cell)
+			return _legality_result(
+				false,
+				REASON_OUT_OF_BOUNDS,
+				conflicting_cells,
+				conflicting_ids
+			)
+	if placement_kind != &"road":
+		for cell in cells:
+			if road_cells.has(cell):
+				conflicting_cells.append(cell)
+		if not conflicting_cells.is_empty():
+			return _legality_result(
+				false,
+				REASON_ROAD_OVERLAP,
+				conflicting_cells,
+				conflicting_ids
+			)
+	for cell in cells:
+		var occupied_id := int(occupied_cells.get(cell, -1))
+		if occupied_id < 0 or occupied_id == ignore_placement_id:
+			continue
+		conflicting_cells.append(cell)
+		if occupied_id not in conflicting_ids:
+			conflicting_ids.append(occupied_id)
+		var occupied_kind := StringName(
+			placement_kinds_by_id.get(occupied_id, &"")
+		)
+		if placement_kind != &"road" and occupied_kind == &"road":
+			return _legality_result(
+				false,
+				REASON_ROAD_OVERLAP,
+				conflicting_cells,
+				conflicting_ids
+			)
+		if occupied_kind == &"fixed":
+			return _legality_result(
+				false,
+				REASON_IMMOVABLE_OBJECT_OVERLAP,
+				conflicting_cells,
+				conflicting_ids
+			)
+		return _legality_result(
+			false,
+			REASON_BUILDING_OVERLAP,
+			conflicting_cells,
+			conflicting_ids
+		)
+	for cell in cells:
+		if (
+			reserved_cells.has(cell)
+			or wall_cells.has(cell)
+			or gate_cells.has(cell)
+		):
+			conflicting_cells.append(cell)
+	if not conflicting_cells.is_empty():
+		return _legality_result(
+			false,
+			REASON_IMMOVABLE_OBJECT_OVERLAP,
+			conflicting_cells,
+			conflicting_ids
+		)
+	return _legality_result(
+		true,
+		REASON_NONE,
+		conflicting_cells,
+		conflicting_ids
+	)
+
+
+static func _legality_result(
+	is_legal: bool,
+	reason_code: StringName,
+	conflicting_cells: Array[Vector2i],
+	conflicting_placement_ids: Array[int]
+) -> Dictionary:
+	return {
+		"is_legal": is_legal,
+		"reason_code": reason_code,
+		"conflicting_cells": conflicting_cells.duplicate(),
+		"conflicting_placement_ids": (
+			conflicting_placement_ids.duplicate()
+		),
+		"road_connection_state": &"not_evaluated",
+		"entrance_state": &"not_evaluated",
+		"legacy_overlap": false,
+	}
 
 static func get_rotated_footprint(
 	footprint_size: Vector2i,

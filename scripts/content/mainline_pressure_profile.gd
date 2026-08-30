@@ -33,6 +33,18 @@ func get_stage_display_name(current_day: int) -> String:
 	return ["正常", "紧张", "吃紧", "危急", "濒临崩溃"][get_stage_index(current_day)]
 
 
+func get_next_stage_summary(current_day: int) -> Dictionary:
+	var current_index := get_stage_index(current_day)
+	if current_index >= stage_overdue_days.size() - 1:
+		return {"name": "已达最高压力", "days_until": 0}
+	var next_index := current_index + 1
+	var overdue_days := maxi(current_day - deadline_day, 0)
+	return {
+		"name": ["正常", "紧张", "吃紧", "危急", "濒临崩溃"][next_index],
+		"days_until": maxi(stage_overdue_days[next_index] - overdue_days, 0),
+	}
+
+
 func get_construction_modifier_permille(current_day: int) -> int:
 	return construction_modifier_permille[get_stage_index(current_day)]
 

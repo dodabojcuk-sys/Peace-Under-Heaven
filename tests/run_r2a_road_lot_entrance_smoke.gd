@@ -63,7 +63,7 @@ func _run() -> void:
 	_check(
 		str(wall_result.reason) == "占用城墙"
 			and str(gate_result.reason) == "占用城门槽位"
-			and str(occupied_result.reason) == "位置已占用",
+			and str(occupied_result.reason) == "与不可移动建筑重叠",
 		"城墙、城门槽位和既有建筑均有明确占用原因"
 	)
 
@@ -119,8 +119,8 @@ func _run() -> void:
 			and not city.is_building_operational(disconnected_id)
 			and city.get_operational_status(disconnected_id).label
 				.contains("入口未接路")
-			and city.get_operational_status(connected_id).state == &"constructing",
-		"未接路建筑可完成但保持停用，接路建筑进入施工状态"
+			and city.get_operational_status(connected_id).state == &"global_paused",
+		"未接路建筑可完成但保持停用，暂停中的接路建筑显示单一全局暂停状态"
 	)
 
 	city.set_city_time_paused(false)

@@ -51,6 +51,19 @@ func _draw() -> void:
 		var mask := _get_mask(cell, cell_set)
 		draw_rect(rect.grow(-2.0), fill.lightened(0.1), true)
 		draw_rect(rect.grow(-2.0), outline, false, 2.0)
+		if _status == &"invalid":
+			draw_line(
+				rect.position + Vector2(8.0, 8.0),
+				rect.end - Vector2(8.0, 8.0),
+				outline,
+				3.0
+			)
+			draw_line(
+				Vector2(rect.end.x - 8.0, rect.position.y + 8.0),
+				Vector2(rect.position.x + 8.0, rect.end.y - 8.0),
+				outline,
+				3.0
+			)
 		draw_circle(center, _grid_size * 0.18, fill.darkened(0.1))
 		if mask & MASK_NORTH:
 			draw_line(center, Vector2(center.x, rect.position.y), fill.darkened(0.1), _grid_size * 0.18)

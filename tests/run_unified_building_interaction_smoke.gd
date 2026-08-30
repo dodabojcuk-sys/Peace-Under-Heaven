@@ -28,6 +28,7 @@ func _run() -> void:
 	var remove_button: Button = detail_panel.get_node("RemoveButton")
 	var target_name: Label = detail_panel.get_node("TargetName")
 	var target_type: Label = detail_panel.get_node("TargetType")
+	var footprint_label: Label = detail_panel.get_node("Footprint")
 	var description: Label = detail_panel.get_node("Description")
 	var construction_entry: Control = scene.get_node(
 		"UI/Shell/ConstructionEntryPanel"
@@ -141,7 +142,7 @@ func _run() -> void:
 		)
 		_check(
 			target_type.text.contains(str(building_data.level_text))
-				and target_type.text.contains("下一等级：当前切片未开放"),
+				and footprint_label.text.contains("下一级：当前切片未开放"),
 			"详情显示固定建筑真实等级且不伪造升级"
 		)
 		_check(
@@ -178,7 +179,7 @@ func _run() -> void:
 	)
 	_check(
 		not fixed_validation.valid
-		and fixed_validation.reason == "位置已占用",
+		and fixed_validation.reason == "与不可移动建筑重叠",
 		"固定建筑占用格阻止重叠建造"
 	)
 
@@ -260,7 +261,7 @@ func _run() -> void:
 		"运行时建筑使用 placed 能力记录")
 	_check(runtime_record.selectable and runtime_record.removable,
 		"运行时生产建筑可选择且可移除")
-	_check(not runtime_record.movable, "运行时生产建筑仍不可移动")
+	_check(runtime_record.movable, "运行时生产建筑进入统一移动旋转合法性边界")
 	_check(_same_record_shape(fixed_record, runtime_record),
 		"固定与运行时建筑使用相同记录字段")
 

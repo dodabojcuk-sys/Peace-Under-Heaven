@@ -331,6 +331,9 @@ var preview_invalid_reason := ""
 var preview_connection_state: StringName = &"not_required"
 var preview_entrance_info: Dictionary = {}
 var preview_entrance_marker: Polygon2D
+var preview_conflict_mark: Line2D
+var _last_preview_validation: Dictionary = {}
+var _legacy_overlap_reports: Array[Dictionary] = []
 var _road_draft: Dictionary = {}
 var _road_drag_active := false
 var _road_preview_fixed := false
@@ -502,6 +505,13 @@ func _ready() -> void:
 	preview_entrance_marker.z_index = 2
 	preview_entrance_marker.visible = false
 	construction_preview.add_child(preview_entrance_marker)
+	preview_conflict_mark = Line2D.new()
+	preview_conflict_mark.name = "PreviewConflictMark"
+	preview_conflict_mark.default_color = PREVIEW_INVALID_OUTLINE
+	preview_conflict_mark.width = 4.0
+	preview_conflict_mark.z_index = 3
+	preview_conflict_mark.visible = false
+	construction_preview.add_child(preview_conflict_mark)
 	construction_preview.visible = false
 	_configure_time_speed_options()
 	_update_threat_for_current_day(false)
@@ -836,6 +846,7 @@ func open_construction_menu() -> void:
 	preview_connection_state = &"not_required"
 	preview_entrance_info = {}
 	preview_entrance_marker.visible = false
+	preview_conflict_mark.visible = false
 	_reset_road_draft()
 	_sync_construction_ui()
 	construction_interaction_started.emit()
@@ -896,6 +907,7 @@ func begin_road_mode(screen_position: Vector2) -> bool:
 	preview_label.visible = false
 	placement_grid.visible = false
 	preview_entrance_marker.visible = false
+	preview_conflict_mark.visible = false
 	road_preview_visual.clear_preview()
 	_sync_construction_ui()
 	_update_road_preview_from_screen(screen_position)
@@ -916,6 +928,7 @@ func cancel_placing() -> void:
 	preview_connection_state = &"not_required"
 	preview_entrance_info = {}
 	preview_entrance_marker.visible = false
+	preview_conflict_mark.visible = false
 	_reset_road_draft()
 	_sync_construction_ui()
 	construction_presentation_changed.emit()
@@ -933,6 +946,7 @@ func cancel_build_interaction() -> void:
 	preview_connection_state = &"not_required"
 	preview_entrance_info = {}
 	preview_entrance_marker.visible = false
+	preview_conflict_mark.visible = false
 	_reset_road_draft()
 	_sync_construction_ui()
 	construction_presentation_changed.emit()
@@ -1191,28 +1205,25 @@ func evaluate_road_path(cells: Array[Vector2i]) -> Dictionary:
 	var new_cells: Array[Vector2i] = []
 	var seen_new: Dictionary = {}
 	for cell in ordered:
-		if not _cell_is_inside_city(cell):
-			return _road_validation(false, "道路超出地图边界")
 		if all_roads.has(cell):
 			continue
 		if seen_new.has(cell):
 			continue
 		seen_new[cell] = true
 		new_cells.append(cell)
-		var occupied_id := int(_occupied_cells.get(cell, -1))
-		if occupied_id >= 0:
-			var occupied_record: Dictionary = _building_records_by_id.get(
-				occupied_id,
-				{}
-			)
-			if not occupied_record.is_empty():
-				return _road_validation(false, _road_block_reason(occupied_record))
-		if city_spatial_foundation.is_formal_reserved_cell(cell):
-			return _road_validation(false, "道路占用保留区域")
-		if city_spatial_foundation.is_formal_wall_cell(cell):
-			return _road_validation(false, "道路占用城墙")
-		if city_spatial_foundation.is_formal_gate_cell(cell):
-			return _road_validation(false, "道路占用城门槽位")
+	if new_cells.is_empty():
+		return _road_validation(false, "所选格子已经是道路")
+	var spatial := evaluate_spatial_legality(PLACEMENT_KIND_ROAD, new_cells)
+	if not bool(spatial.is_legal):
+		return _road_validation(
+			false,
+			str(spatial.reason_text),
+			&"invalid",
+			new_cells,
+			0,
+			spatial
+		)
+	for cell in new_cells:
 		var screen_rect := get_footprint_screen_rect(cell, Vector2i.ONE)
 		if not _screen_rect_is_inside_viewport(screen_rect):
 			return _road_validation(false, "道路超出可操作区域")
@@ -1222,8 +1233,6 @@ func evaluate_road_path(cells: Array[Vector2i]) -> Dictionary:
 				and ui_control.get_global_rect().grow(UI_SAFETY_MARGIN).intersects(screen_rect)
 			):
 				return _road_validation(false, "道路位置被界面遮挡")
-	if new_cells.is_empty():
-		return _road_validation(false, "所选格子已经是道路")
 	var candidate_roads := all_roads.duplicate(true)
 	for cell in new_cells:
 		candidate_roads[cell] = true
@@ -1259,15 +1268,23 @@ func _road_validation(
 	reason: String,
 	connection_state: StringName = &"invalid",
 	new_cells: Array[Vector2i] = [],
-	cost := 0
+	cost := 0,
+	extra: Dictionary = {}
 ) -> Dictionary:
-	return {
+	var result := {
 		"valid": valid,
+		"is_legal": valid,
 		"reason": reason,
+		"reason_text": reason,
+		"reason_code": CITY_GRID_RULES.REASON_NONE,
+		"conflicting_cells": [],
+		"conflicting_placement_ids": [],
 		"connection_state": connection_state,
 		"new_cells": new_cells.duplicate(),
 		"cost": cost,
 	}
+	result.merge(extra, true)
+	return result
 
 
 func _road_block_reason(record: Dictionary) -> String:
@@ -1364,6 +1381,39 @@ func get_all_road_cells() -> Dictionary:
 	for cell in get_player_road_cells():
 		result[Vector2i(cell)] = true
 	return result
+
+
+func scan_current_placement_overlaps(mark_legacy := false) -> Array[Dictionary]:
+	var reports: Array[Dictionary] = []
+	var roads := get_all_road_cells()
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if (
+			record.is_empty()
+			or StringName(record.placement_kind) == PLACEMENT_KIND_ROAD
+		):
+			continue
+		var conflicts: Array[Vector2i] = []
+		for value in record.occupied_footprint_cells:
+			var cell := Vector2i(value)
+			if roads.has(cell):
+				conflicts.append(cell)
+		if conflicts.is_empty():
+			continue
+		reports.append({
+			"report_code": &"LEGACY_OVERLAP" if mark_legacy else &"OVERLAP",
+			"placement_id": placement_id,
+			"definition_id": StringName(record.definition_id),
+			"reason_code": CITY_GRID_RULES.REASON_ROAD_OVERLAP,
+			"conflicting_cells": conflicts,
+		})
+	if mark_legacy:
+		_legacy_overlap_reports = reports.duplicate(true)
+	return reports
+
+
+func get_legacy_overlap_reports() -> Array[Dictionary]:
+	return _legacy_overlap_reports.duplicate(true)
 
 
 func get_road_mask(cell: Vector2i) -> int:
@@ -1493,6 +1543,111 @@ func _create_runtime_building(origin_cell: Vector2i) -> int:
 		false,
 		true
 	)
+
+
+func move_placed_building(
+	placement_id: int,
+	target_origin_cell: Vector2i
+) -> Dictionary:
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
+	if (
+		is_city_action_locked_for_battle()
+		or record.is_empty()
+		or not bool(record.get("movable", false))
+	):
+		return {"success": false, "reason_code": &"IMMOVABLE_PLACEMENT"}
+	return _reposition_placed_building(
+		placement_id,
+		target_origin_cell,
+		int(record.orientation)
+	)
+
+
+func rotate_placed_building(
+	placement_id: int,
+	target_orientation: int
+) -> Dictionary:
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
+	if (
+		is_city_action_locked_for_battle()
+		or record.is_empty()
+		or not bool(record.get("movable", false))
+		or target_orientation < ORIENTATION_NORTH
+		or target_orientation > ORIENTATION_WEST
+	):
+		return {"success": false, "reason_code": &"IMMOVABLE_PLACEMENT"}
+	return _reposition_placed_building(
+		placement_id,
+		Vector2i(record.origin_cell),
+		target_orientation
+	)
+
+
+func _reposition_placed_building(
+	placement_id: int,
+	target_origin_cell: Vector2i,
+	target_orientation: int
+) -> Dictionary:
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
+	var definition := get_definition(StringName(record.get("definition_id", &"")))
+	if definition == null:
+		return {"success": false, "reason_code": &"MISSING_DEFINITION"}
+	var validation := evaluate_origin_cell_for_definition(
+		target_origin_cell,
+		definition,
+		false,
+		false,
+		target_orientation,
+		placement_id
+	)
+	if not bool(validation.valid):
+		var rejected := validation.duplicate(true)
+		rejected["success"] = false
+		return rejected
+	var previous_cells: Array = record.occupied_footprint_cells.duplicate()
+	for cell_value in previous_cells:
+		if _occupied_cells.get(Vector2i(cell_value), -1) != placement_id:
+			return {"success": false, "reason_code": &"OCCUPANCY_MISMATCH"}
+	var footprint := get_rotated_footprint(definition, target_orientation)
+	var next_cells := get_footprint_cells(target_origin_cell, footprint)
+	for cell_value in previous_cells:
+		_occupied_cells.erase(Vector2i(cell_value))
+	for cell in next_cells:
+		_occupied_cells[cell] = placement_id
+	record.origin_cell = target_origin_cell
+	record.orientation = target_orientation
+	record.footprint = footprint
+	record.occupied_footprint_cells = next_cells.duplicate()
+	record.selection_bounds = Rect2(Vector2.ZERO, Vector2(footprint) * GRID_SIZE)
+	var building := record.get("node") as GrayboxBuildingVisual
+	if building != null:
+		building.position = cell_to_map_local(target_origin_cell)
+		var entrance_info := get_building_entrance_info(placement_id)
+		var selected := bool(building.get_meta("show_entrance_marker", false))
+		building.configure(
+			definition.definition_id,
+			definition.display_name,
+			definition.building_type,
+			footprint,
+			target_orientation,
+			definition.body_color,
+			definition.outline_color,
+			definition.requires_road,
+			false,
+			StringName(record.lifecycle_state),
+			_get_building_presentation_progress(record),
+			StringName(entrance_info.get("connection_state", &"disconnected")),
+			selected
+		)
+	_refresh_road_visual_projection()
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {
+		"success": true,
+		"reason_code": CITY_GRID_RULES.REASON_NONE,
+		"origin_cell": target_origin_cell,
+		"orientation": target_orientation,
+	}
 
 
 func advance_city_time(simulation_delta: float) -> int:
@@ -2124,6 +2279,7 @@ func _apply_mainline_pressure_for_current_day() -> void:
 
 
 func get_mainline_pressure_state() -> Dictionary:
+	var next_stage := MAINLINE_PRESSURE_PROFILE.get_next_stage_summary(current_day)
 	return {
 		"level_id": _current_mainline_level.level_id,
 		"deadline_day": _current_mainline_level.deadline_day,
@@ -2141,6 +2297,8 @@ func get_mainline_pressure_state() -> Dictionary:
 		"security": city_security,
 		"construction_modifier_permille": get_pressure_modifier_permille(&"construction"),
 		"production_modifier_permille": get_pressure_modifier_permille(&"production"),
+		"next_stage_name": str(next_stage.name),
+		"next_stage_days": int(next_stage.days_until),
 		"permanent_losses": _current_mainline_level.permanent_losses.duplicate(true),
 	}
 
@@ -2947,6 +3105,7 @@ func _apply_validated_v5_campaign_snapshot(
 	_active_army_dispatch_reservation = {}
 	_active_army_encounter = {}
 	_last_battle_result_summary = {}
+	scan_current_placement_overlaps(true)
 	return {"success": true, "error_id": &"", "error": ""}
 
 
@@ -3374,7 +3533,7 @@ func _register_runtime_placement_record(
 		),
 		"selectable": true,
 		"removable": true,
-		"movable": false,
+		"movable": definition.placement_kind == PLACEMENT_KIND_PLACED,
 		"requires_road": definition.requires_road,
 		"road_anchor_offsets": definition.road_anchor_offsets.duplicate(),
 		"level": definition.level,
@@ -5036,13 +5195,30 @@ func _clear_runtime_placements() -> void:
 
 
 func _rebuild_daily_report() -> void:
-	last_daily_report = "入 木%d 粮%d｜维%d｜损%d｜研+%d" % [
-		int(last_daily_breakdown.wood_income),
-		int(last_daily_breakdown.food_income),
-		int(last_daily_breakdown.maintenance_food),
-		int(last_daily_breakdown.event_food_loss),
-		int(last_daily_breakdown.research_income),
-	]
+	var wood_loss := int(last_daily_breakdown.event_wood_loss)
+	var food_loss := int(last_daily_breakdown.event_food_loss)
+	if wood_loss > 0 or food_loss > 0:
+		var mainline := get_mainline_pressure_state()
+		var loss_parts: Array[String] = []
+		if wood_loss > 0:
+			loss_parts.append("木材 %d" % wood_loss)
+		if food_loss > 0:
+			loss_parts.append("粮食 %d" % food_loss)
+		last_daily_report = "今日损失：%s · 治安 %d\n下一阶段：%s（%d 日后） · 生产 -%d%% / 建设 -%d%%" % [
+			"、".join(loss_parts),
+			city_security,
+			str(mainline.next_stage_name),
+			int(mainline.next_stage_days),
+			100 - roundi(float(mainline.production_modifier_permille) / 10.0),
+			100 - roundi(float(mainline.construction_modifier_permille) / 10.0),
+		]
+	else:
+		last_daily_report = "今日结算：木材 +%d · 粮食 +%d · 维护粮食 -%d · 研究 +%d" % [
+			int(last_daily_breakdown.wood_income),
+			int(last_daily_breakdown.food_income),
+			int(last_daily_breakdown.maintenance_food),
+			int(last_daily_breakdown.research_income),
+		]
 	if int(last_daily_breakdown.stopped_placement_id) >= 0:
 		last_daily_report += "｜生产受扰"
 	if int(last_daily_breakdown.get("construction_completed", 0)) > 0:
@@ -5159,6 +5335,180 @@ func get_building_data(placement_id: int) -> Dictionary:
 			record.get("construction_state", &"COMPLETED")
 		),
 	}
+
+
+func get_building_detail_state(placement_id: int) -> Dictionary:
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
+	if record.is_empty():
+		return {}
+	var definition := get_definition(StringName(record.definition_id))
+	if definition == null:
+		return {
+			"primary_status_id": &"FIXED",
+			"primary_status_text": str(record.prototype_status),
+			"effect_text": _get_fixed_building_effect_summary(
+				StringName(record.template_id),
+				str(record.effect_summary)
+			),
+			"road_text": "道路：不需要",
+			"orientation_text": "朝向：北",
+			"progress_visible": false,
+			"priority_visible": false,
+			"status_reason_text": "",
+		}
+	var constructing := StringName(record.lifecycle_state) == &"constructing"
+	var required := maxi(int(record.construction_required_milliseconds), 1)
+	var progress := clampi(
+		int(record.construction_progress_milliseconds),
+		0,
+		required
+	)
+	var progress_percent := floori(float(progress) / float(required) * 100.0)
+	var entrance := get_building_entrance_info(placement_id)
+	var connected := bool(entrance.get("connected", false))
+	var primary_status_id: StringName
+	var primary_status_text := ""
+	var status_reason_text := ""
+	if constructing:
+		if city_time_paused:
+			primary_status_id = &"GLOBAL_PAUSED"
+			primary_status_text = "全局暂停"
+			status_reason_text = "恢复时间后继续施工"
+			if StringName(record.construction_state) == &"BLOCKED_RESOURCES":
+				status_reason_text += "；当前另有材料不足"
+		elif StringName(record.construction_state) == &"BLOCKED_RESOURCES":
+			primary_status_id = &"MISSING_RESOURCES"
+			primary_status_text = "缺料暂停"
+			status_reason_text = "补足材料后从当前进度继续"
+		elif progress <= 0:
+			primary_status_id = &"WAITING_CONSTRUCTION"
+			primary_status_text = "等待施工"
+			status_reason_text = "时间推进后开始投入材料"
+		else:
+			primary_status_id = &"CONSTRUCTING"
+			primary_status_text = "施工中"
+	else:
+		if definition.requires_road and not connected:
+			primary_status_id = &"COMPLETED_DISCONNECTED"
+			primary_status_text = "未连接道路"
+			status_reason_text = "连接入口旁道路后开始生产"
+		elif int(record.disabled_until_day) >= current_day:
+			primary_status_id = &"EVENT_DISABLED"
+			primary_status_text = "事件停产"
+			status_reason_text = "停产至第 %d 日结算后" % int(record.disabled_until_day)
+		elif get_pressure_modifier_permille(&"production") < 1000:
+			primary_status_id = &"PRESSURE_AFFECTED"
+			primary_status_text = "受压力影响"
+			status_reason_text = "主线压力降低当前产出"
+		else:
+			primary_status_id = &"PRODUCING"
+			primary_status_text = "生产中"
+	var total_costs: Dictionary = record.construction_total_costs
+	var paid_costs: Dictionary = record.construction_paid_costs
+	var paid_parts: Array[String] = []
+	var remaining_parts: Array[String] = []
+	for resource_id in total_costs:
+		var total := int(total_costs[resource_id])
+		var paid := int(paid_costs.get(resource_id, 0))
+		var label := _resource_display_name(StringName(resource_id))
+		paid_parts.append("%s %d/%d" % [label, paid, total])
+		remaining_parts.append("%s %d" % [label, maxi(total - paid, 0)])
+	var missing_parts: Array[String] = []
+	if constructing and StringName(record.construction_state) == &"BLOCKED_RESOURCES":
+		var next_payment := _get_next_construction_payment(record)
+		for resource_id in next_payment:
+			var shortfall := maxi(
+				int(next_payment[resource_id])
+				- _nation_state.get_resource(StringName(resource_id)),
+				0
+			)
+			if shortfall > 0:
+				missing_parts.append("%s %d" % [
+					_resource_display_name(StringName(resource_id)),
+					shortfall,
+				])
+	var eta_text := "已完成"
+	if constructing:
+		if StringName(record.construction_state) == &"BLOCKED_RESOURCES":
+			eta_text = "等待材料"
+		elif city_time_paused:
+			eta_text = "恢复时间后计算"
+		else:
+			var modifier := maxi(get_pressure_modifier_permille(&"construction"), 1)
+			var effective_remaining := ceili(
+				float(required - progress) * 1000.0 / float(modifier)
+			)
+			var days_needed := maxi(ceili(float(effective_remaining) / float(MILLISECONDS_PER_DAY)), 1)
+			eta_text = "第 %d 日" % (current_day + days_needed)
+	var production := definition.get_capability(&"production")
+	var base_amount := 0
+	var actual_amount := 0
+	var production_resource := ""
+	if production != null:
+		base_amount = int(production.amount)
+		production_resource = _resource_display_name(production.resource_id)
+		if not constructing and connected and int(record.disabled_until_day) < current_day:
+			actual_amount = _get_production_amount(definition, production)
+	var orientation := clampi(int(record.orientation), 0, 3)
+	return {
+		"primary_status_id": primary_status_id,
+		"primary_status_text": primary_status_text,
+		"status_reason_text": status_reason_text,
+		"effect_text": (
+			"%s +%d/日" % [production_resource, base_amount]
+			if production != null
+			else _get_definition_effect_summary(definition)
+		),
+		"road_text": (
+			"道路：%s · 入口朝%s" % ["已连接" if connected else "未连接", ORIENTATION_NAMES[orientation]]
+			if definition.requires_road
+			else "道路：不需要"
+		),
+		"orientation_text": "朝向：%s · 占地 %d × %d" % [
+			ORIENTATION_NAMES[orientation],
+			int(record.footprint.x),
+			int(record.footprint.y),
+		],
+		"progress_visible": constructing,
+		"progress_percent": progress_percent,
+		"progress_text": "进度：%d%%" % progress_percent,
+		"paid_text": "已投入：%s" % ("无" if paid_parts.is_empty() else "、".join(paid_parts)),
+		"remaining_text": "仍需：%s" % ("无" if remaining_parts.is_empty() else "、".join(remaining_parts)),
+		"missing_text": "缺少：%s" % ("无" if missing_parts.is_empty() else "、".join(missing_parts)),
+		"eta_text": "预计完成：%s" % eta_text,
+		"priority_visible": constructing,
+		"priority": int(record.construction_priority),
+		"priority_help_text": "材料或施工能力不足时，高优先级先推进。",
+		"base_output_text": "基础产出：%s +%d/日" % [production_resource, base_amount],
+		"actual_output_text": "当前实际：%s +%d/日" % [production_resource, actual_amount],
+		"pressure_effect_text": "影响：主线压力 -%d%%" % (
+			100 - roundi(float(get_pressure_modifier_permille(&"production")) / 10.0)
+		),
+	}
+
+
+func _get_next_construction_payment(record: Dictionary) -> Dictionary:
+	var required := maxi(int(record.construction_required_milliseconds), 1)
+	var progress := int(record.construction_progress_milliseconds)
+	var modifier := get_pressure_modifier_permille(&"construction")
+	var next_progress := mini(
+		progress + maxi(roundi(float(CONSTRUCTION_TICK_MILLISECONDS * modifier) / 1000.0), 1),
+		required
+	)
+	var result: Dictionary = {}
+	for resource_id in record.construction_total_costs:
+		var total := int(record.construction_total_costs[resource_id])
+		var target_paid := total if next_progress >= required else floori(
+			float(total * next_progress) / float(required)
+		)
+		var amount := target_paid - int(record.construction_paid_costs.get(resource_id, 0))
+		if amount > 0:
+			result[StringName(resource_id)] = amount
+	return result
+
+
+func _resource_display_name(resource_id: StringName) -> String:
+	return {&"wood": "木材", &"food": "粮食"}.get(resource_id, str(resource_id))
 
 
 func get_construction_in_progress_count() -> int:
@@ -5404,6 +5754,10 @@ func get_operational_status(placement_id: int) -> Dictionary:
 	if record.is_empty():
 		return {"state": &"missing", "label": "不存在"}
 	if StringName(record.lifecycle_state) == &"constructing":
+		if city_time_paused:
+			return {"state": &"global_paused", "label": "全局暂停"}
+		if StringName(record.construction_state) == &"BLOCKED_RESOURCES":
+			return {"state": &"blocked_resources", "label": "缺料暂停"}
 		return {
 			"state": &"constructing",
 			"label": "施工中 · 预计第 %d 日完成" % int(
@@ -5629,6 +5983,61 @@ func _get_spatial_block_reason(cell: Vector2i) -> String:
 	return ""
 
 
+func evaluate_spatial_legality(
+	placement_kind: StringName,
+	cells: Array[Vector2i],
+	ignore_placement_id := -1
+) -> Dictionary:
+	var placement_kinds: Dictionary = {}
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if not record.is_empty():
+			placement_kinds[placement_id] = StringName(record.placement_kind)
+	var result := CITY_GRID_RULES.evaluate_placement_legality(
+		placement_kind,
+		cells,
+		Rect2i(Vector2i.ZERO, city_spatial_foundation.get_map_grid_size()),
+		_occupied_cells,
+		placement_kinds,
+		get_all_road_cells(),
+		get_formal_reserved_cells(),
+		get_formal_wall_cells(),
+		get_formal_gate_cells(),
+		ignore_placement_id
+	)
+	result["reason_text"] = _placement_reason_text(
+		StringName(result.reason_code),
+		placement_kind,
+		Array(result.conflicting_cells)
+	)
+	return result
+
+
+func _placement_reason_text(
+	reason_code: StringName,
+	placement_kind: StringName,
+	conflicting_cells: Array
+) -> String:
+	match reason_code:
+		CITY_GRID_RULES.REASON_OUT_OF_BOUNDS:
+			return "道路超出地图边界" if placement_kind == PLACEMENT_KIND_ROAD else "超出可建区域"
+		CITY_GRID_RULES.REASON_ROAD_OVERLAP:
+			return "所选格子已经是道路" if placement_kind == PLACEMENT_KIND_ROAD else "与道路重叠"
+		CITY_GRID_RULES.REASON_BUILDING_OVERLAP:
+			return "道路穿过建筑占地" if placement_kind == PLACEMENT_KIND_ROAD else "与其他建筑重叠"
+		CITY_GRID_RULES.REASON_IMMOVABLE_OBJECT_OVERLAP:
+			for value in conflicting_cells:
+				var cell := Vector2i(value)
+				if city_spatial_foundation.is_formal_reserved_cell(cell):
+					return "道路占用保留区域" if placement_kind == PLACEMENT_KIND_ROAD else "占用保留区域"
+				if city_spatial_foundation.is_formal_gate_cell(cell):
+					return "道路占用城门槽位" if placement_kind == PLACEMENT_KIND_ROAD else "占用城门槽位"
+				if city_spatial_foundation.is_formal_wall_cell(cell):
+					return "道路占用城墙" if placement_kind == PLACEMENT_KIND_ROAD else "占用城墙"
+			return "道路穿过不可移动建筑" if placement_kind == PLACEMENT_KIND_ROAD else "与不可移动建筑重叠"
+	return ""
+
+
 func evaluate_origin_cell(origin_cell: Vector2i) -> Dictionary:
 	var definition := (
 		_selected_definition
@@ -5643,7 +6052,8 @@ func evaluate_origin_cell_for_definition(
 	definition: BuildingDefinition,
 	check_ui := true,
 	check_resources := true,
-	orientation := ORIENTATION_NORTH
+	orientation := ORIENTATION_NORTH,
+	ignore_placement_id := -1
 ) -> Dictionary:
 	if definition == null:
 		return _validation_result(false, "缺少建筑定义")
@@ -5654,22 +6064,37 @@ func evaluate_origin_cell_for_definition(
 		origin_cell,
 		footprint
 	)
-	if not _footprint_is_inside_map(origin_cell, footprint):
-		return _validation_result(false, "超出地图")
 	var screen_rect := get_footprint_screen_rect(
 		origin_cell,
 		footprint
 	)
-	# Existing-building occupancy is authoritative even when the camera places
-	# the fixed record outside the visible canvas.  Protected spatial cells stay
-	# below the UI check so an explicit UI overlap still reports its actionable
-	# input blocker rather than a hidden road/wall beneath the panel.
-	for cell in footprint_cells:
-		if _occupied_cells.has(cell):
-			return _validation_result(false, "位置已占用", screen_rect)
+	var spatial := evaluate_spatial_legality(
+		definition.placement_kind,
+		footprint_cells,
+		ignore_placement_id
+	)
+	var spatial_blocks_before_ui := (
+		not bool(spatial.is_legal)
+		and (
+			StringName(spatial.reason_code) == CITY_GRID_RULES.REASON_OUT_OF_BOUNDS
+			or not Array(spatial.conflicting_placement_ids).is_empty()
+		)
+	)
+	if spatial_blocks_before_ui:
+		return _validation_result(
+			false,
+			str(spatial.reason_text),
+			screen_rect,
+			spatial
+		)
 	if check_ui:
 		if not _screen_rect_is_inside_viewport(screen_rect):
-			return _validation_result(false, "超出可操作区域", screen_rect)
+			return _validation_result(
+				false,
+				"超出可操作区域",
+				screen_rect,
+				{"reason_code": &"UI_OCCLUDED"}
+			)
 		for ui_control in _get_ui_occlusion_controls():
 			if (
 				ui_control.is_visible_in_tree()
@@ -5677,16 +6102,25 @@ func evaluate_origin_cell_for_definition(
 					UI_SAFETY_MARGIN
 				).intersects(screen_rect)
 				):
-				return _validation_result(false, "被界面遮挡", screen_rect)
-	for cell in footprint_cells:
-		var spatial_reason := _get_spatial_block_reason(cell)
-		if not spatial_reason.is_empty():
-			return _validation_result(false, spatial_reason, screen_rect)
+				return _validation_result(
+					false,
+					"被界面遮挡",
+					screen_rect,
+					{"reason_code": &"UI_OCCLUDED"}
+				)
+	if not bool(spatial.is_legal):
+		return _validation_result(
+			false,
+			str(spatial.reason_text),
+			screen_rect,
+			spatial
+		)
 	if check_resources and not _can_pay_definition(definition):
 		return _validation_result(
 			false,
 			"木材不足（需要 %d）" % definition.wood_cost,
-			screen_rect
+			screen_rect,
+			{"reason_code": &"INSUFFICIENT_RESOURCES"}
 		)
 	var entrance_info := get_entrance_info_for_definition(
 		origin_cell,
@@ -5696,7 +6130,12 @@ func evaluate_origin_cell_for_definition(
 	var connection_state: StringName = &"not_required"
 	if definition.requires_road:
 		if not bool(entrance_info.get("valid", false)):
-			return _validation_result(false, "入口定义非法", screen_rect)
+			return _validation_result(
+				false,
+				"入口位置无效",
+				screen_rect,
+				{"reason_code": CITY_GRID_RULES.REASON_INVALID_ENTRANCE}
+			)
 		connection_state = StringName(
 			entrance_info.get("connection_state", &"disconnected")
 		)
@@ -5705,6 +6144,10 @@ func evaluate_origin_cell_for_definition(
 		"",
 		screen_rect,
 		{
+			"is_legal": true,
+			"reason_code": CITY_GRID_RULES.REASON_NONE,
+			"conflicting_cells": [],
+			"conflicting_placement_ids": [],
 			"connection_state": connection_state,
 			"entrance_info": entrance_info,
 		}
@@ -5759,6 +6202,7 @@ func _refresh_preview_for_current_cell() -> void:
 		preview_orientation
 	)
 	preview_valid = validation.valid
+	_last_preview_validation = validation.duplicate(true)
 	preview_invalid_reason = validation.reason
 	preview_connection_state = StringName(
 		validation.get("connection_state", &"not_required")
@@ -5789,6 +6233,16 @@ func _refresh_preview_for_current_cell() -> void:
 			else PREVIEW_DISCONNECTED_OUTLINE
 		)
 	)
+	var preview_size := Vector2(
+		get_rotated_footprint(_selected_definition, preview_orientation)
+	) * GRID_SIZE
+	preview_conflict_mark.points = PackedVector2Array([
+		Vector2(8.0, 8.0),
+		preview_size - Vector2(8.0, 8.0),
+		Vector2(preview_size.x - 8.0, 8.0),
+		Vector2(8.0, preview_size.y - 8.0),
+	])
+	preview_conflict_mark.visible = not preview_valid
 	_update_preview_entrance_marker()
 	preview_label.text = (
 		"%s L%d · 朝%s\n%s · %s\n%s" % [
@@ -5928,7 +6382,12 @@ func _validation_result(
 ) -> Dictionary:
 	var result := {
 		"valid": valid,
+		"is_legal": valid,
 		"reason": reason,
+		"reason_text": reason,
+		"reason_code": CITY_GRID_RULES.REASON_NONE,
+		"conflicting_cells": [],
+		"conflicting_placement_ids": [],
 		"screen_rect": screen_rect,
 	}
 	result.merge(extra, true)
@@ -6562,13 +7021,20 @@ func _refresh_city_ui() -> void:
 	alert_summary.text = (
 		"主线已完成 · 压力解除"
 		if bool(mainline.cleared)
-		else "主线期限 第%d日 · %s%d日\n压力 %s · 治安 %d" % [
-			int(mainline.deadline_day),
-			"剩余" if int(mainline.overdue_days) == 0 else "逾期",
-			int(mainline.days_remaining) if int(mainline.overdue_days) == 0 else int(mainline.overdue_days),
-			str(mainline.stage_name),
-			int(mainline.security),
-		]
+		else (
+			"主线逾期 %d 日\n压力：%s　治安：%d" % [
+				int(mainline.overdue_days),
+				str(mainline.stage_name),
+				int(mainline.security),
+			]
+			if int(mainline.overdue_days) > 0
+			else "主线期限：第 %d 日 · 剩余 %d 日\n压力：%s　治安：%d" % [
+				int(mainline.deadline_day),
+				int(mainline.days_remaining),
+				str(mainline.stage_name),
+				int(mainline.security),
+			]
+		)
 	)
 	_refresh_first_war_ui()
 	threat_detail.text = (

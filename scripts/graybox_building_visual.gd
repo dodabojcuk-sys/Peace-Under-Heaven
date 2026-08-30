@@ -187,11 +187,13 @@ func _rebuild_geometry() -> void:
 	var inset := 4.0
 	var depth := clampf(minf(world_size.x, world_size.y) * 0.18, 8.0, 18.0)
 	var shadow := get_node("Shadow") as Polygon2D
+	# Shadows are decorative and must never imply that the building occupies an
+	# adjacent road cell. Keep the full silhouette inside the logical footprint.
 	shadow.polygon = PackedVector2Array([
-		Vector2(12.0, 16.0),
-		Vector2(world_size.x + 12.0, 16.0),
-		Vector2(world_size.x + 12.0, world_size.y + 12.0),
-		Vector2(12.0, world_size.y + 12.0),
+		Vector2(10.0, 14.0),
+		Vector2(world_size.x - 2.0, 14.0),
+		Vector2(world_size.x - 2.0, world_size.y - 2.0),
+		Vector2(10.0, world_size.y - 2.0),
 	])
 	shadow.color = Color(0.12, 0.14, 0.13, 0.28)
 	var foundation := get_node("Foundation") as Polygon2D

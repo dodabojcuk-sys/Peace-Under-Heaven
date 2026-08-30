@@ -24,6 +24,17 @@ const NOTICEBOARD_TEMPLATE_ID := &"noticeboard"
 @onready var footprint: Label = $"../UI/Shell/BuildingDetailPanel/Footprint"
 @onready var prototype_status: Label = $"../UI/Shell/BuildingDetailPanel/PrototypeStatus"
 @onready var description: Label = $"../UI/Shell/BuildingDetailPanel/Description"
+@onready var status_badge: Label = $"../UI/Shell/BuildingDetailPanel/StatusBadge"
+@onready var road_status: Label = $"../UI/Shell/BuildingDetailPanel/RoadStatus"
+@onready var construction_progress: ProgressBar = (
+	$"../UI/Shell/BuildingDetailPanel/ConstructionProgress"
+)
+@onready var priority_label: Label = (
+	$"../UI/Shell/BuildingDetailPanel/PriorityLabel"
+)
+@onready var priority_help: Label = (
+	$"../UI/Shell/BuildingDetailPanel/PriorityHelp"
+)
 @onready var upgrade_status_card: Label = (
 	$"../UI/Shell/BuildingDetailPanel/UpgradeStatusCard"
 )
@@ -333,22 +344,50 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 	var build_data: Dictionary = construction_controller.get_building_data(
 		int(record.placement_id)
 	)
+	var detail_state: Dictionary = construction_controller.get_building_detail_state(
+		int(record.placement_id)
+	)
+	var is_fixed := StringName(record.placement_kind) == &"fixed"
 	target_name.text = str(record.display_name)
-	target_type.text = "%s\n%s" % [
-		str(build_data.level_text),
-		str(build_data.next_level_text),
-	]
-	grid_position.text = "朝向：%s｜投入：%s｜工期：%s" % [
-		_construction_orientation_text(int(record.get("orientation", 0))),
-		str(build_data.investment_text),
-		str(build_data.duration_text),
-	]
-	footprint.text = "当前效果：%s" % str(build_data.effect_text)
-	prototype_status.text = "进度：%s" % str(build_data.progress_text)
-	description.text = "前置：%s\n状态：%s" % [
-		str(build_data.prerequisite_text),
-		str(build_data.status_text),
-	]
+	target_type.text = (
+		"%s\n核心作用：%s" % [
+			str(build_data.level_text),
+			str(detail_state.get("effect_text", build_data.effect_text)),
+		]
+		if is_fixed
+		else "核心作用：%s" % str(detail_state.get("effect_text", build_data.effect_text))
+	)
+	status_badge.text = "状态：%s" % str(detail_state.get("primary_status_text", build_data.status_text))
+	road_status.text = str(detail_state.get("road_text", "道路：不需要"))
+	grid_position.text = str(detail_state.get(
+		"orientation_text",
+		"朝向：%s" % _construction_orientation_text(int(record.get("orientation", 0)))
+	))
+	footprint.text = "下一级：当前切片未开放"
+	var progress_visible := bool(detail_state.get("progress_visible", false))
+	construction_progress.visible = progress_visible
+	construction_progress.value = float(detail_state.get("progress_percent", 0))
+	prototype_status.visible = progress_visible
+	var is_missing := StringName(
+		detail_state.get("primary_status_id", &"")
+	) == &"MISSING_RESOURCES"
+	var remaining_line := str(detail_state.get("remaining_text", ""))
+	if is_missing:
+		remaining_line = "%s（%s）" % [
+			remaining_line,
+			str(detail_state.get("missing_text", "")),
+		]
+	prototype_status.text = "\n".join([
+		str(detail_state.get("progress_text", "")),
+		str(detail_state.get("paid_text", "")),
+		remaining_line,
+		str(detail_state.get("eta_text", "")),
+	]).replace("\n\n", "\n")
+	description.text = (
+		"前置：初始固定设施\n状态：固定 / 可选择"
+		if is_fixed
+		else str(detail_state.get("status_reason_text", ""))
+	)
 	var is_command_platform := (
 		StringName(record.template_id) == COMMAND_PLATFORM_TEMPLATE_ID
 	)
@@ -358,6 +397,10 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 	var is_constructing := StringName(record.lifecycle_state) == &"constructing"
 	for control in _get_standard_detail_controls():
 		control.visible = not is_command_platform and not is_city_gate
+	construction_progress.visible = (
+		not is_command_platform and not is_city_gate and progress_visible
+	)
+	prototype_status.visible = construction_progress.visible
 	first_war_actions.visible = is_command_platform
 	city_gate_actions.visible = is_city_gate
 	remove_button.visible = (
@@ -369,14 +412,15 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 		construction_controller.is_city_action_locked_for_battle()
 	)
 	construction_priority_option.visible = (
-		not is_command_platform and not is_city_gate and is_constructing
+		not is_command_platform and not is_city_gate and bool(detail_state.get("priority_visible", false))
 	)
-	upgrade_status_card.visible = (
-		not is_command_platform and not is_city_gate and not is_constructing
-	)
-	upgrade_button.visible = upgrade_status_card.visible
+	priority_label.visible = construction_priority_option.visible
+	priority_help.visible = construction_priority_option.visible
+	priority_help.text = str(detail_state.get("priority_help_text", ""))
+	upgrade_status_card.visible = false
+	upgrade_button.visible = false
 	if is_constructing:
-		var priority := int(build_data.construction_priority)
+		var priority := int(detail_state.get("priority", build_data.construction_priority))
 		for index in range(construction_priority_option.item_count):
 			if int(construction_priority_option.get_item_metadata(index)) == priority:
 				construction_priority_option.select(index)
@@ -405,10 +449,12 @@ func _show_selected_presentation() -> void:
 	construction_priority_option.visible = (
 		not is_command_platform and not is_city_gate and is_constructing
 	)
-	upgrade_status_card.visible = (
-		not is_command_platform and not is_city_gate and not is_constructing
-	)
-	upgrade_button.visible = upgrade_status_card.visible
+	priority_label.visible = construction_priority_option.visible
+	priority_help.visible = construction_priority_option.visible
+	construction_progress.visible = is_constructing
+	prototype_status.visible = is_constructing
+	upgrade_status_card.visible = false
+	upgrade_button.visible = false
 	first_war_actions.visible = is_command_platform
 	city_gate_actions.visible = is_city_gate
 	remove_button.visible = (
@@ -468,6 +514,11 @@ func _get_standard_detail_controls() -> Array[Control]:
 		footprint,
 		prototype_status,
 		description,
+		status_badge,
+		road_status,
+		construction_progress,
+		priority_label,
+		priority_help,
 		construction_priority_option,
 		upgrade_status_card,
 		upgrade_button,

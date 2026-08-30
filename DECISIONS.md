@@ -1,5 +1,22 @@
 # Product Successor Decisions
 
+## M0 R0A placement legality and construction presentation
+
+- `CityGridRules.evaluate_placement_legality` is the pure building/road spatial
+  authority; `ConstructionController` remains the only placement/save-facing
+  writer. Preview, commit, move, rotation, map scan, and legacy diagnostics must
+  not invent separate occupancy semantics.
+- Building footprints and road cells are mutually exclusive. Entrance
+  connection means an adjacent contact cell, never a road inside the footprint.
+- Failed move or rotation is atomic. Legacy overlaps load non-destructively and
+  are reported as derived `LEGACY_OVERLAP`; schema 4 remains unchanged.
+- A building visual, including its shadow, must remain inside the logical
+  footprint. Only a selected entrance indicator may point outward.
+- Construction detail has one primary state. Priority is a construction-only
+  scheduling control, and blocked ETA is `等待材料`.
+- R0A engineering evidence does not equal Founder acceptance or authorize a new
+  gameplay slice.
+
 ## M0 time, construction, and level pressure
 
 - Strategic time stays in `ConstructionController`; M0 extends its existing

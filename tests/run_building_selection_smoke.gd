@@ -96,25 +96,25 @@ func _run() -> void:
 	_check(detail_panel.get_node("TargetName").text == "伐木场",
 		"面板显示伐木场名称")
 	_check(
-		detail_panel.get_node("TargetType").text
-			== "当前等级：L1\n下一等级：当前切片未开放",
-		"面板如实显示当前等级且不伪造下一等级"
+		detail_panel.get_node("Footprint").text
+			== "下一级：当前切片未开放",
+		"面板如实显示未开放的升级边界"
 	)
 	_check(
 		detail_panel.get_node("GridPosition").text
-			== "朝向：北｜投入：木材 40｜工期：1 日",
-		"面板显示真实朝向、投入和施工时间"
+			== "朝向：北 · 占地 2 × 2",
+		"面板显示真实朝向和占地"
 	)
 	_check(
-		detail_panel.get_node("Footprint").text
-			== "当前效果：木材 +18/日",
+		detail_panel.get_node("TargetType").text
+			== "核心作用：木材 +18/日",
 		"面板显示真实每日效果"
 	)
 	_check(
-		detail_panel.get_node("Description").text.contains(
-			"状态：停用：未接入道路"
-		),
-		"面板显示真实前置和未接路原因"
+		detail_panel.get_node("RoadStatus").text
+			== "道路：未连接 · 入口朝北"
+			and not detail_panel.get_node("StatusBadge").text.contains("生产中"),
+		"面板显示真实道路连接和停产原因"
 	)
 	var upgrade_button: Button = detail_panel.get_node("UpgradeButton")
 	var upgrade_confirmation: Control = detail_panel.get_node(
@@ -152,7 +152,7 @@ func _run() -> void:
 	_check(
 		detail_panel.get_node("TargetName").text == "伐木场"
 			and detail_panel.get_node("GridPosition").text
-				== "朝向：北｜投入：木材 40｜工期：1 日",
+				== "朝向：北 · 占地 2 × 2",
 		"切换选择后面板保持与新权威记录一致"
 	)
 

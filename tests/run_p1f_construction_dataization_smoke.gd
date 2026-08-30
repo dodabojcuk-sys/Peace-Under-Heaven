@@ -92,15 +92,18 @@ func _run() -> void:
 	var detail_panel: Control = scene.get_node("UI/Shell/BuildingDetailPanel")
 	_check(
 		detail_panel.get_node("TargetType").text
-			== "当前等级：L1\n下一等级：当前切片未开放"
+			== "核心作用：木材 +18/日"
+		and detail_panel.get_node("Footprint").text
+			== "下一级：当前切片未开放"
 		and detail_panel.get_node("GridPosition").text
-				== "朝向：北｜投入：木材 40｜工期：1 日"
-			and detail_panel.get_node("Footprint").text
-				== "当前效果：木材 +18/日"
+				== "朝向：北 · 占地 2 × 2"
 			and detail_panel.get_node("PrototypeStatus").text.contains(
-				"预计第 2 日完成"
+				"已投入："
+			)
+			and detail_panel.get_node("PrototypeStatus").text.contains(
+				"预计完成：第 2 日"
 			),
-		"选中施工建筑可见等级、投入、工期、效果和预计完成日"
+		"选中施工建筑可见作用、占地、投入、升级边界和预计完成日"
 	)
 	_check(
 		city.get_building_node(logging_id).get_node("Label").text.contains(

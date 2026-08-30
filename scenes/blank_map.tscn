@@ -1024,9 +1024,9 @@ anchors_preset = 1
 anchor_left = 1.0
 anchor_right = 1.0
 offset_left = -296.0
-offset_top = 176.0
+offset_top = 130.0
 offset_right = -16.0
-offset_bottom = 536.0
+offset_bottom = 630.0
 grow_horizontal = 0
 mouse_filter = 0
 theme_override_styles/panel = SubResource("StyleBoxFlat_detail_panel")
@@ -1069,9 +1069,9 @@ color = Color(0.65098, 0.631373, 0.596078, 1)
 [node name="TargetName" type="Label" parent="UI/Shell/BuildingDetailPanel"]
 layout_mode = 0
 offset_left = 20.0
-offset_top = 78.0
+offset_top = 68.0
 offset_right = 250.0
-offset_bottom = 108.0
+offset_bottom = 98.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
 theme_override_font_sizes/font_size = 20
@@ -1080,21 +1080,43 @@ text = "测试建筑"
 [node name="TargetType" type="Label" parent="UI/Shell/BuildingDetailPanel"]
 layout_mode = 0
 offset_left = 20.0
-offset_top = 116.0
+offset_top = 104.0
 offset_right = 250.0
+offset_bottom = 128.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 12
+text = "核心作用：木材 +18/日"
+
+[node name="StatusBadge" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 154.0
+offset_top = 70.0
+offset_right = 252.0
+offset_bottom = 94.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.8, 0.62, 0.29, 1)
+theme_override_font_sizes/font_size = 12
+text = "状态：等待施工"
+horizontal_alignment = 2
+
+[node name="RoadStatus" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 132.0
+offset_right = 260.0
 offset_bottom = 156.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
 theme_override_font_sizes/font_size = 12
-text = "当前等级：L1
-下一等级：当前切片未开放"
+text = "道路：未连接 · 入口朝北"
 
 [node name="GridPosition" type="Label" parent="UI/Shell/BuildingDetailPanel"]
 layout_mode = 0
 offset_left = 20.0
-offset_top = 164.0
+offset_top = 398.0
 offset_right = 250.0
-offset_bottom = 186.0
+offset_bottom = 420.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
 theme_override_font_sizes/font_size = 13
@@ -1103,44 +1125,83 @@ text = "投入：木材 40｜工期：1 日"
 [node name="Footprint" type="Label" parent="UI/Shell/BuildingDetailPanel"]
 layout_mode = 0
 offset_left = 20.0
-offset_top = 196.0
+offset_top = 424.0
 offset_right = 250.0
-offset_bottom = 218.0
+offset_bottom = 444.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
 theme_override_font_sizes/font_size = 13
-text = "当前效果：木材 +18/日"
+text = "下一级：当前切片未开放"
+
+[node name="ConstructionProgress" type="ProgressBar" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 0
+offset_left = 20.0
+offset_top = 166.0
+offset_right = 260.0
+offset_bottom = 182.0
+mouse_filter = 2
+value = 32.0
+show_percentage = false
 
 [node name="PrototypeStatus" type="Label" parent="UI/Shell/BuildingDetailPanel"]
 layout_mode = 0
 offset_left = 20.0
-offset_top = 228.0
+offset_top = 188.0
 offset_right = 250.0
-offset_bottom = 250.0
+offset_bottom = 278.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
 theme_override_font_sizes/font_size = 13
-text = "进度：施工 0/1 日"
+text = "进度：32%
+已投入：木材 13/40
+仍需：木材 27
+预计完成：第 2 日"
+autowrap_mode = 2
 
 [node name="Description" type="Label" parent="UI/Shell/BuildingDetailPanel"]
 layout_mode = 0
 offset_left = 20.0
-offset_top = 258.0
+offset_top = 374.0
 offset_right = 260.0
-offset_bottom = 306.0
+offset_bottom = 394.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.454902, 0.439216, 0.407843, 1)
 theme_override_font_sizes/font_size = 11
-text = "前置：建成后需接入道路才生效
-状态：施工中"
+text = "恢复时间后继续施工"
+autowrap_mode = 2
+
+[node name="PriorityLabel" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 0
+offset_left = 20.0
+offset_top = 286.0
+offset_right = 130.0
+offset_bottom = 308.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 12
+text = "施工优先级"
+
+[node name="PriorityHelp" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 0
+offset_left = 20.0
+offset_top = 340.0
+offset_right = 260.0
+offset_bottom = 368.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.454902, 0.439216, 0.407843, 1)
+theme_override_font_sizes/font_size = 10
+text = "材料或施工能力不足时，高优先级先推进。"
 autowrap_mode = 2
 
 [node name="UpgradeStatusCard" type="Label" parent="UI/Shell/BuildingDetailPanel"]
 layout_mode = 0
 offset_left = 20.0
-offset_top = 316.0
+offset_top = 286.0
 offset_right = 260.0
-offset_bottom = 376.0
+offset_bottom = 346.0
 mouse_filter = 2
 theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
 theme_override_font_sizes/font_size = 12
@@ -1151,9 +1212,9 @@ autowrap_mode = 2
 visible = false
 layout_mode = 0
 offset_left = 20.0
-offset_top = 316.0
+offset_top = 310.0
 offset_right = 260.0
-offset_bottom = 350.0
+offset_bottom = 338.0
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 12
@@ -1161,9 +1222,9 @@ theme_override_font_sizes/font_size = 12
 [node name="UpgradeButton" type="Button" parent="UI/Shell/BuildingDetailPanel"]
 layout_mode = 0
 offset_left = 20.0
-offset_top = 386.0
+offset_top = 448.0
 offset_right = 260.0
-offset_bottom = 420.0
+offset_bottom = 476.0
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_font_sizes/font_size = 12
@@ -1172,9 +1233,9 @@ text = "查看升级门禁"
 [node name="RemoveButton" type="Button" parent="UI/Shell/BuildingDetailPanel"]
 layout_mode = 0
 offset_left = 20.0
-offset_top = 430.0
+offset_top = 448.0
 offset_right = 260.0
-offset_bottom = 464.0
+offset_bottom = 476.0
 focus_mode = 0
 mouse_default_cursor_shape = 2
 theme_override_colors/font_color = Color(0.364706, 0.24, 0.2, 1)
@@ -1182,7 +1243,7 @@ theme_override_font_sizes/font_size = 12
 theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
 theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
-text = "移除建筑（原型）"
+text = "移除建筑"
 
 [node name="UpgradeConfirmation" type="Control" parent="UI/Shell/BuildingDetailPanel"]
 visible = false

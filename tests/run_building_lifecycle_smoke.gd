@@ -43,8 +43,8 @@ func _run() -> void:
 		"场景仍只有一个 Camera2D")
 	_check(scene.find_children("Shell", "Control", true, false).size() == 1,
 		"场景仍只有一个 UI Shell")
-	_check(remove_button.text == "移除建筑（原型）",
-		"详情面板使用已确认的原型移除入口")
+	_check(remove_button.text == "移除建筑",
+		"详情面板使用玩家可读的移除入口")
 	_check(not confirmation.visible, "移除确认初始隐藏")
 
 	var baseline_ids: Array[int] = construction.get_placement_ids()
@@ -92,12 +92,14 @@ func _run() -> void:
 	_check(detail_panel.get_node("TargetName").text == first_record.display_name,
 		"详情名称来自权威记录")
 	_check(
-		detail_panel.get_node("TargetType").text.contains("当前等级：L1")
-		and detail_panel.get_node("GridPosition").text
-			== "朝向：北｜投入：木材 40｜工期：1 日"
+		detail_panel.get_node("TargetType").text == "核心作用：木材 +18/日"
+			and detail_panel.get_node("RoadStatus").text
+				== "道路：未连接 · 入口朝北"
+			and detail_panel.get_node("GridPosition").text
+				== "朝向：北 · 占地 2 × 2"
 			and detail_panel.get_node("Footprint").text
-				== "当前效果：木材 +18/日",
-		"详情显示权威等级、投入、工期和当前效果"
+				== "下一级：当前切片未开放",
+		"详情显示核心作用、道路、真实占地和升级边界"
 	)
 
 	remove_button.emit_signal("pressed")

@@ -5,6 +5,24 @@
 
 ## Unreleased
 
+### M0 R0A building-road and construction UI repair
+
+- Fixed both logical and visual road overlap: shifted four Blackstone lower-row
+  fixed anchors off formal-road row 13 and constrained graybox shadows to the
+  authoritative footprint.
+- Unified building placement, player-road placement, move, rotation, map scan,
+  and legacy-overlap diagnostics behind one structured spatial legality query.
+- Added atomic move/rotation revalidation and non-destructive `LEGACY_OVERLAP`
+  reporting without changing campaign snapshot schema 4.
+- Reworked lumber-camp feedback into one primary state with progress, paid and
+  missing materials, honest ETA, road status, construction-only priority, and
+  actual versus base pressure output.
+- Added focused R0A tests, updated superseded UI assertions, and passed all
+  46 dynamically discovered smoke runners plus editor import and three formal
+  scene smokes.
+- Added ten inspected native PNGs and one unspliced 17.01-second Godot recording.
+  Founder live smoke remains pending; no push, merge, deploy, or new gameplay.
+
 ### M0 time, construction, and level pressure
 
 - Reused the authoritative strategic clock for pause and 1x/2x/4x, adding

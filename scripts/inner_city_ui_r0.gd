@@ -114,7 +114,12 @@ func _refresh_read_model() -> void:
 		return
 	var wood: int = int(nation.get_resource(&"wood"))
 	var food: int = int(nation.get_resource(&"food"))
-	resource_summary.text = "国家共享资源  木材 %d · 粮食 %d" % [wood, food]
+	resource_summary.text = "国家共享资源  木材 %d/%d · 粮食 %d/%d" % [
+		wood,
+		construction_controller.get_resource_capacity(&"wood"),
+		food,
+		construction_controller.get_resource_capacity(&"food"),
+	]
 	var city_name := "黑石城"
 	var profile_name := "规则帝城"
 	if construction_controller.has_method("get_active_city_name"):
@@ -159,13 +164,13 @@ func _layout_for_viewport() -> void:
 	time_summary.position = Vector2(left_width + 405.0, 14.0)
 	time_summary.size = Vector2(88.0, 28.0)
 	daily_report.position = Vector2(left_width + 500.0, 14.0)
-	daily_report.size = Vector2(maxf(140.0, width - right_width - left_width - 560.0), 28.0)
+	daily_report.size = Vector2(maxf(140.0, width - right_width - left_width - 560.0), 46.0)
 	$TopStatusBar/TimeSpeedOption.position = Vector2(width - 235.0, 14.0)
 	$TopStatusBar/TimeSpeedOption.size = Vector2(78.0, 34.0)
 	$TopStatusBar/PauseButton.position = Vector2(width - 149.0, 14.0)
 	$TopStatusBar/PauseButton.size = Vector2(72.0, 34.0)
 	alert_summary.position = Vector2(width - 410.0, 16.0)
-	alert_summary.size = Vector2(160.0, 28.0)
+	alert_summary.size = Vector2(160.0, 46.0)
 
 	city_bar.position = Vector2(edge, rail_top)
 	city_bar.size = Vector2(left_width, maxf(360.0, height - rail_top - edge))
@@ -247,9 +252,12 @@ func _layout_detail(width: float) -> void:
 	$BuildingDetailPanel/CloseButton.size = Vector2(38.0, 34.0)
 	$BuildingDetailPanel/Divider.position = Vector2(18.0, 56.0)
 	$BuildingDetailPanel/Divider.size = Vector2(width - 36.0, 1.0)
-	for node_name in ["TargetName", "TargetType", "GridPosition", "Footprint", "PrototypeStatus", "Description", "UpgradeStatusCard"]:
+	for node_name in ["TargetName", "TargetType", "GridPosition", "Footprint", "PrototypeStatus", "Description", "RoadStatus", "PriorityLabel", "PriorityHelp", "UpgradeStatusCard"]:
 		var label := $BuildingDetailPanel.get_node(node_name) as Label
 		label.size.x = width - 40.0
+	$BuildingDetailPanel/StatusBadge.size.x = width - 174.0
+	$BuildingDetailPanel/ConstructionProgress.size.x = width - 40.0
+	$BuildingDetailPanel/ConstructionPriorityOption.size.x = width - 40.0
 	$BuildingDetailPanel/RemoveButton.size.x = width - 40.0
 	$BuildingDetailPanel/UpgradeButton.size.x = width - 40.0
 

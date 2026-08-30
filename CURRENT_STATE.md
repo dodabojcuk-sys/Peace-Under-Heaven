@@ -442,3 +442,20 @@ the visual shell itself provides a save action.
 
 R2B player road construction, road removal, traffic/pathfinding, organic garden
 city, final art, G4, push, and deployment remain not started.
+
+## M0 R0A building-road and construction UI repair
+
+R0A is an isolated engineering pass pending Founder live smoke. Root cause was
+`BOTH`: four Blackstone lower-row fixed buildings logically occupied formal-road
+row 13, and graybox shadows also extended beyond their footprints. The authored
+row now ends before the road; visual shadows remain inside occupancy.
+
+All new building/road placement, move, rotation, default-map scan, and legacy
+diagnostics share one structured legality contract. Schema 4 is unchanged;
+legacy overlaps are preserved and reported, never auto-moved or deleted. The
+lumber-camp panel exposes one primary state with road, progress, material, ETA,
+priority, and output feedback. Full regression is 46/46; ten static images and
+one 17.01-second continuous Godot recording are in `docs/m0/evidence/r0a/`.
+
+Founder live smoke remains pending. Do not push, merge, deploy, or start new
+gameplay from this result.

@@ -155,8 +155,8 @@ static func _regular_fixed_buildings() -> Dictionary:
 		"Manor": Rect2(80.0, 120.0, 190.0, 120.0),
 		"Barracks": Rect2(350.0, 120.0, 190.0, 120.0),
 		"Granary": Rect2(650.0, 120.0, 190.0, 120.0),
-		"Academy": Rect2(80.0, 430.0, 190.0, 120.0),
-		"CityGate": Rect2(350.0, 430.0, 190.0, 120.0),
-		"CommandPlatform": Rect2(650.0, 430.0, 190.0, 120.0),
-		"Noticeboard": Rect2(900.0, 430.0, 160.0, 120.0),
+		"Academy": Rect2(80.0, 400.0, 190.0, 120.0),
+		"CityGate": Rect2(350.0, 400.0, 190.0, 120.0),
+		"CommandPlatform": Rect2(650.0, 400.0, 190.0, 120.0),
+		"Noticeboard": Rect2(900.0, 400.0, 160.0, 120.0),
 	}
