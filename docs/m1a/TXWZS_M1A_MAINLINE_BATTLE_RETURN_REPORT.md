@@ -3,7 +3,7 @@
 ```text
 PARENT=cafe26cbe544e68ae2f57a3ba12c1976eec13f8a
 SCOPE=CURRENT_MAINLINE_ENTRY_TO_EXISTING_C0_TO_ATOMIC_SETTLEMENT_TO_SAME_CITY_RETURN
-CANDIDATE_VERDICT=FAIL_CONTINUOUS_REAL_PLAYER_FLOW_RECORDING_NOT_PROVIDED
+CANDIDATE_VERDICT=FAIL_REAL_INPUT_FLOW_BLOCKED_BEFORE_BATTLE_AND_COLD_RESTART
 
 RESOURCE_OWNER=NationState_ONLY
 CITY_TIME_AND_V5_OWNER=ConstructionController_ONLY
@@ -26,12 +26,21 @@ FULL_DYNAMIC_REGRESSION=PASS_50_OF_50_RUNNERS
 EDITOR_PARSE_IMPORT=PASS
 NATIVE_PNGS=PASS_10_REQUIRED_PLUS_JOURNEY_FRAMES
 SCREENSHOT_CONTACT_SHEET=PASS_NATIVE_GODOT_IMAGE
-CONTINUOUS_VIDEO=FAIL_NOT_A_SINGLE_UNEDITED_REAL_INPUT_PLAYER_FLOW
-VIDEO_DECODE_CHECK=PASS_FFPROBE_H264_YUV420P_1152X648
+REAL_INPUT_MOUSE_KEYBOARD=PASS_FOR_RECORDED_CITY_OPERATIONS
+SINGLE_UNEDITED_CAPTURE=PASS_MACOS_SCREENCAPTURE_V
+FULL_PLAYER_FLOW=FAIL_REAL_ENTRY_BLOCKED_AT_20_OF_50_AVAILABLE_FORCE
+COLD_RESTART_IN_SAME_VIDEO=FAIL_NOT_REACHED_AFTER_ENTRY_BLOCK
+RAW_RECORDING_SHA256=531cfd45b206db8c90a251cdb9c4925e8320e3989cc8ddd8ad38995acc266270
+FINAL_MP4_SHA256=dc01412ac661ec149546d358397b8d7ff489e4903f4cf33660892b2ccd7c1e4e
+VIDEO_DURATION=149.44_SECONDS_RAW_149.466667_SECONDS_FINAL
+VIDEO_CODEC=H264
+VIDEO_PIXEL_FORMAT=YUV420P
+VIDEO_DTS_MONOTONIC=PASS_5541_PACKETS
+VIDEO_DECODE_CHECK=PASS_FFMPEG_FULL_FILE
 VISUAL_INSPECTION_EACH_IMAGE=PASS_10_OF_10_NATIVE_RENDER_REVIEW
 OBVIOUS_OVERLAP_OR_CLIPPING=NO_OBSERVED
 OBVIOUS_WORLD_INTERPENETRATION=NO_OBSERVED
-REAL_MOUSE_JOURNEY=UNVERIFIED
+REAL_MOUSE_JOURNEY=PASS_PARTIAL_CITY_INPUT_RECORDED
 
 PUSH=NO
 MERGE=NO
@@ -67,21 +76,29 @@ deadline; city defeat remains a loss state rather than a fabricated retry.
 - [09 longest state — 1440x900](evidence/09-longest-state-1440x900.png)
 - [10 post-battle build state — 1440x900](evidence/10-build-state-after-battle-1440x900.png)
 - [player-flow contact sheet](evidence/m1a-current-mainline-return-loop-r0-contact-sheet.png)
-- [continuous journey MP4](evidence/m1a-current-mainline-return-loop-r0.mp4)
+- [raw macOS system recording (MOV)](evidence/m1a-real-input-raw.mov)
+- [final whole-file remux (MP4)](evidence/m1a-real-input-player-flow.mp4)
 
 All ten required PNGs were captured by the running Godot scene and individually
 reviewed. The review found no visible UI overlap, text clipping, off-screen
 button, scene-UI residue, unreadable settlement number, or obvious world-object
-interpenetration in those sampled states. The MP4 is a continuous 7-second,
-H.264/yuv420p, 1152x648 encoding of sequential native Godot captures of the
-real formal-city scene path; `ffprobe` confirms that it decodes as H.264 and
-`yuv420p`.
+interpenetration in those sampled states.
 
-Its progression is script-driven and composed from sequential captures, so it
-is not a single, unedited, real-input player-flow recording. Under the mandatory
-visual-evidence gate this makes the candidate **FAIL**, despite valid H.264
-decoding and visually reviewed stills. Computer Use could only access a
-pre-existing Godot project-manager window, not this isolated game process; true
-native-input recording therefore remains open. This is engineering evidence,
-not a Founder playtest or authorization for push, merge, deployment, or further
-warfare scope.
+On 2026-08-31, a 149.44-second macOS `screencapture -v -C -k -D1` recording
+was started before all recorded player interactions. It shows the desktop,
+visible pointer movement/click feedback, native Godot city window, actual mainline
+entry click, city-panel expansion, and the existing recruitment action. It was
+manually watched from start to finish in QuickTime. The final MP4 is a whole-file
+stream-copy remux of that raw MOV: no trim, speed change, frame extraction, or
+reordering. It decodes fully as one H.264/yuv420p 1920x1080 stream; video DTS is
+monotonic across 5,541 packets.
+
+The attempt does **not** satisfy the end-to-end gate. At normal city state the
+sidebar showed only `20/50` available troops; the mainline action did not enter
+the battle after real clicks, and the normal recruitment action created its
+existing queue without making additional troops available during the recorded
+attempt. No test interface, signal injection, fixture, debug shortcut, or save
+mutation was used to bypass that state. Consequently battle, settlement, return,
+and cold restart were not reached, and the candidate remains **FAIL**. This is
+engineering evidence, not a Founder playtest or authorization for push, merge,
+deployment, or further warfare scope.
