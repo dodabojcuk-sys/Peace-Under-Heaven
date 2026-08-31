@@ -68,6 +68,19 @@
   restoration schedules a layout pass instead of preserving an idle-height
   panel around restored controls.
 
+## M1A.1 live concentrated-front deployment
+
+- A player who has explicitly assigned every existing squad to the front route
+  may press the existing battle Start button to queue their existing advance
+  orders in the same opening tick. This removes a UI-cadence difference between
+  the available mouse controls and the normal-20 victory contract.
+- The programmatic `start_battle()` API remains neutral unless the real Start
+  button supplies the deployment-plan flag, so retreat, defeat, and simulation
+  callers keep their original command authority and timing.
+- The normal runtime still has no disk V5 load/save lifecycle. This report does
+  not create one or reassign Save ownership; a real cold restart remains a
+  blocker until that lifecycle is separately wired and verified.
+
 ## M0 R0A placement legality and construction presentation
 
 - `CityGridRules.evaluate_placement_legality` is the pure building/road spatial

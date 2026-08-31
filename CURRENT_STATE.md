@@ -69,6 +69,16 @@ been made. The player-flow, cold-restart-in-video, attachment, and release
 gates remain `FAIL / HOLD`; this is not Founder review, merge authorization,
 push authorization, or deployment authorization.
 
+M1A.1 live closure subsequently repaired the real UI-only concentrated-front
+deployment cadence at `01d84df`: when every real squad is deployed on the
+front route, pressing the existing Start button queues their existing advance
+orders together. The real OS-level final flow now reaches a normal 20-person
+victory, one settlement, and same-city return. It then exposes the remaining
+blocker: normal runtime startup does not load a disk V5 campaign snapshot, so
+the cold-restarted process resets day, resources, and the cleared mainline.
+`M1A1_LIVE_CLOSURE=FAIL_COLD_RUNTIME_PERSISTENCE_UNWIRED`; evidence and the
+recording digest are in `docs/m1a/TXWZS_M1A1_LIVE_CLOSURE_REPORT.md`.
+
 ## M0 R0C single build slot and ready placement
 
 R0C replaces the R0B map-foundation order with one current-city build slot.
