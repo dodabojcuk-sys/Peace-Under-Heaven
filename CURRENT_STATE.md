@@ -1,5 +1,23 @@
 # 当前状态
 
+## M0 R0C.1 top-bar responsive closure
+
+R0C.1 is a local-only presentation repair on `bab6b78f`. The top bar now
+allocates disjoint resource, city, date/settlement, deadline/pressure, and
+speed/pause regions from the active viewport rather than combining left and
+right fixed anchors. Settlement detail uses two rows and yields only secondary
+detail; mainline deadline, pressure, security, speed, and pause retain readable
+space without reducing font sizes.
+
+The R0C.1 focused runner verifies the longest live settlement and pressure copy
+at 1152x648, 1280x720, and 1440x900, including pairwise region-rectangle
+disjointness. One native Godot PNG per target resolution is in
+`docs/m0/evidence/r0c1/`. R0C focused input/persistence smoke and all 49
+dynamically discovered smoke runners pass. Construction queues, resource
+transactions, placement, roads, and save behavior were not changed.
+
+`R0C1_TOPBAR_RESPONSIVE=PASS_LOCAL_ONLY`
+
 ## M0 R0C single build slot and ready placement
 
 R0C replaces the R0B map-foundation order with one current-city build slot.

@@ -16,7 +16,10 @@ const DANGER := Color("df8d7f")
 @onready var current_city: Label = $TopStatusBar/CurrentCity
 @onready var time_summary: Label = $TopStatusBar/TimeSummary
 @onready var daily_report: Label = $TopStatusBar/DailyReport
+@onready var next_stage_summary: Label = $TopStatusBar/NextStageSummary
 @onready var alert_summary: Label = $TopStatusBar/AlertSummary
+@onready var time_speed_option: OptionButton = $TopStatusBar/TimeSpeedOption
+@onready var pause_button: Button = $TopStatusBar/PauseButton
 @onready var city_bar: Panel = $CityBar
 @onready var city_bar_toggle: Button = $CityBarToggle
 @onready var city_title: Label = $CityBar/Title
@@ -78,6 +81,8 @@ func _apply_visual_tokens() -> void:
 	for separator in [
 		$TopStatusBar/DividerOne,
 		$TopStatusBar/DividerTwo,
+		$TopStatusBar/DividerThree,
+		$TopStatusBar/DividerFour,
 		$BuildingDetailPanel/Divider,
 	]:
 		(separator as ColorRect).color = BORDER
@@ -128,6 +133,11 @@ func _refresh_read_model() -> void:
 		profile_name = construction_controller.get_layout_profile_name()
 	current_city.text = "%s  ·  %s" % [city_name, profile_name]
 	minimap_label.text = "部署概览 · %s" % city_name
+	var mainline: Dictionary = construction_controller.get_mainline_pressure_state()
+	next_stage_summary.text = "下一阶段：%s·%d日" % [
+		str(mainline.next_stage_name),
+		int(mainline.next_stage_days),
+	]
 	var garrison: Dictionary = construction_controller.get_garrison_snapshot()
 	var queue: Dictionary = construction_controller.get_training_queue_snapshot()
 	army_status.text = "驻军 / 训练\n驻军 %d · 可派 %d/%d\n队列 %d · 建造中 %d 项" % [
@@ -153,28 +163,7 @@ func _layout_for_viewport() -> void:
 
 	top_status_bar.position = Vector2.ZERO
 	top_status_bar.size = Vector2(width, top_height)
-	resource_summary.position = Vector2(edge, 14.0)
-	resource_summary.size = Vector2(left_width + 115.0, 28.0)
-	$TopStatusBar/DividerOne.position = Vector2(left_width + 132.0, 14.0)
-	$TopStatusBar/DividerOne.size = Vector2(1.0, top_height - 28.0)
-	current_city.position = Vector2(left_width + 152.0, 14.0)
-	current_city.size = Vector2(220.0, 28.0)
-	$TopStatusBar/DividerTwo.position = Vector2(left_width + 385.0, 14.0)
-	$TopStatusBar/DividerTwo.size = Vector2(1.0, top_height - 28.0)
-	time_summary.position = Vector2(left_width + 405.0, 14.0)
-	time_summary.size = Vector2(88.0, 28.0)
-	daily_report.position = Vector2(left_width + 500.0, 14.0)
-	daily_report.visible = width >= 1280.0
-	daily_report.size = Vector2(
-		maxf(0.0, width - 420.0 - daily_report.position.x),
-		46.0
-	)
-	$TopStatusBar/TimeSpeedOption.position = Vector2(width - 235.0, 14.0)
-	$TopStatusBar/TimeSpeedOption.size = Vector2(78.0, 34.0)
-	$TopStatusBar/PauseButton.position = Vector2(width - 149.0, 14.0)
-	$TopStatusBar/PauseButton.size = Vector2(72.0, 34.0)
-	alert_summary.position = Vector2(width - 410.0, 16.0)
-	alert_summary.size = Vector2(160.0, 46.0)
+	_layout_top_status_regions(width, top_height, edge)
 
 	city_bar.position = Vector2(edge, rail_top)
 	city_bar.size = Vector2(left_width, maxf(360.0, height - rail_top - edge))
@@ -279,6 +268,92 @@ func _layout_detail(width: float) -> void:
 	$BuildingDetailPanel/ConstructionPriorityOption.size.x = width - 40.0
 	$BuildingDetailPanel/RemoveButton.size.x = width - 40.0
 	$BuildingDetailPanel/UpgradeButton.size.x = width - 40.0
+
+
+func _layout_top_status_regions(width: float, top_height: float, edge: float) -> void:
+	# The top bar has five ordered ownership regions. Their minimums protect
+	# mainline status and time controls; only settlement detail yields width.
+	var gap := clampf(width * 0.008, 8.0, 12.0)
+	var resource_width := clampf(width * 0.21, 232.0, 270.0)
+	var city_width := clampf(width * 0.15, 160.0, 200.0)
+	var alert_width := clampf(width * 0.20, 220.0, 288.0)
+	var speed_width := 78.0
+	var pause_width := 72.0
+	var fixed_width := (
+		resource_width
+		+ city_width
+		+ alert_width
+		+ speed_width
+		+ pause_width
+		+ gap * 4.0
+		+ edge * 2.0
+	)
+	var settlement_width := maxf(168.0, width - fixed_width)
+	var x := edge
+	var label_y := floorf((top_height - 22.0) * 0.5)
+	var control_y := floorf((top_height - 34.0) * 0.5)
+	var separator_y := 8.0
+	var separator_height := maxf(0.0, top_height - separator_y * 2.0)
+
+	resource_summary.position = Vector2(x, label_y)
+	resource_summary.size = Vector2(resource_width, 22.0)
+	x += resource_width + gap
+	_layout_top_separator($TopStatusBar/DividerOne, x - gap * 0.5, separator_y, separator_height)
+
+	current_city.position = Vector2(x, label_y)
+	current_city.size = Vector2(city_width, 22.0)
+	x += city_width + gap
+	_layout_top_separator($TopStatusBar/DividerTwo, x - gap * 0.5, separator_y, separator_height)
+
+	time_summary.position = Vector2(x, 8.0)
+	time_summary.size = Vector2(104.0, 20.0)
+	daily_report.position = Vector2(x + 110.0, 8.0)
+	# Date and settlement own two rows: the date and settlement share row one;
+	# next-stage detail receives row two. Trailing settlement detail clips here.
+	daily_report.size = Vector2(maxf(0.0, settlement_width - 110.0), 20.0)
+	daily_report.visible = true
+	daily_report.clip_text = true
+	daily_report.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	next_stage_summary.position = Vector2(x + 110.0, 26.0)
+	next_stage_summary.size = Vector2(maxf(0.0, settlement_width - 110.0), 20.0)
+	next_stage_summary.clip_text = true
+	next_stage_summary.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	x += settlement_width + gap
+	_layout_top_separator($TopStatusBar/DividerThree, x - gap * 0.5, separator_y, separator_height)
+
+	alert_summary.position = Vector2(x, 8.0)
+	alert_summary.size = Vector2(alert_width, 36.0)
+	alert_summary.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
+	alert_summary.clip_text = true
+	x += alert_width + gap
+	_layout_top_separator($TopStatusBar/DividerFour, x - gap * 0.5, separator_y, separator_height)
+
+	time_speed_option.position = Vector2(x, control_y)
+	time_speed_option.size = Vector2(speed_width, 34.0)
+	x += speed_width + gap
+	pause_button.position = Vector2(x, control_y)
+	pause_button.size = Vector2(pause_width, 34.0)
+
+
+func _layout_top_separator(separator: ColorRect, x: float, y: float, height: float) -> void:
+	separator.position = Vector2(x, y)
+	separator.size = Vector2(1.0, height)
+
+
+func get_top_status_region_rects() -> Dictionary:
+	return {
+		"resources": resource_summary.get_global_rect(),
+		"city": current_city.get_global_rect(),
+		"date_and_settlement": time_summary.get_global_rect().merge(
+			daily_report.get_global_rect()
+		).merge(
+			next_stage_summary.get_global_rect()
+		),
+		"deadline_and_pressure": alert_summary.get_global_rect(),
+		"speed_and_pause": time_speed_option.get_global_rect().merge(
+			pause_button.get_global_rect()
+		),
+	}
 
 
 func _panel_style() -> StyleBoxFlat:

@@ -5744,26 +5744,17 @@ func _rebuild_daily_report() -> void:
 	var wood_loss := int(last_daily_breakdown.event_wood_loss)
 	var food_loss := int(last_daily_breakdown.event_food_loss)
 	if wood_loss > 0 or food_loss > 0:
-		var mainline := get_mainline_pressure_state()
 		var loss_parts: Array[String] = []
 		if wood_loss > 0:
 			loss_parts.append("木材 %d" % wood_loss)
 		if food_loss > 0:
 			loss_parts.append("粮食 %d" % food_loss)
-		last_daily_report = "今日损失：%s · 治安 %d\n下一阶段：%s（%d 日后） · 生产 -%d%% / 建设 -%d%%" % [
+		last_daily_report = "今日结算：损失 %s" % [
 			"、".join(loss_parts),
-			city_security,
-			str(mainline.next_stage_name),
-			int(mainline.next_stage_days),
-			100 - roundi(float(mainline.production_modifier_permille) / 10.0),
-			100 - roundi(float(mainline.construction_modifier_permille) / 10.0),
 		]
 	else:
-		last_daily_report = "今日结算：木材 +%d · 粮食 +%d · 维护粮食 -%d · 研究 +%d" % [
+		last_daily_report = "今日结算：木材+%d" % [
 			int(last_daily_breakdown.wood_income),
-			int(last_daily_breakdown.food_income),
-			int(last_daily_breakdown.maintenance_food),
-			int(last_daily_breakdown.research_income),
 		]
 	if int(last_daily_breakdown.stopped_placement_id) >= 0:
 		last_daily_report += "｜生产受扰"

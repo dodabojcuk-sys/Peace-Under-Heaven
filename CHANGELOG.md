@@ -5,6 +5,18 @@
 
 ## Unreleased
 
+### M0 R0C.1 top-bar responsive closure
+
+- Replaced mixed fixed-anchor top-bar positioning with five ordered responsive
+  regions: resources, city, date/settlement, deadline/pressure, and speed/pause.
+- Kept time and settlement within a two-row budget, preserving the next-stage
+  line while clipping only trailing settlement detail at the smallest target.
+- Added a 57-assertion three-resolution region-boundary runner and three native
+  Godot screenshots of the longest settlement/deadline/pressure state.
+- Re-ran R0C focused input/persistence smoke and all 49 dynamic smoke runners;
+  no construction, resource, placement, road, save, push, merge, or deployment
+  behavior changed.
+
 ### M0 R0C single build slot and ready placement
 
 - Replaced new-building map foundations with one current-city off-map build

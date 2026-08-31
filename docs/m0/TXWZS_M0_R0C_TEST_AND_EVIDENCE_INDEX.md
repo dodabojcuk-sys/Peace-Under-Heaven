@@ -67,3 +67,18 @@ diagnostic only; the delivered MP4 is not a screenshot carousel.
 The evidence supports an engineering candidate only. Founder must still play
 the one-minute queue-to-placement journey and judge clarity, density, and feel.
 No merge, push, deploy, new gameplay, or Founder acceptance is claimed.
+
+## R0C.1 top-bar responsive closure
+
+- `tests/run_m0_r0c1_topbar_responsive_smoke.gd`: 57 assertions across
+  1152x648, 1280x720, and 1440x900. It drives one settled day with `今日结算`,
+  `下一阶段`, `主线期限`, `压力`, and `治安` present, then asserts all five
+  top-bar region rectangles are inside the bar and pairwise disjoint.
+- `tests/capture_m0_r0c1_topbar_evidence.gd` renders the same state with the
+  native Godot compatibility renderer. Captures are:
+  `docs/m0/evidence/r0c1/topbar-longest-state-1152x648.png`,
+  `topbar-longest-state-1280x720.png`, and
+  `topbar-longest-state-1440x900.png`.
+- R0C focused smoke remains `33/33 PASS`; full dynamic discovery is rerun as
+  `49/49` runner exits with no failed runner. This is engineering verification,
+  not Founder experience acceptance.

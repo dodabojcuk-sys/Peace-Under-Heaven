@@ -523,6 +523,15 @@ offset_bottom = 33.0
 mouse_filter = 2
 color = Color(0.65098, 0.631373, 0.596078, 1)
 
+[node name="DividerThree" type="ColorRect" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 696.0
+offset_top = 13.0
+offset_right = 697.0
+offset_bottom = 33.0
+mouse_filter = 2
+color = Color(0.65098, 0.631373, 0.596078, 1)
+
 [node name="TimeSummary" type="Label" parent="UI/Shell/TopStatusBar"]
 layout_mode = 0
 offset_left = 481.0
@@ -544,6 +553,26 @@ mouse_filter = 2
 theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
 theme_override_font_sizes/font_size = 12
 text = "尚未结算"
+
+[node name="NextStageSummary" type="Label" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 574.0
+offset_top = 31.0
+offset_right = 696.0
+offset_bottom = 47.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 12
+text = "下一阶段：警戒·3日"
+
+[node name="DividerFour" type="ColorRect" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 852.0
+offset_top = 13.0
+offset_right = 853.0
+offset_bottom = 33.0
+mouse_filter = 2
+color = Color(0.65098, 0.631373, 0.596078, 1)
 
 [node name="TimeSpeedOption" type="OptionButton" parent="UI/Shell/TopStatusBar"]
 layout_mode = 0
