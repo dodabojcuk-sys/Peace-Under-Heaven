@@ -312,6 +312,9 @@ const PRESET_BUILDING_DEFINITIONS := [
 @onready var enter_first_war_button: Button = (
 	$"../UI/Shell/BuildingDetailPanel/FirstWarActions/EnterBattleButton"
 )
+@onready var current_mainline_entry_button: Button = (
+	$"../UI/Shell/TopStatusBar/CurrentMainlineButton"
+)
 @onready var order_retreat_button: Button = (
 	$"../UI/Shell/BuildingDetailPanel/FirstWarActions/OrderRetreatButton"
 )
@@ -505,6 +508,9 @@ func _ready() -> void:
 	restore_checkpoint_button.pressed.connect(restore_readiness_checkpoint)
 	restart_map_button.pressed.connect(restart_first_map)
 	enter_first_war_button.pressed.connect(enter_first_war_battle)
+	current_mainline_entry_button.pressed.connect(
+		_on_current_mainline_entry_pressed
+	)
 	order_retreat_button.pressed.connect(
 		request_first_war_retreat_confirmation
 	)
@@ -2123,7 +2129,12 @@ func get_first_war_committed_count() -> int:
 
 func can_enter_first_war() -> bool:
 	return (
-		first_war_state == FirstWarState.PENDING
+		first_war_state in [
+			FirstWarState.PENDING,
+			# Retreat is a settled loss, not a mainline clear. The current-mainline
+			# entry may create a fresh attempt against the same remaining threat.
+			FirstWarState.RESOLVED_RETREAT,
+		]
 		and _active_battle_reservation.is_empty()
 		and get_first_war_committed_count() > 0
 		and not is_instance_valid(_formal_battle_scene)
@@ -2160,6 +2171,12 @@ func enter_first_war_battle() -> bool:
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return true
+
+
+func _on_current_mainline_entry_pressed() -> void:
+	# This is a presentation entry only. The existing first-war gate still owns
+	# attempt uniqueness, city binding, and all battle request creation.
+	enter_first_war_battle()
 
 
 func get_formal_battle_scene() -> C0BattleGraybox:
@@ -4836,6 +4853,11 @@ func apply_battle_result_atomic(
 		"infantry_after": next_infantry,
 		"wood_after": next_wood,
 		"food_after": next_food,
+		"mainline_cleared": (
+			request.formal_city_entry
+			and battle_result.outcome == BattleOutcome.Value.VICTORY
+			and request.level_id == FIRST_WAR_LEVEL_ID
+		),
 	}
 
 	if not _commit_national_resource_targets(
@@ -4854,6 +4876,11 @@ func apply_battle_result_atomic(
 		city_fallen = (
 			battle_result.outcome == BattleOutcome.Value.DEFEAT
 		)
+	if bool(summary.mainline_cleared):
+		# The result ledger and national-resource transaction are now committed.
+		# Clearing here makes victory effective on the one authorized confirm,
+		# while retreat and defeat keep the existing pressure progression.
+		_current_mainline_level.mark_cleared(current_day)
 	_committed_battle_result_ids[battle_result.result_id] = (
 		summary.duplicate(true)
 	)
@@ -7913,6 +7940,37 @@ func _refresh_first_war_ui() -> void:
 			if _first_war_pending_outcome == &"DEFEAT"
 			else "确认战后摘要"
 		)
+	_refresh_current_mainline_entry_ui()
+
+
+func _refresh_current_mainline_entry_ui() -> void:
+	if _current_mainline_level.cleared:
+		current_mainline_entry_button.text = "主线已完成 · 压力解除"
+		current_mainline_entry_button.tooltip_text = "当前主线已结算，后续压力已停止"
+		current_mainline_entry_button.disabled = true
+		return
+	if can_enter_first_war():
+		current_mainline_entry_button.text = (
+			"再次进入当前主线"
+			if first_war_state == FirstWarState.RESOLVED_RETREAT
+			else "进入当前主线"
+		)
+		current_mainline_entry_button.tooltip_text = "进入北坡战场；确认战果后才写回城市"
+		current_mainline_entry_button.disabled = false
+		return
+	if _first_war_pending_outcome != &"":
+		current_mainline_entry_button.text = "主线战果待确认"
+		current_mainline_entry_button.tooltip_text = "战果已写回，返回城市后确认摘要"
+		current_mainline_entry_button.disabled = true
+		return
+	if first_war_state == FirstWarState.IN_BATTLE:
+		current_mainline_entry_button.text = "当前主线交战中"
+		current_mainline_entry_button.tooltip_text = "当前战斗尚未完成"
+		current_mainline_entry_button.disabled = true
+		return
+	current_mainline_entry_button.text = "主线：第 %d 日应战" % FIRST_WAR_PENDING_DAY
+	current_mainline_entry_button.tooltip_text = "主线期限到达后可从此直接进入北坡战场"
+	current_mainline_entry_button.disabled = true
 
 
 func _first_war_outcome_display_name(outcome: StringName) -> String:

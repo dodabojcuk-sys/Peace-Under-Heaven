@@ -1,5 +1,25 @@
 # Product Successor Decisions
 
+## M1A current-mainline battle settlement return
+
+- The deadline-and-pressure region is the single player-facing entry to the
+  existing current mainline; it is not a sixth floating HUD region or a new
+  combat mode.
+- `CombatTransactionCoordinator` retains attempt uniqueness, immutable battle
+  facts, authorized confirmation, and same-city return. `BattleSession` and
+  `BattleAttemptState` remain attempt-local.
+- `ConstructionController.apply_battle_result_atomic` remains the only formal
+  city writeback. On formal current-mainline victory it clears
+  `CurrentMainlineLevel` only after the existing national-resource transaction
+  has succeeded; retreat and defeat never clear it.
+- A settled retreat may re-enter the unresolved current mainline without
+  resetting strategic time, deadline, or accumulated losses. Defeat retains
+  the existing city-loss outcome and is not rebranded as a retry.
+- V5 schema 5 is unchanged. It persists a returned city but intentionally does
+  not serialize a live C0 battle session or active battle reservation.
+- Engineering evidence does not grant Founder acceptance or authorize push,
+  merge, deployment, or an expanded warfare feature.
+
 ## M0 R0C queue-first construction and ready placement
 
 - The current city owns exactly one building slot with `IDLE`, `PRODUCING`,

@@ -615,6 +615,22 @@ theme_override_font_sizes/font_size = 11
 text = "预警  无"
 vertical_alignment = 1
 
+[node name="CurrentMainlineButton" type="Button" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 864.0
+offset_top = 48.0
+offset_right = 1137.0
+offset_bottom = 76.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "主线：第 7 日应战"
+tooltip_text = "当前主线将在第 7 日进入应战状态"
+
 [node name="CityBar" type="Panel" parent="UI/Shell"]
 visible = false
 layout_mode = 0

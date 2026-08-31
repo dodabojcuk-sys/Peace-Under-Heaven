@@ -18,6 +18,7 @@ const DANGER := Color("df8d7f")
 @onready var daily_report: Label = $TopStatusBar/DailyReport
 @onready var next_stage_summary: Label = $TopStatusBar/NextStageSummary
 @onready var alert_summary: Label = $TopStatusBar/AlertSummary
+@onready var current_mainline_button: Button = $TopStatusBar/CurrentMainlineButton
 @onready var time_speed_option: OptionButton = $TopStatusBar/TimeSpeedOption
 @onready var pause_button: Button = $TopStatusBar/PauseButton
 @onready var city_bar: Panel = $CityBar
@@ -156,7 +157,10 @@ func _layout_for_viewport() -> void:
 	var width := viewport_size.x
 	var height := viewport_size.y
 	var edge := clampf(width * 0.015, 16.0, 32.0)
-	var top_height := clampf(height * 0.078, 66.0, 82.0)
+	# M1A keeps the current-mainline action inside the existing alert region.
+	# Its dedicated action row protects the status copy without creating a sixth
+	# floating top-bar region or reducing type at narrower viewports.
+	var top_height := clampf(height * 0.095, 82.0, 96.0)
 	var left_width := clampf(width * 0.17, 205.0, 250.0)
 	var right_width := clampf(width * 0.23, 278.0, 340.0)
 	var rail_top := top_height + edge
@@ -322,9 +326,11 @@ func _layout_top_status_regions(width: float, top_height: float, edge: float) ->
 	_layout_top_separator($TopStatusBar/DividerThree, x - gap * 0.5, separator_y, separator_height)
 
 	alert_summary.position = Vector2(x, 8.0)
-	alert_summary.size = Vector2(alert_width, 36.0)
+	alert_summary.size = Vector2(alert_width, 38.0)
 	alert_summary.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
 	alert_summary.clip_text = true
+	current_mainline_button.position = Vector2(x, top_height - 30.0)
+	current_mainline_button.size = Vector2(alert_width, 24.0)
 	x += alert_width + gap
 	_layout_top_separator($TopStatusBar/DividerFour, x - gap * 0.5, separator_y, separator_height)
 
@@ -349,7 +355,9 @@ func get_top_status_region_rects() -> Dictionary:
 		).merge(
 			next_stage_summary.get_global_rect()
 		),
-		"deadline_and_pressure": alert_summary.get_global_rect(),
+		"deadline_and_pressure": alert_summary.get_global_rect().merge(
+			current_mainline_button.get_global_rect()
+		),
 		"speed_and_pause": time_speed_option.get_global_rect().merge(
 			pause_button.get_global_rect()
 		),

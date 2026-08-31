@@ -23,6 +23,16 @@ Git、代码、配置、测试和识别明确的运行时证据高于本计划�
 
 ## Current Baseline
 
+### M1A local engineering lane
+
+M1A closes the already-existing current-mainline formal battle return loop on
+top of local R0C.1 commit `cafe26c`. It is intentionally outside the frozen
+V5-G4 authorization lane: one bounded city HUD entry reuses C0, the existing
+transaction coordinator, atomic result ledger, same-city return, and schema-5
+snapshot. Victory ends current-mainline pressure on confirm; retreat/defeat do
+not. Evidence is local engineering evidence only and does not alter V5-G4–G6,
+V6, deployment, or Founder acceptance status.
+
 | Field | Value |
 | --- | --- |
 | Branch | `codex/v5-g0-review-g1-contracts-001` |

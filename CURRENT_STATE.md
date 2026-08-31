@@ -1,5 +1,28 @@
 # 当前状态
 
+## M1A current-mainline battle settlement return loop
+
+M1A is a local-only closure on `cafe26c`. A single current-mainline action now
+lives within the existing deadline/pressure top-bar region and enters the
+existing C0 formal-city battle scene. It reuses the coordinator-bound unique
+attempt, terminal preview, result-ID ledger, one-time resource transaction, and
+guarded same-city return; no new battle, national-resource, city-time, or Save
+authority was introduced.
+
+Victory now clears `CurrentMainlineLevel` in the authorized battle settlement
+immediately after a successful resource commit, so future pressure modifiers
+and pressure events stop on confirm while already committed permanent losses
+remain. Retreat and defeat do not clear it. A retreat may create a fresh
+current-mainline attempt without resetting time/deadline; defeat keeps the
+existing city-loss state. V5 persists returned city/mainline/ledger/build-slot
+and training state unchanged in schema 5. In-progress battle sessions remain
+attempt-local and are deliberately not saveable.
+
+Focused M1A, R0C.1, formal first-war, native PNG, H.264/yuv420p journey, and
+final regression evidence are recorded in `docs/m1a/`.
+
+`M1A_CURRENT_MAINLINE_RETURN=PASS_LOCAL_ONLY_PENDING_FOUNDER_PLAYTEST`
+
 ## M0 R0C.1 top-bar responsive closure
 
 R0C.1 is a local-only presentation repair on `bab6b78f`. The top bar now

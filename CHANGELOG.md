@@ -5,6 +5,20 @@
 
 ## Unreleased
 
+### M1A current-mainline battle settlement return loop
+
+- Added the bounded current-mainline action to the existing deadline/pressure
+  top-bar region, reusing the formal C0 city scene rather than a fixture or a
+  second battle route.
+- Moved successful formal-mainline victory clearing into the existing
+  authorized result settlement, so pressure stops at one confirm; retreat and
+  defeat retain unresolved pressure, and retreat can retry without a time or
+  deadline reset.
+- Added focused entry/preview/idempotency/return/cold-save coverage plus native
+  1152x648, 1280x720, and 1440x900 evidence and a 1152x648 H.264/yuv420p
+  journey MP4. No schema, construction, road, placement, resource-owner, push,
+  merge, or deployment change was made.
+
 ### M0 R0C.1 top-bar responsive closure
 
 - Replaced mixed fixed-anchor top-bar positioning with five ordered responsive
