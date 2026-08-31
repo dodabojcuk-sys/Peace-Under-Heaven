@@ -81,7 +81,12 @@ func _check_normal_twenty_entry_authority() -> void:
 				int(squad.squad_id),
 				CommittedForceSnapshot.FRONT_ROUTE
 			)
-		_check(battle.start_battle(), "the normal 20-person force starts the existing C0 battle")
+		_check(
+			battle.start_battle(true)
+				and battle.coordinator.active_session.accepted_orders.size()
+					== battle.coordinator.active_session.squads.size(),
+			"the concentrated normal force starts as one synchronized front assault"
+		)
 		battle.tick_timer.stop()
 		for squad in battle.coordinator.active_session.squads:
 			battle.issue_squad_order(

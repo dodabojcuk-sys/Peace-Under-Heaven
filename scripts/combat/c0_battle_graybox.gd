@@ -134,7 +134,7 @@ var _recent_actions: Array[String] = []
 
 func _ready() -> void:
 	tick_timer.timeout.connect(_on_tick_timeout)
-	start_button.pressed.connect(start_battle)
+	start_button.pressed.connect(_start_battle_from_ui)
 	exit_button.pressed.connect(request_exit_or_return)
 	exit_cancel_button.pressed.connect(cancel_exit_confirmation)
 	exit_confirm_button.pressed.connect(confirm_exit_as_retreat)
@@ -209,7 +209,11 @@ func configure_noticeboard_mission(
 	)
 
 
-func start_battle() -> bool:
+func _start_battle_from_ui() -> void:
+	start_battle(true)
+
+
+func start_battle(apply_deployment_plan := false) -> bool:
 	if (
 		request == null
 		or request.phase != BattleRequest.PHASE_RESERVED
@@ -220,7 +224,10 @@ func start_battle() -> bool:
 	start_button.disabled = true
 	for squad_id in _squad_ui:
 		_squad_ui[squad_id].route_button.disabled = true
-	_append_recent_action("战斗开始，小队命令将在下一战斗刻生效")
+	if apply_deployment_plan and _queue_concentrated_front_assault():
+		_append_recent_action("正门集中部署已同步推进，命令将在下一战斗刻生效")
+	else:
+		_append_recent_action("战斗开始，小队命令将在下一战斗刻生效")
 	tick_timer.start()
 	_refresh_battle_ui()
 	return true
@@ -336,6 +343,24 @@ func set_squad_route(
 		]
 	)
 	_refresh_battle_ui()
+	return true
+
+
+func _queue_concentrated_front_assault() -> bool:
+	if coordinator.active_session == null:
+		return false
+	var squads: Array = coordinator.active_session.squads
+	if squads.is_empty():
+		return false
+	for squad in squads:
+		if StringName(squad.route_id) != CommittedForceSnapshot.FRONT_ROUTE:
+			return false
+	for squad in squads:
+		if coordinator.issue_order(
+			int(squad.squad_id),
+			BattleOrder.Command.ADVANCE
+		) == null:
+			return false
 	return true
 
 
