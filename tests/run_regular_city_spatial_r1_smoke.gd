@@ -93,9 +93,17 @@ func _run() -> void:
 	_check(construction_menu.visible and controller.is_choosing_template(),
 		"右侧目录进入已有权威模板选择")
 	_check(controller.begin_placing_definition(&"building.logging_camp.t1", Vector2(700.0, 460.0)),
-		"从现有真实建筑定义进入 placement")
+		"SUPERSEDED_BY_R0C：真实建筑定义进入唯一场外建造位")
+	_check(not controller.is_placing() and not placement_grid.is_visible_in_tree(),
+		"场外建设阶段不出现地图 ghost 或局部格线")
+	controller.advance_city_time_for_test(180.0)
+	_check(
+		controller.get_build_slot_state() == controller.BUILD_SLOT_READY_TO_PLACE,
+		"精确付清后产生待放置成品"
+	)
+	controller.activate_ready_placement(Vector2(700.0, 460.0))
 	_check(placement_grid.visible and controller.preview_valid,
-		"placement 仅显示局部格线与有效 footprint")
+		"待放置成品仅显示局部格线与有效 footprint")
 	_check(
 		not shell.has_node("ConstructionEntryPanel/ConfirmPlacementButton"),
 		"建筑 placement 已删除独立确认按钮"
@@ -108,7 +116,6 @@ func _run() -> void:
 			and controller.preview_valid,
 		"鼠标进入右栏旋转按钮不会把合法 ghost 改成界面遮挡"
 	)
-	var before_cancel: Dictionary = controller.export_v5_campaign_snapshot()
 	scene._input(_key_event(KEY_R))
 	_check(controller.get_preview_orientation() == 1,
 		"placement 中 R 快捷键旋转到东向")
@@ -119,6 +126,7 @@ func _run() -> void:
 	scene._input(_key_event(KEY_R))
 	_check(controller.get_preview_orientation() == 1,
 		"确认前建筑保持东向预览")
+	var before_cancel: Dictionary = controller.export_v5_campaign_snapshot()
 	controller.cancel_placing()
 	var after_cancel: Dictionary = controller.export_v5_campaign_snapshot()
 	_check(
@@ -149,8 +157,8 @@ func _run() -> void:
 	_check(int(record.get("orientation", -1)) == 1,
 		"确认后的建筑方向进入唯一权威实例")
 	var snapshot: Dictionary = controller.export_v5_campaign_snapshot()
-	_check(snapshot.schema_version == 4,
-		"含方向的 V5 快照使用 schema 4")
+	_check(snapshot.schema_version == 5,
+		"含方向的 Campaign 快照使用 schema 5")
 	var temp_save_root := "%s/txwzs-r1-orientation-%d" % [
 		OS.get_temp_dir(),
 		Time.get_ticks_usec(),
@@ -176,6 +184,7 @@ func _run() -> void:
 	var legacy_v2 := snapshot.duplicate(true)
 	legacy_v2.schema_version = 2
 	legacy_v2.erase("mainline_level")
+	legacy_v2.erase("build_slot")
 	legacy_v2.city.erase("security")
 	for placement in legacy_v2.placements:
 		for key in [
@@ -189,7 +198,7 @@ func _run() -> void:
 	var legacy_validation: Dictionary = controller.validate_v5_campaign_snapshot(legacy_v2)
 	_check(
 		bool(legacy_validation.valid)
-			and int(legacy_validation.snapshot.schema_version) == 4
+			and int(legacy_validation.snapshot.schema_version) == 5
 			and int(legacy_validation.snapshot.placements[0].orientation) == 0,
 		"旧 schema 2 存档载入时稳定默认北向"
 	)

@@ -262,7 +262,9 @@ func _run() -> void:
 	first_center = _building_screen_center(construction, first_placement_id)
 	_click_via_root(scene, first_center)
 	_check(selection.has_selection(), "进入建造前存在选中建筑")
-	construction.begin_placing(Vector2(700.0, 500.0))
+	construction.start_build_project(&"building.logging_camp.t1")
+	construction.advance_city_time_for_test(180.0)
+	construction.activate_ready_placement(Vector2(700.0, 500.0))
 	_check(construction.is_placing(), "进入 placing 状态")
 	_check(not selection.has_selection(), "进入 placing 清除当前选择")
 	_check(not detail_panel.visible and not selection_outline.visible,

@@ -5,6 +5,25 @@
 
 ## Unreleased
 
+### M0 R0C single build slot and ready placement
+
+- Replaced new-building map foundations with one current-city off-map build
+  slot; zero resources register a 0% waiting plan and partial resources advance
+  only alongside exact incremental payment.
+- Added one fully paid ready token at 100%; actual input can rotate and place it
+  once as a completed building with no second charge, while invalid placement
+  retains the token and successful placement exits.
+- Preserved direct player-road drag construction as an independent flow and
+  removed construction priority from the new building-slot UI.
+- Upgraded campaign persistence to schema 5 with one `build_slot`; schema 4
+  foundations migrate non-destructively and lock only the new slot.
+- Added exact refunds, pressure-aware ETA/progress, responsive slot UI, focused
+  state/input/persistence tests, and updated conflicting R0B tests as
+  `SUPERSEDED_BY_R0C`.
+- Passed 48/48 dynamic runners and delivered ten native screenshots plus an
+  uncut 1152x648 H.264/yuv420p MP4. Founder live smoke remains pending; no push,
+  merge, deploy, or new gameplay was performed.
+
 ### M0 R0B direct click and explicit failure feedback
 
 - Replaced the building-only right-rail confirmation step with one revalidated

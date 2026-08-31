@@ -164,7 +164,11 @@ func _layout_for_viewport() -> void:
 	time_summary.position = Vector2(left_width + 405.0, 14.0)
 	time_summary.size = Vector2(88.0, 28.0)
 	daily_report.position = Vector2(left_width + 500.0, 14.0)
-	daily_report.size = Vector2(maxf(140.0, width - right_width - left_width - 560.0), 46.0)
+	daily_report.visible = width >= 1280.0
+	daily_report.size = Vector2(
+		maxf(0.0, width - 420.0 - daily_report.position.x),
+		46.0
+	)
 	$TopStatusBar/TimeSpeedOption.position = Vector2(width - 235.0, 14.0)
 	$TopStatusBar/TimeSpeedOption.size = Vector2(78.0, 34.0)
 	$TopStatusBar/PauseButton.position = Vector2(width - 149.0, 14.0)
@@ -205,8 +209,15 @@ func _layout_for_viewport() -> void:
 	$MinimapPlaceholder/ViewportFrame.visible = false
 
 	var is_placing: bool = bool(construction_controller.is_placing())
+	var has_build_slot := (
+		construction_controller.has_method("has_build_project")
+		and bool(construction_controller.has_build_project())
+	)
 	construction_entry.position = Vector2(width - right_width - edge, rail_top + 140.0)
-	construction_entry.size = Vector2(right_width, 206.0 if is_placing else 66.0)
+	construction_entry.size = Vector2(
+		right_width,
+		300.0 if has_build_slot and not is_placing else (206.0 if is_placing else 66.0)
+	)
 	build_entry_button.position = Vector2(12.0, 12.0)
 	build_entry_button.size = Vector2(right_width - 24.0, 42.0)
 	build_mode_status.position = Vector2(14.0, 12.0)
@@ -219,6 +230,14 @@ func _layout_for_viewport() -> void:
 	confirm_road_button.size = Vector2((right_width - 42.0) * 0.5, 34.0)
 	cancel_placement_button.position = Vector2(14.0, 154.0)
 	cancel_placement_button.size = Vector2(right_width - 28.0, 34.0)
+	$ConstructionEntryPanel/BuildSlotProgress.position = Vector2(14.0, 78.0)
+	$ConstructionEntryPanel/BuildSlotProgress.size = Vector2(right_width - 28.0, 22.0)
+	$ConstructionEntryPanel/BuildSlotDetail.position = Vector2(14.0, 108.0)
+	$ConstructionEntryPanel/BuildSlotDetail.size = Vector2(right_width - 28.0, 88.0)
+	$ConstructionEntryPanel/BuildSlotPrimaryButton.position = Vector2(14.0, 204.0)
+	$ConstructionEntryPanel/BuildSlotPrimaryButton.size = Vector2(right_width - 28.0, 34.0)
+	$ConstructionEntryPanel/BuildSlotCancelButton.position = Vector2(14.0, 246.0)
+	$ConstructionEntryPanel/BuildSlotCancelButton.size = Vector2(right_width - 28.0, 34.0)
 
 	construction_menu.position = Vector2(width - right_width - edge, rail_top + 218.0)
 	construction_menu.size = Vector2(right_width, minf(390.0, height - rail_top - 230.0))

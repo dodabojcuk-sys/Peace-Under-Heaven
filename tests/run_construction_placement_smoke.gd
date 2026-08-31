@@ -58,8 +58,9 @@ func _run() -> void:
 	_check(controller.is_choosing_template(), "右侧建造入口打开模板列表")
 	_check(construction_menu.visible, "模板列表显示当前正式建筑")
 	build_template_button.emit_signal("pressed")
-	_check(controller.is_placing(), "伐木场模板进入原 placing")
-	controller.cancel_placing()
+	_check(controller.has_build_project() and not controller.is_placing(),
+		"SUPERSEDED_BY_R0C：伐木场模板进入唯一场外建造位")
+	controller.cancel_build_project()
 
 	var reference_map_position := Vector2(1320.0, 920.0)
 	var reference_cell: Vector2i = controller.map_position_to_origin_cell(
@@ -85,12 +86,13 @@ func _run() -> void:
 		controller.cell_to_map_local(Vector2i(20, 20))
 		+ controller.TEST_BUILDING_WORLD_SIZE * 0.5
 	)
-	controller.begin_placing(safe_screen_position)
+	_prepare_ready_placement(controller, safe_screen_position)
 	_check(controller.is_placing(), "建造入口进入 placing")
 	_check(preview.visible, "placing 状态显示预览")
 	_check(controller.preview_valid, "安全区域预览有效")
 	var first_origin: Vector2i = controller.preview_origin_cell
-	_check(controller.confirm_current_preview(), "第一次有效放置成功")
+	_check(controller.commit_building_from_map_click(safe_screen_position).success,
+		"第一次待放置成品有效落地")
 	_check(controller.get_occupied_cell_count() == initial_occupied_count + 4,
 		"首次放置在固定占用基线上增加四个格")
 	_check(controller.get_building_count() == initial_building_count + 1,
@@ -98,8 +100,15 @@ func _run() -> void:
 	_check(placed_buildings.get_child_count() == 1, "首次放置创建一个世界节点")
 	_check(controller.preview_origin_cell == first_origin,
 		"确认使用当前可见预览的同一网格 intent")
-	_check(not controller.preview_valid, "已占用位置的预览变为无效")
-	_check(not controller.confirm_current_preview(), "重复覆盖已占用格被拒绝")
+	var occupied_validation: Dictionary = controller.evaluate_origin_cell_for_definition(
+		first_origin,
+		controller.get_definition(&"building.logging_camp.t1"),
+		false,
+		false
+	)
+	_check(not occupied_validation.valid, "已占用位置继续由统一合法性判为无效")
+	_check(not controller.commit_building_from_map_click(safe_screen_position).success,
+		"无 ready token 时重复点击被拒绝")
 	_check(controller.get_occupied_cell_count() == initial_occupied_count + 4,
 		"无效确认不改变 occupied_cells")
 
@@ -118,11 +127,16 @@ func _run() -> void:
 	scene.set_city_bar_expanded(true)
 	await process_frame
 	for ui_name in ui_overlap_points:
+		if controller.get_build_slot_state() == controller.BUILD_SLOT_IDLE:
+			controller.start_build_project(&"building.logging_camp.t1")
+			controller.advance_city_time_for_test(180.0)
 		controller.begin_placing(ui_overlap_points[ui_name])
 		_check(not controller.preview_valid, "与 %s 投影重叠时无效" % ui_name)
 		_check(controller.preview_invalid_reason == "被界面遮挡",
 			"%s 重叠由实际 UI rect 判定" % ui_name)
-		_check(not controller.confirm_current_preview(),
+		_check(not controller.commit_building_from_map_click(
+			ui_overlap_points[ui_name]
+		).success,
 			"%s 下方左键确认不会放置" % ui_name)
 		controller.cancel_placing()
 	_check(controller.get_building_count() == initial_building_count + 1,
@@ -205,7 +219,8 @@ func _run() -> void:
 		"idle 状态保留原左键阈值拖动路径")
 	_check(scene.active_drag_button == -1, "idle 拖动松开立即停止")
 
-	controller.begin_placing(Vector2(760.0, 420.0))
+	controller.wood += 40
+	_prepare_ready_placement(controller, Vector2(760.0, 420.0))
 	var placing_camera_position := camera.position
 	var middle_press := InputEventMouseButton.new()
 	middle_press.button_index = MOUSE_BUTTON_MIDDLE
@@ -244,6 +259,13 @@ func _check(condition: bool, description: String) -> void:
 	else:
 		failures.append(description)
 		push_error("FAIL: %s" % description)
+
+
+func _prepare_ready_placement(controller: Node, screen_position: Vector2) -> void:
+	if controller.get_build_slot_state() == controller.BUILD_SLOT_IDLE:
+		controller.start_build_project(&"building.logging_camp.t1")
+		controller.advance_city_time_for_test(180.0)
+	controller.begin_placing(screen_position)
 
 
 func _finish() -> void:

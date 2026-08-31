@@ -212,11 +212,14 @@ func _run() -> void:
 		+ construction.TEST_BUILDING_WORLD_SIZE * 0.5
 	)
 	var original_screen: Vector2 = construction.map_local_to_screen(original_center)
-	construction.begin_placing(original_screen)
+	construction.start_build_project(&"building.logging_camp.t1")
+	construction.advance_city_time_for_test(180.0)
+	construction.activate_ready_placement(original_screen)
 	_check(construction.preview_origin_cell == first_origin,
 		"既有建造入口重新指向原 footprint")
 	_check(construction.preview_valid, "移除后原位置恢复可建")
-	_check(construction.confirm_current_preview(), "既有建造流程可在原位置重建")
+	_check(construction.commit_building_from_map_click(original_screen).success,
+		"R0C 待放置成品可在原位置重建")
 	var rebuilt_id: int = construction.get_placement_ids().back()
 	_check(rebuilt_id == second_id + 1 and rebuilt_id != first_id,
 		"原位重建获得新的单调递增 placement id")
@@ -230,7 +233,9 @@ func _run() -> void:
 	_check(selection.selected_placement_id == rebuilt_id,
 		"原位重建建筑可按新 id 重新选择")
 	remove_button.emit_signal("pressed")
-	construction.begin_placing(Vector2(700.0, 500.0))
+	construction.start_build_project(&"building.logging_camp.t1")
+	construction.advance_city_time_for_test(180.0)
+	construction.activate_ready_placement(Vector2(700.0, 500.0))
 	_check(construction.is_placing(), "确认状态可以转入既有建造模式")
 	_check(not selection.has_selection() and not detail_panel.visible,
 		"进入 placing 清除选择与待确认状态")

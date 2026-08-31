@@ -2,7 +2,7 @@ class_name V5CampaignSnapshot
 extends RefCounted
 
 
-const SCHEMA_VERSION := 4
+const SCHEMA_VERSION := 5
 const SNAPSHOT_KIND := &"campaign_authoritative"
 const CITY_ID := "blackstone_city"
 const ROOT_KEYS := [
@@ -17,6 +17,12 @@ const ROOT_KEYS := [
 	"army_registry",
 	"settlement_ledger",
 	"mainline_level",
+	"build_slot",
+]
+const V4_ROOT_KEYS := [
+	"schema_version", "snapshot_kind", "city_id", "city", "placements",
+	"next_placement_id", "garrison", "training_queue", "army_registry",
+	"settlement_ledger", "mainline_level",
 ]
 const V3_ROOT_KEYS := [
 	"schema_version", "snapshot_kind", "city_id", "city", "placements",
@@ -90,6 +96,17 @@ const LEDGER_KEYS := [
 	"next_battle_transaction_sequence",
 	"next_army_dispatch_transaction_sequence",
 ]
+const BUILD_SLOT_KEYS := [
+	"state",
+	"definition_id",
+	"progress_milliseconds",
+	"required_milliseconds",
+	"total_costs",
+	"paid_costs",
+	"missing_resource_ids",
+	"orientation",
+	"completion_notified",
+]
 
 
 static func validate_structure(
@@ -107,12 +124,13 @@ static func validate_structure(
 	var source_version := int(snapshot.get("schema_version", 0))
 	if (
 		(source_version == SCHEMA_VERSION and not _has_exact_keys(snapshot, ROOT_KEYS))
+		or (source_version == 4 and not _has_exact_keys(snapshot, V4_ROOT_KEYS))
 		or (source_version in [2, 3] and not _has_exact_keys(snapshot, V3_ROOT_KEYS))
 	):
 		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段不完整或含未知字段")
 	if (
 		typeof(snapshot.schema_version) != TYPE_INT
-		or int(snapshot.schema_version) not in [2, 3, SCHEMA_VERSION]
+		or int(snapshot.schema_version) not in [2, 3, 4, SCHEMA_VERSION]
 		or typeof(snapshot.snapshot_kind) != TYPE_STRING_NAME
 		or StringName(snapshot.snapshot_kind) != SNAPSHOT_KIND
 		or typeof(snapshot.city_id) != TYPE_STRING
@@ -142,6 +160,11 @@ static func validate_structure(
 		if not bool(migration.valid):
 			return migration
 		normalized = migration.snapshot
+	if int(normalized.schema_version) == 4:
+		var migration := _migrate_v4_build_slot(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
 	var city_result := _validate_city(normalized.city)
 	if not bool(city_result.valid):
 		return city_result
@@ -152,6 +175,17 @@ static func validate_structure(
 	)
 	if not bool(placement_result.valid):
 		return placement_result
+	var build_slot_result := _validate_build_slot(normalized.build_slot)
+	if not bool(build_slot_result.valid):
+		return build_slot_result
+	if (
+		StringName(normalized.build_slot.state) != &"IDLE"
+		and _has_constructing_placement(normalized.placements)
+	):
+		return _failure(
+			&"LEGACY_BUILD_SLOT_CONFLICT",
+			"旧地图施工存在时不得同时恢复新建造位"
+		)
 	var garrison_result := _validate_garrison(
 		normalized.garrison,
 		allowed_unit_definition_ids
@@ -271,8 +305,36 @@ static func _migrate_v3_m0_defaults(snapshot: Dictionary) -> Dictionary:
 		"applied_event_ids": {},
 		"permanent_losses": {"wood": 0, "food": 0, "city_defense_damage": 0},
 	}
-	normalized.schema_version = SCHEMA_VERSION
+	normalized.schema_version = 4
 	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _migrate_v4_build_slot(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, V4_ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V4 CampaignSnapshot 根字段非法")
+	normalized.build_slot = empty_build_slot()
+	normalized.schema_version = SCHEMA_VERSION
+	return {
+		"valid": true,
+		"error_id": &"",
+		"error": "",
+		"snapshot": normalized,
+	}
+
+
+static func empty_build_slot() -> Dictionary:
+	return {
+		"state": &"IDLE",
+		"definition_id": &"",
+		"progress_milliseconds": 0,
+		"required_milliseconds": 0,
+		"total_costs": {},
+		"paid_costs": {},
+		"missing_resource_ids": [],
+		"orientation": 0,
+		"completion_notified": false,
+	}
 
 
 static func _m0_stage_index(current_day: int) -> int:
@@ -357,6 +419,7 @@ static func migrate_v1(
 		"training_queue": queue.get_snapshot(),
 		"army_registry": ArmyRegistry.new().get_snapshot(),
 		"settlement_ledger": empty_settlement_ledger(),
+		"build_slot": empty_build_slot(),
 		"mainline_level": {
 			"level_id": &"first_map.main_assault.v0",
 			"activated_day": 1,
@@ -553,6 +616,96 @@ static func _validate_placements(
 	if next_placement_id <= maximum_id:
 		return _failure(&"INVALID_PLACEMENTS", "next placement 未单调")
 	return {"valid": true}
+
+
+static func _validate_build_slot(build_slot: Dictionary) -> Dictionary:
+	if not _has_exact_keys(build_slot, BUILD_SLOT_KEYS):
+		return _failure(&"INVALID_BUILD_SLOT", "建造位字段不完整或含未知字段")
+	if (
+		typeof(build_slot.state) != TYPE_STRING_NAME
+		or StringName(build_slot.state) not in [
+			&"IDLE",
+			&"PRODUCING",
+			&"WAITING_MATERIAL",
+			&"READY_TO_PLACE",
+		]
+		or typeof(build_slot.definition_id) != TYPE_STRING_NAME
+		or typeof(build_slot.progress_milliseconds) != TYPE_INT
+		or typeof(build_slot.required_milliseconds) != TYPE_INT
+		or typeof(build_slot.total_costs) != TYPE_DICTIONARY
+		or typeof(build_slot.paid_costs) != TYPE_DICTIONARY
+		or typeof(build_slot.missing_resource_ids) != TYPE_ARRAY
+		or typeof(build_slot.orientation) != TYPE_INT
+		or int(build_slot.orientation) < 0
+		or int(build_slot.orientation) > 3
+		or typeof(build_slot.completion_notified) != TYPE_BOOL
+	):
+		return _failure(&"INVALID_BUILD_SLOT", "建造位字段类型或状态非法")
+	var state := StringName(build_slot.state)
+	if state == &"IDLE":
+		if (
+			StringName(build_slot.definition_id) != &""
+			or int(build_slot.progress_milliseconds) != 0
+			or int(build_slot.required_milliseconds) != 0
+			or not Dictionary(build_slot.total_costs).is_empty()
+			or not Dictionary(build_slot.paid_costs).is_empty()
+			or not Array(build_slot.missing_resource_ids).is_empty()
+			or bool(build_slot.completion_notified)
+		):
+			return _failure(&"INVALID_BUILD_SLOT", "空闲建造位含项目数据")
+		return {"valid": true}
+	if (
+		StringName(build_slot.definition_id) == &""
+		or int(build_slot.required_milliseconds) <= 0
+		or int(build_slot.progress_milliseconds) < 0
+		or int(build_slot.progress_milliseconds) > int(build_slot.required_milliseconds)
+		or Dictionary(build_slot.total_costs).size()
+			!= Dictionary(build_slot.paid_costs).size()
+	):
+		return _failure(&"INVALID_BUILD_SLOT", "建造位项目进度或成本拓扑非法")
+	for resource_id_value in build_slot.total_costs:
+		var resource_id := StringName(resource_id_value)
+		if (
+			resource_id not in [&"wood", &"food"]
+			or typeof(build_slot.total_costs[resource_id_value]) != TYPE_INT
+			or int(build_slot.total_costs[resource_id_value]) <= 0
+			or typeof(build_slot.paid_costs.get(resource_id_value, null)) != TYPE_INT
+			or int(build_slot.paid_costs[resource_id_value]) < 0
+			or int(build_slot.paid_costs[resource_id_value])
+				> int(build_slot.total_costs[resource_id_value])
+		):
+			return _failure(&"INVALID_BUILD_SLOT", "建造位资源投入非法")
+	for missing_id in build_slot.missing_resource_ids:
+		if (
+			typeof(missing_id) != TYPE_STRING_NAME
+			or StringName(missing_id) not in [&"wood", &"food"]
+		):
+			return _failure(&"INVALID_BUILD_SLOT", "建造位缺料身份非法")
+	if state == &"READY_TO_PLACE":
+		if int(build_slot.progress_milliseconds) != int(build_slot.required_milliseconds):
+			return _failure(&"INVALID_BUILD_SLOT", "待放置成品进度未完成")
+		for resource_id in build_slot.total_costs:
+			if int(build_slot.paid_costs[resource_id]) != int(build_slot.total_costs[resource_id]):
+				return _failure(&"INVALID_BUILD_SLOT", "待放置成品未精确付清")
+		if not Array(build_slot.missing_resource_ids).is_empty():
+			return _failure(&"INVALID_BUILD_SLOT", "待放置成品仍含缺料")
+	elif int(build_slot.progress_milliseconds) >= int(build_slot.required_milliseconds):
+		return _failure(&"INVALID_BUILD_SLOT", "未完成状态却已达到完整进度")
+	if state == &"PRODUCING" and not Array(build_slot.missing_resource_ids).is_empty():
+		return _failure(&"INVALID_BUILD_SLOT", "生产状态不得含缺料")
+	if state == &"WAITING_MATERIAL" and Array(build_slot.missing_resource_ids).is_empty():
+		return _failure(&"INVALID_BUILD_SLOT", "缺料状态必须列出资源")
+	return {"valid": true}
+
+
+static func _has_constructing_placement(placements: Array) -> bool:
+	for placement_value in placements:
+		if (
+			placement_value is Dictionary
+			and StringName(placement_value.lifecycle_state) == &"constructing"
+		):
+			return true
+	return false
 
 
 static func _validate_garrison(

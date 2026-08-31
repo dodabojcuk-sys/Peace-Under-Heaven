@@ -210,9 +210,9 @@ func _run() -> void:
 
 	var snapshot: Dictionary = construction.export_v5_campaign_snapshot()
 	_check(
-		int(snapshot.schema_version) == 4
+		int(snapshot.schema_version) == 5
 			and snapshot.placements.size() >= 5,
-		"玩家道路复用 V4 placement 持久化"
+		"玩家道路继续复用 placement 持久化"
 	)
 	var restored_scene := CITY_SCENE.instantiate()
 	root.add_child(restored_scene)

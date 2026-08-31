@@ -182,12 +182,12 @@ func _check_v5_roundtrip_and_v3_migration() -> void:
 	var target_context := await _new_city()
 	var target: Node = target_context.city
 	var restored: Dictionary = target.restore_v5_campaign_snapshot(snapshot)
-	_check(restored.success and target.export_v5_campaign_snapshot() == snapshot, "场景8：V4 精确恢复施工、扣料、优先级、治安与主线压力")
+	_check(restored.success and target.export_v5_campaign_snapshot() == snapshot, "场景8：schema 5 精确恢复 legacy 施工、扣料、优先级、治安与主线压力")
 	var legacy := _to_v3(snapshot)
 	var migrated: Dictionary = target.validate_v5_campaign_snapshot(legacy)
 	_check(
 		migrated.valid
-			and int(migrated.snapshot.schema_version) == 4
+			and int(migrated.snapshot.schema_version) == 5
 			and migrated.snapshot.mainline_level.has("pressure_stage_id")
 			and migrated.snapshot.placements[0].construction_total_costs.is_empty(),
 		"场景8：旧 V3 显式迁移且已付款施工不会重复扣料"
@@ -200,6 +200,7 @@ func _to_v3(snapshot: Dictionary) -> Dictionary:
 	var legacy := snapshot.duplicate(true)
 	legacy.schema_version = 3
 	legacy.erase("mainline_level")
+	legacy.erase("build_slot")
 	legacy.city.erase("security")
 	for placement in legacy.placements:
 		for key in ["construction_state", "construction_progress_milliseconds", "construction_required_milliseconds", "construction_total_costs", "construction_paid_costs", "construction_priority", "construction_missing_resource_ids"]:

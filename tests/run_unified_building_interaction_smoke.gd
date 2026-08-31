@@ -220,9 +220,14 @@ func _run() -> void:
 		"右侧建造 UI 内滚轮不缩放地图")
 
 	build_template_button.emit_signal("pressed")
-	_check(construction.is_placing(), "选择伐木场模板进入 placing")
-	_check(preview.visible, "placing 显示既有建造预览")
-	_check(not construction_menu.visible, "进入 placing 后模板列表关闭")
+	_check(construction.has_build_project() and not construction.is_placing(),
+		"SUPERSEDED_BY_R0C：选择伐木场进入场外建造位")
+	_check(not preview.visible, "场外建设不显示地图预览")
+	construction.advance_city_time_for_test(180.0)
+	construction.activate_ready_placement(Vector2(700.0, 500.0))
+	_check(construction.is_placing() and preview.visible,
+		"成品就绪后进入 placement 并显示预览")
+	_check(not construction_menu.visible, "进入 placement 后模板列表关闭")
 	construction.cancel_placing()
 	_check(not preview.visible, "取消 placing 隐藏预览")
 

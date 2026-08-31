@@ -897,6 +897,46 @@ offset_right = 152.0
 offset_bottom = 150.0
 text = "取消 Esc"
 
+[node name="BuildSlotProgress" type="ProgressBar" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 0
+offset_left = 12.0
+offset_top = 78.0
+offset_right = 148.0
+offset_bottom = 98.0
+mouse_filter = 2
+show_percentage = true
+
+[node name="BuildSlotDetail" type="Label" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 0
+offset_left = 12.0
+offset_top = 106.0
+offset_right = 148.0
+offset_bottom = 196.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 11
+text = "已投入：木材 0/40\n剩余成本：木材 40\n预计完成：等待材料"
+autowrap_mode = 2
+
+[node name="BuildSlotPrimaryButton" type="Button" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 0
+offset_left = 12.0
+offset_top = 204.0
+offset_right = 148.0
+offset_bottom = 238.0
+text = "放置建筑"
+
+[node name="BuildSlotCancelButton" type="Button" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 0
+offset_left = 12.0
+offset_top = 246.0
+offset_right = 148.0
+offset_bottom = 280.0
+text = "取消项目"
+
 [node name="PlacementFeedback" type="Label" parent="UI/Shell"]
 visible = false
 layout_mode = 1

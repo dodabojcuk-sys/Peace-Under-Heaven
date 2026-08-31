@@ -40,10 +40,10 @@ func _run() -> void:
 	var migrated: Dictionary = source.migrate_v1_snapshot_to_v5(v1_active)
 	_check(
 		migrated.success
-			and migrated.snapshot.schema_version == 4
+			and migrated.snapshot.schema_version == 5
 			and migrated.snapshot.snapshot_kind
 				== &"campaign_authoritative",
-		"有效 V1 只读输入确定性迁移为 V4，并默认北向"
+		"有效 V1 只读输入确定性迁移为 schema 5，并默认北向"
 	)
 	var v2_active: Dictionary = migrated.snapshot
 	_check(

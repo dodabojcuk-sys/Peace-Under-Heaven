@@ -1,5 +1,32 @@
 # 当前状态
 
+## M0 R0C single build slot and ready placement
+
+R0C replaces the R0B map-foundation order with one current-city build slot.
+Buildings register off-map, pay through the existing `NationState` ledger as
+pressure-adjusted progress advances, wait at the last paid progress when
+materials are missing, and become one fully paid ready token at 100%. A legal
+ready-placement click creates one completed building without a second payment
+and exits placement; roads retain their independent drag flow.
+
+Campaign persistence is schema 5 with one `build_slot`. Schema 4 foundations
+remain non-destructive legacy records and lock only the new slot until they
+finish. New-flow priority is removed; legacy priority remains readable.
+
+The focused 33-assertion input runner, 48/48 dynamic regression with 2,321
+explicit assertions, three cold-process ready-token roundtrips, physical mouse
+zero-material smoke, ten native screenshots, and an uncut 16.466-second
+H.264/yuv420p MP4 pass. Founder live smoke remains pending. No push, merge,
+deploy, or new gameplay is authorized.
+
+`R0C_ENGINEERING_CANDIDATE=PASS_PENDING_FOUNDER_LIVE_SMOKE`
+
+`R0C_FULL_REGRESSION=48_OF_48_PASS`
+
+`R0C_SAVE_SCHEMA=5`
+
+`R0C_VIDEO=MP4_H264_YUV420P_PASS`
+
 ## M0 R0B direct click and explicit failure feedback
 
 R0B is an isolated engineering candidate based on exact R0A commit

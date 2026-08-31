@@ -129,6 +129,11 @@ const CONSTRUCTION_TICK_MILLISECONDS := 1000
 const CONSTRUCTION_PRIORITY_LOW := 0
 const CONSTRUCTION_PRIORITY_NORMAL := 1
 const CONSTRUCTION_PRIORITY_HIGH := 2
+const BUILD_SLOT_IDLE := &"IDLE"
+const BUILD_SLOT_PRODUCING := &"PRODUCING"
+const BUILD_SLOT_WAITING_MATERIAL := &"WAITING_MATERIAL"
+const BUILD_SLOT_READY_TO_PLACE := &"READY_TO_PLACE"
+const BUILD_SLOT_PLACEMENT_ACTIVE := &"PLACEMENT_ACTIVE"
 const CITY_TIME_SPEEDS := [1.0, 2.0, 4.0]
 const FIRST_WAR_EVENT_ID := &"first_war.north_slope.v0"
 const FIRST_WAR_WARNING_DAY := 6
@@ -243,6 +248,18 @@ const PRESET_BUILDING_DEFINITIONS := [
 )
 @onready var cancel_placement_button: Button = (
 	$"../UI/Shell/ConstructionEntryPanel/CancelPlacementButton"
+)
+@onready var build_slot_progress: ProgressBar = (
+	$"../UI/Shell/ConstructionEntryPanel/BuildSlotProgress"
+)
+@onready var build_slot_detail: Label = (
+	$"../UI/Shell/ConstructionEntryPanel/BuildSlotDetail"
+)
+@onready var build_slot_primary_button: Button = (
+	$"../UI/Shell/ConstructionEntryPanel/BuildSlotPrimaryButton"
+)
+@onready var build_slot_cancel_button: Button = (
+	$"../UI/Shell/ConstructionEntryPanel/BuildSlotCancelButton"
 )
 @onready var placement_feedback: Label = $"../UI/Shell/PlacementFeedback"
 @onready var construction_menu: Control = $"../UI/Shell/ConstructionMenu"
@@ -429,6 +446,7 @@ var _tech_by_id: Dictionary = {}
 var _next_placement_id := 1
 var _detail_panel_active := false
 var _selected_definition: BuildingDefinition
+var _build_slot: Dictionary = _empty_build_slot()
 var _readiness_checkpoint: Dictionary = {}
 var _active_battle_reservation: Dictionary = {}
 var _closed_battle_transactions: Dictionary = {}
@@ -475,6 +493,8 @@ func _ready() -> void:
 	rotate_placement_button.pressed.connect(rotate_preview)
 	confirm_road_button.pressed.connect(confirm_road_preview)
 	cancel_placement_button.pressed.connect(cancel_placing)
+	build_slot_primary_button.pressed.connect(_on_build_slot_primary_pressed)
+	build_slot_cancel_button.pressed.connect(cancel_build_project)
 	pause_button.pressed.connect(toggle_city_time_paused)
 	time_speed_option.item_selected.connect(_on_time_speed_selected)
 	recruit_button.pressed.connect(queue_training)
@@ -560,6 +580,7 @@ func switch_city(next_city_id: StringName) -> bool:
 		return true
 	if (
 		is_placing()
+		or has_build_project()
 		or _road_drag_active
 		or is_city_action_locked_for_battle()
 		or not _active_battle_reservation.is_empty()
@@ -836,6 +857,124 @@ func is_choosing_template() -> bool:
 	return state == ConstructionState.CHOOSING_TEMPLATE
 
 
+func _empty_build_slot() -> Dictionary:
+	return {
+		"state": BUILD_SLOT_IDLE,
+		"definition_id": &"",
+		"progress_milliseconds": 0,
+		"required_milliseconds": 0,
+		"total_costs": {},
+		"paid_costs": {},
+		"missing_resource_ids": [],
+		"orientation": ORIENTATION_NORTH,
+		"completion_notified": false,
+	}
+
+
+func has_build_project() -> bool:
+	return StringName(_build_slot.get("state", BUILD_SLOT_IDLE)) != BUILD_SLOT_IDLE
+
+
+func get_build_slot_state() -> StringName:
+	return StringName(_build_slot.get("state", BUILD_SLOT_IDLE))
+
+
+func get_build_slot_snapshot() -> Dictionary:
+	var snapshot := _build_slot.duplicate(true)
+	if StringName(snapshot.state) == BUILD_SLOT_PLACEMENT_ACTIVE:
+		snapshot.state = BUILD_SLOT_READY_TO_PLACE
+	return snapshot
+
+
+func _has_legacy_construction() -> bool:
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if (
+			not record.is_empty()
+			and StringName(record.get("lifecycle_state", &"")) == &"constructing"
+		):
+			return true
+	return false
+
+
+func start_build_project(definition_id: StringName) -> Dictionary:
+	var before := get_build_slot_state()
+	if is_city_action_locked_for_battle():
+		return _build_slot_result(false, &"CITY_ACTION_LOCKED", before, before)
+	if _has_legacy_construction():
+		_show_placement_feedback("旧存档施工完成后启用新建造队列")
+		return _build_slot_result(false, &"LEGACY_CONSTRUCTION_LOCK", before, before)
+	if has_build_project():
+		var current_definition := get_definition(StringName(_build_slot.definition_id))
+		_show_placement_feedback(
+			"已有建造项目：%s" % (
+				current_definition.display_name if current_definition != null else "建筑"
+			)
+		)
+		return _build_slot_result(false, &"BUILD_SLOT_OCCUPIED", before, before)
+	var definition := get_definition(definition_id)
+	if (
+		definition == null
+		or definition.placement_kind != PLACEMENT_KIND_PLACED
+		or definition.build_days <= 0
+	):
+		return _build_slot_result(false, &"INVALID_DEFINITION", before, before)
+	var total_costs: Dictionary = {}
+	if definition.wood_cost > 0:
+		total_costs[&"wood"] = definition.wood_cost
+	if definition.food_cost > 0:
+		total_costs[&"food"] = definition.food_cost
+	var paid_costs: Dictionary = {}
+	for resource_id in total_costs:
+		paid_costs[resource_id] = 0
+	_build_slot = {
+		"state": BUILD_SLOT_PRODUCING,
+		"definition_id": definition.definition_id,
+		"progress_milliseconds": 0,
+		"required_milliseconds": maxi(
+			definition.build_days * MILLISECONDS_PER_DAY,
+			CONSTRUCTION_TICK_MILLISECONDS
+		),
+		"total_costs": total_costs,
+		"paid_costs": paid_costs,
+		"missing_resource_ids": [],
+		"orientation": ORIENTATION_NORTH,
+		"completion_notified": false,
+	}
+	_update_build_slot_wait_state()
+	state = ConstructionState.IDLE
+	_selected_definition = null
+	_sync_construction_ui()
+	_refresh_city_ui()
+	city_state_changed.emit()
+	construction_presentation_changed.emit()
+	if get_build_slot_state() == BUILD_SLOT_WAITING_MATERIAL:
+		_show_placement_feedback(
+			"材料不足，已等待：%s" % _build_slot_missing_text(
+				int(_build_slot.progress_milliseconds) > 0
+			)
+		)
+	return _build_slot_result(true, &"", before, get_build_slot_state())
+
+
+func _build_slot_result(
+	success: bool,
+	reason_code: StringName,
+	state_before: StringName,
+	state_after: StringName,
+	extra: Dictionary = {}
+) -> Dictionary:
+	var result := {
+		"success": success,
+		"reason_code": reason_code,
+		"reason_args": {},
+		"state_before": state_before,
+		"state_after": state_after,
+	}
+	result.merge(extra, false)
+	return result
+
+
 func open_construction_menu() -> void:
 	if is_choosing_template() or is_city_action_locked_for_battle():
 		return
@@ -856,6 +995,9 @@ func open_construction_menu() -> void:
 
 
 func begin_placing(screen_position: Vector2) -> void:
+	if get_build_slot_state() == BUILD_SLOT_READY_TO_PLACE:
+		activate_ready_placement(screen_position)
+		return
 	begin_placing_definition(
 		LOGGING_CAMP_DEFINITION.definition_id,
 		screen_position
@@ -873,9 +1015,20 @@ func begin_placing_definition(
 		return false
 	if definition.placement_kind == PLACEMENT_KIND_ROAD:
 		return begin_road_mode(screen_position)
+	return bool(start_build_project(definition_id).success)
+
+
+func activate_ready_placement(screen_position: Vector2) -> Dictionary:
+	var before := get_build_slot_state()
+	if before != BUILD_SLOT_READY_TO_PLACE:
+		return _build_slot_result(false, &"NOT_READY", before, before)
+	var definition := get_definition(StringName(_build_slot.definition_id))
+	if definition == null:
+		return _build_slot_result(false, &"INVALID_DEFINITION", before, before)
+	_build_slot.state = BUILD_SLOT_PLACEMENT_ACTIVE
 	_selected_definition = definition
 	state = ConstructionState.PLACING
-	preview_orientation = ORIENTATION_NORTH
+	preview_orientation = int(_build_slot.get("orientation", ORIENTATION_NORTH))
 	_reset_road_draft()
 	construction_preview.visible = true
 	preview_body.visible = true
@@ -887,7 +1040,12 @@ func begin_placing_definition(
 	update_preview(screen_position)
 	placing_started.emit()
 	construction_presentation_changed.emit()
-	return true
+	return _build_slot_result(
+		true,
+		&"",
+		before,
+		BUILD_SLOT_PLACEMENT_ACTIVE
+	)
 
 
 func begin_road_mode(screen_position: Vector2) -> bool:
@@ -921,6 +1079,14 @@ func begin_road_mode(screen_position: Vector2) -> bool:
 func cancel_placing() -> void:
 	if not is_placing():
 		return
+	var returning_ready := (
+		StringName(_build_slot.get("state", BUILD_SLOT_IDLE))
+		== BUILD_SLOT_PLACEMENT_ACTIVE
+		and not is_road_placing()
+	)
+	if returning_ready:
+		_build_slot.state = BUILD_SLOT_READY_TO_PLACE
+		_build_slot.orientation = preview_orientation
 	state = ConstructionState.IDLE
 	_selected_definition = null
 	preview_orientation = ORIENTATION_NORTH
@@ -933,10 +1099,18 @@ func cancel_placing() -> void:
 	preview_conflict_mark.visible = false
 	_reset_road_draft()
 	_sync_construction_ui()
+	city_state_changed.emit()
 	construction_presentation_changed.emit()
 
 
 func cancel_build_interaction() -> void:
+	if (
+		is_placing()
+		and get_build_slot_state() == BUILD_SLOT_PLACEMENT_ACTIVE
+		and not is_road_placing()
+	):
+		cancel_placing()
+		return
 	if state == ConstructionState.IDLE:
 		return
 	state = ConstructionState.IDLE
@@ -1029,13 +1203,18 @@ func update_preview(screen_position: Vector2) -> void:
 
 
 func commit_building_from_map_click(screen_position: Vector2) -> Dictionary:
-	if not is_placing() or _selected_definition == null or is_road_placing():
-		return _commit_result(false, &"INVALID_MAP_TARGET", "无法建造：请选择城内空地")
+	if (
+		not is_placing()
+		or _selected_definition == null
+		or is_road_placing()
+		or get_build_slot_state() != BUILD_SLOT_PLACEMENT_ACTIVE
+	):
+		return _commit_result(false, &"INVALID_MAP_TARGET", "无法放置：请选择城内空地")
 	# The click coordinate, preview, and final validation intentionally share one
 	# update. This prevents a stale ghost after crossing the rail or resizing.
 	update_preview(screen_position)
 	if not preview_valid:
-		var blocked_message := _player_failure_message(_last_preview_validation)
+		var blocked_message := _ready_placement_failure_message(_last_preview_validation)
 		_show_placement_feedback(blocked_message)
 		return _commit_result(
 			false,
@@ -1055,7 +1234,7 @@ func commit_building_from_map_click(screen_position: Vector2) -> Dictionary:
 	)
 	if not bool(commit_validation.valid):
 		_refresh_preview_for_current_cell()
-		var changed_message := _player_failure_message(commit_validation)
+		var changed_message := _ready_placement_failure_message(commit_validation)
 		_show_placement_feedback(changed_message)
 		return _commit_result(
 			false,
@@ -1066,19 +1245,22 @@ func commit_building_from_map_click(screen_position: Vector2) -> Dictionary:
 	var placement_id := place_definition_at_cell(
 		definition_id,
 		committed_origin,
-		true,
 		false,
+		true,
 		committed_orientation
 	)
 	if placement_id < 0:
-		var unknown_message := "建造失败，请重试（R0B-UNKNOWN）"
+		var unknown_message := "放置失败，请重试（R0C-UNKNOWN）"
 		push_error(
-			"R0B_UNKNOWN_COMMIT_FAILURE definition=%s cell=%s orientation=%d"
+			"R0C_UNKNOWN_COMMIT_FAILURE definition=%s cell=%s orientation=%d"
 			% [definition_id, committed_origin, committed_orientation]
 		)
 		_show_placement_feedback(unknown_message)
 		return _commit_result(false, &"UNKNOWN_COMMIT_FAILURE", unknown_message)
+	_build_slot = _empty_build_slot()
 	cancel_placing()
+	_refresh_city_ui()
+	city_state_changed.emit()
 	return {
 		"success": true,
 		"reason_code": CITY_GRID_RULES.REASON_NONE,
@@ -1113,19 +1295,9 @@ func confirm_current_preview() -> bool:
 		return false
 	if is_road_placing():
 		return confirm_road_preview()
-	var placement_id := place_definition_at_cell(
-		_selected_definition.definition_id,
-		preview_origin_cell,
-		true,
-		false,
-		preview_orientation
-	)
-	if placement_id < 0:
-		return false
-	# Confirmation commits through the existing authority, then clears every
-	# placement-only presentation state so cancellation cannot leak orientation.
-	cancel_placing()
-	return true
+	# R0C has no independent building confirmation action. A paid ready token is
+	# consumed only by the real map left click path above.
+	return false
 
 
 func get_last_preview_validation() -> Dictionary:
@@ -1510,6 +1682,8 @@ func rotate_preview() -> bool:
 	if not is_placing() or _selected_definition == null:
 		return false
 	preview_orientation = posmod(preview_orientation + 1, 4)
+	if get_build_slot_state() == BUILD_SLOT_PLACEMENT_ACTIVE and not is_road_placing():
+		_build_slot.orientation = preview_orientation
 	_apply_preview_geometry(_selected_definition, preview_orientation)
 	_refresh_preview_for_current_cell()
 	_sync_construction_ui()
@@ -2459,6 +2633,7 @@ func _advance_construction_between(
 
 
 func _advance_construction_tick() -> void:
+	_advance_build_slot_tick()
 	var ordered_ids := _get_ordered_construction_ids()
 	for placement_id in ordered_ids:
 		var record: Dictionary = _building_records_by_id.get(placement_id, {})
@@ -2525,6 +2700,268 @@ func _advance_construction_tick() -> void:
 		)
 		if committed:
 			_refresh_placed_building_visual(placement_id)
+
+
+func _get_build_slot_next_payment() -> Dictionary:
+	var progress := int(_build_slot.get("progress_milliseconds", 0))
+	var required := int(_build_slot.get("required_milliseconds", 0))
+	if required <= 0 or progress >= required:
+		return {
+			"next_progress": required,
+			"entries": [],
+			"next_paid": Dictionary(_build_slot.get("paid_costs", {})).duplicate(true),
+			"missing_ids": [],
+			"shortages": [],
+		}
+	var modifier := get_pressure_modifier_permille(&"construction")
+	var progress_delta := maxi(
+		roundi(float(CONSTRUCTION_TICK_MILLISECONDS * modifier) / 1000.0),
+		1
+	)
+	var next_progress := mini(progress + progress_delta, required)
+	var total_costs: Dictionary = _build_slot.get("total_costs", {})
+	var paid_costs: Dictionary = _build_slot.get("paid_costs", {})
+	var entries: Array[Dictionary] = []
+	var next_paid := paid_costs.duplicate(true)
+	var missing_ids: Array[StringName] = []
+	var shortages: Array[Dictionary] = []
+	var resource_ids: Array[StringName] = []
+	for raw_resource_id in total_costs:
+		resource_ids.append(StringName(raw_resource_id))
+	resource_ids.sort_custom(func(left: StringName, right: StringName) -> bool:
+		return [&"wood", &"food"].find(left) < [&"wood", &"food"].find(right)
+	)
+	for resource_id in resource_ids:
+		var total := int(total_costs[resource_id])
+		var target_paid := (
+			total
+			if next_progress >= required
+			else ceili(float(total * next_progress) / float(required))
+		)
+		var amount := target_paid - int(paid_costs.get(resource_id, 0))
+		if amount <= 0:
+			continue
+		var available := _nation_state.get_resource(resource_id)
+		if available < amount:
+			missing_ids.append(resource_id)
+			shortages.append({
+				"resource_id": resource_id,
+				"display_name": _resource_display_name(resource_id),
+				"missing": amount - available,
+			})
+			continue
+		entries.append({
+			"resource_id": resource_id,
+			"operation": NationState.RESOURCE_OPERATION_SPEND,
+			"amount": amount,
+		})
+		next_paid[resource_id] = target_paid
+	return {
+		"next_progress": next_progress,
+		"entries": entries,
+		"next_paid": next_paid,
+		"missing_ids": missing_ids,
+		"shortages": shortages,
+	}
+
+
+func _update_build_slot_wait_state() -> void:
+	if get_build_slot_state() not in [
+		BUILD_SLOT_PRODUCING,
+		BUILD_SLOT_WAITING_MATERIAL,
+	]:
+		return
+	var payment := _get_build_slot_next_payment()
+	_build_slot.missing_resource_ids = Array(payment.missing_ids).duplicate()
+	_build_slot.state = (
+		BUILD_SLOT_WAITING_MATERIAL
+		if not Array(payment.missing_ids).is_empty()
+		else BUILD_SLOT_PRODUCING
+	)
+
+
+func _advance_build_slot_tick() -> void:
+	if get_build_slot_state() not in [
+		BUILD_SLOT_PRODUCING,
+		BUILD_SLOT_WAITING_MATERIAL,
+	]:
+		return
+	var payment := _get_build_slot_next_payment()
+	var missing_ids: Array = payment.missing_ids
+	if not missing_ids.is_empty():
+		_build_slot.state = BUILD_SLOT_WAITING_MATERIAL
+		_build_slot.missing_resource_ids = missing_ids.duplicate()
+		_sync_construction_ui()
+		city_state_changed.emit()
+		construction_presentation_changed.emit()
+		return
+	var next_progress := int(payment.next_progress)
+	var required := int(_build_slot.required_milliseconds)
+	var local_commit := func() -> Dictionary:
+		_build_slot.progress_milliseconds = next_progress
+		_build_slot.paid_costs = Dictionary(payment.next_paid).duplicate(true)
+		_build_slot.missing_resource_ids = []
+		if next_progress >= required:
+			_build_slot.state = BUILD_SLOT_READY_TO_PLACE
+			_build_slot.completion_notified = true
+			_construction_completed_since_last_day += 1
+		else:
+			_build_slot.state = BUILD_SLOT_PRODUCING
+		return {"success": true}
+	var entries: Array[Dictionary] = []
+	for entry in payment.entries:
+		entries.append(Dictionary(entry).duplicate(true))
+	var committed := (
+		bool(local_commit.call().success)
+		if entries.is_empty()
+		else _commit_national_resources(
+			entries,
+			&"build_slot_progress",
+			local_commit
+		)
+	)
+	if not committed:
+		_update_build_slot_wait_state()
+		return
+	_sync_construction_ui()
+	_refresh_city_ui()
+	city_state_changed.emit()
+	construction_presentation_changed.emit()
+
+
+func cancel_build_project() -> Dictionary:
+	var before := get_build_slot_state()
+	if before == BUILD_SLOT_IDLE:
+		return _build_slot_result(false, &"NO_BUILD_PROJECT", before, before)
+	if before == BUILD_SLOT_PLACEMENT_ACTIVE:
+		return _build_slot_result(false, &"EXIT_PLACEMENT_FIRST", before, before)
+	var paid_costs: Dictionary = _build_slot.get("paid_costs", {})
+	var entries: Array[Dictionary] = []
+	for resource_id in [&"wood", &"food"]:
+		var amount := int(paid_costs.get(resource_id, 0))
+		if amount > 0:
+			entries.append({
+				"resource_id": resource_id,
+				"operation": NationState.RESOURCE_OPERATION_ADD,
+				"amount": amount,
+			})
+	var local_commit := func() -> Dictionary:
+		_build_slot = _empty_build_slot()
+		return {"success": true}
+	var refunded := (
+		bool(local_commit.call().success)
+		if entries.is_empty()
+		else _commit_national_resources(entries, &"build_slot_refund", local_commit)
+	)
+	if not refunded:
+		return _build_slot_result(false, &"REFUND_FAILED", before, before)
+	_sync_construction_ui()
+	_refresh_city_ui()
+	city_state_changed.emit()
+	construction_presentation_changed.emit()
+	return _build_slot_result(
+		true,
+		&"",
+		before,
+		BUILD_SLOT_IDLE,
+		{"refunded": paid_costs.duplicate(true)}
+	)
+
+
+func _build_slot_missing_text(next_payment := false) -> String:
+	if not has_build_project():
+		return ""
+	if next_payment:
+		return _shortage_text(_get_build_slot_next_payment().shortages)
+	var total_costs: Dictionary = _build_slot.total_costs
+	var paid_costs: Dictionary = _build_slot.paid_costs
+	var parts: Array[String] = []
+	for resource_id in [&"wood", &"food"]:
+		if not total_costs.has(resource_id):
+			continue
+		parts.append("%s %d" % [
+			_resource_display_name(resource_id),
+			int(total_costs[resource_id]) - int(paid_costs.get(resource_id, 0)),
+		])
+	return "、".join(parts)
+
+
+func get_build_slot_presentation() -> Dictionary:
+	var slot_state := get_build_slot_state()
+	if slot_state == BUILD_SLOT_IDLE:
+		return {"state": BUILD_SLOT_IDLE}
+	var definition := get_definition(StringName(_build_slot.definition_id))
+	var progress := int(_build_slot.progress_milliseconds)
+	var required := maxi(int(_build_slot.required_milliseconds), 1)
+	var paid_parts: Array[String] = []
+	var refund_parts: Array[String] = []
+	for resource_id in [&"wood", &"food"]:
+		if Dictionary(_build_slot.total_costs).has(resource_id):
+			var paid_amount := int(
+				Dictionary(_build_slot.paid_costs).get(resource_id, 0)
+			)
+			paid_parts.append("%s %d/%d" % [
+				_resource_display_name(resource_id),
+				paid_amount,
+				int(_build_slot.total_costs[resource_id]),
+			])
+			if paid_amount > 0:
+				refund_parts.append("%s %d" % [
+					_resource_display_name(resource_id),
+					paid_amount,
+				])
+	var status_text := "建造中"
+	if slot_state == BUILD_SLOT_WAITING_MATERIAL:
+		status_text = "未开工" if progress == 0 else "缺料暂停"
+	elif slot_state in [BUILD_SLOT_READY_TO_PLACE, BUILD_SLOT_PLACEMENT_ACTIVE]:
+		status_text = "建造完成" if slot_state == BUILD_SLOT_READY_TO_PLACE else "放置中"
+	var eta_text := _get_build_slot_eta_text()
+	return {
+		"state": slot_state,
+		"definition_id": StringName(_build_slot.definition_id),
+		"display_name": definition.display_name if definition != null else "建筑",
+		"effect_text": _get_definition_effect_summary(definition) if definition != null else "",
+		"status_text": status_text,
+		"progress_percent": clampf(float(progress) * 100.0 / float(required), 0.0, 100.0),
+		"paid_text": "、".join(paid_parts),
+		"remaining_text": _build_slot_missing_text(false),
+		"next_missing_text": _build_slot_missing_text(true),
+		"eta_text": eta_text,
+		"refund_text": "、".join(refund_parts),
+	}
+
+
+func _get_build_slot_eta_text() -> String:
+	var slot_state := get_build_slot_state()
+	if slot_state == BUILD_SLOT_WAITING_MATERIAL:
+		return "等待材料"
+	if city_time_paused:
+		return "恢复时间后重新计算"
+	if slot_state != BUILD_SLOT_PRODUCING:
+		return ""
+	var modifier := maxi(get_pressure_modifier_permille(&"construction"), 1)
+	var remaining_effective := maxi(
+		int(_build_slot.required_milliseconds)
+		- int(_build_slot.progress_milliseconds),
+		0
+	)
+	var remaining_world_ms := ceili(float(remaining_effective * 1000) / float(modifier))
+	var absolute_ms := (
+		(current_day - 1) * MILLISECONDS_PER_DAY
+		+ get_day_elapsed_milliseconds()
+		+ remaining_world_ms
+	)
+	var finish_day := floori(float(absolute_ms) / float(MILLISECONDS_PER_DAY)) + 1
+	var day_ms := posmod(absolute_ms, MILLISECONDS_PER_DAY)
+	var total_minutes := floori(float(day_ms) * 1440.0 / float(MILLISECONDS_PER_DAY))
+	return "第 %d 日 %02d:%02d" % [finish_day, total_minutes / 60, total_minutes % 60]
+
+
+func _on_build_slot_primary_pressed() -> void:
+	if get_build_slot_state() == BUILD_SLOT_READY_TO_PLACE:
+		activate_ready_placement(get_viewport().get_mouse_position())
+	elif get_build_slot_state() in [BUILD_SLOT_PRODUCING, BUILD_SLOT_WAITING_MATERIAL]:
+		begin_road_mode(get_viewport().get_mouse_position())
 
 
 func _get_ordered_construction_ids() -> Array[int]:
@@ -2633,7 +3070,8 @@ func get_city_state() -> Dictionary:
 		"wood_capacity": get_resource_capacity(&"wood"),
 			"food_capacity": get_resource_capacity(&"food"),
 			"city_defense": get_city_defense(),
-			"construction_in_progress": get_construction_in_progress_count(),
+		"construction_in_progress": get_construction_in_progress_count(),
+		"build_slot": get_build_slot_snapshot(),
 			"first_war_preparation": (
 				get_first_war_preparation_assessment()
 			),
@@ -2804,6 +3242,7 @@ func export_v5_campaign_snapshot() -> Dictionary:
 			),
 		},
 		"mainline_level": _current_mainline_level.get_snapshot(),
+		"build_slot": get_build_slot_snapshot(),
 	}
 	var validation := validate_v5_campaign_snapshot(snapshot)
 	return (
@@ -2911,6 +3350,15 @@ func validate_v5_campaign_snapshot(
 				"error_id": &"UNKNOWN_BUILDING",
 				"error": "V2 引用未知建筑",
 			}
+	if (
+		StringName(candidate.build_slot.definition_id) != &""
+		and get_definition(StringName(candidate.build_slot.definition_id)) == null
+	):
+		return {
+			"valid": false,
+			"error_id": &"UNKNOWN_BUILD_SLOT_DEFINITION",
+			"error": "建造位引用未知建筑",
+		}
 	var garrison_total := 0
 	for count in Dictionary(
 		candidate.garrison.unit_counts_by_definition_id
@@ -3191,6 +3639,18 @@ func _apply_validated_v5_campaign_snapshot(
 	_active_army_dispatch_reservation = {}
 	_active_army_encounter = {}
 	_last_battle_result_summary = {}
+	_build_slot = Dictionary(snapshot.build_slot).duplicate(true)
+	state = ConstructionState.IDLE
+	_selected_definition = null
+	preview_orientation = int(_build_slot.get("orientation", ORIENTATION_NORTH))
+	construction_preview.visible = false
+	preview_valid = false
+	preview_invalid_reason = ""
+	preview_connection_state = &"not_required"
+	preview_entrance_info = {}
+	preview_entrance_marker.visible = false
+	preview_conflict_mark.visible = false
+	_reset_road_draft()
 	scan_current_placement_overlaps(true)
 	return {"success": true, "error_id": &"", "error": ""}
 
@@ -5598,7 +6058,14 @@ func _resource_display_name(resource_id: StringName) -> String:
 
 
 func get_construction_in_progress_count() -> int:
-	var count := 0
+	var count := (
+		1
+		if get_build_slot_state() in [
+			BUILD_SLOT_PRODUCING,
+			BUILD_SLOT_WAITING_MATERIAL,
+		]
+		else 0
+	)
 	for placement_id in _placement_order:
 		var record: Dictionary = _building_records_by_id.get(placement_id, {})
 		if (
@@ -6179,8 +6646,35 @@ func _player_failure_message(validation: Dictionary) -> String:
 			return "建造失败：状态已变化，请重新选择位置"
 		&"UNKNOWN_COMMIT_FAILURE":
 			return "建造失败，请重试（R0B-UNKNOWN）"
-	var reason_text := str(validation.get("reason_text", validation.get("reason", "")))
-	return "无法建造：%s" % reason_text if not reason_text.is_empty() else "建造失败，请重试（R0B-UNKNOWN）"
+	var reason_text := str(
+		validation.get("reason_text", validation.get("reason", ""))
+	)
+	return (
+		"无法建造：%s" % reason_text
+		if not reason_text.is_empty()
+		else "建造失败，请重试（R0B-UNKNOWN）"
+	)
+
+
+func _ready_placement_failure_message(validation: Dictionary) -> String:
+	var reason_code := StringName(
+		validation.get("reason_code", &"UNKNOWN_COMMIT_FAILURE")
+	)
+	match reason_code:
+		CITY_GRID_RULES.REASON_ROAD_OVERLAP:
+			return "无法放置：与道路重叠"
+		CITY_GRID_RULES.REASON_BUILDING_OVERLAP:
+			return "无法放置：与其他建筑重叠"
+		CITY_GRID_RULES.REASON_IMMOVABLE_OBJECT_OVERLAP:
+			return "无法放置：此处有不可移动建筑"
+		CITY_GRID_RULES.REASON_OUT_OF_BOUNDS:
+			return "无法放置：超出可建区域"
+		&"UI_OCCLUDED", &"INVALID_MAP_TARGET":
+			return "无法放置：请选择城内空地"
+		&"STATE_CHANGED":
+			return "位置状态已变化，请重试"
+		_:
+			return "放置失败，请重试（R0C-UNKNOWN）"
 
 
 func _show_placement_feedback(message: String) -> void:
@@ -6356,7 +6850,11 @@ func _refresh_preview_for_current_cell() -> void:
 		_selected_definition.build_days <= 0,
 		preview_orientation
 	)
-	var shortages := _resource_shortages(_selected_definition)
+	var shortages := (
+		[]
+		if get_build_slot_state() == BUILD_SLOT_PLACEMENT_ACTIVE
+		else _resource_shortages(_selected_definition)
+	)
 	validation["shortages"] = shortages
 	preview_valid = validation.valid
 	_last_preview_validation = validation.duplicate(true)
@@ -6402,29 +6900,42 @@ func _refresh_preview_for_current_cell() -> void:
 	])
 	preview_conflict_mark.visible = not preview_valid
 	_update_preview_entrance_marker()
-	preview_label.text = (
-		"%s L%d · 朝%s\n%s · %s\n%s" % [
-			_selected_definition.display_name,
-			_selected_definition.level,
-			ORIENTATION_NAMES[preview_orientation],
-			_get_definition_compact_cost_text(_selected_definition),
+	if get_build_slot_state() == BUILD_SLOT_PLACEMENT_ACTIVE:
+		preview_label.text = (
 			(
-				"即时"
-				if _selected_definition.build_days <= 0
-				else "第 %d 日完成" % (
-					current_day + _selected_definition.build_days
-				)
-			),
-			_preview_connection_label(),
-		]
-		if preview_valid
-		else "%s L%d · 朝%s\n%s" % [
-			_selected_definition.display_name,
-			_selected_definition.level,
-			ORIENTATION_NAMES[preview_orientation],
-			preview_invalid_reason,
-		]
-	)
+				"可放置"
+				if preview_connection_state != &"disconnected"
+				else "入口未接路"
+			)
+			if preview_valid
+			else _ready_placement_failure_message(validation).trim_prefix(
+				"无法放置："
+			)
+		)
+	else:
+		preview_label.text = (
+			"%s L%d · 朝%s\n%s · %s\n%s" % [
+				_selected_definition.display_name,
+				_selected_definition.level,
+				ORIENTATION_NAMES[preview_orientation],
+				_get_definition_compact_cost_text(_selected_definition),
+				(
+					"即时"
+					if _selected_definition.build_days <= 0
+					else "第 %d 日完成" % (
+						current_day + _selected_definition.build_days
+					)
+				),
+				_preview_connection_label(),
+			]
+			if preview_valid
+			else "%s L%d · 朝%s\n%s" % [
+				_selected_definition.display_name,
+				_selected_definition.level,
+				ORIENTATION_NAMES[preview_orientation],
+				preview_invalid_reason,
+			]
+		)
 	_sync_construction_ui()
 
 
@@ -7059,7 +7570,14 @@ func _can_pay_definition(definition: BuildingDefinition) -> bool:
 
 func _sync_construction_ui() -> void:
 	construction_entry_panel.visible = not _detail_panel_active
-	build_entry_button.visible = state != ConstructionState.PLACING
+	var slot_state := get_build_slot_state()
+	var show_slot := slot_state != BUILD_SLOT_IDLE and state != ConstructionState.PLACING
+	build_entry_button.visible = state != ConstructionState.PLACING and not show_slot
+	build_entry_button.text = (
+		"旧存档施工完成后启用新建造队列"
+		if _has_legacy_construction()
+		else "建造目录"
+	)
 	build_entry_button.disabled = is_city_action_locked_for_battle()
 	build_mode_status.visible = state == ConstructionState.PLACING
 	placement_orientation_label.visible = state == ConstructionState.PLACING
@@ -7068,6 +7586,50 @@ func _sync_construction_ui() -> void:
 	)
 	confirm_road_button.visible = state == ConstructionState.PLACING and is_road_placing()
 	cancel_placement_button.visible = state == ConstructionState.PLACING
+	build_slot_progress.visible = show_slot
+	build_slot_detail.visible = show_slot
+	build_slot_primary_button.visible = show_slot
+	build_slot_cancel_button.visible = show_slot
+	if show_slot:
+		var presentation := get_build_slot_presentation()
+		build_mode_status.visible = true
+		build_mode_status.text = "%s｜%s\n%s" % [
+			presentation.display_name,
+			presentation.status_text,
+			presentation.effect_text,
+		]
+		build_slot_progress.value = float(presentation.progress_percent)
+		build_slot_progress.visible = slot_state not in [
+			BUILD_SLOT_READY_TO_PLACE,
+			BUILD_SLOT_PLACEMENT_ACTIVE,
+		]
+		var detail_lines: Array[String] = []
+		if slot_state == BUILD_SLOT_WAITING_MATERIAL:
+			detail_lines.append(
+				("缺少：" if int(_build_slot.progress_milliseconds) == 0 else "恢复推进还缺：")
+				+ (
+					str(presentation.remaining_text)
+					if int(_build_slot.progress_milliseconds) == 0
+					else str(presentation.next_missing_text)
+				)
+			)
+		if slot_state in [BUILD_SLOT_PRODUCING, BUILD_SLOT_WAITING_MATERIAL]:
+			detail_lines.append("已投入：%s" % presentation.paid_text)
+			detail_lines.append("剩余成本：%s" % presentation.remaining_text)
+			detail_lines.append("预计完成：%s" % presentation.eta_text)
+		else:
+			detail_lines.append("材料已全部投入")
+		build_slot_detail.text = "\n".join(detail_lines)
+		build_slot_primary_button.text = (
+			"放置%s" % presentation.display_name
+			if slot_state == BUILD_SLOT_READY_TO_PLACE
+			else "铺设道路"
+		)
+		build_slot_cancel_button.text = (
+			"取消项目并返还：%s" % presentation.refund_text
+			if not str(presentation.refund_text).is_empty()
+			else "取消项目"
+		)
 	if state == ConstructionState.PLACING and _selected_definition != null:
 		if is_road_placing():
 			var road_cells: Array = _road_draft.get("unique_cells", [])
@@ -7092,17 +7654,13 @@ func _sync_construction_ui() -> void:
 			)
 			cancel_placement_button.text = "取消道路 · Esc"
 		else:
-			var shortages := _resource_shortages(_selected_definition)
-			var status_text := "可建造：左键放置"
+			var status_text := "可放置"
 			if not preview_valid:
-				status_text = _player_failure_message(_last_preview_validation)
-			elif not shortages.is_empty():
-				status_text = "材料不足：缺%s；下单后将等待材料" % _shortage_text(shortages)
+				status_text = _ready_placement_failure_message(_last_preview_validation)
 			elif preview_connection_state == &"disconnected":
-				status_text = "可建造：左键放置；未接道路，完工后不生产"
-			build_mode_status.text = "%s\n%s\n状态：%s" % [
+				status_text = "入口未接道路，放置后不生产"
+			build_mode_status.text = "放置%s\n已建造完成｜放置不再扣料\n状态：%s" % [
 				_selected_definition.display_name,
-				_get_placement_cost_with_available_text(_selected_definition),
 				status_text,
 			]
 			placement_orientation_label.text = "朝向：%s · 占地 %d × %d" % [
@@ -7157,7 +7715,16 @@ func _refresh_construction_catalog_ui() -> void:
 				second_line,
 			]
 		)
-		button.disabled = not bool(data.can_build)
+		var slot_blocks_building := (
+			definition.placement_kind != PLACEMENT_KIND_ROAD
+			and (has_build_project() or _has_legacy_construction())
+		)
+		button.disabled = not bool(data.can_build) or slot_blocks_building
+		if slot_blocks_building:
+			button.tooltip_text = (
+				"已有建造项目：请先完成放置或等待旧存档施工完成"
+			)
+			continue
 		button.tooltip_text = (
 			"投入：%s｜工期：%s\n效果：%s\n前置：%s%s"
 			% [

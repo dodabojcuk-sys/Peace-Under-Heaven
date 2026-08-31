@@ -4,6 +4,7 @@ extends SceneTree
 const SAVE_STORE = preload(
 	"res://scripts/state/v5_campaign_save_store.gd"
 )
+const LOGGING_CAMP_ID := &"building.logging_camp.t1"
 
 var failures: Array[String] = []
 
@@ -75,6 +76,20 @@ func _run_process_a(controller: Node, store: RefCounted) -> void:
 			and int(progress.army.progress_milliseconds) == 2500,
 		"进程 A 推进 Army 到 2500ms"
 	)
+	controller.set_city_time_paused(false)
+	controller.wood = 40
+	_require(
+		bool(controller.start_build_project(LOGGING_CAMP_ID).success),
+		"进程 A 建立 R0C 建造位项目"
+	)
+	for _tick in range(180):
+		controller._advance_build_slot_tick()
+	controller.set_city_time_paused(true)
+	_require(
+		controller.get_build_slot_state() == controller.BUILD_SLOT_READY_TO_PLACE
+		and int(controller.get_build_slot_snapshot().paid_costs.wood) == 40,
+		"进程 A 保存一枚已付款 ready token"
+	)
 	var snapshot: Dictionary = controller.export_v5_campaign_snapshot()
 	var save_result: Dictionary = store.save_snapshot(
 		snapshot,
@@ -109,6 +124,11 @@ func _run_process_b(controller: Node, store: RefCounted) -> void:
 	var snapshot: Dictionary = controller.export_v5_campaign_snapshot()
 	var armies: Dictionary = snapshot.army_registry.armies_by_id
 	_require(armies.size() == 1, "进程 B 恢复一支 active Army")
+	_require(
+		controller.get_build_slot_state() == controller.BUILD_SLOT_READY_TO_PLACE
+		and int(snapshot.build_slot.paid_costs.wood) == 40,
+		"进程 B 冷启动精确恢复 ready token"
+	)
 	if armies.size() != 1:
 		return
 	var army_id := StringName(armies.keys()[0])
@@ -165,6 +185,11 @@ func _run_process_c(controller: Node, store: RefCounted) -> void:
 	var snapshot: Dictionary = controller.export_v5_campaign_snapshot()
 	var armies: Dictionary = snapshot.army_registry.armies_by_id
 	_require(armies.size() == 1, "进程 C 仍只看见一支 Army")
+	_require(
+		controller.get_build_slot_state() == controller.BUILD_SLOT_READY_TO_PLACE
+		and int(snapshot.build_slot.paid_costs.wood) == 40,
+		"进程 C 第三次冷启动仍只有同一枚 ready token"
+	)
 	if armies.size() != 1:
 		return
 	var army: Dictionary = armies.values()[0]

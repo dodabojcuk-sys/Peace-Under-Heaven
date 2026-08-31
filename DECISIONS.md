@@ -1,5 +1,25 @@
 # Product Successor Decisions
 
+## M0 R0C queue-first construction and ready placement
+
+- The current city owns exactly one building slot with `IDLE`, `PRODUCING`,
+  `WAITING_MATERIAL`, `READY_TO_PLACE`, and runtime-only
+  `PLACEMENT_ACTIVE` states.
+- New buildings do not occupy the map while being built. Progress and matching
+  cumulative cost commit atomically through the existing construction tick and
+  `NationState`; zero materials means zero progress and no foundation.
+- At 100%, the slot owns exactly one fully paid ready token. Placement
+  revalidates the existing spatial authority and creates one completed building
+  without another charge. Invalid placement retains the token.
+- Roads remain direct map-drag construction and do not use the building slot.
+  New-flow construction priority is removed; schema 4 legacy priority remains
+  non-destructively compatible.
+- Campaign schema 5 adds only `build_slot`. Runtime placement-active saves as
+  ready, while legacy foundations remain placed and lock the new slot until
+  completion.
+- Engineering evidence does not grant Founder acceptance or authorize merge,
+  push, deploy, or another gameplay slice.
+
 ## M0 R0B direct placement and failure feedback
 
 - A legal building position commits on the map left press; a separate building
