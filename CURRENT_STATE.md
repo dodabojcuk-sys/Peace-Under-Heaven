@@ -18,8 +18,13 @@ existing city-loss state. V5 persists returned city/mainline/ledger/build-slot
 and training state unchanged in schema 5. In-progress battle sessions remain
 attempt-local and are deliberately not saveable.
 
-Focused M1A, R0C.1, formal first-war, native PNG, H.264/yuv420p journey, and
-final regression evidence are recorded in `docs/m1a/`.
+Focused M1A, R0C.1, formal first-war, native PNG, H.264/yuv420p scene-journey,
+and final regression evidence are recorded in `docs/m1a/`. The visual journey
+is script-driven; the required physical native-mouse playthrough remains a
+Founder/manual verification item. R0C and R0C.1 remain a usable engineering
+baseline, so Founder does not need to separately block later development for
+each closed local HUD repair; obvious overlap, clipping, click-through, and
+world interpenetration remain milestone gates.
 
 `M1A_CURRENT_MAINLINE_RETURN=PASS_LOCAL_ONLY_PENDING_FOUNDER_PLAYTEST`
 
