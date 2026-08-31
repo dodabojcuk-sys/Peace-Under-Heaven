@@ -46,6 +46,29 @@ transactions, placement, roads, and save behavior were not changed.
 
 `R0C1_TOPBAR_RESPONSIVE=PASS_LOCAL_ONLY`
 
+## M1A.1 normal entry authority and cold-restore UI repair
+
+At local base `21b5ccad8ec70bed14aacd1e3f99db6bbe12b89f`, the normal new-city
+20-person `GarrisonState` force can enter the existing C0 current-mainline
+battle during preparation, warning, pending, or retry-after-retreat. The 50
+value is now explicitly displayed as a command cap rather than an implied
+minimum. Entry uses the same real force snapshot and retains the existing
+atomic reservation/idempotent settlement path; no resource, construction,
+road, placement, battle, or save rule was expanded.
+
+Cold V5 restore now reflows the right construction panel after the build-slot
+presentation is restored. Its build-slot controls live in an anchored
+`VBoxContainer` with content minimums and size flags. Focused M1A.1 automation
+passes 31 assertions, including normal 20-person entry, one-time reservation,
+an explicit empty-force failure, one actual C0 winning route, and geometry plus
+input-capture checks at 1152×648, 1280×720, and 1440×900. The 51-runner local
+dynamic regression, editor parse/import, and main-scene headless smoke pass.
+
+No post-repair human mouse/keyboard recording or current visual evidence has
+been made. The player-flow, cold-restart-in-video, attachment, and release
+gates remain `FAIL / HOLD`; this is not Founder review, merge authorization,
+push authorization, or deployment authorization.
+
 ## M0 R0C single build slot and ready placement
 
 R0C replaces the R0B map-foundation order with one current-city build slot.

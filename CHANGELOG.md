@@ -1,5 +1,14 @@
 # Changelog
 
+## M1A.1 normal entry authority and cold-restore UI repair
+
+- Allowed the current mainline to reserve any real non-empty dispatchable
+  garrison force during preparation, warning, pending, or post-retreat retry.
+- Added explicit force-breakdown diagnostics and a transient empty-force
+  failure message; clarified the displayed command cap is not an entry minimum.
+- Replaced the variable build-slot stack with anchored VBox content and added
+  restore-driven layout refresh plus three-resolution geometry/input tests.
+
 本文件只保留迁移时需要的高层里程碑。细节以 Git 历史、主控工作簿和当前
 验收报告为准。
 

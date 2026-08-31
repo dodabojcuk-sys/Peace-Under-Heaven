@@ -55,6 +55,19 @@
 - Engineering evidence remains separate from Founder experience acceptance and
   does not authorize merge, push, deploy, or a new gameplay slice.
 
+## M1A.1 normal force entry and restored build-slot layout
+
+- `GarrisonState` remains the only resident-infantry owner. A current-mainline
+  attempt may reserve any non-empty dispatchable real force; command capacity
+  is an upper bound, never a hidden 50-person minimum.
+- The existing C0/coordinator reservation and result ledger remain the only
+  attempt and settlement path. Entry feedback is presentation-only and cannot
+  create, augment, or duplicate a force reservation.
+- The restored build-slot panel uses one anchored `VBoxContainer` for its
+  variable content. Its child minimums determine the panel minimum; city-state
+  restoration schedules a layout pass instead of preserving an idle-height
+  panel around restored controls.
+
 ## M0 R0A placement legality and construction presentation
 
 - `CityGridRules.evaluate_placement_legality` is the pure building/road spatial
