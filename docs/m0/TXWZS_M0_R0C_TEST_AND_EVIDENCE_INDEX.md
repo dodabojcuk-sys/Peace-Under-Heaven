@@ -67,4 +67,3 @@ diagnostic only; the delivered MP4 is not a screenshot carousel.
 The evidence supports an engineering candidate only. Founder must still play
 the one-minute queue-to-placement journey and judge clarity, density, and feel.
 No merge, push, deploy, new gameplay, or Founder acceptance is claimed.
-

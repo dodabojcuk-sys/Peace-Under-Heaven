@@ -69,4 +69,3 @@ prevents two construction authorities from being restored together.
 - Three independent Godot processes preserve exactly one fully paid ready token
   alongside the existing army state without offline progress or duplicate
   payment.
-

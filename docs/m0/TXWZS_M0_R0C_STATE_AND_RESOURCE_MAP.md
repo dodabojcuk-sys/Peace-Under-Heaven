@@ -83,4 +83,3 @@ to schema 5 by adding an empty build slot only.
 - Right click or `Esc`: return to ready state with the same token.
 - Road drag: independent from every build-slot state.
 - Save/load: every persistent slot state plus schema 4 legacy placements.
-
