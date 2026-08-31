@@ -32,7 +32,7 @@ func _run() -> void:
 		"UI/Shell/ConstructionMenu/LoggingCampButton"
 	)
 	var primary_button: Button = scene.get_node(
-		"UI/Shell/ConstructionEntryPanel/BuildSlotPrimaryButton"
+		"UI/Shell/ConstructionEntryPanel/BuildSlotContent/BuildSlotPrimaryButton"
 	)
 
 	_set_step("01 实际 UI 点击：零材料登记伐木场；0%，地图无地基")

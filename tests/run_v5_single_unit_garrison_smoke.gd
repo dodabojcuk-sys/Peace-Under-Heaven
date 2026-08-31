@@ -152,7 +152,7 @@ func _run() -> void:
 
 	_check(
 		city.army_status.text.contains("驻军 50")
-			and city.army_status.text.contains("可派 40/40"),
+			and city.army_status.text.contains("可派 40 · 指挥上限 40"),
 		"城市侧栏真实显示驻军与可派上限"
 	)
 	city.select_general(&"")

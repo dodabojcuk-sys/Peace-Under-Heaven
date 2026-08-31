@@ -37,7 +37,7 @@ func _check_real_input_queue_to_ready_placement() -> void:
 		"UI/Shell/ConstructionMenu/LoggingCampButton"
 	)
 	var primary_button: Button = scene.get_node(
-		"UI/Shell/ConstructionEntryPanel/BuildSlotPrimaryButton"
+		"UI/Shell/ConstructionEntryPanel/BuildSlotContent/BuildSlotPrimaryButton"
 	)
 	var rotate_button: Button = scene.get_node(
 		"UI/Shell/ConstructionEntryPanel/RotateButton"
@@ -104,9 +104,12 @@ func _check_real_input_queue_to_ready_placement() -> void:
 	controller.advance_city_time_for_test(30.0)
 	_check(
 		controller.get_build_slot_state() == controller.BUILD_SLOT_READY_TO_PLACE
-		and int(controller.get_build_slot_snapshot().paid_costs.wood) == 40,
+			and int(controller.get_build_slot_snapshot().paid_costs.wood) == 40,
 		"continued time neither duplicates nor recharges the ready token"
 	)
+	# BuildSlotContent is a real VBoxContainer; wait for its queued child sort
+	# before deriving a pointer coordinate from its resized primary control.
+	await process_frame
 	await _click(primary_button.get_global_rect().get_center())
 	_check(controller.is_placing(), "actual ready button enters placement mode")
 	var road_screen := await _move_to_cell(controller, Vector2i(18, 13))

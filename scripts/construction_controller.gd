@@ -250,16 +250,19 @@ const PRESET_BUILDING_DEFINITIONS := [
 	$"../UI/Shell/ConstructionEntryPanel/CancelPlacementButton"
 )
 @onready var build_slot_progress: ProgressBar = (
-	$"../UI/Shell/ConstructionEntryPanel/BuildSlotProgress"
+	$"../UI/Shell/ConstructionEntryPanel/BuildSlotContent/BuildSlotProgress"
 )
 @onready var build_slot_detail: Label = (
-	$"../UI/Shell/ConstructionEntryPanel/BuildSlotDetail"
+	$"../UI/Shell/ConstructionEntryPanel/BuildSlotContent/BuildSlotDetail"
 )
 @onready var build_slot_primary_button: Button = (
-	$"../UI/Shell/ConstructionEntryPanel/BuildSlotPrimaryButton"
+	$"../UI/Shell/ConstructionEntryPanel/BuildSlotContent/BuildSlotPrimaryButton"
 )
 @onready var build_slot_cancel_button: Button = (
-	$"../UI/Shell/ConstructionEntryPanel/BuildSlotCancelButton"
+	$"../UI/Shell/ConstructionEntryPanel/BuildSlotContent/BuildSlotCancelButton"
+)
+@onready var build_slot_content: VBoxContainer = (
+	$"../UI/Shell/ConstructionEntryPanel/BuildSlotContent"
 )
 @onready var placement_feedback: Label = $"../UI/Shell/PlacementFeedback"
 @onready var construction_menu: Control = $"../UI/Shell/ConstructionMenu"
@@ -2130,6 +2133,10 @@ func get_first_war_committed_count() -> int:
 func can_enter_first_war() -> bool:
 	return (
 		first_war_state in [
+			# The current mainline is an opt-in battle, not a day-seven-only
+			# hard gate. A legal non-empty force may answer it during preparation.
+			FirstWarState.PREPARATION,
+			FirstWarState.WARNING,
 			FirstWarState.PENDING,
 			# Retreat is a settled loss, not a mainline clear. The current-mainline
 			# entry may create a fresh attempt against the same remaining threat.
@@ -2139,6 +2146,47 @@ func can_enter_first_war() -> bool:
 		and get_first_war_committed_count() > 0
 		and not is_instance_valid(_formal_battle_scene)
 	)
+
+
+func get_first_war_force_breakdown() -> Dictionary:
+	# GarrisonState is the sole owner of resident infantry. Confirmed armies are
+	# removed from it at dispatch; only in-flight reservations are subtracted here.
+	var battle_reserved := int(
+		_active_battle_reservation.get("committed_count", 0)
+	)
+	var dispatch_reserved := int(
+		_active_army_dispatch_reservation.get("committed_count", 0)
+	)
+	return {
+		"total_garrison_count": infantry_count,
+		"city_defense_occupied_count": 0,
+		"battle_reserved_count": battle_reserved,
+		"dispatch_reserved_count": dispatch_reserved,
+		"already_dispatched_count": 0,
+		"injured_or_unavailable_count": 0,
+		"available_count": get_available_infantry_count(),
+		"dispatchable_count": get_dispatchable_infantry_count(),
+		"effective_command_limit": get_effective_command_limit(),
+	}
+
+
+func get_first_war_entry_blocked_reason() -> String:
+	if _current_mainline_level.cleared:
+		return "当前主线已完成，压力已解除"
+	if first_war_state == FirstWarState.IN_BATTLE:
+		return "当前主线交战中"
+	if _first_war_pending_outcome != &"":
+		return "主线战果待确认"
+	if not _active_battle_reservation.is_empty():
+		return "无法出征：当前编队正在转入战场"
+	var force := get_first_war_force_breakdown()
+	if int(force.dispatchable_count) <= 0:
+		return "无法出征：没有可派编队（可派兵力 %d；城防占用 %d；受伤 %d）" % [
+			int(force.dispatchable_count),
+			int(force.city_defense_occupied_count),
+			int(force.injured_or_unavailable_count),
+		]
+	return "当前主线暂不可进入"
 
 
 func enter_first_war_battle() -> bool:
@@ -2159,12 +2207,13 @@ func enter_first_war_battle() -> bool:
 	)
 	battle.formal_return_completed.connect(_on_first_war_returned)
 	battle.formal_entry_cancelled.connect(_on_first_war_entry_cancelled)
+	var previous_first_war_state := first_war_state
 	first_war_state = FirstWarState.IN_BATTLE
 	_formal_battle_scene = battle
 	get_tree().root.add_child(battle)
 	if battle.request == null:
 		_formal_battle_scene = null
-		first_war_state = FirstWarState.PENDING
+		first_war_state = previous_first_war_state
 		battle.abort_formal_entry()
 		_refresh_city_ui()
 		return false
@@ -2176,7 +2225,8 @@ func enter_first_war_battle() -> bool:
 func _on_current_mainline_entry_pressed() -> void:
 	# This is a presentation entry only. The existing first-war gate still owns
 	# attempt uniqueness, city binding, and all battle request creation.
-	enter_first_war_battle()
+	if not enter_first_war_battle():
+		_show_placement_feedback(get_first_war_entry_blocked_reason())
 
 
 func get_formal_battle_scene() -> C0BattleGraybox:
@@ -4287,16 +4337,26 @@ func get_unit_definition(
 
 
 func get_garrison_snapshot() -> Dictionary:
-	var reserved_count := int(
-		_active_battle_reservation.get("committed_count", 0)
-	)
+	var force := get_first_war_force_breakdown()
 	var snapshot := _garrison_state.get_snapshot()
 	snapshot["definition_id"] = INFANTRY_ROLE.role_id
-	snapshot["reserved_count"] = reserved_count
-	snapshot["unreserved_count"] = get_available_infantry_count()
-	snapshot["dispatchable_count"] = get_dispatchable_infantry_count()
+	snapshot["reserved_count"] = (
+		int(force.battle_reserved_count)
+		+ int(force.dispatch_reserved_count)
+	)
+	snapshot["battle_reserved_count"] = int(force.battle_reserved_count)
+	snapshot["dispatch_reserved_count"] = int(force.dispatch_reserved_count)
+	snapshot["city_defense_occupied_count"] = int(
+		force.city_defense_occupied_count
+	)
+	snapshot["already_dispatched_count"] = int(force.already_dispatched_count)
+	snapshot["injured_or_unavailable_count"] = int(
+		force.injured_or_unavailable_count
+	)
+	snapshot["unreserved_count"] = int(force.available_count)
+	snapshot["dispatchable_count"] = int(force.dispatchable_count)
 	snapshot["recruitment_cap"] = recruitment_cap
-	snapshot["effective_command_limit"] = get_effective_command_limit()
+	snapshot["effective_command_limit"] = int(force.effective_command_limit)
 	return snapshot.duplicate(true)
 
 
@@ -7590,6 +7650,7 @@ func _sync_construction_ui() -> void:
 	construction_entry_panel.visible = not _detail_panel_active
 	var slot_state := get_build_slot_state()
 	var show_slot := slot_state != BUILD_SLOT_IDLE and state != ConstructionState.PLACING
+	build_slot_content.visible = show_slot
 	build_entry_button.visible = state != ConstructionState.PLACING and not show_slot
 	build_entry_button.text = (
 		"旧存档施工完成后启用新建造队列"
@@ -7814,7 +7875,7 @@ func _refresh_city_ui() -> void:
 			and training_queued_count == 0
 		else ""
 	)
-	army_status.text = "驻军 %d · 可派 %d/%d\n科技 %d%s%s%s" % [
+	army_status.text = "驻军 %d · 可派 %d · 指挥上限 %d\n科技 %d%s%s%s" % [
 		infantry_count,
 		get_dispatchable_infantry_count(),
 		command_limit,
@@ -7968,9 +8029,12 @@ func _refresh_current_mainline_entry_ui() -> void:
 		current_mainline_entry_button.tooltip_text = "当前战斗尚未完成"
 		current_mainline_entry_button.disabled = true
 		return
-	current_mainline_entry_button.text = "主线：第 %d 日应战" % FIRST_WAR_PENDING_DAY
-	current_mainline_entry_button.tooltip_text = "主线期限到达后可从此直接进入北坡战场"
-	current_mainline_entry_button.disabled = true
+	var blocked_reason := get_first_war_entry_blocked_reason()
+	current_mainline_entry_button.text = "无法出征：没有可派编队"
+	current_mainline_entry_button.tooltip_text = blocked_reason
+	# Keep the failed action reachable so an actual click produces the same
+	# explicit reason as the visible state rather than failing silently.
+	current_mainline_entry_button.disabled = false
 
 
 func _first_war_outcome_display_name(outcome: StringName) -> String:

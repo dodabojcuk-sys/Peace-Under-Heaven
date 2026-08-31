@@ -33,6 +33,9 @@ const DANGER := Color("df8d7f")
 @onready var construction_entry: Panel = $ConstructionEntryPanel
 @onready var build_entry_button: Button = $ConstructionEntryPanel/BuildEntryButton
 @onready var build_mode_status: Label = $ConstructionEntryPanel/BuildModeStatus
+@onready var build_slot_content: VBoxContainer = (
+	$ConstructionEntryPanel/BuildSlotContent
+)
 @onready var placement_orientation: Label = $ConstructionEntryPanel/PlacementOrientation
 @onready var rotate_button: Button = $ConstructionEntryPanel/RotateButton
 @onready var confirm_road_button: Button = $ConstructionEntryPanel/ConfirmRoadButton
@@ -40,6 +43,8 @@ const DANGER := Color("df8d7f")
 @onready var construction_menu: Panel = $ConstructionMenu
 @onready var detail_panel: Panel = $BuildingDetailPanel
 @onready var noticeboard_panel: Panel = $NoticeboardPanel
+
+var _layout_refresh_pending := false
 
 
 func _ready() -> void:
@@ -141,7 +146,7 @@ func _refresh_read_model() -> void:
 	]
 	var garrison: Dictionary = construction_controller.get_garrison_snapshot()
 	var queue: Dictionary = construction_controller.get_training_queue_snapshot()
-	army_status.text = "驻军 / 训练\n驻军 %d · 可派 %d/%d\n队列 %d · 建造中 %d 项" % [
+	army_status.text = "驻军 / 训练\n驻军 %d · 可派 %d · 指挥上限 %d\n队列 %d · 建造中 %d 项" % [
 		int(garrison.get("total_count", 0)),
 		int(garrison.get("dispatchable_count", 0)),
 		int(garrison.get("effective_command_limit", 0)),
@@ -150,6 +155,19 @@ func _refresh_read_model() -> void:
 	]
 	for label in [time_summary, daily_report, alert_summary]:
 		label.add_theme_color_override("font_color", MUTED_TEXT)
+	_schedule_layout_refresh()
+
+
+func _schedule_layout_refresh() -> void:
+	if _layout_refresh_pending:
+		return
+	_layout_refresh_pending = true
+	call_deferred("_refresh_layout_after_state_change")
+
+
+func _refresh_layout_after_state_change() -> void:
+	_layout_refresh_pending = false
+	_layout_for_viewport()
 
 
 func _layout_for_viewport() -> void:
@@ -207,9 +225,17 @@ func _layout_for_viewport() -> void:
 		and bool(construction_controller.has_build_project())
 	)
 	construction_entry.position = Vector2(width - right_width - edge, rail_top + 140.0)
+	var build_slot_panel_height := 300.0
+	if has_build_slot and not is_placing:
+		# The BuildSlotContent VBox owns row sizing. Its 194px minimum plus the
+		# status header and panel padding prevent restored children escaping the panel.
+		build_slot_panel_height = 106.0 + maxf(
+			194.0,
+			build_slot_content.get_combined_minimum_size().y
+		)
 	construction_entry.size = Vector2(
 		right_width,
-		300.0 if has_build_slot and not is_placing else (206.0 if is_placing else 66.0)
+		build_slot_panel_height if has_build_slot and not is_placing else (206.0 if is_placing else 66.0)
 	)
 	build_entry_button.position = Vector2(12.0, 12.0)
 	build_entry_button.size = Vector2(right_width - 24.0, 42.0)
@@ -223,14 +249,6 @@ func _layout_for_viewport() -> void:
 	confirm_road_button.size = Vector2((right_width - 42.0) * 0.5, 34.0)
 	cancel_placement_button.position = Vector2(14.0, 154.0)
 	cancel_placement_button.size = Vector2(right_width - 28.0, 34.0)
-	$ConstructionEntryPanel/BuildSlotProgress.position = Vector2(14.0, 78.0)
-	$ConstructionEntryPanel/BuildSlotProgress.size = Vector2(right_width - 28.0, 22.0)
-	$ConstructionEntryPanel/BuildSlotDetail.position = Vector2(14.0, 108.0)
-	$ConstructionEntryPanel/BuildSlotDetail.size = Vector2(right_width - 28.0, 88.0)
-	$ConstructionEntryPanel/BuildSlotPrimaryButton.position = Vector2(14.0, 204.0)
-	$ConstructionEntryPanel/BuildSlotPrimaryButton.size = Vector2(right_width - 28.0, 34.0)
-	$ConstructionEntryPanel/BuildSlotCancelButton.position = Vector2(14.0, 246.0)
-	$ConstructionEntryPanel/BuildSlotCancelButton.size = Vector2(right_width - 28.0, 34.0)
 
 	construction_menu.position = Vector2(width - right_width - edge, rail_top + 218.0)
 	construction_menu.size = Vector2(right_width, minf(390.0, height - rail_top - 230.0))
@@ -362,6 +380,26 @@ func get_top_status_region_rects() -> Dictionary:
 			pause_button.get_global_rect()
 		),
 	}
+
+
+func get_visible_construction_child_rects() -> Dictionary:
+	var rects := {}
+	for control in [
+		build_entry_button,
+		build_mode_status,
+		placement_orientation,
+		rotate_button,
+		confirm_road_button,
+		cancel_placement_button,
+		$ConstructionEntryPanel/BuildSlotContent/BuildSlotProgress,
+		$ConstructionEntryPanel/BuildSlotContent/BuildSlotDetail,
+		$ConstructionEntryPanel/BuildSlotContent/BuildSlotPrimaryButton,
+		$ConstructionEntryPanel/BuildSlotContent/BuildSlotCancelButton,
+	]:
+		var node := control as Control
+		if node.visible:
+			rects[node.name] = node.get_global_rect()
+	return rects
 
 
 func _panel_style() -> StyleBoxFlat:
