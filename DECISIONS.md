@@ -1,5 +1,20 @@
 # Product Successor Decisions
 
+## M0 R0B direct placement and failure feedback
+
+- A legal building position commits on the map left press; a separate building
+  confirmation control is not part of the product contract.
+- `R` rotates, right click or `Esc` cancels, and one successful placement exits
+  placement mode. Continuous placement remains deferred.
+- The click coordinate is previewed and revalidated immediately before the
+  existing `ConstructionController` writer is invoked. No second placement,
+  resource, or save authority is introduced.
+- Spatial/rule failures are red and explicit. Timed-order material shortages are
+  amber, list exact deltas, remain orderable, and explain that the order waits
+  for materials; incremental deduction remains authoritative.
+- Engineering evidence remains separate from Founder experience acceptance and
+  does not authorize merge, push, deploy, or a new gameplay slice.
+
 ## M0 R0A placement legality and construction presentation
 
 - `CityGridRules.evaluate_placement_legality` is the pure building/road spatial

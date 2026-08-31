@@ -1,5 +1,29 @@
 # 当前状态
 
+## M0 R0B direct click and explicit failure feedback
+
+R0B is an isolated engineering candidate based on exact R0A commit
+`80908263fbf09cbec963ba4c582ff9b22adea894`. Building placement now commits from
+one legal map left click, exits after one order, rotates with `R`, and cancels
+with right click or `Esc`. The building confirmation button is removed.
+
+Invalid placement shows a stable exact reason in the rail and a replacing
+2.5-second map message. Timed construction shortages remain orderable under the
+existing incremental-payment contract and state the exact missing amount plus
+`下单后将等待材料`. Save schema 4 and all R0/R0A legality, pause, construction,
+pressure, and persistence behavior remain unchanged.
+
+The focused 26-assertion real-input runner and full 47/47 dynamic regression
+pass. Native real-mouse 1152x648 smoke, six inspected screenshots, and an
+inspected 12.267-second H.264 MP4 pass. Founder live smoke remains pending; no
+push, merge, deploy, or new gameplay is authorized.
+
+`R0B_ENGINEERING_CANDIDATE=PASS_PENDING_FOUNDER_LIVE_SMOKE`
+
+`R0B_FULL_REGRESSION=47_OF_47_PASS`
+
+`R0B_VIDEO=MP4_H264_420V_PASS`
+
 ## M0 time, construction, and level pressure slice
 
 The conditionally authorized M0 slice is implemented on the isolated

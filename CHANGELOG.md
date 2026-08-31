@@ -5,6 +5,22 @@
 
 ## Unreleased
 
+### M0 R0B direct click and explicit failure feedback
+
+- Replaced the building-only right-rail confirmation step with one revalidated
+  map left click; success creates one timed order and exits placement.
+- Removed `ConfirmPlacementButton`, retained the existing road-only confirmation
+  flow, and preserved `R`, right-click, and `Esc` behavior.
+- Added structured exact player copy for road/building overlap, bounds, map
+  targets, resource deltas, state changes, and unknown commit failures.
+- Added amber exact-shortage guidance without changing incremental construction
+  payment, missing-material resume, pause behavior, balance, or schema 4.
+- Added a 26-assertion actual-input runner, updated superseded tests, and passed
+  all 47 dynamic smoke runners plus editor and formal scene gates.
+- Added six inspected PNGs and an inspected uncut 1152x648 MP4 verified as
+  MPEG-4/H.264/4:2:0. Founder live smoke remains pending; no push, merge, deploy,
+  or new gameplay was performed.
+
 ### M0 R0A building-road and construction UI repair
 
 - Fixed both logical and visual road overlap: shifted four Blackstone lower-row

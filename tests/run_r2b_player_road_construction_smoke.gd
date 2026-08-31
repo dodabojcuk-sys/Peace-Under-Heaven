@@ -37,7 +37,7 @@ func _run() -> void:
 		"UI/Shell/ConstructionMenu/RoadButton"
 	)
 	var confirm_button: Button = scene.get_node(
-		"UI/Shell/ConstructionEntryPanel/ConfirmPlacementButton"
+		"UI/Shell/ConstructionEntryPanel/ConfirmRoadButton"
 	)
 	var build_mode_status: Label = scene.get_node(
 		"UI/Shell/ConstructionEntryPanel/BuildModeStatus"

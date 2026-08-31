@@ -879,14 +879,14 @@ offset_right = 80.0
 offset_bottom = 110.0
 text = "旋转 R"
 
-[node name="ConfirmPlacementButton" type="Button" parent="UI/Shell/ConstructionEntryPanel"]
+[node name="ConfirmRoadButton" type="Button" parent="UI/Shell/ConstructionEntryPanel"]
 visible = false
 layout_mode = 0
 offset_left = 84.0
 offset_top = 76.0
 offset_right = 152.0
 offset_bottom = 110.0
-text = "确认"
+text = "确认铺设"
 
 [node name="CancelPlacementButton" type="Button" parent="UI/Shell/ConstructionEntryPanel"]
 visible = false
@@ -896,6 +896,30 @@ offset_top = 116.0
 offset_right = 152.0
 offset_bottom = 150.0
 text = "取消 Esc"
+
+[node name="PlacementFeedback" type="Label" parent="UI/Shell"]
+visible = false
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -230.0
+offset_top = -70.0
+offset_right = 230.0
+offset_bottom = -30.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.88, 0.78, 1)
+theme_override_colors/font_shadow_color = Color(0.05, 0.05, 0.05, 0.9)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 18
+text = "无法建造：与道路重叠"
+horizontal_alignment = 1
+vertical_alignment = 1
 
 [node name="ConstructionMenu" type="Panel" parent="UI/Shell"]
 visible = false

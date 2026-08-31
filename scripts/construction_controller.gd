@@ -238,12 +238,13 @@ const PRESET_BUILDING_DEFINITIONS := [
 @onready var rotate_placement_button: Button = (
 	$"../UI/Shell/ConstructionEntryPanel/RotateButton"
 )
-@onready var confirm_placement_button: Button = (
-	$"../UI/Shell/ConstructionEntryPanel/ConfirmPlacementButton"
+@onready var confirm_road_button: Button = (
+	$"../UI/Shell/ConstructionEntryPanel/ConfirmRoadButton"
 )
 @onready var cancel_placement_button: Button = (
 	$"../UI/Shell/ConstructionEntryPanel/CancelPlacementButton"
 )
+@onready var placement_feedback: Label = $"../UI/Shell/PlacementFeedback"
 @onready var construction_menu: Control = $"../UI/Shell/ConstructionMenu"
 @onready var road_button: Button = $"../UI/Shell/ConstructionMenu/RoadButton"
 @onready var logging_camp_button: Button = (
@@ -333,6 +334,7 @@ var preview_entrance_info: Dictionary = {}
 var preview_entrance_marker: Polygon2D
 var preview_conflict_mark: Line2D
 var _last_preview_validation: Dictionary = {}
+var _placement_feedback_generation := 0
 var _legacy_overlap_reports: Array[Dictionary] = []
 var _road_draft: Dictionary = {}
 var _road_drag_active := false
@@ -471,7 +473,7 @@ func _ready() -> void:
 	)
 	close_construction_menu_button.pressed.connect(cancel_build_interaction)
 	rotate_placement_button.pressed.connect(rotate_preview)
-	confirm_placement_button.pressed.connect(confirm_current_preview)
+	confirm_road_button.pressed.connect(confirm_road_preview)
 	cancel_placement_button.pressed.connect(cancel_placing)
 	pause_button.pressed.connect(toggle_city_time_paused)
 	time_speed_option.item_selected.connect(_on_time_speed_selected)
@@ -1026,6 +1028,82 @@ func update_preview(screen_position: Vector2) -> void:
 	_refresh_preview_for_current_cell()
 
 
+func commit_building_from_map_click(screen_position: Vector2) -> Dictionary:
+	if not is_placing() or _selected_definition == null or is_road_placing():
+		return _commit_result(false, &"INVALID_MAP_TARGET", "无法建造：请选择城内空地")
+	# The click coordinate, preview, and final validation intentionally share one
+	# update. This prevents a stale ghost after crossing the rail or resizing.
+	update_preview(screen_position)
+	if not preview_valid:
+		var blocked_message := _player_failure_message(_last_preview_validation)
+		_show_placement_feedback(blocked_message)
+		return _commit_result(
+			false,
+			StringName(_last_preview_validation.get("reason_code", &"UNKNOWN_COMMIT_FAILURE")),
+			blocked_message,
+			_last_preview_validation
+		)
+	var definition_id := _selected_definition.definition_id
+	var committed_origin := preview_origin_cell
+	var committed_orientation := preview_orientation
+	var commit_validation := evaluate_origin_cell_for_definition(
+		committed_origin,
+		_selected_definition,
+		false,
+		_selected_definition.build_days <= 0,
+		committed_orientation
+	)
+	if not bool(commit_validation.valid):
+		_refresh_preview_for_current_cell()
+		var changed_message := _player_failure_message(commit_validation)
+		_show_placement_feedback(changed_message)
+		return _commit_result(
+			false,
+			StringName(commit_validation.get("reason_code", &"STATE_CHANGED")),
+			changed_message,
+			commit_validation
+		)
+	var placement_id := place_definition_at_cell(
+		definition_id,
+		committed_origin,
+		true,
+		false,
+		committed_orientation
+	)
+	if placement_id < 0:
+		var unknown_message := "建造失败，请重试（R0B-UNKNOWN）"
+		push_error(
+			"R0B_UNKNOWN_COMMIT_FAILURE definition=%s cell=%s orientation=%d"
+			% [definition_id, committed_origin, committed_orientation]
+		)
+		_show_placement_feedback(unknown_message)
+		return _commit_result(false, &"UNKNOWN_COMMIT_FAILURE", unknown_message)
+	cancel_placing()
+	return {
+		"success": true,
+		"reason_code": CITY_GRID_RULES.REASON_NONE,
+		"reason_text": "",
+		"placement_id": placement_id,
+		"origin_cell": committed_origin,
+		"orientation": committed_orientation,
+	}
+
+
+func _commit_result(
+	success: bool,
+	reason_code: StringName,
+	reason_text: String,
+	extra: Dictionary = {}
+) -> Dictionary:
+	var result := {
+		"success": success,
+		"reason_code": reason_code,
+		"reason_text": reason_text,
+	}
+	result.merge(extra, false)
+	return result
+
+
 func confirm_current_preview() -> bool:
 	if (
 		not is_placing()
@@ -1048,6 +1126,14 @@ func confirm_current_preview() -> bool:
 	# placement-only presentation state so cancellation cannot leak orientation.
 	cancel_placing()
 	return true
+
+
+func get_last_preview_validation() -> Dictionary:
+	return _last_preview_validation.duplicate(true)
+
+
+func get_placement_feedback_text() -> String:
+	return placement_feedback.text if placement_feedback.visible else ""
 
 
 func begin_road_drag(screen_position: Vector2) -> bool:
@@ -5589,6 +5675,17 @@ func _get_definition_compact_cost_text(
 	return "无消耗" if parts.is_empty() else " ".join(parts)
 
 
+func _get_placement_cost_with_available_text(
+	definition: BuildingDefinition
+) -> String:
+	var parts: Array[String] = []
+	if definition.wood_cost > 0:
+		parts.append("木材 %d（现有 %d）" % [definition.wood_cost, wood])
+	if definition.food_cost > 0:
+		parts.append("粮食 %d（现有 %d）" % [definition.food_cost, food])
+	return "无资源消耗" if parts.is_empty() else "、".join(parts)
+
+
 func _get_definition_effect_summary(
 	definition: BuildingDefinition
 ) -> String:
@@ -6038,6 +6135,64 @@ func _placement_reason_text(
 	return ""
 
 
+func _resource_shortages(definition: BuildingDefinition) -> Array[Dictionary]:
+	var shortages: Array[Dictionary] = []
+	for resource in [
+		[&"wood", "木材", definition.wood_cost],
+		[&"food", "粮食", definition.food_cost],
+	]:
+		var missing := maxi(int(resource[2]) - _nation_state.get_resource(resource[0]), 0)
+		if missing > 0:
+			shortages.append({
+				"resource_id": resource[0],
+				"display_name": resource[1],
+				"missing": missing,
+			})
+	return shortages
+
+
+func _shortage_text(shortages: Array) -> String:
+	var parts: Array[String] = []
+	for shortage in shortages:
+		parts.append("%s %d" % [shortage.display_name, int(shortage.missing)])
+	return "、".join(parts)
+
+
+func _player_failure_message(validation: Dictionary) -> String:
+	var reason_code := StringName(validation.get("reason_code", &"UNKNOWN_COMMIT_FAILURE"))
+	match reason_code:
+		CITY_GRID_RULES.REASON_ROAD_OVERLAP:
+			return "无法建造：与道路重叠"
+		CITY_GRID_RULES.REASON_BUILDING_OVERLAP:
+			return "无法建造：与其他建筑重叠"
+		CITY_GRID_RULES.REASON_IMMOVABLE_OBJECT_OVERLAP:
+			return "无法建造：此处有不可移动建筑"
+		CITY_GRID_RULES.REASON_OUT_OF_BOUNDS:
+			return "无法建造：超出可建区域"
+		&"INVALID_MAP_TARGET", &"UI_OCCLUDED":
+			return "无法建造：请选择城内空地"
+		&"INSUFFICIENT_RESOURCE", &"INSUFFICIENT_RESOURCES", &"INSUFFICIENT_FUNDS":
+			var shortages: Array = validation.get("shortages", [])
+			if not shortages.is_empty():
+				return "无法建造：缺少%s" % _shortage_text(shortages)
+		&"STATE_CHANGED":
+			return "建造失败：状态已变化，请重新选择位置"
+		&"UNKNOWN_COMMIT_FAILURE":
+			return "建造失败，请重试（R0B-UNKNOWN）"
+	var reason_text := str(validation.get("reason_text", validation.get("reason", "")))
+	return "无法建造：%s" % reason_text if not reason_text.is_empty() else "建造失败，请重试（R0B-UNKNOWN）"
+
+
+func _show_placement_feedback(message: String) -> void:
+	_placement_feedback_generation += 1
+	var generation := _placement_feedback_generation
+	placement_feedback.text = message
+	placement_feedback.visible = true
+	await get_tree().create_timer(2.5).timeout
+	if generation == _placement_feedback_generation:
+		placement_feedback.visible = false
+
+
 func evaluate_origin_cell(origin_cell: Vector2i) -> Dictionary:
 	var definition := (
 		_selected_definition
@@ -6201,6 +6356,8 @@ func _refresh_preview_for_current_cell() -> void:
 		_selected_definition.build_days <= 0,
 		preview_orientation
 	)
+	var shortages := _resource_shortages(_selected_definition)
+	validation["shortages"] = shortages
 	preview_valid = validation.valid
 	_last_preview_validation = validation.duplicate(true)
 	preview_invalid_reason = validation.reason
@@ -6215,22 +6372,23 @@ func _refresh_preview_for_current_cell() -> void:
 		preview_connection_state == &"connected"
 		or preview_connection_state == &"not_required"
 	)
+	var preview_has_warning := not shortages.is_empty() or not preview_is_connected
 	preview_body.color = (
 		PREVIEW_INVALID_COLOR
 		if not preview_valid
 		else (
-			PREVIEW_VALID_COLOR
-			if preview_is_connected
-			else PREVIEW_DISCONNECTED_COLOR
+			PREVIEW_DISCONNECTED_COLOR
+			if preview_has_warning
+			else PREVIEW_VALID_COLOR
 		)
 	)
 	preview_outline.default_color = (
 		PREVIEW_INVALID_OUTLINE
 		if not preview_valid
 		else (
-			PREVIEW_VALID_OUTLINE
-			if preview_is_connected
-			else PREVIEW_DISCONNECTED_OUTLINE
+			PREVIEW_DISCONNECTED_OUTLINE
+			if preview_has_warning
+			else PREVIEW_VALID_OUTLINE
 		)
 	)
 	var preview_size := Vector2(
@@ -6315,9 +6473,12 @@ func _update_preview_entrance_marker() -> void:
 		PREVIEW_INVALID_OUTLINE
 		if not preview_valid
 		else (
-			PREVIEW_VALID_OUTLINE
-			if preview_connection_state != &"disconnected"
-			else PREVIEW_DISCONNECTED_OUTLINE
+			PREVIEW_DISCONNECTED_OUTLINE
+			if (
+				preview_connection_state == &"disconnected"
+				or not _resource_shortages(_selected_definition).is_empty()
+			)
+			else PREVIEW_VALID_OUTLINE
 		)
 	)
 	preview_entrance_marker.visible = true
@@ -6905,7 +7066,7 @@ func _sync_construction_ui() -> void:
 	rotate_placement_button.visible = (
 		state == ConstructionState.PLACING and not is_road_placing()
 	)
-	confirm_placement_button.visible = state == ConstructionState.PLACING
+	confirm_road_button.visible = state == ConstructionState.PLACING and is_road_placing()
 	cancel_placement_button.visible = state == ConstructionState.PLACING
 	if state == ConstructionState.PLACING and _selected_definition != null:
 		if is_road_placing():
@@ -6925,25 +7086,31 @@ func _sync_construction_ui() -> void:
 				"道路只接受水平 / 垂直路径 · 每格木%d"
 				% ROAD_DEFINITION.wood_cost
 			)
-			confirm_placement_button.text = "确认铺设"
-			confirm_placement_button.disabled = (
+			confirm_road_button.text = "确认铺设"
+			confirm_road_button.disabled = (
 				not preview_valid or not _road_preview_fixed
 			)
 			cancel_placement_button.text = "取消道路 · Esc"
 		else:
-			build_mode_status.text = "建造：%s · %s · %s" % [
+			var shortages := _resource_shortages(_selected_definition)
+			var status_text := "可建造：左键放置"
+			if not preview_valid:
+				status_text = _player_failure_message(_last_preview_validation)
+			elif not shortages.is_empty():
+				status_text = "材料不足：缺%s；下单后将等待材料" % _shortage_text(shortages)
+			elif preview_connection_state == &"disconnected":
+				status_text = "可建造：左键放置；未接道路，完工后不生产"
+			build_mode_status.text = "%s\n%s\n状态：%s" % [
 				_selected_definition.display_name,
-				_get_definition_compact_cost_text(_selected_definition),
-				_preview_connection_label(),
+				_get_placement_cost_with_available_text(_selected_definition),
+				status_text,
 			]
 			placement_orientation_label.text = "朝向：%s · 占地 %d × %d" % [
 				ORIENTATION_NAMES[preview_orientation],
 				get_rotated_footprint(_selected_definition, preview_orientation).x,
 				get_rotated_footprint(_selected_definition, preview_orientation).y,
 			]
-			confirm_placement_button.text = "确认"
-			confirm_placement_button.disabled = not preview_valid
-			cancel_placement_button.text = "取消 Esc"
+			cancel_placement_button.text = "右键 / Esc 取消"
 		cancel_placement_button.disabled = false
 		rotate_placement_button.disabled = is_road_placing()
 	construction_menu.visible = (

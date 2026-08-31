@@ -185,8 +185,9 @@ func _handle_construction_input(event: InputEvent) -> void:
 			_stop_drag()
 			get_viewport().set_input_as_handled()
 		elif event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-			# The right rail owns confirmation; map clicks only move the ghost.
-			construction_controller.update_preview(event.position)
+			# R0B: the physical map click is the single building commit action.
+			# The controller revalidates this exact pointer position before writing.
+			construction_controller.commit_building_from_map_click(event.position)
 			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion:
 		if construction_controller.is_road_placing():
