@@ -1,5 +1,26 @@
 # 当前状态
 
+## TXWZS City Governance Interaction 001
+
+This isolated branch started from exact M1B documentation base
+`2e39ac78f3c9d93585edee6e43a1b736e0ba05bf` and stopped before any product
+change. The requested governance road recommendation contract assumes an
+existing `RoadConnectivitySystem`, immutable road preview/confirm intent,
+reservation, and `ScheduledJob`. This base has none of those: its existing
+`ConstructionController` derives road connectivity through `CityGridRules` and
+`RegularCitySpatialFoundation`, then immediately commits wood and road
+placements on confirmation. Adding the missing job/intent system would create
+the prohibited second transaction/queue and alter road behavior, so no partial
+UI was made. See
+`docs/reports/TXWZS_CITY_GOVERNANCE_INTERACTION_001_BLOCKER_REPORT.md`.
+
+The only completed branch change is a portable tracked macOS debug export
+preset (`eac441c`); `export_credentials.cfg` stays ignored. The exact Godot
+4.5.1 export-template archive is resuming in the background and is not a
+governance pass/fail condition.
+
+`CITY_GOVERNANCE_INTERACTION_001=BLOCKED_BASELINE_CONTRACT_MISMATCH`
+
 ## M1B standalone playable shell R0
 
 M1B adds a container-driven `title_shell.tscn` as the formal main scene. It
