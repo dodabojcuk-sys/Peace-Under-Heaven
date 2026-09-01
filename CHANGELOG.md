@@ -14,6 +14,18 @@
 
 ## Unreleased
 
+### M1A.1-R2 V5 runtime persistence lifecycle
+
+- Wired normal GUI city startup, dirty state commits, whole-generation fallback,
+  and normal window-close flush to the existing V5 canonical snapshot store.
+- Added a three-process normal-scene lifecycle runner covering initial publish,
+  real current-mainline victory/return restoration, and corrupt-latest fallback.
+- Kept schema 5, V1 migration, `ConstructionController` ownership, battle
+  transactions, resources, construction, roads, and UI behavior unchanged.
+- Kept headless scene runners off the default player store unless they pass an
+  explicit isolated save directory. Native L3 video evidence remains blocked by
+  game-window focus, not replaced by synthetic evidence.
+
 ### M1A current-mainline battle settlement return loop
 
 - Added the bounded current-mainline action to the existing deadline/pressure

@@ -81,6 +81,22 @@
   not create one or reassign Save ownership; a real cold restart remains a
   blocker until that lifecycle is separately wired and verified.
 
+## M1A.1-R2 runtime persistence composition
+
+- `ConstructionController` remains the only live city authority. The runtime
+  coordinator is an orchestration adapter around its existing
+  export/validate/restore boundary and the accepted V5 generation store; it is
+  not a SaveManager, a second canonical state, or another on-disk schema.
+- A valid V5 generation restores atomically through the existing controller
+  rollback contract. Missing storage alone may create an initial generation;
+  future, invalid, or all-corrupt storage must remain on disk and block writes.
+- Runtime state changes are dirty/debounced. Explicit flush is available for
+  product boundaries and window-close finalization, but `_exit_tree` is never
+  the only persistence mechanism.
+- Headless normal-scene runners must opt into a temporary V5 root. This avoids
+  accidental reads or writes to a player campaign while retaining GUI default
+  persistence.
+
 ## M0 R0A placement legality and construction presentation
 
 - `CityGridRules.evaluate_placement_legality` is the pure building/road spatial

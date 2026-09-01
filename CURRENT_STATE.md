@@ -28,6 +28,28 @@ world interpenetration remain milestone gates.
 
 `M1A_CURRENT_MAINLINE_RETURN=PASS_LOCAL_ONLY_PENDING_FOUNDER_PLAYTEST`
 
+## M1A.1-R2 V5 runtime persistence lifecycle
+
+The normal GUI city runtime now composes the existing V5 codec/store with the
+existing `ConstructionController` canonical authority. Valid latest generations
+load through the existing rollback-safe restore boundary; an empty store alone
+publishes the default city; corrupt-all and future stores are write-blocked
+without overwriting disk. Dirty canonical commits are debounced and normal
+window close performs a final flush. `CampaignSnapshotV2` schema 5, envelope
+storage version, V1 migration, construction, battle, resources, and UI rules
+are unchanged. Headless runners require an explicit isolated save root, so they
+do not touch a player `user://` campaign.
+
+The new three-process normal-scene lifecycle runner verifies empty creation,
+real current-mainline victory and return, automatic cold startup restoration,
+and whole-generation fallback. It passes alongside the 52-runner full dynamic
+regression, editor import, and headless smoke. A final native player video is
+not claimed: the current macOS UI channel could not focus the separately
+launched game window over the project manager, so no background automation was
+mislabelled as real player evidence.
+
+`M1A1_R2_RUNTIME_PERSISTENCE=ENGINEERING_PASS_L3_EVIDENCE_BLOCKED`
+
 ## M0 R0C.1 top-bar responsive closure
 
 R0C.1 is a local-only presentation repair on `bab6b78f`. The top bar now
