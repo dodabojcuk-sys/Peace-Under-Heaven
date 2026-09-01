@@ -10,8 +10,8 @@ config_version=5
 
 [application]
 
-config/name="TXWZS-P0-00-BASELINE"
-run/main_scene="res://scenes/blank_map.tscn"
+config/name="天下无战事"
+run/main_scene="res://scenes/title_shell.tscn"
 config/features=PackedStringArray("4.5")
 run/disable_stdout_capture=false
 
