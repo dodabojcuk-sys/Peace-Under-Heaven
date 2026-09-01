@@ -362,6 +362,9 @@ var _legacy_overlap_reports: Array[Dictionary] = []
 var _road_draft: Dictionary = {}
 var _road_drag_active := false
 var _road_preview_fixed := false
+# This is presentation-only state for the current road-preview lifetime. It is
+# deliberately cleared with the draft and is never exported to V5.
+var _road_recommendation_preview: Dictionary = {}
 var _road_drag_start_cell := Vector2i.ZERO
 var _road_drag_current_cell := Vector2i.ZERO
 var current_day := 1
@@ -1381,6 +1384,11 @@ func confirm_road_preview() -> bool:
 	):
 		return false
 	var cells: Array[Vector2i] = _road_draft.unique_cells.duplicate()
+	if not _road_recommendation_preview.is_empty():
+		if not _is_current_road_recommendation_preview(cells):
+			_show_placement_feedback("接通方案已过期，请重新查看方案")
+			cancel_road_preview()
+			return false
 	var result := place_player_road_path(cells)
 	if not bool(result.success):
 		preview_valid = false
@@ -1453,8 +1461,255 @@ func _reset_road_draft() -> void:
 	_road_draft = {}
 	_road_drag_active = false
 	_road_preview_fixed = false
+	_road_recommendation_preview = {}
 	if is_instance_valid(road_preview_visual):
 		road_preview_visual.clear_preview()
+
+
+func query_road_connection_recommendation(placement_id: int) -> Dictionary:
+	# A recommendation is a read-only query over the current canonical grid. It
+	# intentionally owns neither a road graph nor a pending transaction.
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
+	if record.is_empty():
+		return _road_recommendation_result(
+			&"unavailable", placement_id, "目标建筑已不存在"
+		)
+	if not bool(record.get("requires_road", false)):
+		return _road_recommendation_result(
+			&"unavailable", placement_id, "该建筑不需要道路"
+		)
+	var entrance := get_building_entrance_info(placement_id)
+	if not bool(entrance.get("valid", false)):
+		return _road_recommendation_result(
+			&"unavailable", placement_id, "建筑入口无效，无法生成接通方案"
+		)
+	if bool(entrance.get("connected", false)):
+		return _road_recommendation_result(
+			&"unavailable", placement_id, "该建筑已接入城市路网"
+		)
+
+	var start := Vector2i(entrance.get("road_contact_cell", Vector2i.ZERO))
+	var connected_roads := get_connected_road_cells()
+	if connected_roads.is_empty():
+		return _road_recommendation_result(
+			&"unavailable", placement_id, "当前没有可接入的主路网"
+		)
+	if not _is_recommendation_transit_cell_legal(start):
+		return _road_recommendation_result(
+			&"unavailable", placement_id, "建筑入口旁没有可铺设的道路格"
+		)
+
+	var frontier: Array[Vector2i] = [start]
+	var frontier_index := 0
+	var distance_by_cell: Dictionary = {start: 0}
+	var paths_by_cell: Dictionary = {start: 1}
+	var parent_by_cell: Dictionary = {}
+	var shortest_goal_distance := -1
+	var shortest_goal_paths := 0
+	var shortest_goal_end := Vector2i.ZERO
+
+	while frontier_index < frontier.size():
+		var current := frontier[frontier_index]
+		frontier_index += 1
+		var current_distance := int(distance_by_cell[current])
+		if (
+			shortest_goal_distance >= 0
+			and current_distance + 1 > shortest_goal_distance
+		):
+			continue
+		for direction in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+			var neighbor: Vector2i = current + direction
+			var candidate_distance := current_distance + 1
+			if connected_roads.has(neighbor):
+				if shortest_goal_distance < 0:
+					shortest_goal_distance = candidate_distance
+				if candidate_distance == shortest_goal_distance:
+					shortest_goal_paths = mini(
+						2,
+						shortest_goal_paths + int(paths_by_cell[current])
+					)
+					if shortest_goal_paths == 1:
+						shortest_goal_end = neighbor
+				continue
+			if not _is_recommendation_transit_cell_legal(neighbor):
+				continue
+			if not distance_by_cell.has(neighbor):
+				distance_by_cell[neighbor] = candidate_distance
+				paths_by_cell[neighbor] = int(paths_by_cell[current])
+				parent_by_cell[neighbor] = current
+				frontier.append(neighbor)
+			elif int(distance_by_cell[neighbor]) == candidate_distance:
+				paths_by_cell[neighbor] = mini(
+					2,
+					int(paths_by_cell[neighbor]) + int(paths_by_cell[current])
+				)
+
+	if shortest_goal_paths <= 0:
+		return _road_recommendation_result(
+			&"unavailable", placement_id, "没有合法的接通路径，请手动规划"
+		)
+	if shortest_goal_paths > 1:
+		return _road_recommendation_result(
+			&"ambiguous", placement_id, "存在多种接通方式，请手动规划。"
+		)
+
+	var end_parent := Vector2i.ZERO
+	# The terminal is an existing connected road. Locate its sole predecessor by
+	# walking the frontier relation rather than adding that road to new cells.
+	for direction in [Vector2i.UP, Vector2i.RIGHT, Vector2i.DOWN, Vector2i.LEFT]:
+		var candidate_parent: Vector2i = shortest_goal_end + direction
+		if (
+			distance_by_cell.has(candidate_parent)
+			and int(distance_by_cell[candidate_parent]) + 1 == shortest_goal_distance
+		):
+			end_parent = candidate_parent
+			break
+	if not distance_by_cell.has(end_parent):
+		return _road_recommendation_result(
+			&"unavailable", placement_id, "接通路径状态无效，请手动规划"
+		)
+	var cells := _reconstruct_recommendation_path(
+		start, end_parent, parent_by_cell
+	)
+	cells.append(shortest_goal_end)
+	var validation := evaluate_road_path(cells)
+	if not bool(validation.valid):
+		return _road_recommendation_result(
+			&"unavailable", placement_id,
+			str(validation.get("reason", "没有合法的接通路径，请手动规划"))
+		)
+	return _road_recommendation_result(
+		&"recommended", placement_id, "已找到唯一最短接通方案", cells,
+		int(validation.get("cost", 0))
+	)
+
+
+func preview_road_connection_recommendation(placement_id: int) -> Dictionary:
+	var recommendation := query_road_connection_recommendation(placement_id)
+	if StringName(recommendation.status) != &"recommended":
+		return recommendation
+	var cells: Array[Vector2i] = []
+	for cell_value in recommendation.cells:
+		cells.append(Vector2i(cell_value))
+	if cells.is_empty():
+		return _road_recommendation_result(
+			&"unavailable", placement_id, "接通方案为空，请手动规划"
+		)
+	var preview_screen := map_local_to_screen(
+		cell_to_map_local(cells.front()) + Vector2(GRID_SIZE * 0.5, GRID_SIZE * 0.5)
+	)
+	if not begin_road_mode(preview_screen):
+		return _road_recommendation_result(
+			&"unavailable", placement_id, "当前无法进入道路预览"
+		)
+	_set_recommended_road_preview_cells(cells)
+	if not preview_valid:
+		var failure := preview_invalid_reason
+		cancel_road_preview()
+		return _road_recommendation_result(&"unavailable", placement_id, failure)
+	_road_recommendation_preview = {
+		"placement_id": placement_id,
+		"cells": cells.duplicate(),
+	}
+	# Refresh after tagging the draft so the existing road panel can present the
+	# target, cost, and manual alternative rather than generic drag copy.
+	_sync_construction_ui()
+	construction_presentation_changed.emit()
+	return recommendation
+
+
+func switch_recommended_road_to_manual() -> bool:
+	if not is_road_placing():
+		return false
+	# Leave no hidden auto-route behind before the existing manual drag flow starts.
+	cancel_road_preview()
+	return begin_road_mode(get_viewport().get_mouse_position())
+
+
+func has_road_connection_recommendation_preview() -> bool:
+	return is_road_placing() and not _road_recommendation_preview.is_empty()
+
+
+func _is_current_road_recommendation_preview(cells: Array[Vector2i]) -> bool:
+	var placement_id := int(_road_recommendation_preview.get("placement_id", -1))
+	var recommendation := query_road_connection_recommendation(placement_id)
+	if StringName(recommendation.get("status", &"unavailable")) != &"recommended":
+		return false
+	var current_cells: Array = recommendation.get("cells", [])
+	if current_cells.size() != cells.size():
+		return false
+	for index in current_cells.size():
+		if Vector2i(current_cells[index]) != cells[index]:
+			return false
+	return true
+
+
+func _set_recommended_road_preview_cells(cells: Array[Vector2i]) -> void:
+	_road_draft = {
+		"sampled_cells": cells.duplicate(),
+		"ordered_cells": cells.duplicate(),
+		"unique_cells": cells.duplicate(),
+		"valid_axis": true,
+	}
+	_road_drag_active = false
+	_road_preview_fixed = true
+	var validation := evaluate_road_path(cells)
+	preview_valid = bool(validation.valid)
+	preview_invalid_reason = str(validation.reason)
+	preview_connection_state = StringName(
+		validation.get("connection_state", &"invalid")
+	)
+	road_preview_visual.set_preview(
+		cells,
+		preview_connection_state if preview_valid else &"invalid",
+		GRID_SIZE
+	)
+	_sync_construction_ui()
+	construction_presentation_changed.emit()
+
+
+func _is_recommendation_transit_cell_legal(cell: Vector2i) -> bool:
+	if get_all_road_cells().has(cell):
+		return false
+	var legality := evaluate_spatial_legality(PLACEMENT_KIND_ROAD, [cell])
+	return bool(legality.get("is_legal", false))
+
+
+func _reconstruct_recommendation_path(
+	start: Vector2i,
+	end: Vector2i,
+	parent_by_cell: Dictionary
+) -> Array[Vector2i]:
+	var reversed: Array[Vector2i] = [end]
+	var current := end
+	while current != start:
+		if not parent_by_cell.has(current):
+			return []
+		current = Vector2i(parent_by_cell[current])
+		reversed.append(current)
+	reversed.reverse()
+	return reversed
+
+
+func _road_recommendation_result(
+	status: StringName,
+	placement_id: int,
+	message: String,
+	cells: Array[Vector2i] = [],
+	wood_cost := 0
+) -> Dictionary:
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
+	return {
+		"status": status,
+		"placement_id": placement_id,
+		"target_name": str(record.get("display_name", "目标建筑")),
+		"message": message,
+		"cells": cells.duplicate(),
+		"path_length": cells.size(),
+		"wood_cost": wood_cost,
+		"connection_result": "接入主路网" if status == &"recommended" else "",
+		"completion_method": "立即铺设" if status == &"recommended" else "",
+	}
 
 
 func evaluate_road_path(cells: Array[Vector2i]) -> Dictionary:
@@ -1690,6 +1945,8 @@ func get_road_mask(cell: Vector2i) -> int:
 func rotate_preview() -> bool:
 	if not is_placing() or _selected_definition == null:
 		return false
+	if has_road_connection_recommendation_preview():
+		return switch_recommended_road_to_manual()
 	preview_orientation = posmod(preview_orientation + 1, 4)
 	if get_build_slot_state() == BUILD_SLOT_PLACEMENT_ACTIVE and not is_road_placing():
 		_build_slot.orientation = preview_orientation
@@ -7655,13 +7912,17 @@ func _sync_construction_ui() -> void:
 	build_entry_button.text = (
 		"旧存档施工完成后启用新建造队列"
 		if _has_legacy_construction()
-		else "建造目录"
+		else "城市经营"
 	)
 	build_entry_button.disabled = is_city_action_locked_for_battle()
 	build_mode_status.visible = state == ConstructionState.PLACING
 	placement_orientation_label.visible = state == ConstructionState.PLACING
 	rotate_placement_button.visible = (
-		state == ConstructionState.PLACING and not is_road_placing()
+		state == ConstructionState.PLACING
+		and (
+			not is_road_placing()
+			or has_road_connection_recommendation_preview()
+		)
 	)
 	confirm_road_button.visible = state == ConstructionState.PLACING and is_road_placing()
 	cancel_placement_button.visible = state == ConstructionState.PLACING
@@ -7719,14 +7980,35 @@ func _sync_construction_ui() -> void:
 			)
 			if not preview_valid:
 				connection_text = preview_invalid_reason
-			build_mode_status.text = "道路工具 · 拖拽直线\n长度 %d · %s" % [
-				road_cells.size(),
-				connection_text,
-			]
-			placement_orientation_label.text = (
-				"道路只接受水平 / 垂直路径 · 每格木%d"
-				% ROAD_DEFINITION.wood_cost
-			)
+			if has_road_connection_recommendation_preview():
+				var recommendation_id := int(
+					_road_recommendation_preview.get("placement_id", -1)
+				)
+				var recommendation_target: Dictionary = _building_records_by_id.get(
+					recommendation_id, {}
+				)
+				var recommendation_cost := int(
+					evaluate_road_path(road_cells).get("cost", 0)
+				)
+				build_mode_status.text = "接通方案 · %s\n路径 %d 格 · 木材 %d · %s" % [
+					str(recommendation_target.get("display_name", "目标建筑")),
+					road_cells.size(),
+					recommendation_cost,
+					connection_text,
+				]
+				placement_orientation_label.text = "完成方式：立即铺设 · 状态变化后需重新查看"
+				rotate_placement_button.text = "手动规划"
+				cancel_placement_button.text = "取消方案 · Esc"
+			else:
+				build_mode_status.text = "道路工具 · 拖拽直线\n长度 %d · %s" % [
+					road_cells.size(),
+					connection_text,
+				]
+				placement_orientation_label.text = (
+					"道路只接受水平 / 垂直路径 · 每格木%d"
+					% ROAD_DEFINITION.wood_cost
+				)
+				cancel_placement_button.text = "取消道路 · Esc"
 			confirm_road_button.text = "确认铺设"
 			confirm_road_button.disabled = (
 				not preview_valid or not _road_preview_fixed
