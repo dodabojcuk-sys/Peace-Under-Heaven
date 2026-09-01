@@ -48,8 +48,12 @@ func _run() -> void:
 		"左侧大城市栏默认收起，城市空间保持主要面积")
 	_check(minimap.visible and minimap.get_script() != null,
 		"右上角使用可更新的小地图组件")
-	_check(entry_panel.visible and entry_panel.get_global_rect().position.x > root.size.x * 0.5,
-		"右侧纵栏承载真实建造入口")
+	var governance_workspace: Control = scene.get_node("UI/Shell/GovernanceWorkspace")
+	_check(
+		governance_workspace.visible
+			and governance_workspace.get_global_rect().position.x > root.size.x * 0.5,
+		"右侧纵栏承载真实城市经营入口"
+	)
 	_check(
 		is_equal_approx(entry_panel.get_global_rect().position.x, minimap.get_global_rect().position.x)
 			and is_equal_approx(entry_panel.size.x, minimap.size.x)

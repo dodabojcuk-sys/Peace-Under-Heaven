@@ -45,11 +45,19 @@ const DANGER := Color("df8d7f")
 @onready var noticeboard_panel: Panel = $NoticeboardPanel
 
 var _layout_refresh_pending := false
+var governance_workspace: PanelContainer
+var governance_title: Label
+var governance_summary: Label
+var governance_issue_detail: Label
+var governance_catalog_button: Button
+var governance_wood_button: Button
+var governance_food_button: Button
 
 
 func _ready() -> void:
 	_apply_visual_tokens()
 	_apply_static_copy()
+	_install_governance_workspace()
 	_layout_for_viewport()
 	get_viewport().size_changed.connect(_layout_for_viewport)
 	construction_controller.city_state_changed.connect(_refresh_read_model)
@@ -61,8 +69,8 @@ func _ready() -> void:
 
 
 func _restore_product_overview() -> void:
-	# R1 makes the right build rail the sole permanent city-operation surface.
-	# The legacy city context can still be explicitly opened without owning state.
+	# City switching remains a functional context control; unavailable destinations
+	# stay inside that panel instead of becoming separate top-level navigation.
 	city_bar.visible = false
 	city_bar_toggle.visible = true
 
@@ -102,9 +110,9 @@ func _apply_static_copy() -> void:
 	city_two.text = "河湾城\n有机花园城 · 可进入"
 	city_three.text = "下一城市\n未解锁"
 	minimap_label.text = "部署概览 · 黑石城"
-	build_entry_button.text = "建造目录"
+	build_entry_button.text = "城市经营"
 	build_mode_status.text = "已选蓝图\n地图左键建造 · R 旋转 · 右键/Esc 取消"
-	$ConstructionMenu/Title.text = "建造 · 建筑 / 道路"
+	$ConstructionMenu/Title.text = "空间设施与道路"
 	$BuildingDetailPanel/PanelTitle.text = "建筑档案"
 	$BuildingDetailPanel/UpgradeStatusCard.text = (
 		"升级状态\n当前权威未提供升级写入命令\n不会伪造等级或扣除资源"
@@ -153,6 +161,7 @@ func _refresh_read_model() -> void:
 		int(queue.get("queued_count", 0)),
 		construction_controller.get_construction_in_progress_count(),
 	]
+	_refresh_governance_workspace(wood, food)
 	for label in [time_summary, daily_report, alert_summary]:
 		label.add_theme_color_override("font_color", MUTED_TEXT)
 	_schedule_layout_refresh()
@@ -257,6 +266,144 @@ func _layout_for_viewport() -> void:
 	detail_panel.position = Vector2(width - right_width - edge, rail_top + 140.0)
 	detail_panel.size = Vector2(right_width, minf(610.0, height - rail_top - 154.0))
 	_layout_detail(right_width)
+	_layout_governance_workspace(width, height, right_width, edge, rail_top)
+	_refresh_governance_workspace()
+
+
+
+func _install_governance_workspace() -> void:
+	# This workspace is presentation-only. It gives the existing construction
+	# controller a clear default entry without creating a city-management state.
+	governance_workspace = PanelContainer.new()
+	governance_workspace.name = "GovernanceWorkspace"
+	governance_workspace.mouse_filter = Control.MOUSE_FILTER_STOP
+	governance_workspace.add_theme_stylebox_override("panel", _panel_style())
+	add_child(governance_workspace)
+
+	var margin := MarginContainer.new()
+	margin.name = "GovernanceMargin"
+	margin.add_theme_constant_override("margin_left", 14)
+	margin.add_theme_constant_override("margin_top", 14)
+	margin.add_theme_constant_override("margin_right", 14)
+	margin.add_theme_constant_override("margin_bottom", 14)
+	governance_workspace.add_child(margin)
+
+	var content := VBoxContainer.new()
+	content.name = "GovernanceContent"
+	content.add_theme_constant_override("separation", 8)
+	margin.add_child(content)
+
+	governance_title = Label.new()
+	governance_title.name = "Title"
+	governance_title.text = "城市经营"
+	governance_title.add_theme_color_override("font_color", TEXT)
+	content.add_child(governance_title)
+
+	governance_summary = Label.new()
+	governance_summary.name = "HealthyResourceSummary"
+	governance_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	governance_summary.add_theme_color_override("font_color", MUTED_TEXT)
+	content.add_child(governance_summary)
+
+	governance_issue_detail = Label.new()
+	governance_issue_detail.name = "IssueDetail"
+	governance_issue_detail.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	governance_issue_detail.add_theme_color_override("font_color", WARNING)
+	governance_issue_detail.visible = false
+	content.add_child(governance_issue_detail)
+
+	governance_catalog_button = _make_governance_button("查看设施与道路")
+	governance_catalog_button.name = "GovernanceCatalogButton"
+	governance_catalog_button.pressed.connect(construction_controller.open_construction_menu)
+	content.add_child(governance_catalog_button)
+
+	governance_wood_button = _make_governance_button("补充木材 · 伐木场")
+	governance_wood_button.name = "GovernanceWoodButton"
+	governance_wood_button.pressed.connect(_start_governance_definition.bind(&"logging_camp"))
+	content.add_child(governance_wood_button)
+
+	governance_food_button = _make_governance_button("稳定粮食 · 农田")
+	governance_food_button.name = "GovernanceFoodButton"
+	governance_food_button.pressed.connect(_start_governance_definition.bind(&"farm"))
+	content.add_child(governance_food_button)
+
+
+func _make_governance_button(copy: String) -> Button:
+	var button := Button.new()
+	button.text = copy
+	button.custom_minimum_size = Vector2(0.0, 34.0)
+	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	button.focus_mode = Control.FOCUS_ALL
+	_apply_button_tokens(button)
+	return button
+
+
+func _start_governance_definition(definition_id: StringName) -> void:
+	construction_controller.begin_placing_definition(
+		definition_id,
+		get_viewport().get_mouse_position()
+	)
+
+
+func _layout_governance_workspace(
+	width: float,
+	height: float,
+	right_width: float,
+	edge: float,
+	rail_top: float
+) -> void:
+	if not is_instance_valid(governance_workspace):
+		return
+	governance_workspace.position = Vector2(width - right_width - edge, rail_top + 140.0)
+	governance_workspace.size = Vector2(
+		right_width,
+		minf(260.0, height - rail_top - 154.0)
+	)
+
+
+func _refresh_governance_workspace(
+	wood_override := -1,
+	food_override := -1
+) -> void:
+	if not is_instance_valid(governance_workspace):
+		return
+	var nation: Variant = construction_controller.get_nation_state()
+	if nation == null:
+		return
+	var wood: int = wood_override if wood_override >= 0 else int(nation.get_resource(&"wood"))
+	var food: int = food_override if food_override >= 0 else int(nation.get_resource(&"food"))
+	var wood_capacity: int = construction_controller.get_resource_capacity(&"wood")
+	var food_capacity: int = construction_controller.get_resource_capacity(&"food")
+	var issues: Array[String] = []
+	if wood < 40:
+		issues.append("木材偏低：优先补充伐木场或调整道路计划")
+	if food < 40:
+		issues.append("粮食偏低：优先补充农田")
+	if construction_controller.get_construction_in_progress_count() > 0:
+		issues.append("有建筑正在施工；资源摘要已保留")
+	governance_summary.text = "资源摘要 · 木材 %d/%d · 粮食 %d/%d" % [
+		wood,
+		wood_capacity,
+		food,
+		food_capacity,
+	]
+	governance_issue_detail.visible = not issues.is_empty()
+	governance_issue_detail.text = "\n".join(issues)
+	var show_workspace: bool = (
+		not construction_controller.is_placing()
+		and not construction_controller.is_choosing_template()
+		and not detail_panel.visible
+		and not (
+			construction_controller.has_method("has_build_project")
+			and bool(construction_controller.has_build_project())
+		)
+	)
+	governance_workspace.visible = show_workspace
+	if show_workspace:
+		# The legacy entry becomes the modal placement surface only; it must not
+		# compete with the default governance workspace.
+		construction_entry.visible = false
+		governance_catalog_button.grab_focus.call_deferred()
 
 
 func _layout_catalog(width: float) -> void:

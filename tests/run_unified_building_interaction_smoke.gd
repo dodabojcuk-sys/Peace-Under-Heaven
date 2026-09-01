@@ -271,7 +271,10 @@ func _run() -> void:
 		"固定与运行时建筑使用相同记录字段")
 
 	selection.select_placement(runtime_id)
-	_check(remove_button.visible, "运行时生产建筑保留安全移除入口")
+	_check(
+		detail_panel.get_node("GovernanceActionGroup/GovernanceSecondaryAction").visible,
+		"运行时生产建筑保留安全移除入口"
+	)
 	selection.request_removal_confirmation()
 	_check(selection.is_awaiting_removal_confirmation(),
 		"运行时生产建筑仍进入 P0-05 移除确认")

@@ -120,7 +120,9 @@ func _run() -> void:
 		"取消按钮返回 SELECTED")
 	_check(selection.selected_placement_id == first_id,
 		"取消确认保留原选择")
-	_check(remove_button.visible and not confirmation.visible,
+	_check(
+		detail_panel.get_node("GovernanceActionGroup").visible
+			and not confirmation.visible,
 		"取消确认恢复原详情操作")
 	_check(construction.get_building_count() == baseline_building_count + 2
 		and construction.get_occupied_cell_count()

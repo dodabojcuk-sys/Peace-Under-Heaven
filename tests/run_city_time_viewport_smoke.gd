@@ -247,10 +247,10 @@ func _run() -> void:
 	var placement_snapshot := _placement_origins(construction)
 	_check(
 			not scene.is_city_bar_expanded()
-				and not city_bar.visible
-				and city_bar_toggle.visible
-				and scene.get_node("UI/Shell/ConstructionEntryPanel").visible,
-		"右侧城建栏默认展开且城市切换入口始终可见"
+			and not city_bar.visible
+			and city_bar_toggle.visible
+			and scene.get_node("UI/Shell/GovernanceWorkspace").visible,
+		"右侧城市经营默认展开且城市切换入口始终可见"
 	)
 	scene.set_city_bar_expanded(false)
 	await process_frame

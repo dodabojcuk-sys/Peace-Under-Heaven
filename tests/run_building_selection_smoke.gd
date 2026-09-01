@@ -39,6 +39,9 @@ func _run() -> void:
 	var construction_entry: Control = scene.get_node(
 		"UI/Shell/ConstructionEntryPanel"
 	)
+	var governance_workspace: Control = scene.get_node(
+		"UI/Shell/GovernanceWorkspace"
+	)
 
 	_check(scene.find_children("MapWorld", "Node2D", true, false).size() == 1,
 		"场景只有一套 MapWorld")
@@ -62,7 +65,10 @@ func _run() -> void:
 	)
 	_check(not panel_rect.intersects(minimap.get_global_rect()),
 		"详情面板不与小地图重叠")
-	_check(construction_entry.visible, "初始显示右侧建造入口")
+	_check(
+		governance_workspace.visible and not construction_entry.visible,
+		"初始显示城市经营工作区，建造入口仅在操作态出现"
+	)
 	_check(not scene.has_node("UI/Shell/ContextBar"), "底部操作栏已经移除")
 
 	var first_placement_id: int = construction._create_runtime_building(

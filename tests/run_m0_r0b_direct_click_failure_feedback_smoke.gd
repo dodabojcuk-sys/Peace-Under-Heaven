@@ -23,7 +23,7 @@ func _run() -> void:
 	var controller: Node = scene.get_node("ConstructionController")
 	controller.set_process(false)
 	var build_button: Button = scene.get_node(
-		"UI/Shell/ConstructionEntryPanel/BuildEntryButton"
+		"UI/Shell/GovernanceWorkspace/GovernanceMargin/GovernanceContent/GovernanceCatalogButton"
 	)
 	var camp_button: Button = scene.get_node(
 		"UI/Shell/ConstructionMenu/LoggingCampButton"
