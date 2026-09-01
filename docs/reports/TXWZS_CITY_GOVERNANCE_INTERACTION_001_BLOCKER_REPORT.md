@@ -144,3 +144,60 @@ Choose one of the following before resuming governance implementation:
 
 Neither choice is made here. This branch must remain unmerged while the
 baseline contract is unresolved.
+
+## Resolved by baseline-compatible contract
+
+This historical blocker is resolved by the explicit corrected contract from
+the task owner. No rebase, lineage switch, or new road-transaction system was
+needed. The implementation at the current branch head deliberately uses only:
+
+- `NationState` for existing resource and road-placement state;
+- `ConstructionController` for the temporary road preview and the existing
+  `confirm_road_preview()` commit path; and
+- `CityGridRules` plus `RegularCitySpatialFoundation` for legality and
+  connected-road derivation.
+
+`query_road_connection_recommendation()` is read-only. It recommends a route
+only when its orthogonal shortest path is unique; equal shortest paths return
+`存在多种接通方式，请手动规划。`. The result remains transient controller
+presentation data, is re-queried at confirmation, and is never saved.
+
+The resulting preview reports the target, path length, wood cost, connected
+outcome, and immediate completion method. Confirmation still revalidates and
+then calls the pre-existing immediate road writer. It does not create a
+reservation, `ScheduledJob`, queue, secondary road network, second resource
+ledger, state owner, or V5 schema field.
+
+The default right rail now reads `城市经营` and is a real
+`PanelContainer`/`VBoxContainer` workspace. It yields to the existing build
+slot, placing flow, and selected-building detail card. A disconnected selected
+building exposes one primary action, `查看接通方案`; removal and manual road
+planning stay in the secondary/overflow path. The functional city-context
+toggle remains available, rather than becoming a fake top-level destination.
+
+### Evidence and verification closure
+
+```text
+BASELINE_CONTRACT_RESOLUTION=PASS
+SECOND_STATE_OWNER=NO
+SECOND_ROAD_NETWORK=NO
+SECOND_QUEUE=NO
+V5_SCHEMA_CHANGED=NO
+ROAD_GAMEPLAY_TIMING_CHANGED=NO
+FOCUSED_GOVERNANCE_RUNNER=PASS
+FULL_DYNAMIC_REGRESSION=PASS_54_OF_54
+GODOT_EDITOR_IMPORT=PASS
+TITLE_CITY_C0_HEADLESS_SMOKE=PASS
+GIT_DIFF_CHECK=PASS
+NATIVE_SCREENSHOT_COUNT=6
+CONTACT_SHEET=PASS
+VISUAL_INSPECTION=PASS_NO_OBVIOUS_OVERLAP_CLIPPING_OR_WORLD_INTERPENETRATION
+PUSH=NO
+MERGE=NO
+DEPLOY=NO
+```
+
+The six native Godot PNGs and contact sheet are under
+`docs/evidence/city_governance_interaction_001/`. They cover the three target
+default viewports, disconnected selection, unique connection preview, and
+ambiguous-route manual-planning rejection.
