@@ -6,6 +6,9 @@ const MIN_ZOOM := 0.6
 const MAX_ZOOM := 1.6
 const ZOOM_STEP := 0.1
 const MVP_VICTORY_WOOD_REWARD := 20
+const RUNTIME_PERSISTENCE_COORDINATOR = preload(
+	"res://scripts/state/runtime_campaign_persistence_coordinator.gd"
+)
 
 @onready var camera: Camera2D = $Camera2D
 @onready var map_board: Control = $MapWorld/MapBoard
@@ -41,9 +44,15 @@ var mvp_expedition_open := false
 var _city_camera_position := Vector2.ZERO
 var _city_camera_zoom := Vector2.ONE
 var _construction_process_mode := Node.PROCESS_MODE_INHERIT
+var _runtime_persistence: Node
 
 
 func _ready() -> void:
+	# ConstructionController owns the canonical city state. Wire the already
+	# accepted V5 generation store before this root binds presentation listeners.
+	_runtime_persistence = RUNTIME_PERSISTENCE_COORDINATOR.new()
+	add_child(_runtime_persistence)
+	_runtime_persistence.initialize(construction_controller)
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	construction_controller.construction_interaction_started.connect(
 		_on_construction_interaction_started
@@ -80,6 +89,24 @@ func _ready() -> void:
 	_refresh_blackstone_mvp_entry()
 	call_deferred("_initialize_camera")
 	call_deferred("_refresh_minimap")
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_CLOSE_REQUEST:
+		flush_runtime_persistence(&"window_close")
+		get_tree().quit()
+
+
+func get_runtime_persistence_status() -> Dictionary:
+	if _runtime_persistence == null:
+		return {"status": "uninitialized"}
+	return _runtime_persistence.get_status()
+
+
+func flush_runtime_persistence(reason: StringName = &"explicit") -> bool:
+	if _runtime_persistence == null:
+		return false
+	return _runtime_persistence.flush_now(reason)
 
 
 func _input(event: InputEvent) -> void:
