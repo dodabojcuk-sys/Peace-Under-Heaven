@@ -1,5 +1,21 @@
 # Product Successor Decisions
 
+## M1B standalone playable shell
+
+- `title_shell.tscn` is the formal player entry and owns only title copy,
+  keyboard focus, a one-shot scene transition, and title-state exit. It never
+  probes, parses, creates, restores, or writes V5 campaign data.
+- `blank_map.tscn` remains the first and only scene that creates
+  `ConstructionController` and composes `RuntimeCampaignPersistenceCoordinator`.
+  This keeps automatic V5 recovery and normal WM-close flushing inside the
+  existing city lifecycle.
+- The title action is always named `进入黑石城`; no Continue/New Game branch is
+  introduced, so the title cannot become a second save-read authority or imply
+  destructive overwrite semantics.
+- The M1B macOS preset is a minimal unsigned Universal debug preset with the
+  unique identifier `org.txwzs.heishicheng`. It does not encode an output path,
+  certificate, notarization setting, or a second product configuration.
+
 ## M1A current-mainline battle settlement return
 
 - The deadline-and-pressure region is the single player-facing entry to the

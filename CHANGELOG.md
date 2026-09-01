@@ -14,6 +14,17 @@
 
 ## Unreleased
 
+### M1B standalone playable shell R0
+
+- Added a minimal title entry for 天下无战事 / 黑石城 and made it the formal
+  main scene; it changes once to the existing city scene without taking over
+  V5 persistence or city ownership.
+- Added keyboard focus/Esc behavior and three-resolution title geometry tests,
+  plus a minimal unsigned Universal macOS debug preset.
+- The source and full regression pass, but standalone export remains blocked by
+  a missing exact Godot 4.5.1 macOS export template. No `.app`, release claim,
+  push, merge, or deployment is recorded.
+
 ### M1A.1-R2 V5 runtime persistence lifecycle
 
 - Wired normal GUI city startup, dirty state commits, whole-generation fallback,

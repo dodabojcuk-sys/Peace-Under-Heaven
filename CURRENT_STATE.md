@@ -1,5 +1,28 @@
 # 当前状态
 
+## M1B standalone playable shell R0
+
+M1B adds a container-driven `title_shell.tscn` as the formal main scene. It
+shows `天下无战事` / `黑石城`, provides only `进入黑石城` and `退出游戏`, gives
+keyboard focus to the entry action, consumes title Esc safely, and changes once
+to the existing `blank_map.tscn`. The title owns neither city state nor V5
+persistence; entering the city still constructs the existing single
+`ConstructionController` and `RuntimeCampaignPersistenceCoordinator`.
+
+The M1B focused runner passes 44 assertions across 1152×648, 1280×720, and
+1440×900. The full dynamic smoke set is 53/53 pass; editor import plus title
+main-scene, blank-map, and C0 headless smokes pass. Schema 5, storage version,
+city/battle/build/road/resource behavior, and V5 lifecycle semantics are
+unchanged.
+
+The requested standalone macOS artifact is blocked, not passed: the exact
+Godot `4.5.1.stable.official.f62fdbde1` editor reports its matching
+`export_templates/4.5.1.stable/macos.zip` missing. No `.app`, standalone
+screenshot, short clip, or candidate acceptance is claimed. See
+`docs/m1b/TXWZS_M1B_PLAYABLE_SHELL_R0_REPORT.md`.
+
+`M1B_PLAYABLE_SHELL=ENGINEERING_IMPLEMENTATION_BLOCKED_BY_MISSING_EXPORT_TEMPLATE`
+
 ## M1A current-mainline battle settlement return loop
 
 M1A is a local-only closure on `cafe26c`. A single current-mainline action now
