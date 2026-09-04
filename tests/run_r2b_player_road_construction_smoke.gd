@@ -210,7 +210,7 @@ func _run() -> void:
 
 	var snapshot: Dictionary = construction.export_v5_campaign_snapshot()
 	_check(
-		int(snapshot.schema_version) == 5
+		int(snapshot.schema_version) == 6
 			and snapshot.placements.size() >= 5,
 		"玩家道路继续复用 placement 持久化"
 	)

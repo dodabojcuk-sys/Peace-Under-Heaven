@@ -1,7 +1,10 @@
-[gd_scene load_steps=3 format=3]
+[gd_scene load_steps=6 format=3]
 
 [ext_resource type="Script" path="res://scripts/combat/c0_battle_graybox.gd" id="1_graybox"]
 [ext_resource type="Script" path="res://scripts/combat/combat_transaction_coordinator.gd" id="2_coordinator"]
+[ext_resource type="Theme" path="res://resources/ui/inner_city_theme.tres" id="3_inner_city_theme"]
+[ext_resource type="Script" path="res://scripts/combat/northern_battlefield_visual.gd" id="4_battlefield_visual"]
+[ext_resource type="Script" path="res://scripts/combat/northern_gate_visual.gd" id="5_gate_visual"]
 
 [node name="C0BattleGrayboxRoot" type="Node2D"]
 script = ExtResource("1_graybox")
@@ -23,6 +26,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 color = Color(0.105, 0.115, 0.12, 1)
+theme = ExtResource("3_inner_city_theme")
 
 [node name="TopBar" type="ColorRect" parent="UI/RootPanel"]
 layout_mode = 0
@@ -37,6 +41,7 @@ offset_right = 840.0
 offset_bottom = 44.0
 theme_override_colors/font_color = Color(0.93, 0.82, 0.55, 1)
 theme_override_font_sizes/font_size = 24
+theme_type_variation = &"TitleLabel"
 text = "北坡防御战"
 
 [node name="ExitButton" type="Button" parent="UI/RootPanel"]
@@ -47,6 +52,7 @@ offset_top = 14.0
 offset_right = -24.0
 offset_bottom = 50.0
 text = "返回内城"
+custom_minimum_size = Vector2(140, 44)
 
 [node name="StatusLabel" type="Label" parent="UI/RootPanel"]
 offset_left = 24.0
@@ -55,6 +61,7 @@ offset_right = 430.0
 offset_bottom = 76.0
 theme_override_colors/font_color = Color(0.88, 0.89, 0.86, 1)
 theme_override_font_sizes/font_size = 15
+theme_type_variation = &"SecondaryLabel"
 text = "战前部署"
 
 [node name="Instruction" type="Label" parent="UI/RootPanel"]
@@ -65,6 +72,7 @@ offset_right = -24.0
 offset_bottom = 92.0
 theme_override_colors/font_color = Color(0.74, 0.77, 0.74, 1)
 text = "目标：突破两处城门并击溃守军"
+theme_type_variation = &"SecondaryLabel"
 horizontal_alignment = 2
 
 [node name="Battlefield" type="Panel" parent="UI/RootPanel"]
@@ -75,13 +83,25 @@ anchor_bottom = 1.0
 offset_right = -24.0
 offset_bottom = -202.0
 mouse_filter = 2
+theme_type_variation = &"CommandPanel"
+
+[node name="Terrain" type="Control" parent="UI/RootPanel/Battlefield"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("4_battlefield_visual")
 
 [node name="DirectionLabel" type="Label" parent="UI/RootPanel/Battlefield"]
 offset_left = 16.0
 offset_top = 12.0
 offset_right = 1040.0
 offset_bottom = 36.0
-theme_override_colors/font_color = Color(0.58, 0.64, 0.63, 1)
+theme_override_colors/font_color = Color(0.0627, 0.1333, 0.1608, 0.86)
+theme_override_colors/font_shadow_color = Color(0.949, 0.9137, 0.8235, 0.45)
 text = "我方集结区 / 撤离区  ←                                             敌军来向  ←"
 horizontal_alignment = 1
 
@@ -93,7 +113,7 @@ anchor_bottom = 0.25
 offset_top = 4.0
 offset_right = -96.0
 offset_bottom = 74.0
-color = Color(0.205, 0.225, 0.22, 1)
+color = Color(0.5529, 0.502, 0.3725, 0.28)
 
 [node name="RouteName" type="Label" parent="UI/RootPanel/FrontLane"]
 offset_left = -140.0
@@ -121,7 +141,17 @@ offset_left = -52.0
 offset_top = -5.0
 offset_right = -20.0
 offset_bottom = 75.0
-color = Color(0.55, 0.33, 0.25, 1)
+color = Color(0, 0, 0, 0)
+
+[node name="GateSilhouette" type="Control" parent="UI/RootPanel/FrontLane/FrontGate"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("5_gate_visual")
 
 [node name="EnemyMarker" type="Panel" parent="UI/RootPanel/FrontLane"]
 anchor_left = 1.0
@@ -139,7 +169,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_colors/font_color = Color(0.95, 0.67, 0.57, 1)
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 14
 text = "敌军 0"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -152,7 +182,7 @@ anchor_bottom = 0.48
 offset_top = 5.0
 offset_right = -96.0
 offset_bottom = 75.0
-color = Color(0.18, 0.225, 0.235, 1)
+color = Color(0.6627, 0.6039, 0.451, 0.24)
 
 [node name="RouteName" type="Label" parent="UI/RootPanel/SideLane"]
 offset_left = -140.0
@@ -180,7 +210,17 @@ offset_left = -52.0
 offset_top = -5.0
 offset_right = -20.0
 offset_bottom = 75.0
-color = Color(0.45, 0.3, 0.24, 1)
+color = Color(0, 0, 0, 0)
+
+[node name="GateSilhouette" type="Control" parent="UI/RootPanel/SideLane/SideGate"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("5_gate_visual")
 
 [node name="EnemyMarker" type="Panel" parent="UI/RootPanel/SideLane"]
 anchor_left = 1.0
@@ -198,7 +238,7 @@ anchor_bottom = 1.0
 grow_horizontal = 2
 grow_vertical = 2
 theme_override_colors/font_color = Color(0.95, 0.67, 0.57, 1)
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 14
 text = "敌军 0"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -310,6 +350,8 @@ offset_top = -246.0
 offset_right = 676.0
 offset_bottom = -206.0
 text = "开始战斗"
+custom_minimum_size = Vector2(200, 44)
+theme_type_variation = &"PrimaryButton"
 
 [node name="SquadControls" type="HBoxContainer" parent="UI/RootPanel"]
 anchor_top = 1.0
@@ -329,6 +371,7 @@ anchor_bottom = 1.0
 offset_top = -188.0
 offset_right = -24.0
 offset_bottom = -24.0
+theme_type_variation = &"CommandPanel"
 
 [node name="Title" type="Label" parent="UI/RootPanel/SelectedSquadPanel"]
 offset_left = 16.0
@@ -401,6 +444,7 @@ offset_top = -108.0
 offset_right = 200.0
 offset_bottom = 108.0
 mouse_filter = 0
+theme_type_variation = &"CommandPanel"
 
 [node name="Title" type="Label" parent="UI/RootPanel/ExitConfirmation"]
 offset_left = 20.0
@@ -433,6 +477,7 @@ offset_top = 152.0
 offset_right = 352.0
 offset_bottom = 196.0
 text = "确认撤退"
+theme_type_variation = &"PrimaryButton"
 
 [node name="ResultInputBlocker" type="ColorRect" parent="UI/RootPanel"]
 visible = false
@@ -451,34 +496,53 @@ anchor_left = 0.5
 anchor_top = 0.5
 anchor_right = 0.5
 anchor_bottom = 0.5
-offset_left = -180.0
-offset_top = -139.0
-offset_right = 180.0
-offset_bottom = 139.0
+offset_left = -270.0
+offset_top = -200.0
+offset_right = 270.0
+offset_bottom = 200.0
 mouse_filter = 0
+theme_type_variation = &"CommandPanel"
 
-[node name="ResultLabel" type="Label" parent="UI/RootPanel/ResultPanel"]
-offset_left = 20.0
-offset_top = 24.0
-offset_right = 340.0
-offset_bottom = 184.0
+[node name="Margin" type="MarginContainer" parent="UI/RootPanel/ResultPanel"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = 20.0
+offset_right = -24.0
+offset_bottom = -20.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="Content" type="VBoxContainer" parent="UI/RootPanel/ResultPanel/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 16
+
+[node name="ResultLabel" type="Label" parent="UI/RootPanel/ResultPanel/Margin/Content"]
+custom_minimum_size = Vector2(0, 280)
+layout_mode = 2
+size_flags_vertical = 3
 theme_override_font_sizes/font_size = 18
 text = "等待确认战果"
 horizontal_alignment = 1
 vertical_alignment = 1
+autowrap_mode = 2
 
-[node name="ConfirmButton" type="Button" parent="UI/RootPanel/ResultPanel"]
-offset_left = 32.0
-offset_top = 210.0
-offset_right = 172.0
-offset_bottom = 254.0
+[node name="Actions" type="HBoxContainer" parent="UI/RootPanel/ResultPanel/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 16
+alignment = 1
+
+[node name="ConfirmButton" type="Button" parent="UI/RootPanel/ResultPanel/Margin/Content/Actions"]
+custom_minimum_size = Vector2(160, 44)
+layout_mode = 2
 text = "确认战果"
+theme_type_variation = &"PrimaryButton"
 
-[node name="ReturnButton" type="Button" parent="UI/RootPanel/ResultPanel"]
+[node name="ReturnButton" type="Button" parent="UI/RootPanel/ResultPanel/Margin/Content/Actions"]
 visible = false
 disabled = true
-offset_left = 188.0
-offset_top = 210.0
-offset_right = 328.0
-offset_bottom = 254.0
+custom_minimum_size = Vector2(160, 44)
+layout_mode = 2
 text = "返回内城"

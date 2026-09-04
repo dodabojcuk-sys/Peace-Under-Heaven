@@ -67,6 +67,8 @@ func initialize(request_value: BattleRequest) -> bool:
 		var initial_members := int(squad_snapshot.initial_members)
 		squads.append({
 			"squad_id": int(squad_snapshot.squad_id),
+			"formation_id": StringName(squad_snapshot.formation_id),
+			"display_name": str(squad_snapshot.display_name),
 			"initial_members": initial_members,
 			"total_hp": (
 				initial_members * request.committed_force.hp_per_member
@@ -401,6 +403,15 @@ func _complete(
 	)
 	terminal_result.enemy_snapshot_digest = request.enemy_force.get_digest()
 	terminal_result.first_clear_key = request.first_clear_key
+	for squad in squads:
+		var formation_survivors := _alive_members(int(squad.total_hp))
+		terminal_result.formation_results.append({
+			"formation_id": StringName(squad.formation_id),
+			"squad_id": int(squad.squad_id),
+			"departure_count": int(squad.initial_members),
+			"survivor_count": formation_survivors,
+			"casualty_count": int(squad.initial_members) - formation_survivors,
+		})
 	_terminal_authority_record = {
 		"result": terminal_result.get_authority_snapshot().duplicate(true),
 		"completion": {

@@ -77,15 +77,29 @@ func _check_victory_settlement_return_and_cold_save() -> void:
 	var map_building_count: int = city.get_building_count()
 	entry.emit_signal("pressed")
 	await process_frame
+	_check(
+		scene.get_node("UI/Shell/ExpeditionPreparationPanel").visible
+			and city.get_formal_battle_scene() == null
+			and city.get_building_count() == map_building_count,
+		"top-bar click opens 出征准备 without map click-through or implicit battle entry"
+	)
+	var selected_ids: Array[StringName] = []
+	for formation in city.get_formation_roster():
+		if int(formation.member_count) > 0:
+			selected_ids.append(StringName(formation.formation_id))
+	var departure: Dictionary = city.commit_expedition_attempt(selected_ids)
+	_check(bool(departure.success), "出征准备确认建立一次已付费 immutable 编队快照")
 	var battle: C0BattleGraybox = city.get_formal_battle_scene()
+	if battle == null:
+		_check(city.enter_first_war_battle(), "已确认出征可以进入正式 C0")
+		battle = city.get_formal_battle_scene()
 	_check(
 		battle != null
 			and battle.formal_city_mode
 			and battle.city_scene == scene
 			and battle.request != null
-			and battle.request.formal_city_entry
-			and city.get_building_count() == map_building_count,
-		"top-bar click creates one real formal-city attempt without map click-through"
+			and battle.request.formal_city_entry,
+		"确认后的唯一正式城市战场复用已保存快照"
 	)
 	var first_request_id := battle.request.transaction_id if battle != null else &""
 	entry.emit_signal("pressed")
@@ -98,8 +112,6 @@ func _check_victory_settlement_return_and_cold_save() -> void:
 	if battle == null:
 		scene.queue_free()
 		return
-	for squad in battle.request.committed_force.squads:
-		battle.set_squad_route(int(squad.squad_id), CommittedForceSnapshot.SIDE_ROUTE)
 	_check(battle.start_battle(), "formal current-mainline attempt starts the existing C0 battle")
 	battle.tick_timer.stop()
 	for squad in battle.coordinator.active_session.squads:
@@ -206,9 +218,19 @@ func _check_retreat_retry_preserves_mainline() -> void:
 	var entry: Button = scene.get_node("UI/Shell/TopStatusBar/CurrentMainlineButton")
 	entry.emit_signal("pressed")
 	await process_frame
+	var retry_ids: Array[StringName] = []
+	for formation in city.get_formation_roster():
+		if int(formation.member_count) > 0:
+			retry_ids.append(StringName(formation.formation_id))
+	var retry_departure: Dictionary = city.commit_expedition_attempt(retry_ids)
+	var launch_retry: bool = (
+		bool(retry_departure.success) and city.enter_first_war_battle()
+	)
 	var retry: C0BattleGraybox = city.get_formal_battle_scene()
 	_check(
-		retry != null
+		scene.get_node("UI/Shell/ExpeditionPreparationPanel").visible
+			and launch_retry
+			and retry != null
 			and retry.request != null
 			and city.current_day == int(before_retry.day)
 			and city.get_mainline_pressure_state().deadline_day
@@ -252,7 +274,7 @@ func _check_defeat_does_not_clear_mainline() -> void:
 func _enter_and_finish(
 	city: Node,
 	command: BattleOrder.Command,
-	route_id: StringName
+	_route_id: StringName
 ) -> C0BattleGraybox:
 	if not city.enter_first_war_battle():
 		_check(false, "formal current-mainline entry setup succeeds")
@@ -262,8 +284,8 @@ func _enter_and_finish(
 		_check(false, "formal current-mainline battle starts")
 		return null
 	battle.tick_timer.stop()
-	for squad in battle.request.committed_force.squads:
-		battle.set_squad_route(int(squad.squad_id), route_id)
+	# R1E deployment routes belong to the persisted departure snapshot.  Tests
+	# may issue battle orders but must not mutate a prepared force in C0.
 	for squad in battle.coordinator.active_session.squads:
 		battle.issue_squad_order(int(squad.squad_id), command)
 	var result := battle.step_battle_for_test(BattleSession.MAX_BATTLE_TICKS)

@@ -2,10 +2,25 @@ class_name V5CampaignSnapshot
 extends RefCounted
 
 
-const SCHEMA_VERSION := 5
+const SCHEMA_VERSION := 6
 const SNAPSHOT_KIND := &"campaign_authoritative"
 const CITY_ID := "blackstone_city"
 const ROOT_KEYS := [
+	"schema_version",
+	"snapshot_kind",
+	"city_id",
+	"city",
+	"placements",
+	"next_placement_id",
+	"garrison",
+	"training_queue",
+	"army_registry",
+	"settlement_ledger",
+	"mainline_level",
+	"build_slot",
+	"expedition_attempt",
+]
+const V5_ROOT_KEYS := [
 	"schema_version",
 	"snapshot_kind",
 	"city_id",
@@ -50,10 +65,30 @@ const V3_CITY_KEYS := [
 	"researched_tech_ids", "supply_shortage", "emergency_mobilization_used",
 	"city_time_paused", "city_time_speed_id",
 ]
-const GARRISON_KEYS := [
+const V5_GARRISON_KEYS := [
 	"schema_version",
 	"city_id",
 	"unit_counts_by_definition_id",
+]
+const EXPEDITION_ATTEMPT_KEYS := [
+	"attempt_id",
+	"mainline_id",
+	"phase",
+	"created_day",
+	"created_day_elapsed_milliseconds",
+	"food_cost",
+	"food_before",
+	"food_after",
+	"committed_total",
+	"selected_formations",
+	"committed_force_snapshot",
+	"enemy_force_snapshot",
+	"city_defense_snapshot",
+	"first_clear_key",
+	"reward_wood",
+	"reward_food",
+	"settled",
+	"result_id",
 ]
 const PLACEMENT_KEYS := [
 	"placement_id",
@@ -124,13 +159,14 @@ static func validate_structure(
 	var source_version := int(snapshot.get("schema_version", 0))
 	if (
 		(source_version == SCHEMA_VERSION and not _has_exact_keys(snapshot, ROOT_KEYS))
+		or (source_version == 5 and not _has_exact_keys(snapshot, V5_ROOT_KEYS))
 		or (source_version == 4 and not _has_exact_keys(snapshot, V4_ROOT_KEYS))
 		or (source_version in [2, 3] and not _has_exact_keys(snapshot, V3_ROOT_KEYS))
 	):
 		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段不完整或含未知字段")
 	if (
 		typeof(snapshot.schema_version) != TYPE_INT
-		or int(snapshot.schema_version) not in [2, 3, 4, SCHEMA_VERSION]
+		or int(snapshot.schema_version) not in [2, 3, 4, 5, SCHEMA_VERSION]
 		or typeof(snapshot.snapshot_kind) != TYPE_STRING_NAME
 		or StringName(snapshot.snapshot_kind) != SNAPSHOT_KIND
 		or typeof(snapshot.city_id) != TYPE_STRING
@@ -162,6 +198,14 @@ static func validate_structure(
 		normalized = migration.snapshot
 	if int(normalized.schema_version) == 4:
 		var migration := _migrate_v4_build_slot(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if int(normalized.schema_version) == 5:
+		var migration := _migrate_v5_expedition(
+			normalized,
+			allowed_unit_definition_ids
+		)
 		if not bool(migration.valid):
 			return migration
 		normalized = migration.snapshot
@@ -215,6 +259,59 @@ static func validate_structure(
 		return ledger_result
 	if not CurrentMainlineLevel.validate_snapshot(normalized.mainline_level):
 		return _failure(&"INVALID_MAINLINE_LEVEL", "主线压力快照非法")
+	var expedition_result := _validate_expedition_attempt(
+		normalized.expedition_attempt,
+		allowed_unit_definition_ids
+	)
+	if not bool(expedition_result.valid):
+		return expedition_result
+	if not Dictionary(normalized.expedition_attempt).is_empty():
+		var attempt: Dictionary = normalized.expedition_attempt
+		var attempt_id := StringName(attempt.attempt_id)
+		var phase := StringName(attempt.phase)
+		if StringName(attempt.mainline_id) != StringName(normalized.mainline_level.level_id):
+			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征尝试与主线身份不一致")
+		if phase in [&"RESERVED", &"ACTIVE"]:
+			var transaction_already_settled := false
+			for summary_value in Dictionary(
+				normalized.settlement_ledger.committed_results_by_id
+			).values():
+				if (
+					summary_value is Dictionary
+					and StringName(summary_value.get("transaction_id", &""))
+						== attempt_id
+				):
+					transaction_already_settled = true
+					break
+			if (
+				int(normalized.city.food) != int(attempt.food_after)
+				or int(normalized.city.current_day) != int(attempt.created_day)
+				or int(normalized.city.day_elapsed_milliseconds)
+					!= int(attempt.created_day_elapsed_milliseconds)
+				or bool(normalized.mainline_level.cleared)
+				or transaction_already_settled
+				or Dictionary(normalized.settlement_ledger.closed_transactions_by_id).has(attempt_id)
+			):
+				return _failure(&"INVALID_EXPEDITION_ATTEMPT", "活动出征尝试与城市账本不一致")
+			var roster: Dictionary = normalized.garrison.formations_by_id
+			for selected_value in attempt.selected_formations:
+				var selected: Dictionary = selected_value
+				var current: Dictionary = roster.get(StringName(selected.formation_id), {})
+				if current.is_empty() or int(current.member_count) != int(selected.member_count):
+					return _failure(&"INVALID_EXPEDITION_ATTEMPT", "活动出征编队已偏离出发快照")
+		elif phase == &"APPLIED":
+			var results: Dictionary = normalized.settlement_ledger.committed_results_by_id
+			var closed: Dictionary = normalized.settlement_ledger.closed_transactions_by_id
+			var result_id := StringName(attempt.result_id)
+			var summary: Dictionary = results.get(result_id, {})
+			if (
+				summary.is_empty()
+				or result_id != StringName("%s-result-001" % String(attempt_id))
+				or StringName(summary.get("result_id", &"")) != result_id
+				or StringName(summary.get("transaction_id", &"")) != attempt_id
+				or StringName(closed.get(attempt_id, &"")) != &"APPLIED"
+			):
+				return _failure(&"INVALID_EXPEDITION_ATTEMPT", "已结算出征尝试缺少唯一 ledger 记录")
 	var garrison_total := 0
 	for count in Dictionary(
 		normalized.garrison.unit_counts_by_definition_id
@@ -314,6 +411,57 @@ static func _migrate_v4_build_slot(snapshot: Dictionary) -> Dictionary:
 	if not _has_exact_keys(normalized, V4_ROOT_KEYS):
 		return _failure(&"INVALID_ROOT", "V4 CampaignSnapshot 根字段非法")
 	normalized.build_slot = empty_build_slot()
+	normalized.schema_version = 5
+	return {
+		"valid": true,
+		"error_id": &"",
+		"error": "",
+		"snapshot": normalized,
+	}
+
+
+static func _migrate_v5_expedition(
+	snapshot: Dictionary,
+	allowed_unit_definition_ids: Array
+) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, V5_ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V5 CampaignSnapshot 根字段非法")
+	var legacy_garrison: Dictionary = normalized.garrison
+	if (
+		not _has_exact_keys(legacy_garrison, V5_GARRISON_KEYS)
+		or typeof(legacy_garrison.schema_version) != TYPE_INT
+		or int(legacy_garrison.schema_version) != 1
+		or typeof(legacy_garrison.city_id) != TYPE_STRING_NAME
+		or StringName(legacy_garrison.city_id) != StringName(normalized.city_id)
+		or typeof(legacy_garrison.unit_counts_by_definition_id) != TYPE_DICTIONARY
+	):
+		return _failure(&"INVALID_GARRISON", "V5 驻军字段非法")
+	var counts: Dictionary = legacy_garrison.unit_counts_by_definition_id
+	if counts.size() > 1 or allowed_unit_definition_ids.is_empty():
+		return _failure(&"INVALID_GARRISON", "V5 驻军无法确定性迁移为编队")
+	var definition_id := StringName(allowed_unit_definition_ids[0])
+	var total_count := 0
+	if not counts.is_empty():
+		var definition_id_value = counts.keys()[0]
+		if (
+			typeof(definition_id_value) != TYPE_STRING_NAME
+			or StringName(definition_id_value) not in allowed_unit_definition_ids
+			or typeof(counts[definition_id_value]) != TYPE_INT
+			or int(counts[definition_id_value]) < 0
+			or int(counts[definition_id_value])
+				> GarrisonState.FORMATION_IDS.size()
+					* GarrisonState.DEFAULT_FORMATION_MAX_MEMBERS
+		):
+			return _failure(&"INVALID_GARRISON", "V5 驻军数量非法")
+		definition_id = StringName(definition_id_value)
+		total_count = int(counts[definition_id_value])
+	normalized.garrison = GarrisonState.build_migrated_persistence_snapshot(
+		StringName(normalized.city_id),
+		definition_id,
+		total_count
+	)
+	normalized.expedition_attempt = empty_expedition_attempt()
 	normalized.schema_version = SCHEMA_VERSION
 	return {
 		"valid": true,
@@ -335,6 +483,10 @@ static func empty_build_slot() -> Dictionary:
 		"orientation": 0,
 		"completion_notified": false,
 	}
+
+
+static func empty_expedition_attempt() -> Dictionary:
+	return {}
 
 
 static func _m0_stage_index(current_day: int) -> int:
@@ -379,7 +531,7 @@ static func migrate_v1(
 	):
 		return _failure(&"MIGRATION_MAPPING_FAILED", "训练队列映射失败")
 	var candidate := {
-		"schema_version": SCHEMA_VERSION,
+		"schema_version": 5,
 		"snapshot_kind": SNAPSHOT_KIND,
 		"city_id": str(source.city_id),
 		"city": {
@@ -410,7 +562,7 @@ static func migrate_v1(
 		"placements": _migrate_v1_placements(source.placements),
 		"next_placement_id": int(source.next_placement_id),
 		"garrison": {
-			"schema_version": GarrisonState.SCHEMA_VERSION,
+			"schema_version": 1,
 			"city_id": StringName(source.city_id),
 			"unit_counts_by_definition_id": {
 				unit_definition_id: int(source.city.infantry_count),
@@ -712,27 +864,146 @@ static func _validate_garrison(
 	garrison: Dictionary,
 	allowed_unit_definition_ids: Array
 ) -> Dictionary:
+	var result := GarrisonState.validate_persistence_snapshot(
+		garrison,
+		StringName(CITY_ID),
+		allowed_unit_definition_ids
+	)
+	if not bool(result.get("valid", false)):
+		return _failure(
+			StringName(result.get("error_id", &"INVALID_GARRISON")),
+			str(result.get("error", "编队 roster 非法"))
+		)
+	return {"valid": true}
+
+
+static func _validate_expedition_attempt(
+	attempt: Dictionary,
+	allowed_unit_definition_ids: Array
+) -> Dictionary:
+	if attempt.is_empty():
+		return {"valid": true}
+	if not _has_exact_keys(attempt, EXPEDITION_ATTEMPT_KEYS):
+		return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征尝试字段不完整")
 	if (
-		not _has_exact_keys(garrison, GARRISON_KEYS)
-		or typeof(garrison.schema_version) != TYPE_INT
-		or int(garrison.schema_version) != GarrisonState.SCHEMA_VERSION
-		or typeof(garrison.city_id) != TYPE_STRING_NAME
-		or StringName(garrison.city_id) != StringName(CITY_ID)
-		or typeof(garrison.unit_counts_by_definition_id) != TYPE_DICTIONARY
+		typeof(attempt.attempt_id) != TYPE_STRING_NAME
+		or StringName(attempt.attempt_id) == &""
+		or typeof(attempt.mainline_id) != TYPE_STRING_NAME
+		or StringName(attempt.mainline_id) == &""
+		or typeof(attempt.phase) != TYPE_STRING_NAME
+		or StringName(attempt.phase) not in [
+			&"RESERVED", &"ACTIVE", &"APPLIED",
+		]
+		or typeof(attempt.created_day) != TYPE_INT
+		or int(attempt.created_day) <= 0
+		or typeof(attempt.created_day_elapsed_milliseconds) != TYPE_INT
+		or int(attempt.created_day_elapsed_milliseconds) < 0
+		or int(attempt.created_day_elapsed_milliseconds) >= 180000
+		or typeof(attempt.food_cost) != TYPE_INT
+		or int(attempt.food_cost) <= 0
+		or typeof(attempt.food_before) != TYPE_INT
+		or typeof(attempt.food_after) != TYPE_INT
+		or int(attempt.food_before) < int(attempt.food_cost)
+		or int(attempt.food_after) != int(attempt.food_before) - int(attempt.food_cost)
+		or typeof(attempt.committed_total) != TYPE_INT
+		or int(attempt.committed_total) <= 0
+		or typeof(attempt.selected_formations) != TYPE_ARRAY
+		or Array(attempt.selected_formations).is_empty()
+		or Array(attempt.selected_formations).size() > 3
+		or typeof(attempt.committed_force_snapshot) != TYPE_DICTIONARY
+		or Dictionary(attempt.committed_force_snapshot).is_empty()
+		or typeof(attempt.enemy_force_snapshot) != TYPE_DICTIONARY
+		or Dictionary(attempt.enemy_force_snapshot).is_empty()
+		or typeof(attempt.city_defense_snapshot) != TYPE_INT
+		or int(attempt.city_defense_snapshot) < 0
+		or typeof(attempt.first_clear_key) != TYPE_STRING_NAME
+		or StringName(attempt.first_clear_key) == &""
+		or typeof(attempt.reward_wood) != TYPE_INT
+		or typeof(attempt.reward_food) != TYPE_INT
+		or int(attempt.reward_wood) < 0
+		or int(attempt.reward_food) < 0
+		or typeof(attempt.settled) != TYPE_BOOL
+		or typeof(attempt.result_id) != TYPE_STRING_NAME
 	):
-		return _failure(&"INVALID_GARRISON", "V2 garrison 字段非法")
-	for definition_id_value in garrison.unit_counts_by_definition_id:
-		var definition_id := StringName(definition_id_value)
+		return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征尝试领域值非法")
+	if (
+		bool(attempt.settled)
+		!= (StringName(attempt.phase) == &"APPLIED")
+		or (
+			bool(attempt.settled)
+			and StringName(attempt.result_id) == &""
+		)
+		or (
+			not bool(attempt.settled)
+			and StringName(attempt.result_id) != &""
+		)
+	):
+		return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征尝试结算状态非法")
+	var seen_formations: Dictionary = {}
+	var seen_squads: Dictionary = {}
+	var total := 0
+	for formation_value in attempt.selected_formations:
+		if not formation_value is Dictionary:
+			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征编队记录非法")
+		var formation: Dictionary = formation_value
+		if not _has_exact_keys(formation, [
+			"formation_id", "display_name", "definition_id",
+			"member_count", "max_members", "squad_id", "route_id",
+		]):
+			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征编队字段不完整")
+		var formation_id := StringName(formation.get("formation_id", &""))
+		var definition_id := StringName(formation.get("definition_id", &""))
+		var squad_id := int(formation.get("squad_id", 0))
 		if (
-			definition_id not in allowed_unit_definition_ids
-			or typeof(
-				garrison.unit_counts_by_definition_id[definition_id_value]
-			) != TYPE_INT
-			or int(
-				garrison.unit_counts_by_definition_id[definition_id_value]
-			) < 0
+			formation_id == &""
+			or seen_formations.has(formation_id)
+			or definition_id not in allowed_unit_definition_ids
+			or typeof(formation.display_name) != TYPE_STRING
+			or str(formation.display_name).is_empty()
+			or typeof(formation.member_count) != TYPE_INT
+			or int(formation.member_count) <= 0
+			or typeof(formation.max_members) != TYPE_INT
+			or int(formation.max_members) < int(formation.member_count)
+			or typeof(formation.squad_id) != TYPE_INT
+			or squad_id <= 0
+			or seen_squads.has(squad_id)
+			or typeof(formation.route_id) != TYPE_STRING_NAME
+			or StringName(formation.route_id) not in [&"FRONT_GATE", &"SIDE_GATE"]
 		):
-			return _failure(&"INVALID_GARRISON", "V2 驻军组成非法")
+			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征编队领域值非法")
+		seen_formations[formation_id] = true
+		seen_squads[squad_id] = true
+		total += int(formation.member_count)
+	if total != int(attempt.committed_total):
+		return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征编队总数不一致")
+	var committed := CommittedForceSnapshot.from_dictionary(
+		Dictionary(attempt.committed_force_snapshot)
+	)
+	var enemy := EnemyForceSnapshot.from_dictionary(
+		Dictionary(attempt.enemy_force_snapshot)
+	)
+	if (
+		committed == null
+		or enemy == null
+		or committed.transaction_id != StringName(attempt.attempt_id)
+		or enemy.transaction_id != StringName(attempt.attempt_id)
+		or enemy.snapshot_day != int(attempt.created_day)
+		or committed.get_committed_total() != int(attempt.committed_total)
+		or committed.unit_role_id not in allowed_unit_definition_ids
+		or committed.squads.size() != Array(attempt.selected_formations).size()
+	):
+		return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征战斗快照非法")
+	for index in range(committed.squads.size()):
+		var squad: Dictionary = committed.squads[index]
+		var selected: Dictionary = attempt.selected_formations[index]
+		if (
+			StringName(squad.formation_id) != StringName(selected.formation_id)
+			or str(squad.display_name) != str(selected.display_name)
+			or int(squad.squad_id) != int(selected.squad_id)
+			or int(squad.initial_members) != int(selected.member_count)
+			or StringName(squad.route_id) != StringName(selected.route_id)
+		):
+			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征编队与战斗快照不一致")
 	return {"valid": true}
 
 

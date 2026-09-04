@@ -55,12 +55,12 @@ func _run_a(runtime: Node, city: Node) -> void:
 	var battle: C0BattleGraybox = city.get_formal_battle_scene()
 	_require(battle != null, "normal mainline entry creates the formal C0 battle scene")
 	if battle != null:
-		for squad in battle.request.committed_force.squads:
-			battle.set_squad_route(
-				int(squad.squad_id),
-				CommittedForceSnapshot.FRONT_ROUTE
-			)
 		_require(battle.start_battle(true), "normal Start path activates the concentrated real force")
+		for squad in battle.coordinator.active_session.squads:
+			battle.issue_squad_order(
+				int(squad.squad_id),
+				BattleOrder.Command.ADVANCE
+			)
 		var result := battle.step_battle_for_test(BattleSession.MAX_BATTLE_TICKS)
 		_require(
 			result != null and result.outcome == BattleOutcome.Value.VICTORY,
@@ -116,7 +116,11 @@ func _run_c(runtime: Node, city: Node, save_directory: String) -> void:
 
 func _corrupt_latest_generation_before_normal_start(save_directory: String) -> void:
 	var store := SAVE_STORE.new(save_directory)
-	var latest_path := store.get_generation_path(3)
+	var listed: Dictionary = store._list_sequences()
+	var latest_sequence := 0
+	for sequence_value in Array(listed.get("sequences", [])):
+		latest_sequence = maxi(latest_sequence, int(sequence_value))
+	var latest_path := store.get_generation_path(latest_sequence)
 	_require(FileAccess.file_exists(latest_path), "process C receives process B latest generation")
 	if not FileAccess.file_exists(latest_path):
 		return

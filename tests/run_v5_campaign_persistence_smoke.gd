@@ -40,10 +40,10 @@ func _run() -> void:
 	var migrated: Dictionary = source.migrate_v1_snapshot_to_v5(v1_active)
 	_check(
 		migrated.success
-			and migrated.snapshot.schema_version == 5
+			and migrated.snapshot.schema_version == 6
 			and migrated.snapshot.snapshot_kind
 				== &"campaign_authoritative",
-		"有效 V1 只读输入确定性迁移为 schema 5，并默认北向"
+		"有效 V1 只读输入确定性迁移为 schema 6、默认北向并补齐永久 roster"
 	)
 	var v2_active: Dictionary = migrated.snapshot
 	_check(
@@ -52,9 +52,12 @@ func _run() -> void:
 			and v2_active.garrison.unit_counts_by_definition_id[
 				source.INFANTRY_ROLE.role_id
 			] == 20
+			and Array(v2_active.garrison.formation_order).size() == 3
+			and Dictionary(v2_active.garrison.formations_by_id).size() == 3
+			and _roster_total(v2_active.garrison) == 20
 			and v2_active.training_queue.active_order_id
 				== &"training.blackstone_city.000001",
-		"V1 步兵与训练三字段只迁移到唯一 Garrison/TrainingQueue 源"
+		"V1 步兵与训练三字段只迁移到唯一 Garrison roster/TrainingQueue 源"
 	)
 	_check(
 		v2_active.army_registry.armies_by_id.is_empty()
@@ -247,9 +250,11 @@ func _run() -> void:
 		completed_training.training_queue.active_order_id
 	)
 	completed_training.city.current_day = 2
-	completed_training.garrison.unit_counts_by_definition_id[
-		source.INFANTRY_ROLE.role_id
-	] = 25
+	_set_roster_total(
+		completed_training.garrison,
+		source.INFANTRY_ROLE.role_id,
+		25
+	)
 	completed_training.training_queue.active_order_id = &""
 	completed_training.training_queue.orders_by_id[
 		historical_order_id
@@ -1033,6 +1038,34 @@ func _accept_counterexample(snapshot: Dictionary) -> Dictionary:
 		"error": "",
 		"snapshot": snapshot.duplicate(true),
 	}
+
+
+## The V6 aggregate stays a projection.  Fixtures must update the three
+## persistent formation records and their projection together rather than
+## mutating the deprecated aggregate in isolation.
+func _set_roster_total(
+	garrison: Dictionary,
+	definition_id: StringName,
+	total: int
+) -> void:
+	var formation_order: Array = garrison.formation_order
+	var formations: Dictionary = garrison.formations_by_id
+	var base := total / formation_order.size()
+	var remainder := total % formation_order.size()
+	for index in range(formation_order.size()):
+		var formation_id := StringName(formation_order[index])
+		var formation: Dictionary = formations[formation_id]
+		formation.member_count = base + (1 if index < remainder else 0)
+		formations[formation_id] = formation
+	garrison.formations_by_id = formations
+	garrison.unit_counts_by_definition_id = {definition_id: total}
+
+
+func _roster_total(garrison: Dictionary) -> int:
+	var total := 0
+	for formation in Dictionary(garrison.formations_by_id).values():
+		total += int(Dictionary(formation).member_count)
+	return total
 
 
 func _write_counterexample_generation(

@@ -5,6 +5,9 @@ extends Node2D
 const CityGateComponent = preload("res://scripts/city_gate_component_r1.gd")
 const CITY_GRID_RULES = preload("res://scripts/city_sandbox/city_grid_rules.gd")
 const PROFILE_RESOLVER = preload("res://scripts/city_layout_profile_resolver.gd")
+const PALETTE := preload(
+	"res://resources/visuals/northern_campaign_palette.gd"
+)
 const GRAYBOX_BUILDING_VISUAL = preload(
 	"res://scripts/graybox_building_visual.gd"
 )
@@ -354,68 +357,151 @@ func _draw() -> void:
 	if layout_profile_id == PROFILE_RESOLVER.ORGANIC_GARDEN:
 		_draw_organic_garden_city()
 		return
-	# Regular axial city: walls, a civic axis, and distinct wards. This is a
-	# graybox spatial layer, intentionally without a permanent logic grid.
-	draw_rect(Rect2(Vector2.ZERO, MAP_SIZE), Color("c6bea2"), true)
-	draw_rect(Rect2(Vector2(28.0, 28.0), MAP_SIZE - Vector2(56.0, 56.0)), Color("6d7164"), false, 18.0)
-	draw_rect(Rect2(Vector2(74.0, 74.0), MAP_SIZE - Vector2(148.0, 148.0)), Color("d7cfb2"), true)
-	_draw_ward(Rect2(150.0, 130.0, 620.0, 410.0), Color("c8bea2"))
-	_draw_ward(Rect2(835.0, 130.0, 530.0, 410.0), Color("cec5a9"))
-	_draw_ward(Rect2(1430.0, 130.0, 580.0, 410.0), Color("c8bea2"))
-	_draw_ward(Rect2(150.0, 770.0, 620.0, 430.0), Color("cec5a9"))
-	_draw_ward(Rect2(835.0, 770.0, 530.0, 430.0), Color("c8bea2"))
-	_draw_ward(Rect2(1430.0, 770.0, 580.0, 430.0), Color("cec5a9"))
+	# Rendering remains a projection of the formal profile. The restrained
+	# ground variation below is deterministic and carries no collision or state.
+	_draw_city_ground(false)
+	_draw_ward(Rect2(150.0, 130.0, 620.0, 410.0), PALETTE.GROUND_SAND)
+	_draw_ward(Rect2(835.0, 130.0, 530.0, 410.0), PALETTE.GROUND_PALE)
+	_draw_ward(Rect2(1430.0, 130.0, 580.0, 410.0), PALETTE.GROUND_SAND)
+	_draw_ward(Rect2(150.0, 770.0, 620.0, 430.0), PALETTE.GROUND_PALE)
+	_draw_ward(Rect2(835.0, 770.0, 530.0, 430.0), PALETTE.GROUND_SAND)
+	_draw_ward(Rect2(1430.0, 770.0, 580.0, 430.0), PALETTE.GROUND_PALE)
 	for road_rect in get_formal_road_rects():
 		_draw_road(road_rect)
+	_draw_formal_road_intersections()
 	_draw_player_roads()
-	# This is an open civic court rather than a foreground gate: it anchors the
-	# axial roads without becoming a dominant facade in the default viewport.
-	var civic_courtyard := get_civic_court_rect()
-	draw_rect(civic_courtyard, Color("b89352"), true)
-	draw_rect(civic_courtyard, Color("755c35"), false, 4.0)
-	draw_rect(civic_courtyard.grow(-24.0), Color("d8cda8"), true)
-	draw_circle(civic_courtyard.get_center(), 18.0, Color("a57d3e"))
+	_draw_civic_courtyard(PALETTE.COPPER_GOLD)
 
 
 func _draw_organic_garden_city() -> void:
 	# The garden profile stays orthogonal, but its T-junctions, unequal wards,
 	# and reserves break the rigid axial cross without introducing a second grid.
-	draw_rect(Rect2(Vector2.ZERO, MAP_SIZE), Color("b8c7a9"), true)
-	draw_rect(
-		Rect2(Vector2(28.0, 28.0), MAP_SIZE - Vector2(56.0, 56.0)),
-		Color("557060"),
-		false,
-		18.0
-	)
-	draw_rect(Rect2(Vector2(74.0, 74.0), MAP_SIZE - Vector2(148.0, 148.0)), Color("d1d2af"), true)
+	_draw_city_ground(true)
 	for ward in [
-		[Rect2(130.0, 120.0, 640.0, 420.0), Color("c7c7a4")],
-		[Rect2(820.0, 120.0, 490.0, 420.0), Color("d0caaa")],
-		[Rect2(1450.0, 120.0, 600.0, 420.0), Color("c3c9a4")],
-		[Rect2(130.0, 780.0, 640.0, 430.0), Color("d0caaa")],
-		[Rect2(820.0, 780.0, 490.0, 430.0), Color("c6cda9")],
-		[Rect2(1450.0, 780.0, 600.0, 430.0), Color("d0caaa")],
+		[Rect2(130.0, 120.0, 640.0, 420.0), PALETTE.GROUND_COOL],
+		[Rect2(820.0, 120.0, 490.0, 420.0), PALETTE.GROUND_PALE],
+		[Rect2(1450.0, 120.0, 600.0, 420.0), PALETTE.GROUND_COOL],
+		[Rect2(130.0, 780.0, 640.0, 430.0), PALETTE.GROUND_PALE],
+		[Rect2(820.0, 780.0, 490.0, 430.0), PALETTE.GROUND_COOL],
+		[Rect2(1450.0, 780.0, 600.0, 430.0), PALETTE.GROUND_PALE],
 	]:
 		_draw_ward(ward[0], ward[1])
 	for reserve_rect in get_garden_reserve_rects():
-		draw_rect(reserve_rect, Color("8fb18b"), true)
-		draw_rect(reserve_rect.grow(-14.0), Color("6f9a77"), false, 4.0)
+		draw_rect(reserve_rect, PALETTE.with_alpha(PALETTE.JADE, 0.34), true)
+		draw_rect(
+			reserve_rect.grow(-14.0),
+			PALETTE.with_alpha(PALETTE.INK_SOFT, 0.62),
+			false,
+			4.0
+		)
 		var center := reserve_rect.get_center()
 		for offset in [Vector2(-42.0, -24.0), Vector2(30.0, 18.0), Vector2(4.0, -52.0)]:
-			draw_circle(center + offset, 18.0, Color("6d966c"))
+			draw_circle(center + offset, 18.0, PALETTE.with_alpha(PALETTE.JADE, 0.58))
 	for road_rect in get_formal_road_rects():
 		_draw_road(road_rect)
+	_draw_formal_road_intersections()
 	_draw_player_roads()
-	var civic_courtyard := get_civic_court_rect()
-	draw_rect(civic_courtyard, Color("a78e60"), true)
-	draw_rect(civic_courtyard, Color("6f5f42"), false, 4.0)
-	draw_rect(civic_courtyard.grow(-22.0), Color("d8cda8"), true)
-	draw_circle(civic_courtyard.get_center(), 18.0, Color("7f9c79"))
+	_draw_civic_courtyard(PALETTE.JADE)
+
+
+func _draw_city_ground(is_garden: bool) -> void:
+	var outer_color := (
+		PALETTE.GROUND_COOL.lerp(PALETTE.JADE, 0.08)
+		if is_garden
+		else PALETTE.GROUND_WARM.darkened(0.07)
+	)
+	var inner_color := (
+		PALETTE.GROUND_WARM.lerp(PALETTE.JADE, 0.04)
+		if is_garden
+		else PALETTE.GROUND_WARM
+	)
+	draw_rect(Rect2(Vector2.ZERO, MAP_SIZE), outer_color, true)
+	var inner_rect := Rect2(
+		Vector2(74.0, 74.0),
+		MAP_SIZE - Vector2(148.0, 148.0)
+	)
+	draw_rect(inner_rect, inner_color, true)
+	_draw_ground_variation(inner_rect, is_garden)
+	_draw_city_wall()
+
+
+func _draw_ground_variation(bounds: Rect2, is_garden: bool) -> void:
+	# Broad, quiet tonal patches avoid a flat board while staying subordinate to
+	# roads and footprints. Their deterministic pattern keeps captures stable.
+	for y in range(int(bounds.position.y) + 26, int(bounds.end.y) - 20, 132):
+		for x in range(int(bounds.position.x) + 24, int(bounds.end.x) - 20, 164):
+			var pattern_index := posmod((x / 4) + (y / 3), 5)
+			var patch_color := (
+				PALETTE.GROUND_COOL
+				if pattern_index in [0, 3]
+				else PALETTE.GROUND_PALE
+			)
+			if is_garden and pattern_index == 2:
+				patch_color = PALETTE.JADE
+			var patch := Rect2(
+				Vector2(x, y),
+				Vector2(116.0 + float(pattern_index * 5), 82.0)
+			)
+			draw_rect(
+				patch,
+				PALETTE.with_alpha(patch_color, 0.075),
+				true
+			)
+			draw_line(
+				patch.position + Vector2(15.0, patch.size.y - 13.0),
+				patch.position + Vector2(patch.size.x - 18.0, patch.size.y - 7.0),
+				PALETTE.with_alpha(PALETTE.GROUND_MARK, 0.13),
+				1.5,
+				true
+			)
+
+
+func _draw_city_wall() -> void:
+	var wall_rect := Rect2(
+		Vector2(28.0, 28.0),
+		MAP_SIZE - Vector2(56.0, 56.0)
+	)
+	draw_rect(wall_rect, PALETTE.WALL_STONE, false, 18.0)
+	draw_rect(
+		wall_rect.grow(-13.0),
+		PALETTE.with_alpha(PALETTE.WALL_HIGHLIGHT, 0.82),
+		false,
+		3.0
+	)
+	# Stone joints are visual-only and remain inside the formal wall band.
+	for x in range(92, int(MAP_SIZE.x) - 80, 168):
+		draw_line(Vector2(x, 20.0), Vector2(x + 20.0, 38.0), PALETTE.WALL_HIGHLIGHT, 2.0)
+		draw_line(
+			Vector2(x, MAP_SIZE.y - 38.0),
+			Vector2(x + 20.0, MAP_SIZE.y - 20.0),
+			PALETTE.WALL_HIGHLIGHT,
+			2.0
+		)
+	for y in range(92, int(MAP_SIZE.y) - 80, 168):
+		draw_line(Vector2(20.0, y), Vector2(38.0, y + 20.0), PALETTE.WALL_HIGHLIGHT, 2.0)
+		draw_line(
+			Vector2(MAP_SIZE.x - 38.0, y),
+			Vector2(MAP_SIZE.x - 20.0, y + 20.0),
+			PALETTE.WALL_HIGHLIGHT,
+			2.0
+		)
 
 
 func _draw_ward(rect: Rect2, color: Color) -> void:
-	draw_rect(rect, color, true)
-	draw_rect(rect.grow(-20.0), Color("dcd4ba"), false, 3.0)
+	draw_rect(rect, PALETTE.with_alpha(PALETTE.SHADOW, 0.12), true)
+	draw_rect(rect.grow(-7.0), color, true)
+	draw_rect(
+		rect.grow(-20.0),
+		PALETTE.with_alpha(PALETTE.GROUND_PALE, 0.82),
+		false,
+		3.0
+	)
+	draw_line(
+		rect.position + Vector2(30.0, rect.size.y - 26.0),
+		Vector2(rect.end.x - 34.0, rect.end.y - 26.0),
+		PALETTE.with_alpha(PALETTE.GROUND_MARK, 0.18),
+		2.0
+	)
 	# These are non-interactive ward volumes, not selectable production
 	# buildings. They make the foundation read as a city before art production.
 	for local_rect in [
@@ -430,8 +516,8 @@ func _draw_ward(rect: Rect2, color: Color) -> void:
 
 func _draw_ambient_volume(rect: Rect2) -> void:
 	var shadow := Rect2(rect.position + Vector2(10.0, 13.0), rect.size)
-	draw_rect(shadow, Color(0.17, 0.17, 0.14, 0.18), true)
-	draw_rect(rect, Color("a29b7e"), true)
+	draw_rect(shadow, PALETTE.SHADOW, true)
+	draw_rect(rect, PALETTE.GROUND_COOL.darkened(0.09), true)
 	var roof := PackedVector2Array([
 		rect.position,
 		rect.position + Vector2(rect.size.x * 0.5, -18.0),
@@ -439,13 +525,102 @@ func _draw_ambient_volume(rect: Rect2) -> void:
 		rect.position + Vector2(rect.size.x, 24.0),
 		rect.position + Vector2(0.0, 24.0),
 	])
-	draw_colored_polygon(roof, Color("c2ad7b"))
-	draw_rect(rect, Color("756c56"), false, 2.0)
+	draw_colored_polygon(roof, PALETTE.ROAD_RUT)
+	draw_line(
+		rect.position + Vector2(rect.size.x * 0.5, -18.0),
+		rect.position + Vector2(rect.size.x * 0.5, 21.0),
+		PALETTE.with_alpha(PALETTE.ROAD_EDGE, 0.52),
+		2.0
+	)
+	draw_rect(rect, PALETTE.ROAD_EDGE, false, 2.0)
+	var door_rect := Rect2(
+		Vector2(rect.get_center().x - 8.0, rect.end.y - 20.0),
+		Vector2(16.0, 20.0)
+	)
+	draw_rect(door_rect, PALETTE.with_alpha(PALETTE.INK_BLUE, 0.62), true)
 
 
 func _draw_road(rect: Rect2) -> void:
-	draw_rect(rect, Color("8f8060"), true)
-	draw_line(rect.position + Vector2(0.0, rect.size.y * 0.5), Vector2(rect.end.x, rect.position.y + rect.size.y * 0.5), Color("c6b889"), 3.0)
+	# Three layers: compacted shoulder, travel surface, then quiet wagon ruts.
+	draw_rect(rect.grow(5.0), PALETTE.with_alpha(PALETTE.SHADOW, 0.24), true)
+	draw_rect(rect, PALETTE.ROAD_EDGE, true)
+	draw_rect(rect.grow(-6.0), PALETTE.ROAD_SURFACE, true)
+	draw_rect(
+		rect.grow(-11.0),
+		PALETTE.with_alpha(PALETTE.ROAD_DUST, 0.42),
+		true
+	)
+	if rect.size.x >= rect.size.y:
+		for y_ratio in [0.38, 0.62]:
+			var y: float = rect.position.y + rect.size.y * float(y_ratio)
+			draw_line(
+				Vector2(rect.position.x + 7.0, y),
+				Vector2(rect.end.x - 7.0, y),
+				PALETTE.with_alpha(PALETTE.ROAD_RUT, 0.66),
+				2.0,
+				true
+			)
+	else:
+		for x_ratio in [0.38, 0.62]:
+			var x: float = rect.position.x + rect.size.x * float(x_ratio)
+			draw_line(
+				Vector2(x, rect.position.y + 7.0),
+				Vector2(x, rect.end.y - 7.0),
+				PALETTE.with_alpha(PALETTE.ROAD_RUT, 0.66),
+				2.0,
+				true
+			)
+
+
+func _draw_formal_road_intersections() -> void:
+	var roads := get_formal_road_rects()
+	for first_index in range(roads.size()):
+		for second_index in range(first_index + 1, roads.size()):
+			var intersection := roads[first_index].intersection(roads[second_index])
+			if intersection.size.x <= 0.0 or intersection.size.y <= 0.0:
+				continue
+			draw_rect(intersection, PALETTE.ROAD_EDGE, true)
+			draw_rect(intersection.grow(-6.0), PALETTE.ROAD_SURFACE, true)
+			draw_circle(
+				intersection.get_center(),
+				minf(intersection.size.x, intersection.size.y) * 0.26,
+				PALETTE.ROAD_DUST
+			)
+			draw_arc(
+				intersection.get_center(),
+				minf(intersection.size.x, intersection.size.y) * 0.31,
+				0.0,
+				TAU,
+				24,
+				PALETTE.with_alpha(PALETTE.ROAD_RUT, 0.72),
+				2.0,
+				true
+			)
+
+
+func _draw_civic_courtyard(accent: Color) -> void:
+	# Open civic court: a quiet command-table landmark, never a foreground gate.
+	var courtyard := get_civic_court_rect()
+	draw_rect(courtyard, PALETTE.ROAD_EDGE, true)
+	draw_rect(courtyard.grow(-5.0), PALETTE.ROAD_DUST, true)
+	draw_rect(courtyard.grow(-23.0), PALETTE.GROUND_WARM, true)
+	draw_rect(
+		courtyard.grow(-23.0),
+		PALETTE.with_alpha(PALETTE.ROAD_EDGE, 0.62),
+		false,
+		3.0
+	)
+	var center := courtyard.get_center()
+	draw_circle(center, 21.0, PALETTE.with_alpha(PALETTE.INK_TEAL, 0.86))
+	draw_circle(center, 13.0, accent)
+	for direction in [Vector2.UP, Vector2.RIGHT, Vector2.DOWN, Vector2.LEFT]:
+		draw_line(
+			center + direction * 26.0,
+			center + direction * 45.0,
+			PALETTE.with_alpha(accent, 0.74),
+			3.0,
+			true
+		)
 
 
 func _draw_player_roads() -> void:
@@ -462,15 +637,51 @@ func _draw_player_road_tile(cell: Vector2i, all_roads: Dictionary) -> void:
 	var rect := Rect2(Vector2(cell) * GRID_SIZE, Vector2.ONE * GRID_SIZE)
 	var mask := CITY_GRID_RULES.get_road_mask(cell, all_roads)
 	var center := rect.get_center()
-	var road_color := Color("958665")
-	draw_rect(rect.grow(-1.0), road_color, true)
-	draw_rect(rect.grow(-1.0), Color("655840"), false, 2.0)
-	draw_circle(center, GRID_SIZE * 0.18, Color("c6b889"))
+	# Shoulder pass keeps neighboring tiles visually joined without turning the
+	# whole logical cell into a flat square.
+	draw_circle(center, GRID_SIZE * 0.38, PALETTE.ROAD_EDGE)
 	if mask & CITY_GRID_RULES.MASK_NORTH:
-		draw_line(center, Vector2(center.x, rect.position.y), Color("c6b889"), 7.0)
+		draw_line(center, Vector2(center.x, rect.position.y), PALETTE.ROAD_EDGE, GRID_SIZE * 0.74)
 	if mask & CITY_GRID_RULES.MASK_EAST:
-		draw_line(center, Vector2(rect.end.x, center.y), Color("c6b889"), 7.0)
+		draw_line(center, Vector2(rect.end.x, center.y), PALETTE.ROAD_EDGE, GRID_SIZE * 0.74)
 	if mask & CITY_GRID_RULES.MASK_SOUTH:
-		draw_line(center, Vector2(center.x, rect.end.y), Color("c6b889"), 7.0)
+		draw_line(center, Vector2(center.x, rect.end.y), PALETTE.ROAD_EDGE, GRID_SIZE * 0.74)
 	if mask & CITY_GRID_RULES.MASK_WEST:
-		draw_line(center, Vector2(rect.position.x, center.y), Color("c6b889"), 7.0)
+		draw_line(center, Vector2(rect.position.x, center.y), PALETTE.ROAD_EDGE, GRID_SIZE * 0.74)
+	draw_circle(center, GRID_SIZE * 0.29, PALETTE.ROAD_SURFACE)
+	if mask & CITY_GRID_RULES.MASK_NORTH:
+		draw_line(center, Vector2(center.x, rect.position.y), PALETTE.ROAD_SURFACE, GRID_SIZE * 0.54)
+	if mask & CITY_GRID_RULES.MASK_EAST:
+		draw_line(center, Vector2(rect.end.x, center.y), PALETTE.ROAD_SURFACE, GRID_SIZE * 0.54)
+	if mask & CITY_GRID_RULES.MASK_SOUTH:
+		draw_line(center, Vector2(center.x, rect.end.y), PALETTE.ROAD_SURFACE, GRID_SIZE * 0.54)
+	if mask & CITY_GRID_RULES.MASK_WEST:
+		draw_line(center, Vector2(rect.position.x, center.y), PALETTE.ROAD_SURFACE, GRID_SIZE * 0.54)
+	var connection_count := _road_connection_count(mask)
+	if connection_count >= 3:
+		draw_circle(center, GRID_SIZE * 0.20, PALETTE.ROAD_DUST)
+		draw_arc(
+			center,
+			GRID_SIZE * 0.24,
+			0.0,
+			TAU,
+			18,
+			PALETTE.ROAD_RUT,
+			2.0,
+			true
+		)
+	else:
+		draw_circle(center, GRID_SIZE * 0.08, PALETTE.with_alpha(PALETTE.ROAD_RUT, 0.76))
+
+
+func _road_connection_count(mask: int) -> int:
+	var count := 0
+	for direction_mask in [
+		CITY_GRID_RULES.MASK_NORTH,
+		CITY_GRID_RULES.MASK_EAST,
+		CITY_GRID_RULES.MASK_SOUTH,
+		CITY_GRID_RULES.MASK_WEST,
+	]:
+		if mask & direction_mask:
+			count += 1
+	return count

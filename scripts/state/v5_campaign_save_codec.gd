@@ -119,7 +119,18 @@ static func decode_storage_text(
 	var decoded := _decode_variant(payload_parser.data)
 	if not bool(decoded.success) or not decoded.value is Dictionary:
 		return _failure(&"PAYLOAD_DECODE_FAILED", "payload 类型恢复失败")
-	var validation = validator.call(Dictionary(decoded.value).duplicate(true))
+	# Canonicality belongs to the bytes that were actually stored. A domain
+	# validator may migrate an older schema to the current one; comparing that
+	# migrated value with the legacy payload would incorrectly reject every
+	# valid pre-migration generation.
+	var source_snapshot := Dictionary(decoded.value).duplicate(true)
+	var canonical_source_dto := _encode_variant(source_snapshot)
+	if (
+		not bool(canonical_source_dto.success)
+		or _canonical_json(canonical_source_dto.value) != payload_json
+	):
+		return _failure(&"NON_CANONICAL_PAYLOAD", "payload 不是规范 JSON")
+	var validation = validator.call(source_snapshot.duplicate(true))
 	if (
 		typeof(validation) != TYPE_DICTIONARY
 		or not bool(validation.get("valid", false))
@@ -132,12 +143,6 @@ static func decode_storage_text(
 				"未知未来 CampaignSnapshot schema"
 			)
 		return _failure(&"INVALID_SNAPSHOT", "磁盘 V2 快照领域校验失败")
-	var canonical_dto := _encode_variant(validation.snapshot)
-	if (
-		not bool(canonical_dto.success)
-		or _canonical_json(canonical_dto.value) != payload_json
-	):
-		return _failure(&"NON_CANONICAL_PAYLOAD", "payload 不是规范 JSON")
 	return {
 		"success": true,
 		"error_id": &"",

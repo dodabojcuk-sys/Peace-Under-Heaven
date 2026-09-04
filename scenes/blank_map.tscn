@@ -1,4 +1,4 @@
-[gd_scene load_steps=18 format=3 uid="uid://blankmap00"]
+[gd_scene load_steps=19 format=3 uid="uid://blankmap00"]
 
 [ext_resource type="Script" path="res://scripts/map_pan_controller.gd" id="1_map_pan"]
 [ext_resource type="Script" path="res://scripts/construction_controller.gd" id="2_construction"]
@@ -11,6 +11,7 @@
 [ext_resource type="Script" path="res://scripts/city_minimap_r1.gd" id="9_city_minimap"]
 [ext_resource type="Script" path="res://scripts/placement_grid_r1.gd" id="10_placement_grid"]
 [ext_resource type="Script" path="res://scripts/city_sandbox/road_preview_visual.gd" id="11_road_preview"]
+[ext_resource type="PackedScene" path="res://scenes/ui/expedition_preparation_panel.tscn" id="12_expedition_panel"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top_bar"]
 bg_color = Color(0.847059, 0.831373, 0.796078, 1)
@@ -476,6 +477,9 @@ mouse_filter = 2
 theme = ExtResource("7_inner_city_theme")
 script = ExtResource("6_inner_city_ui")
 
+[node name="ExpeditionPreparationPanel" parent="UI/Shell" instance=ExtResource("12_expedition_panel")]
+z_index = 100
+
 [node name="TopStatusBar" type="Panel" parent="UI/Shell"]
 layout_mode = 0
 offset_right = 1152.0
@@ -580,10 +584,10 @@ offset_left = 704.0
 offset_top = 7.0
 offset_right = 768.0
 offset_bottom = 40.0
-focus_mode = 0
+focus_mode = 2
 mouse_default_cursor_shape = 2
 theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
-theme_override_font_sizes/font_size = 12
+theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
 theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
@@ -594,10 +598,10 @@ offset_left = 776.0
 offset_top = 7.0
 offset_right = 852.0
 offset_bottom = 40.0
-focus_mode = 0
+focus_mode = 2
 mouse_default_cursor_shape = 2
 theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
-theme_override_font_sizes/font_size = 12
+theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
 theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
@@ -621,10 +625,10 @@ offset_left = 864.0
 offset_top = 48.0
 offset_right = 1137.0
 offset_bottom = 76.0
-focus_mode = 0
+focus_mode = 2
 mouse_default_cursor_shape = 2
 theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
-theme_override_font_sizes/font_size = 12
+theme_override_font_sizes/font_size = 14
 theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
 theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
@@ -1420,8 +1424,7 @@ layout_mode = 0
 offset_right = 240.0
 offset_bottom = 146.0
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
-theme_override_font_sizes/font_size = 12
+theme_override_font_sizes/font_size = 14
 text = "北坡敌情"
 autowrap_mode = 2
 
@@ -1445,8 +1448,7 @@ offset_top = 190.0
 offset_right = 240.0
 offset_bottom = 224.0
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
-theme_override_font_sizes/font_size = 11
+theme_override_font_sizes/font_size = 14
 text = "尚未出征"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -1538,8 +1540,7 @@ layout_mode = 0
 offset_right = 240.0
 offset_bottom = 154.0
 mouse_filter = 2
-theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
-theme_override_font_sizes/font_size = 13
+theme_override_font_sizes/font_size = 14
 text = "战后摘要"
 horizontal_alignment = 1
 vertical_alignment = 1
@@ -1549,9 +1550,10 @@ autowrap_mode = 2
 layout_mode = 0
 offset_top = 170.0
 offset_right = 240.0
-offset_bottom = 206.0
-focus_mode = 0
+offset_bottom = 214.0
+focus_mode = 2
 mouse_default_cursor_shape = 2
+custom_minimum_size = Vector2(240, 44)
 theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
 theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")

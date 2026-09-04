@@ -136,6 +136,97 @@ func flush_on_normal_exit() -> bool:
 	return flush_now(&"normal_exit") if _dirty else true
 
 
+func persist_expedition_departure(attempt_id: StringName) -> Dictionary:
+	return _persist_expedition_checkpoint(
+		attempt_id,
+		&"",
+		&"expedition_departure"
+	)
+
+
+func persist_expedition_settlement(
+	attempt_id: StringName,
+	result_id: StringName
+) -> Dictionary:
+	if result_id == &"":
+		return {"success": false, "uncertain": false}
+	return _persist_expedition_checkpoint(
+		attempt_id,
+		result_id,
+		&"expedition_settlement"
+	)
+
+
+func _persist_expedition_checkpoint(
+	attempt_id: StringName,
+	result_id: StringName,
+	reason: StringName
+) -> Dictionary:
+	if attempt_id == &"":
+		return {"success": false, "uncertain": false}
+	if (
+		_writes_blocked
+		and StringName(_status.get("error_id", &""))
+			== &"HEADLESS_STORE_NOT_CONFIGURED"
+	):
+		return {
+			"success": true,
+			"uncertain": false,
+			"headless_test_store_disabled": true,
+		}
+	if flush_now(reason):
+		return {"success": true, "uncertain": false}
+	if _store == null or _controller == null:
+		return {"success": false, "uncertain": false}
+	var published_may_be_uncertain := (
+		StringName(_status.get("error_id", &"")) == &"FINAL_REREAD_FAILED"
+	)
+	if not published_may_be_uncertain:
+		return {"success": false, "uncertain": false}
+	var loaded := _store.load_latest(
+		Callable(_controller, "validate_v5_campaign_snapshot")
+	)
+	if not bool(loaded.get("success", false)):
+		return {"success": false, "uncertain": true}
+	var persisted_attempt: Dictionary = Dictionary(
+		loaded.snapshot
+	).get("expedition_attempt", {})
+	var expected_attempt: Dictionary = (
+		_controller.get_expedition_attempt()
+		if _controller.has_method("get_expedition_attempt")
+		else {}
+	)
+	if (
+		StringName(persisted_attempt.get("attempt_id", &"")) == attempt_id
+		and not expected_attempt.is_empty()
+		and persisted_attempt == expected_attempt
+		and (
+			result_id == &""
+			or (
+				bool(persisted_attempt.get("settled", false))
+				and StringName(persisted_attempt.get("result_id", &""))
+					== result_id
+				and Dictionary(
+					Dictionary(loaded.snapshot).get(
+						"settlement_ledger", {}
+					).get("committed_results_by_id", {})
+				).has(result_id)
+			)
+		)
+	):
+		_dirty = false
+		_status.status = "saved_after_generation_verification"
+		_status.error_id = &""
+		_status.error = ""
+		_status.save_sequence = int(loaded.save_sequence)
+		return {
+			"success": true,
+			"uncertain": false,
+			"verified_after_publish_warning": true,
+		}
+	return {"success": false, "uncertain": false}
+
+
 func _connect_controller() -> void:
 	if _controller == null or not _controller.has_signal("city_state_changed"):
 		return

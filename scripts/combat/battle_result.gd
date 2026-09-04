@@ -18,10 +18,11 @@ var orders_digest: String
 var player_snapshot_digest: String
 var enemy_snapshot_digest: String
 var first_clear_key: StringName
+var formation_results: Array[Dictionary] = []
 
 
 func is_consistent() -> bool:
-	return (
+	var base_consistent := (
 		result_id != &""
 		and transaction_id != &""
 		and session_id != &""
@@ -37,6 +38,43 @@ func is_consistent() -> bool:
 		and casualty_count >= 0
 		and survivor_count + casualty_count == committed_count
 		and enemy_casualties >= 0
+	)
+	if not base_consistent:
+		return false
+	if formation_results.is_empty():
+		return true
+	var seen: Dictionary = {}
+	var formation_committed := 0
+	var formation_survivors := 0
+	var formation_casualties := 0
+	for formation_value in formation_results:
+		if not formation_value is Dictionary:
+			return false
+		var formation: Dictionary = formation_value
+		var formation_id := StringName(formation.get("formation_id", &""))
+		if (
+			formation_id == &""
+			or seen.has(formation_id)
+			or typeof(formation.get("squad_id")) != TYPE_INT
+			or int(formation.squad_id) <= 0
+			or typeof(formation.get("departure_count")) != TYPE_INT
+			or int(formation.departure_count) <= 0
+			or typeof(formation.get("survivor_count")) != TYPE_INT
+			or int(formation.survivor_count) < 0
+			or typeof(formation.get("casualty_count")) != TYPE_INT
+			or int(formation.casualty_count) < 0
+			or int(formation.survivor_count) + int(formation.casualty_count)
+				!= int(formation.departure_count)
+		):
+			return false
+		seen[formation_id] = true
+		formation_committed += int(formation.departure_count)
+		formation_survivors += int(formation.survivor_count)
+		formation_casualties += int(formation.casualty_count)
+	return (
+		formation_committed == committed_count
+		and formation_survivors == survivor_count
+		and formation_casualties == casualty_count
 	)
 
 
@@ -62,6 +100,7 @@ func get_authority_snapshot() -> Dictionary:
 		"player_snapshot_digest": player_snapshot_digest,
 		"enemy_snapshot_digest": enemy_snapshot_digest,
 		"first_clear_key": first_clear_key,
+		"formation_results": formation_results.duplicate(true),
 	}
 
 
@@ -98,5 +137,8 @@ static func from_authority_snapshot(
 	)
 	result.first_clear_key = StringName(
 		authority_snapshot.get("first_clear_key", &"")
+	)
+	result.formation_results.assign(
+		Array(authority_snapshot.get("formation_results", [])).duplicate(true)
 	)
 	return result

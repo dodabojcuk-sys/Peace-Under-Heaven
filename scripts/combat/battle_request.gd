@@ -86,3 +86,32 @@ func is_noticeboard_mission() -> bool:
 		source_id == MissionDefinition.SOURCE_NOTICEBOARD
 		and mission_definition != null
 	)
+
+
+static func from_expedition_attempt(attempt: Dictionary) -> BattleRequest:
+	if attempt.is_empty():
+		return null
+	var committed := CommittedForceSnapshot.from_dictionary(
+		Dictionary(attempt.get("committed_force_snapshot", {}))
+	)
+	var enemy := EnemyForceSnapshot.from_dictionary(
+		Dictionary(attempt.get("enemy_force_snapshot", {}))
+	)
+	if committed == null or enemy == null:
+		return null
+	var request := BattleRequest.new(
+		StringName(attempt.get("attempt_id", &"")),
+		StringName(attempt.get("mainline_id", &"")),
+		int(attempt.get("created_day", 0)),
+		committed,
+		enemy,
+		true,
+		int(attempt.get("food_cost", 0)),
+		int(attempt.get("city_defense_snapshot", 0)),
+		&"FIRST_WAR",
+		StringName(attempt.get("first_clear_key", &"")),
+		int(attempt.get("reward_wood", 0)),
+		int(attempt.get("reward_food", 0))
+	)
+	request.phase = StringName(attempt.get("phase", PHASE_RESERVED))
+	return request if request.is_valid() else null

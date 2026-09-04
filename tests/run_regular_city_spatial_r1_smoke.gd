@@ -161,8 +161,8 @@ func _run() -> void:
 	_check(int(record.get("orientation", -1)) == 1,
 		"确认后的建筑方向进入唯一权威实例")
 	var snapshot: Dictionary = controller.export_v5_campaign_snapshot()
-	_check(snapshot.schema_version == 5,
-		"含方向的 Campaign 快照使用 schema 5")
+	_check(snapshot.schema_version == 6,
+		"含方向的 Campaign 快照使用 schema 6，并包含编队 roster 投影")
 	var temp_save_root := "%s/txwzs-r1-orientation-%d" % [
 		OS.get_temp_dir(),
 		Time.get_ticks_usec(),
@@ -187,6 +187,8 @@ func _run() -> void:
 	)
 	var legacy_v2 := snapshot.duplicate(true)
 	legacy_v2.schema_version = 2
+	legacy_v2.erase("expedition_attempt")
+	legacy_v2.garrison = _legacy_garrison_projection(snapshot.garrison)
 	legacy_v2.erase("mainline_level")
 	legacy_v2.erase("build_slot")
 	legacy_v2.city.erase("security")
@@ -202,7 +204,7 @@ func _run() -> void:
 	var legacy_validation: Dictionary = controller.validate_v5_campaign_snapshot(legacy_v2)
 	_check(
 		bool(legacy_validation.valid)
-			and int(legacy_validation.snapshot.schema_version) == 5
+			and int(legacy_validation.snapshot.schema_version) == 6
 			and int(legacy_validation.snapshot.placements[0].orientation) == 0,
 		"旧 schema 2 存档载入时稳定默认北向"
 	)
@@ -212,6 +214,16 @@ func _run() -> void:
 	await process_frame
 	_remove_tree(temp_save_root)
 	_finish()
+
+
+func _legacy_garrison_projection(current: Dictionary) -> Dictionary:
+	return {
+		"schema_version": 1,
+		"city_id": current.city_id,
+		"unit_counts_by_definition_id": Dictionary(
+			current.unit_counts_by_definition_id
+		).duplicate(true),
+	}
 
 
 func _remove_tree(path: String) -> void:

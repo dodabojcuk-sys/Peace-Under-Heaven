@@ -27,6 +27,9 @@ const RUNTIME_PERSISTENCE_COORDINATOR = preload(
 @onready var construction_entry_panel: Control = $UI/Shell/ConstructionEntryPanel
 @onready var construction_menu: Control = $UI/Shell/ConstructionMenu
 @onready var building_detail_panel: Control = $UI/Shell/BuildingDetailPanel
+@onready var expedition_preparation_panel: Control = (
+	$UI/Shell/ExpeditionPreparationPanel
+)
 @onready var expedition_entry_button: Button = (
 	$UI/Shell/BuildingDetailPanel/FirstWarActions/MvpExpeditionButton
 )
@@ -89,6 +92,7 @@ func _ready() -> void:
 	_refresh_blackstone_mvp_entry()
 	call_deferred("_initialize_camera")
 	call_deferred("_refresh_minimap")
+	call_deferred("_resume_persisted_expedition_if_needed")
 
 
 func _notification(what: int) -> void:
@@ -109,17 +113,36 @@ func flush_runtime_persistence(reason: StringName = &"explicit") -> bool:
 	return _runtime_persistence.flush_now(reason)
 
 
+func persist_expedition_departure(attempt_id: StringName) -> Dictionary:
+	if _runtime_persistence == null:
+		return {"success": false, "uncertain": false}
+	return _runtime_persistence.persist_expedition_departure(attempt_id)
+
+
+func persist_expedition_settlement(
+	attempt_id: StringName,
+	result_id: StringName
+) -> Dictionary:
+	if _runtime_persistence == null:
+		return {"success": false, "uncertain": false}
+	return _runtime_persistence.persist_expedition_settlement(
+		attempt_id,
+		result_id
+	)
+
+
 func _input(event: InputEvent) -> void:
+	# This fullscreen modal owns every pointer/key while visible. Returning here
+	# keeps root map gestures from racing GUI dispatch; the Control handles
+	# ui_cancel through its own unhandled-key path.
+	if expedition_preparation_panel.visible:
+		return
 	if mvp_expedition_open:
 		if (
-			event is InputEventKey
-			and event.pressed
-			and not event.echo
-			and event.keycode == KEY_ESCAPE
+			event.is_action_pressed(&"ui_cancel")
 		):
 			blackstone_expedition_mvp.handle_escape()
 			get_viewport().set_input_as_handled()
-		return
 		return
 
 	if world_map_open:
@@ -134,15 +157,16 @@ func _input(event: InputEvent) -> void:
 		return
 
 	if construction_controller.is_placing():
+		building_selection_controller.clear_hover()
 		_handle_construction_input(event)
 		return
 
 	if event is InputEventKey:
-		if event.pressed and not event.echo and event.keycode == KEY_R:
+		if event.is_action_pressed(&"rotate_placement") and not event.echo:
 			if construction_controller.rotate_preview():
 				get_viewport().set_input_as_handled()
 			return
-		if event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		if event.is_action_pressed(&"ui_cancel") and not event.echo:
 			if (
 				construction_controller.handle_escape()
 				or building_selection_controller.handle_escape()
@@ -156,17 +180,21 @@ func _input(event: InputEvent) -> void:
 		else:
 			_handle_drag_button(event)
 	elif event is InputEventMouseMotion:
+		if active_drag_button == -1:
+			building_selection_controller.handle_map_hover(event.position)
+		else:
+			building_selection_controller.clear_hover()
 		_handle_drag_motion(event)
 
 
 func _handle_construction_input(event: InputEvent) -> void:
 	if event is InputEventKey:
 		if event.pressed and not event.echo:
-			if event.keycode == KEY_R:
+			if event.is_action_pressed(&"rotate_placement"):
 				if not construction_controller.is_road_placing():
 					construction_controller.rotate_preview()
 				get_viewport().set_input_as_handled()
-			elif event.keycode == KEY_ESCAPE:
+			elif event.is_action_pressed(&"ui_cancel"):
 				construction_controller.handle_escape()
 				_stop_drag()
 				get_viewport().set_input_as_handled()
@@ -645,7 +673,7 @@ func _refresh_minimap() -> void:
 
 func _handle_world_map_input(event: InputEvent) -> void:
 	if event is InputEventKey:
-		if event.pressed and not event.echo and event.keycode == KEY_ESCAPE:
+		if event.is_action_pressed(&"ui_cancel") and not event.echo:
 			campaign_world_map.handle_escape()
 			_stop_drag()
 			get_viewport().set_input_as_handled()
@@ -668,6 +696,11 @@ func _handle_world_map_input(event: InputEvent) -> void:
 			_handle_drag_button(event)
 	elif event is InputEventMouseMotion:
 		_handle_drag_motion(event)
+
+
+func _resume_persisted_expedition_if_needed() -> void:
+	if construction_controller.has_method("resume_persisted_expedition"):
+		construction_controller.resume_persisted_expedition()
 
 
 func _on_world_map_noticeboard_requested() -> void:

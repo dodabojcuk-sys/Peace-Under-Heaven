@@ -318,6 +318,9 @@ const PRESET_BUILDING_DEFINITIONS := [
 @onready var current_mainline_entry_button: Button = (
 	$"../UI/Shell/TopStatusBar/CurrentMainlineButton"
 )
+@onready var expedition_preparation_panel: ExpeditionPreparationPanel = (
+	$"../UI/Shell/ExpeditionPreparationPanel"
+)
 @onready var order_retreat_button: Button = (
 	$"../UI/Shell/BuildingDetailPanel/FirstWarActions/OrderRetreatButton"
 )
@@ -471,6 +474,9 @@ var _active_noticeboard_mission_id: StringName = &""
 var _completed_noticeboard_mission_ids: Dictionary = {}
 var _noticeboard_last_result_summary: Dictionary = {}
 var _next_battle_transaction_sequence := 1
+var _expedition_attempt: Dictionary = {}
+var _expedition_commit_in_progress := false
+var _expedition_commit_blocked := false
 
 
 func _ready() -> void:
@@ -513,9 +519,18 @@ func _ready() -> void:
 	emergency_mobilization_button.pressed.connect(emergency_mobilization)
 	restore_checkpoint_button.pressed.connect(restore_readiness_checkpoint)
 	restart_map_button.pressed.connect(restart_first_map)
-	enter_first_war_button.pressed.connect(enter_first_war_battle)
+	enter_first_war_button.pressed.connect(open_expedition_preparation)
 	current_mainline_entry_button.pressed.connect(
 		_on_current_mainline_entry_pressed
+	)
+	expedition_preparation_panel.selection_changed.connect(
+		_on_expedition_selection_changed
+	)
+	expedition_preparation_panel.confirm_requested.connect(
+		_on_expedition_confirm_requested
+	)
+	expedition_preparation_panel.cancel_requested.connect(
+		close_expedition_preparation
 	)
 	order_retreat_button.pressed.connect(
 		request_first_war_retreat_confirmation
@@ -810,7 +825,8 @@ func _replace_national_resources(
 
 func _commit_national_resource_targets(
 	targets: Dictionary,
-	reason: StringName
+	reason: StringName,
+	local_commit: Callable = Callable()
 ) -> bool:
 	var entries: Array[Dictionary] = []
 	for resource_id_value in targets.keys():
@@ -829,8 +845,18 @@ func _commit_national_resource_targets(
 			"amount": absi(after - before),
 		})
 	if entries.is_empty():
-		return true
-	return _commit_national_resources(entries, reason)
+		if not local_commit.is_valid():
+			return true
+		var local_result = local_commit.call()
+		if typeof(local_result) == TYPE_BOOL:
+			return bool(local_result)
+		if typeof(local_result) == TYPE_DICTIONARY:
+			return (
+				not Dictionary(local_result).is_empty()
+				and bool(Dictionary(local_result).get("success", true))
+			)
+		return false
+	return _commit_national_resources(entries, reason, local_commit)
 
 
 func _process(delta: float) -> void:
@@ -2327,6 +2353,7 @@ func get_city_time_speed() -> float:
 func is_first_war_time_blocked() -> bool:
 	return (
 		first_war_state == FirstWarState.IN_BATTLE
+		or _is_durable_expedition_reservation()
 		or (
 			_first_war_pending_outcome != &""
 			and not _first_war_result_acknowledged
@@ -2357,6 +2384,7 @@ func resolve_first_war_for_test(outcome: StringName) -> bool:
 	if outcome == &"VICTORY":
 		first_war_state = FirstWarState.RESOLVED_VICTORY
 		_current_mainline_level.mark_cleared(current_day)
+		enemy_count = 0
 	elif outcome == &"RETREAT":
 		first_war_state = FirstWarState.RESOLVED_RETREAT
 	elif outcome == &"DEFEAT":
@@ -2446,8 +2474,293 @@ func get_first_war_entry_blocked_reason() -> String:
 	return "当前主线暂不可进入"
 
 
-func enter_first_war_battle() -> bool:
+func get_formation_roster() -> Array[Dictionary]:
+	return _garrison_state.get_formations()
+
+
+func get_expedition_preparation_model(
+	selected_formation_ids: Array = []
+) -> Dictionary:
+	var selected: Array[Dictionary] = []
+	if not selected_formation_ids.is_empty():
+		selected = _garrison_state.get_selected_formations(selected_formation_ids)
+	var selected_total := 0
+	for formation in selected:
+		selected_total += int(formation.member_count)
+	var food_cost := get_first_war_food_cost(selected_total)
+	var blocked_reason := ""
+	if _expedition_commit_blocked:
+		blocked_reason = "存档结果暂无法确认；请冷启动恢复后继续"
+	elif not can_enter_first_war():
+		blocked_reason = get_first_war_entry_blocked_reason()
+	elif selected_formation_ids.is_empty():
+		blocked_reason = "请选择至少一支可用编队"
+	elif selected.is_empty() or selected.size() != selected_formation_ids.size():
+		blocked_reason = "所选编队已变化，请重新选择"
+	elif selected.size() > CommittedForceSnapshot.MAX_SQUADS:
+		blocked_reason = "一次最多选择三支编队"
+	elif selected_total > get_effective_command_limit():
+		blocked_reason = "所选兵力超过当前指挥上限"
+	elif food < food_cost:
+		blocked_reason = "粮食不足：需要 %d，当前 %d" % [food_cost, food]
+	var pressure := get_mainline_pressure_state()
+	return {
+		"mainline_name": "北坡防御战",
+		"mainline_id": _current_mainline_level.level_id,
+		"objective": "突破任一路线的城防并击溃该路守军",
+		"deadline_text": (
+			"已逾期 %d 日" % int(pressure.overdue_days)
+			if int(pressure.overdue_days) > 0
+			else "%d 日" % int(pressure.days_remaining)
+		),
+		"food": food,
+		"maintenance_units_per_food": INFANTRY_ROLE.maintenance_units_per_food,
+		"formations": _garrison_state.get_formations(),
+		"selected_formation_ids": selected_formation_ids.duplicate(),
+		"selected_formation_count": selected.size(),
+		"selected_total": selected_total,
+		"food_cost": food_cost,
+		"food_after": food - food_cost,
+		"blocked_reason": blocked_reason,
+		"can_confirm": blocked_reason.is_empty(),
+	}
+
+
+func open_expedition_preparation() -> bool:
 	if not can_enter_first_war():
+		_show_placement_feedback(get_first_war_entry_blocked_reason())
+		return false
+	cancel_build_interaction()
+	expedition_preparation_panel.open_with_model(
+		get_expedition_preparation_model()
+	)
+	return true
+
+
+func close_expedition_preparation() -> void:
+	if expedition_preparation_panel.visible:
+		expedition_preparation_panel.close_panel()
+		current_mainline_entry_button.grab_focus()
+
+
+func _on_expedition_selection_changed(formation_ids: Array[StringName]) -> void:
+	expedition_preparation_panel.update_model(
+		get_expedition_preparation_model(formation_ids)
+	)
+
+
+func _on_expedition_confirm_requested(formation_ids: Array[StringName]) -> void:
+	var result := commit_expedition_attempt(formation_ids)
+	if not bool(result.get("success", false)):
+		expedition_preparation_panel.update_model(
+			get_expedition_preparation_model(formation_ids)
+		)
+		expedition_preparation_panel.show_error(
+			str(result.get("error", "出征确认失败"))
+		)
+		return
+	if not _launch_active_expedition_battle():
+		expedition_preparation_panel.show_error("战场无法加载；出征状态已安全保存")
+		return
+	expedition_preparation_panel.close_panel()
+
+
+func commit_expedition_attempt(formation_ids: Array) -> Dictionary:
+	if _expedition_commit_in_progress or _expedition_commit_blocked:
+		return _expedition_failure(&"EXPEDITION_COMMIT_BUSY", "出征事务正在处理")
+	var model := get_expedition_preparation_model(formation_ids)
+	if not bool(model.can_confirm):
+		return _expedition_failure(&"EXPEDITION_VALIDATION", str(model.blocked_reason))
+	var selected := _garrison_state.get_selected_formations(formation_ids)
+	if selected.is_empty() or not _garrison_state.selection_matches(selected):
+		return _expedition_failure(&"FORMATION_CHANGED", "编队人数已变化，请重新选择")
+	var attempt_id := StringName(
+		"battle-%06d" % _next_battle_transaction_sequence
+	)
+	var departures: Array[Dictionary] = []
+	for index in range(selected.size()):
+		var formation: Dictionary = selected[index].duplicate(true)
+		formation.squad_id = index + 1
+		# The existing normal twenty-person winning plan is a concentrated front
+		# deployment. It becomes part of the immutable attempt; a future route
+		# picker must run before confirmation rather than mutate it inside C0.
+		formation.route_id = CommittedForceSnapshot.FRONT_ROUTE
+		departures.append(formation)
+	var committed := CommittedForceSnapshot.create_from_formations(
+		attempt_id,
+		departures,
+		INFANTRY_ROLE,
+		selected_general_id,
+		researched_tech_ids.duplicate(),
+		get_infantry_attack_multiplier(),
+		get_infantry_defense_multiplier(),
+		supply_shortage
+	)
+	var enemy := EnemyForceSnapshot.create(
+		attempt_id,
+		current_day,
+		enemy_count,
+		enemy_fortification
+	)
+	if committed == null or enemy == null:
+		return _expedition_failure(&"SNAPSHOT_BUILD_FAILED", "无法建立战斗快照")
+	var candidate := {
+		"attempt_id": attempt_id,
+		"mainline_id": FIRST_WAR_LEVEL_ID,
+		"phase": BATTLE_PHASE_RESERVED,
+		"created_day": current_day,
+		"created_day_elapsed_milliseconds": get_day_elapsed_milliseconds(),
+		"food_cost": int(model.food_cost),
+		"food_before": food,
+		"food_after": food - int(model.food_cost),
+		"committed_total": int(model.selected_total),
+		"selected_formations": departures.duplicate(true),
+		"committed_force_snapshot": committed.to_dictionary(),
+		"enemy_force_snapshot": enemy.to_dictionary(),
+		"city_defense_snapshot": get_city_defense(),
+		"first_clear_key": BattleSession.FIRST_CLEAR_KEY,
+		"reward_wood": 30,
+		"reward_food": 20,
+		"settled": false,
+		"result_id": &"",
+	}
+	var prior_attempt := _expedition_attempt.duplicate(true)
+	var prior_reservation := _active_battle_reservation.duplicate(true)
+	var prior_sequence := _next_battle_transaction_sequence
+	_expedition_commit_in_progress = true
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{
+			"resource_id": &"food",
+			"operation": NationState.RESOURCE_OPERATION_SPEND,
+			"amount": int(candidate.food_cost),
+		}],
+		&"expedition_departure",
+		Callable(self, "_install_expedition_attempt").bind(candidate)
+	)
+	if not bool(transaction.get("success", false)):
+		_expedition_commit_in_progress = false
+		return _expedition_failure(
+			StringName(transaction.get("error_id", &"RESOURCE_TRANSACTION")),
+			str(transaction.get("error", "粮草事务失败"))
+		)
+	_refresh_city_ui()
+	city_state_changed.emit()
+	var persisted := _persist_expedition_departure(attempt_id)
+	if not bool(persisted.get("success", false)):
+		if bool(persisted.get("uncertain", false)):
+			_expedition_commit_blocked = true
+			_expedition_commit_in_progress = false
+			return _expedition_failure(
+				&"SAVE_OUTCOME_UNCERTAIN",
+				"存档发布结果无法确认；为防止重复扣粮，请冷启动恢复"
+			)
+		_rollback_expedition_departure(
+			int(candidate.food_cost),
+			prior_attempt,
+			prior_reservation,
+			prior_sequence
+		)
+		_expedition_commit_in_progress = false
+		return _expedition_failure(&"SAVE_FAILED", "出征存档失败，粮草与编队未改变")
+	_expedition_commit_in_progress = false
+	return {
+		"success": true,
+		"error_id": &"",
+		"error": "",
+		"attempt": _expedition_attempt.duplicate(true),
+	}
+
+
+func _install_expedition_attempt(candidate: Dictionary) -> Dictionary:
+	if (
+		candidate.is_empty()
+		or not _active_battle_reservation.is_empty()
+		or StringName(candidate.attempt_id)
+			!= StringName("battle-%06d" % _next_battle_transaction_sequence)
+	):
+		return {"success": false}
+	_expedition_attempt = candidate.duplicate(true)
+	_active_battle_reservation = {
+		"transaction_id": StringName(candidate.attempt_id),
+		"committed_count": int(candidate.committed_total),
+		"phase": BATTLE_PHASE_RESERVED,
+	}
+	_next_battle_transaction_sequence += 1
+	return {"success": true, "attempt_id": StringName(candidate.attempt_id)}
+
+
+func _persist_expedition_departure(attempt_id: StringName) -> Dictionary:
+	var root := get_parent()
+	if root != null and root.has_method("persist_expedition_departure"):
+		return root.persist_expedition_departure(attempt_id)
+	if DisplayServer.get_name() == "headless":
+		return {"success": true, "headless_test_store_disabled": true}
+	return {"success": false, "uncertain": false}
+
+
+func _rollback_expedition_departure(
+	food_cost: int,
+	prior_attempt: Dictionary,
+	prior_reservation: Dictionary,
+	prior_sequence: int
+) -> void:
+	var rollback_local := func() -> Dictionary:
+		_expedition_attempt = prior_attempt.duplicate(true)
+		_active_battle_reservation = prior_reservation.duplicate(true)
+		_next_battle_transaction_sequence = prior_sequence
+		return {"success": true}
+	var rollback := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{
+			"resource_id": &"food",
+			"operation": NationState.RESOURCE_OPERATION_ADD,
+			"amount": food_cost,
+		}],
+		&"expedition_departure_rollback",
+		rollback_local
+	)
+	if not bool(rollback.get("success", false)):
+		_expedition_commit_blocked = true
+		push_error("R1E expedition rollback failed")
+	_refresh_city_ui()
+	city_state_changed.emit()
+
+
+func _expedition_failure(error_id: StringName, error: String) -> Dictionary:
+	return {"success": false, "error_id": error_id, "error": error}
+
+
+func enter_first_war_battle() -> bool:
+	if (
+		_expedition_attempt.is_empty()
+		or StringName(_expedition_attempt.get("phase", &"")) not in [
+			BATTLE_PHASE_RESERVED,
+			BATTLE_PHASE_ACTIVE,
+		]
+	):
+		var available_ids: Array[StringName] = []
+		for formation in _garrison_state.get_formations():
+			if int(formation.member_count) > 0:
+				available_ids.append(StringName(formation.formation_id))
+		var committed := commit_expedition_attempt(available_ids)
+		if not bool(committed.get("success", false)):
+			return false
+	return _launch_active_expedition_battle()
+
+
+func _launch_active_expedition_battle() -> bool:
+	if (
+		_expedition_attempt.is_empty()
+		or StringName(_expedition_attempt.phase) not in [
+			BATTLE_PHASE_RESERVED,
+			BATTLE_PHASE_ACTIVE,
+		]
+		or is_instance_valid(_formal_battle_scene)
+	):
+		return false
+	var request := BattleRequest.from_expedition_attempt(_expedition_attempt)
+	if request == null:
 		return false
 	var battle_scene := load(
 		"res://scenes/c0_battle_graybox.tscn"
@@ -2457,10 +2770,10 @@ func enter_first_war_battle() -> bool:
 	var battle := battle_scene.instantiate() as C0BattleGraybox
 	if battle == null:
 		return false
-	battle.configure_formal_city(
+	battle.configure_formal_expedition(
 		get_parent() as Node2D,
 		self,
-		get_first_war_committed_count()
+		request
 	)
 	battle.formal_return_completed.connect(_on_first_war_returned)
 	battle.formal_entry_cancelled.connect(_on_first_war_entry_cancelled)
@@ -2480,9 +2793,7 @@ func enter_first_war_battle() -> bool:
 
 
 func _on_current_mainline_entry_pressed() -> void:
-	# This is a presentation entry only. The existing first-war gate still owns
-	# attempt uniqueness, city binding, and all battle request creation.
-	if not enter_first_war_battle():
+	if not open_expedition_preparation():
 		_show_placement_feedback(get_first_war_entry_blocked_reason())
 
 
@@ -2692,6 +3003,7 @@ func acknowledge_first_war_result() -> bool:
 	else:
 		return false
 	_first_war_result_acknowledged = true
+	_first_war_pending_outcome = &""
 	first_war_result.visible = false
 	_refresh_city_ui()
 	city_state_changed.emit()
@@ -3503,7 +3815,10 @@ func export_v5_campaign_snapshot() -> Dictionary:
 	if _active_city_id != CITY_LAYOUT_PROFILE_RESOLVER.BLACKSTONE_CITY_ID:
 		return {}
 	if (
-		not _active_battle_reservation.is_empty()
+		(
+			not _active_battle_reservation.is_empty()
+			and not _is_durable_expedition_reservation()
+		)
 		or not _active_army_dispatch_reservation.is_empty()
 		or not _active_army_encounter.is_empty()
 	):
@@ -3538,13 +3853,7 @@ func export_v5_campaign_snapshot() -> Dictionary:
 		"city": legacy_city,
 		"placements": _export_v5_placements(),
 		"next_placement_id": _next_placement_id,
-		"garrison": {
-			"schema_version": GarrisonState.SCHEMA_VERSION,
-			"city_id": _garrison_state.city_id,
-			"unit_counts_by_definition_id": (
-				_garrison_state.get_unit_counts()
-			),
-		},
+		"garrison": _garrison_state.get_persistence_snapshot(),
 		"training_queue": _training_queue.get_snapshot(),
 		"army_registry": _army_registry.get_snapshot(),
 		"settlement_ledger": {
@@ -3567,6 +3876,7 @@ func export_v5_campaign_snapshot() -> Dictionary:
 		},
 		"mainline_level": _current_mainline_level.get_snapshot(),
 		"build_slot": get_build_slot_snapshot(),
+		"expedition_attempt": _expedition_attempt.duplicate(true),
 	}
 	var validation := validate_v5_campaign_snapshot(snapshot)
 	return (
@@ -3630,6 +3940,9 @@ func validate_v5_campaign_snapshot(
 	if not bool(structural.valid):
 		return structural
 	var candidate: Dictionary = structural.snapshot
+	var sequence_validation := _validate_battle_sequence_high_water(candidate)
+	if not bool(sequence_validation.get("valid", false)):
+		return sequence_validation
 	var mainline: Dictionary = candidate.mainline_level
 	if (
 		StringName(mainline.level_id) != MAINLINE_PRESSURE_PROFILE.level_id
@@ -3705,7 +4018,187 @@ func validate_v5_campaign_snapshot(
 			"error_id": &"COMMAND_LIMIT_CONSERVATION",
 			"error": "V2 驻军与训练队列超过指挥上限",
 		}
+	var attempt: Dictionary = candidate.expedition_attempt
+	if not attempt.is_empty():
+		if int(attempt.food_cost) != get_first_war_food_cost(int(attempt.committed_total)):
+			return {
+				"valid": false,
+				"error_id": &"EXPEDITION_FOOD_COST_MISMATCH",
+				"error": "出征粮草不符合当前唯一公式",
+			}
+		var attempt_id_text := String(attempt.attempt_id)
+		var sequence_text := attempt_id_text.trim_prefix("battle-")
+		if (
+			not attempt_id_text.begins_with("battle-")
+			or not sequence_text.is_valid_int()
+			or int(sequence_text) <= 0
+			or attempt_id_text != "battle-%06d" % int(sequence_text)
+			or int(candidate.settlement_ledger.next_battle_transaction_sequence)
+				<= int(sequence_text)
+		):
+			return {
+				"valid": false,
+				"error_id": &"EXPEDITION_SEQUENCE_MISMATCH",
+				"error": "出征尝试序列未保持单调",
+			}
+		var roster: Dictionary = candidate.garrison.formations_by_id
+		for selected_value in attempt.selected_formations:
+			var selected: Dictionary = selected_value
+			var canonical: Dictionary = roster.get(StringName(selected.formation_id), {})
+			if (
+				canonical.is_empty()
+				or str(selected.display_name) != str(canonical.display_name)
+				or StringName(selected.definition_id) != StringName(canonical.definition_id)
+				or int(selected.max_members) != int(canonical.max_members)
+			):
+				return {
+					"valid": false,
+					"error_id": &"EXPEDITION_ROSTER_IDENTITY_MISMATCH",
+					"error": "出征编队身份偏离永久 roster",
+				}
+		if bool(attempt.settled):
+			var summary: Dictionary = Dictionary(
+				candidate.settlement_ledger.committed_results_by_id
+			).get(StringName(attempt.result_id), {})
+			var settlement_validation := (
+				_validate_applied_expedition_summary(candidate, attempt, summary)
+			)
+			if not bool(settlement_validation.get("valid", false)):
+				return settlement_validation
 	return structural
+
+
+func _validate_battle_sequence_high_water(
+	candidate: Dictionary
+) -> Dictionary:
+	var ledger: Dictionary = candidate.settlement_ledger
+	var next_sequence := int(ledger.next_battle_transaction_sequence)
+	var transaction_ids: Dictionary = {}
+	for transaction_id_value in Dictionary(
+		ledger.closed_transactions_by_id
+	).keys():
+		transaction_ids[StringName(transaction_id_value)] = true
+	for summary_value in Dictionary(ledger.committed_results_by_id).values():
+		if summary_value is Dictionary:
+			var transaction_id := StringName(
+				Dictionary(summary_value).get("transaction_id", &"")
+			)
+			if transaction_id != &"":
+				transaction_ids[transaction_id] = true
+	for transaction_id_value in transaction_ids:
+		var transaction_text := String(transaction_id_value)
+		if not transaction_text.begins_with("battle-"):
+			continue
+		var sequence_text := transaction_text.trim_prefix("battle-")
+		if (
+			not sequence_text.is_valid_int()
+			or int(sequence_text) <= 0
+			or transaction_text != "battle-%06d" % int(sequence_text)
+			or next_sequence <= int(sequence_text)
+		):
+			return {
+				"valid": false,
+				"error_id": &"BATTLE_SEQUENCE_HIGH_WATER_MISMATCH",
+				"error": "战斗事务序列低于已提交历史",
+			}
+	return {"valid": true, "error_id": &"", "error": ""}
+
+
+func _validate_applied_expedition_summary(
+	candidate: Dictionary,
+	attempt: Dictionary,
+	summary: Dictionary
+) -> Dictionary:
+	var result_id := StringName(attempt.get("result_id", &""))
+	var attempt_id := StringName(attempt.get("attempt_id", &""))
+	var fact: Dictionary = summary.get("battle_fact_snapshot", {})
+	var battle_result := BattleResult.from_authority_snapshot(fact)
+	var committed := CommittedForceSnapshot.from_dictionary(
+		Dictionary(attempt.get("committed_force_snapshot", {}))
+	)
+	var enemy := EnemyForceSnapshot.from_dictionary(
+		Dictionary(attempt.get("enemy_force_snapshot", {}))
+	)
+	if (
+		summary.is_empty()
+		or result_id == &""
+		or result_id != StringName("%s-result-001" % String(attempt_id))
+		or StringName(summary.get("result_id", &"")) != result_id
+		or StringName(summary.get("transaction_id", &"")) != attempt_id
+		or StringName(summary.get("level_id", &""))
+			!= StringName(attempt.get("mainline_id", &""))
+		or fact.is_empty()
+		or battle_result == null
+		or not battle_result.is_consistent()
+		or battle_result.get_authority_snapshot() != fact
+		or battle_result.result_id != result_id
+		or battle_result.transaction_id != attempt_id
+		or battle_result.level_id != StringName(attempt.get("mainline_id", &""))
+		or battle_result.started_day != int(attempt.get("created_day", 0))
+		or committed == null
+		or enemy == null
+		or battle_result.player_snapshot_digest != committed.get_digest()
+		or battle_result.enemy_snapshot_digest != enemy.get_digest()
+		or battle_result.committed_count
+			!= int(attempt.get("committed_total", 0))
+		or int(summary.get("committed_count", -1))
+			!= battle_result.committed_count
+		or int(summary.get("survivor_count", -1))
+			!= battle_result.survivor_count
+		or int(summary.get("casualty_count", -1))
+			!= battle_result.casualty_count
+		or StringName(summary.get("outcome", &""))
+			!= BattleOutcome.to_id(battle_result.outcome)
+		or int(summary.get("actual_food_cost", -1))
+			!= int(attempt.get("food_cost", -1))
+		or not bool(summary.get("food_already_committed", false))
+		or Array(summary.get("formation_results", []))
+			!= battle_result.formation_results
+	):
+		return {
+			"valid": false,
+			"error_id": &"EXPEDITION_SETTLEMENT_FACT_MISMATCH",
+			"error": "已结算出征与终局事实不一致",
+		}
+	var departures_by_id: Dictionary = {}
+	for departure_value in Array(attempt.get("selected_formations", [])):
+		var departure: Dictionary = departure_value
+		departures_by_id[StringName(departure.formation_id)] = departure
+	var seen_results: Dictionary = {}
+	for formation_result_value in battle_result.formation_results:
+		var formation_result: Dictionary = formation_result_value
+		var formation_id := StringName(
+			formation_result.get("formation_id", &"")
+		)
+		var departure: Dictionary = departures_by_id.get(formation_id, {})
+		if (
+			departure.is_empty()
+			or seen_results.has(formation_id)
+			or int(formation_result.get("squad_id", 0))
+				!= int(departure.get("squad_id", 0))
+			or int(formation_result.get("departure_count", -1))
+				!= int(departure.get("member_count", -1))
+		):
+			return {
+				"valid": false,
+				"error_id": &"EXPEDITION_SETTLEMENT_ROSTER_MISMATCH",
+				"error": "已结算出征的逐编队事实不完整",
+			}
+		seen_results[formation_id] = true
+	if seen_results.size() != departures_by_id.size():
+		return {
+			"valid": false,
+			"error_id": &"EXPEDITION_SETTLEMENT_ROSTER_MISMATCH",
+			"error": "已结算出征缺少参战编队结果",
+		}
+	var victory := battle_result.outcome == BattleOutcome.Value.VICTORY
+	if bool(candidate.mainline_level.cleared) != victory:
+		return {
+			"valid": false,
+			"error_id": &"EXPEDITION_MAINLINE_OUTCOME_MISMATCH",
+			"error": "主线完成状态与出征结果不一致",
+		}
+	return {"valid": true, "error_id": &"", "error": ""}
 
 
 func migrate_v1_snapshot_to_v5(
@@ -3899,6 +4392,12 @@ func _apply_validated_v5_campaign_snapshot(
 			"error_id": &"CITY_APPLY_FAILED",
 			"error": city_install.error,
 		}
+	if not _garrison_state.restore_persistence_snapshot(snapshot.garrison):
+		return {
+			"success": false,
+			"error_id": &"GARRISON_APPLY_FAILED",
+			"error": "永久编队 roster 恢复失败",
+		}
 	for placement_id in construction_by_placement_id:
 		var record: Dictionary = _building_records_by_id.get(placement_id, {})
 		if record.is_empty():
@@ -3959,10 +4458,34 @@ func _apply_validated_v5_campaign_snapshot(
 	_next_army_dispatch_transaction_sequence = int(
 		ledger.next_army_dispatch_transaction_sequence
 	)
+	_expedition_attempt = Dictionary(snapshot.expedition_attempt).duplicate(true)
 	_active_battle_reservation = {}
+	if (
+		not _expedition_attempt.is_empty()
+		and StringName(_expedition_attempt.phase) in [
+			BATTLE_PHASE_RESERVED,
+			BATTLE_PHASE_ACTIVE,
+		]
+	):
+		_active_battle_reservation = {
+			"transaction_id": StringName(_expedition_attempt.attempt_id),
+			"committed_count": int(_expedition_attempt.committed_total),
+			"phase": StringName(_expedition_attempt.phase),
+		}
 	_active_army_dispatch_reservation = {}
 	_active_army_encounter = {}
 	_last_battle_result_summary = {}
+	if (
+		not _expedition_attempt.is_empty()
+		and bool(_expedition_attempt.get("settled", false))
+	):
+		_last_battle_result_summary = Dictionary(
+			_committed_battle_result_ids.get(
+				StringName(_expedition_attempt.get("result_id", &"")),
+				{}
+			)
+		).duplicate(true)
+	_restore_first_war_runtime_from_persistence()
 	_build_slot = Dictionary(snapshot.build_slot).duplicate(true)
 	state = ConstructionState.IDLE
 	_selected_definition = null
@@ -3977,6 +4500,66 @@ func _apply_validated_v5_campaign_snapshot(
 	_reset_road_draft()
 	scan_current_placement_overlaps(true)
 	return {"success": true, "error_id": &"", "error": ""}
+
+
+## First-war UI/runtime flags are projections, not a second persisted authority.
+## Rebuild them from the V6 expedition attempt and the persisted mainline so a
+## cold process cannot reopen a cleared pressure state or forget an active run.
+func _restore_first_war_runtime_from_persistence() -> void:
+	_first_war_pending_outcome = &""
+	_first_war_result_acknowledged = false
+	city_fallen = false
+	# City-defense pressure damage lives with the persisted mainline. Battle
+	# damage is recorded in the applied result summary. Rebuild the aggregate
+	# runtime projection here instead of inheriting whatever value happened to
+	# be present before hydration.
+	city_defense_damage = int(
+		_current_mainline_level.permanent_losses.get(
+			"city_defense_damage",
+			0
+		)
+	)
+	if _expedition_attempt.is_empty():
+		if _current_mainline_level.cleared:
+			first_war_state = FirstWarState.RESOLVED_VICTORY
+			_first_war_result_acknowledged = true
+			enemy_count = 0
+		else:
+			first_war_state = FirstWarState.PREPARATION
+			_update_first_war_state_for_current_day()
+		return
+	var phase := StringName(_expedition_attempt.get("phase", &""))
+	var persisted_enemy := EnemyForceSnapshot.from_dictionary(
+		Dictionary(_expedition_attempt.get("enemy_force_snapshot", {}))
+	)
+	if persisted_enemy != null:
+		enemy_count = persisted_enemy.enemy_count
+		enemy_fortification = persisted_enemy.fortification_level
+	if phase in [BATTLE_PHASE_RESERVED, BATTLE_PHASE_ACTIVE]:
+		first_war_state = FirstWarState.IN_BATTLE
+		return
+	var outcome := StringName(
+		_last_battle_result_summary.get("outcome", &"")
+	)
+	city_defense_damage += int(
+		_last_battle_result_summary.get("city_defense_damage", 0)
+	)
+	enemy_count = int(
+		_last_battle_result_summary.get("enemy_count_after", enemy_count)
+	)
+	_first_war_result_acknowledged = true
+	match outcome:
+		&"VICTORY":
+			first_war_state = FirstWarState.RESOLVED_VICTORY
+		&"RETREAT":
+			first_war_state = FirstWarState.RESOLVED_RETREAT
+		&"DEFEAT":
+			first_war_state = FirstWarState.RESOLVED_DEFEAT
+			city_fallen = true
+		_:
+			# Structural validation should make this unreachable. Keep a safe
+			# non-playable projection rather than inventing a fresh battle state.
+			first_war_state = FirstWarState.IN_BATTLE
 
 
 func set_v5_restore_failure_after_city_install_for_test(
@@ -4621,6 +5204,41 @@ func get_active_battle_reservation() -> Dictionary:
 	return _active_battle_reservation.duplicate(true)
 
 
+func get_expedition_attempt() -> Dictionary:
+	return _expedition_attempt.duplicate(true)
+
+
+func has_resumable_expedition() -> bool:
+	return (
+		not _expedition_attempt.is_empty()
+		and not bool(_expedition_attempt.get("settled", false))
+		and StringName(_expedition_attempt.get("phase", &"")) in [
+			BATTLE_PHASE_RESERVED,
+			BATTLE_PHASE_ACTIVE,
+		]
+		and not is_instance_valid(_formal_battle_scene)
+	)
+
+
+func resume_persisted_expedition() -> bool:
+	if not has_resumable_expedition():
+		return false
+	return _launch_active_expedition_battle()
+
+
+func _is_durable_expedition_reservation() -> bool:
+	return (
+		not _expedition_attempt.is_empty()
+		and not _active_battle_reservation.is_empty()
+		and StringName(_expedition_attempt.get("attempt_id", &""))
+			== StringName(_active_battle_reservation.get("transaction_id", &""))
+		and int(_expedition_attempt.get("committed_total", 0))
+			== int(_active_battle_reservation.get("committed_count", 0))
+		and StringName(_expedition_attempt.get("phase", &""))
+			in [BATTLE_PHASE_RESERVED, BATTLE_PHASE_ACTIVE]
+	)
+
+
 func get_v5_army_dispatch_adapter() -> V5ArmyDispatchAdapter:
 	if _army_dispatch_adapter == null:
 		_army_dispatch_adapter = V5_ARMY_DISPATCH_ADAPTER.new()
@@ -4839,6 +5457,46 @@ func is_combat_transaction_coordinator_bound(
 	)
 
 
+func authorize_prepared_battle_request(
+	request: BattleRequest,
+	coordinator: CombatTransactionCoordinator
+) -> bool:
+	if (
+		not is_combat_transaction_coordinator_bound(coordinator)
+		or request == null
+		or not request.is_valid()
+		or not request.formal_city_entry
+		or request.is_noticeboard_mission()
+		or not _is_durable_expedition_reservation()
+		or StringName(_expedition_attempt.get("attempt_id", &""))
+			!= request.transaction_id
+		or StringName(_expedition_attempt.get("mainline_id", &""))
+			!= request.level_id
+		or StringName(_expedition_attempt.get("phase", &""))
+			!= request.phase
+		or int(_expedition_attempt.get("created_day", 0))
+			!= request.created_day
+		or int(_expedition_attempt.get("food_cost", -1))
+			!= request.committed_food_cost
+		or int(_expedition_attempt.get("city_defense_snapshot", -1))
+			!= request.city_defense_snapshot
+		or StringName(_expedition_attempt.get("first_clear_key", &""))
+			!= request.first_clear_key
+		or int(_expedition_attempt.get("reward_wood", -1))
+			!= request.reward_wood
+		or int(_expedition_attempt.get("reward_food", -1))
+			!= request.reward_food
+		or Dictionary(
+			_expedition_attempt.get("committed_force_snapshot", {})
+		) != request.committed_force.to_dictionary()
+		or Dictionary(
+			_expedition_attempt.get("enemy_force_snapshot", {})
+		) != request.enemy_force.to_dictionary()
+	):
+		return false
+	return true
+
+
 func authorize_army_encounter_activation(
 	army_id: StringName,
 	transaction_id: StringName,
@@ -4950,6 +5608,11 @@ func cancel_battle_reservation(
 			!= BATTLE_PHASE_RESERVED
 	):
 		return false
+	# A durable R1E expedition has already paid food and published its immutable
+	# attempt. It can only finish through battle settlement; the old transient
+	# reservation cancellation path must never erase or refund it.
+	if _is_durable_expedition_reservation():
+		return false
 	_closed_battle_transactions[transaction_id] = BATTLE_PHASE_CANCELLED
 	_active_battle_reservation = {}
 	_refresh_city_ui()
@@ -4970,6 +5633,11 @@ func _transition_battle_reservation(
 	):
 		return false
 	_active_battle_reservation.phase = next_phase
+	if (
+		_is_durable_expedition_reservation()
+		and next_phase == BATTLE_PHASE_ACTIVE
+	):
+		_expedition_attempt.phase = BATTLE_PHASE_ACTIVE
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return true
@@ -5018,10 +5686,32 @@ func apply_battle_result_atomic(
 			and StringName(committed_summary.get("outcome", &""))
 				== BattleOutcome.to_id(battle_result.outcome)
 		):
+			if (
+				not _expedition_attempt.is_empty()
+				and bool(_expedition_attempt.get("settled", false))
+				and StringName(_expedition_attempt.get("attempt_id", &""))
+					== battle_result.transaction_id
+				and StringName(_expedition_attempt.get("result_id", &""))
+					== battle_result.result_id
+				and not bool(_persist_expedition_settlement(
+					battle_result.transaction_id,
+					battle_result.result_id
+				).get("success", false))
+			):
+				return {}
 			return committed_summary
 		return {}
 	if _battle_result_commit_in_flight_ids.has(battle_result.result_id):
 		return {}
+	if (
+		not _expedition_attempt.is_empty()
+		and StringName(_expedition_attempt.get("attempt_id", &""))
+			== battle_result.transaction_id
+	):
+		return _apply_durable_expedition_result_atomic(
+			battle_result,
+			request
+		)
 	if (
 		not battle_result.is_consistent()
 		or _active_battle_reservation.is_empty()
@@ -5217,6 +5907,316 @@ func apply_battle_result_atomic(
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return summary.duplicate(true)
+
+
+func _apply_durable_expedition_result_atomic(
+	battle_result: BattleResult,
+	request: BattleRequest
+) -> Dictionary:
+	if (
+		battle_result == null
+		or request == null
+		or not battle_result.is_consistent()
+		or not request.formal_city_entry
+		or request.is_noticeboard_mission()
+		or request.phase != BattleRequest.PHASE_RESULT_PENDING
+		or StringName(_expedition_attempt.get("phase", &""))
+			!= BATTLE_PHASE_ACTIVE
+		or bool(_expedition_attempt.get("settled", false))
+		or StringName(_expedition_attempt.get("result_id", &"")) != &""
+		or _active_battle_reservation.is_empty()
+		or StringName(_active_battle_reservation.get("transaction_id", &""))
+			!= battle_result.transaction_id
+		or StringName(_active_battle_reservation.get("phase", &""))
+			!= BATTLE_PHASE_RESULT_PENDING
+		or battle_result.transaction_id != request.transaction_id
+		or battle_result.level_id != request.level_id
+		or battle_result.started_day != request.created_day
+		or battle_result.committed_count
+			!= int(_expedition_attempt.get("committed_total", 0))
+		or battle_result.committed_count
+			!= request.committed_force.get_committed_total()
+		or battle_result.player_snapshot_digest
+			!= request.committed_force.get_digest()
+		or battle_result.enemy_snapshot_digest
+			!= request.enemy_force.get_digest()
+		or battle_result.enemy_casualties > request.enemy_force.enemy_count
+		or request.level_id != FIRST_WAR_LEVEL_ID
+		or first_war_state != FirstWarState.IN_BATTLE
+		or request.city_defense_snapshot != int(
+			_expedition_attempt.get("city_defense_snapshot", -1)
+		)
+		or request.committed_food_cost
+			!= int(_expedition_attempt.get("food_cost", -1))
+		or request.committed_force.to_dictionary()
+			!= Dictionary(
+				_expedition_attempt.get("committed_force_snapshot", {})
+			)
+		or request.enemy_force.to_dictionary()
+			!= Dictionary(
+				_expedition_attempt.get("enemy_force_snapshot", {})
+			)
+	):
+		return {}
+
+	var departures: Array = Array(
+		_expedition_attempt.get("selected_formations", [])
+	).duplicate(true)
+	if (
+		departures.is_empty()
+		or battle_result.formation_results.size() != departures.size()
+		or not _garrison_state.selection_matches(departures)
+	):
+		return {}
+	var departures_by_id: Dictionary = {}
+	for departure_value in departures:
+		if not departure_value is Dictionary:
+			return {}
+		var departure: Dictionary = departure_value
+		var formation_id := StringName(departure.get("formation_id", &""))
+		if formation_id == &"" or departures_by_id.has(formation_id):
+			return {}
+		departures_by_id[formation_id] = departure
+	var survivors_by_formation_id: Dictionary = {}
+	var normalized_formation_results: Array[Dictionary] = []
+	for formation_result_value in battle_result.formation_results:
+		var formation_result: Dictionary = formation_result_value
+		var formation_id := StringName(
+			formation_result.get("formation_id", &"")
+		)
+		var departure: Dictionary = departures_by_id.get(formation_id, {})
+		if (
+			departure.is_empty()
+			or survivors_by_formation_id.has(formation_id)
+			or int(formation_result.get("squad_id", 0))
+				!= int(departure.get("squad_id", 0))
+			or int(formation_result.get("departure_count", -1))
+				!= int(departure.get("member_count", -1))
+		):
+			return {}
+		survivors_by_formation_id[formation_id] = int(
+			formation_result.get("survivor_count", -1)
+		)
+		normalized_formation_results.append(formation_result.duplicate(true))
+	var roster_probe := GarrisonState.new(
+		NationState.BLACKSTONE_CITY_ID,
+		INFANTRY_ROLE.role_id,
+		0
+	)
+	if (
+		not roster_probe.restore_persistence_snapshot(
+			_garrison_state.get_persistence_snapshot()
+		)
+		or not roster_probe.apply_formation_survivors(
+			departures,
+			survivors_by_formation_id
+		)
+	):
+		return {}
+	# Snapshot the complete pre-settlement authority while the durable attempt is
+	# still ACTIVE. Casualties are installed before the elapsed battle time is
+	# advanced so training that completes during that time is added after the
+	# returning survivors rather than invalidating or erasing the battle result.
+	var rollback_snapshot := export_v5_campaign_snapshot()
+	if rollback_snapshot.is_empty():
+		return {}
+	if not _garrison_state.apply_formation_survivors(
+		departures,
+		survivors_by_formation_id
+	):
+		return {}
+
+	var battle_duration_milliseconds := battle_result.get_duration_milliseconds()
+	if battle_duration_milliseconds < 0:
+		_rollback_durable_expedition_settlement(rollback_snapshot)
+		return {}
+	_battle_result_commit_in_flight_ids[battle_result.result_id] = true
+	var city_time_before_day := current_day
+	var city_time_before_milliseconds := get_day_elapsed_milliseconds()
+	var advanced_days := _advance_city_time_for_battle_settlement(
+		battle_duration_milliseconds
+	)
+	if advanced_days < 0:
+		_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
+		_rollback_durable_expedition_settlement(rollback_snapshot)
+		return {}
+
+	var grants_first_clear := (
+		battle_result.outcome == BattleOutcome.Value.VICTORY
+		and battle_result.first_clear_key != &""
+		and not _first_clear_keys.has(battle_result.first_clear_key)
+	)
+	var planned_wood := request.reward_wood if grants_first_clear else 0
+	var planned_food := request.reward_food if grants_first_clear else 0
+	var wood_capacity := get_resource_capacity(&"wood")
+	var food_capacity := get_resource_capacity(&"food")
+	var accepted_wood := mini(planned_wood, maxi(wood_capacity - wood, 0))
+	var accepted_food := mini(planned_food, maxi(food_capacity - food, 0))
+	var next_wood := wood + accepted_wood
+	var next_food := food + accepted_food
+	var defense_before := get_city_defense()
+	var planned_defense_damage := 0
+	var enemy_count_before := request.enemy_force.enemy_count
+	var next_enemy_count := enemy_count_before
+	if battle_result.outcome == BattleOutcome.Value.RETREAT:
+		planned_defense_damage = mini(
+			FIRST_WAR_RETREAT_DEFENSE_DAMAGE,
+			defense_before
+		)
+	elif battle_result.outcome == BattleOutcome.Value.DEFEAT:
+		planned_defense_damage = defense_before
+	next_enemy_count = (
+		0
+		if battle_result.outcome == BattleOutcome.Value.VICTORY
+		else maxi(enemy_count_before - battle_result.enemy_casualties, 0)
+	)
+	var roster_after := _garrison_state.get_persistence_snapshot()
+	var infantry_after := 0
+	for count in Dictionary(
+		roster_after.get("unit_counts_by_definition_id", {})
+	).values():
+		infantry_after += int(count)
+	var summary := {
+		"result_id": battle_result.result_id,
+		"transaction_id": battle_result.transaction_id,
+		"session_id": battle_result.session_id,
+		"level_id": battle_result.level_id,
+		"outcome": BattleOutcome.to_id(battle_result.outcome),
+		"finished_tick": battle_result.finished_tick,
+		"breached_route": battle_result.breached_route,
+		"orders_digest": battle_result.orders_digest,
+		"player_snapshot_digest": battle_result.player_snapshot_digest,
+		"enemy_snapshot_digest": battle_result.enemy_snapshot_digest,
+		"first_clear_key": battle_result.first_clear_key,
+		"battle_duration_milliseconds": battle_duration_milliseconds,
+		"city_time_advanced_milliseconds": battle_duration_milliseconds,
+		"city_time_before_day": city_time_before_day,
+		"city_time_before_milliseconds": city_time_before_milliseconds,
+		"city_time_after_day": current_day,
+		"city_time_after_milliseconds": get_day_elapsed_milliseconds(),
+		"city_time_advanced_days": advanced_days,
+		"committed_count": battle_result.committed_count,
+		"survivor_count": battle_result.survivor_count,
+		"casualty_count": battle_result.casualty_count,
+		"enemy_casualties": battle_result.enemy_casualties,
+		"formation_results": normalized_formation_results.duplicate(true),
+		"first_clear_granted": grants_first_clear,
+		"planned_wood_reward": planned_wood,
+		"planned_food_reward": planned_food,
+		"accepted_wood_reward": accepted_wood,
+		"accepted_food_reward": accepted_food,
+		"overflow_wood_reward": planned_wood - accepted_wood,
+		"overflow_food_reward": planned_food - accepted_food,
+		"formal_city_entry": true,
+		"source_id": request.source_id,
+		"mission_id": &"",
+		"planned_food_cost": request.committed_food_cost,
+		"actual_food_cost": request.committed_food_cost,
+		"food_already_committed": true,
+		"food_shortage": false,
+		"food_before_departure": int(
+			_expedition_attempt.get("food_before", 0)
+		),
+		"food_after_departure": int(
+			_expedition_attempt.get("food_after", 0)
+		),
+		"city_defense_before": defense_before,
+		"city_defense_damage": planned_defense_damage,
+		"city_defense_after": defense_before - planned_defense_damage,
+		"enemy_count_before": enemy_count_before,
+		"enemy_count_after": next_enemy_count,
+		"infantry_after": infantry_after,
+		"wood_after": next_wood,
+		"food_after": next_food,
+		"mainline_cleared": (
+			battle_result.outcome == BattleOutcome.Value.VICTORY
+			and request.level_id == FIRST_WAR_LEVEL_ID
+		),
+		"battle_fact_snapshot": (
+			battle_result.get_authority_snapshot().duplicate(true)
+		),
+	}
+	var installed := _commit_national_resource_targets(
+		{&"wood": next_wood, &"food": next_food},
+		&"r1e_expedition_settlement",
+		Callable(self, "_install_durable_expedition_settlement").bind(
+			battle_result,
+			summary,
+			planned_defense_damage,
+			next_enemy_count,
+			grants_first_clear
+		)
+	)
+	_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
+	if not installed:
+		_rollback_durable_expedition_settlement(rollback_snapshot)
+		return {}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	if not bool(_persist_expedition_settlement(
+		battle_result.transaction_id,
+		battle_result.result_id
+	).get("success", false)):
+		return {}
+	return summary.duplicate(true)
+
+
+func _install_durable_expedition_settlement(
+	battle_result: BattleResult,
+	summary: Dictionary,
+	planned_defense_damage: int,
+	next_enemy_count: int,
+	grants_first_clear: bool
+) -> Dictionary:
+	city_defense_damage += planned_defense_damage
+	enemy_count = next_enemy_count
+	_first_war_pending_outcome = BattleOutcome.to_id(battle_result.outcome)
+	city_fallen = battle_result.outcome == BattleOutcome.Value.DEFEAT
+	if bool(summary.get("mainline_cleared", false)):
+		_current_mainline_level.mark_cleared(current_day)
+	_committed_battle_result_ids[battle_result.result_id] = summary.duplicate(true)
+	if grants_first_clear:
+		_first_clear_keys[battle_result.first_clear_key] = true
+	_closed_battle_transactions[battle_result.transaction_id] = (
+		BATTLE_PHASE_APPLIED
+	)
+	_last_battle_result_summary = summary.duplicate(true)
+	_expedition_attempt.phase = BATTLE_PHASE_APPLIED
+	_expedition_attempt.settled = true
+	_expedition_attempt.result_id = battle_result.result_id
+	_active_battle_reservation = {}
+	return {"success": true}
+
+
+func _rollback_durable_expedition_settlement(
+	rollback_snapshot: Dictionary
+) -> bool:
+	var restored := _apply_validated_v5_campaign_snapshot(
+		rollback_snapshot,
+		false
+	)
+	if not bool(restored.get("success", false)):
+		_expedition_commit_blocked = true
+		push_error("R1E settlement rollback failed")
+		return false
+	if not _active_battle_reservation.is_empty():
+		_active_battle_reservation.phase = BATTLE_PHASE_RESULT_PENDING
+	first_war_state = FirstWarState.IN_BATTLE
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
+
+
+func _persist_expedition_settlement(
+	attempt_id: StringName,
+	result_id: StringName
+) -> Dictionary:
+	var root := get_parent()
+	if root != null and root.has_method("persist_expedition_settlement"):
+		return root.persist_expedition_settlement(attempt_id, result_id)
+	if DisplayServer.get_name() == "headless":
+		return {"success": true, "headless_test_store_disabled": true}
+	return {"success": false, "uncertain": false}
 
 
 func _apply_army_battle_result_atomic(
@@ -5907,6 +6907,8 @@ func restart_first_map() -> bool:
 	first_war_warning_count = 0
 	city_fallen = false
 	city_defense_damage = 0
+	enemy_count = 0
+	enemy_fortification = 0
 	city_security = MAINLINE_PRESSURE_PROFILE.default_security
 	_current_mainline_level = CURRENT_MAINLINE_LEVEL.new(
 		MAINLINE_PRESSURE_PROFILE
@@ -5937,8 +6939,12 @@ func restart_first_map() -> bool:
 
 func _update_threat_for_current_day(apply_event: bool) -> void:
 	if (
-		current_day > FIRST_WAR_PENDING_DAY
-		and _first_war_pending_outcome != &""
+		_first_war_pending_outcome != &""
+		or (
+			not _expedition_attempt.is_empty()
+			and StringName(_expedition_attempt.get("phase", &""))
+				== BATTLE_PHASE_APPLIED
+		)
 	):
 		return
 	var threat_event := FIRST_MAP_THREAT_SCHEDULE.get_event_for_day(
@@ -8031,7 +9037,10 @@ func _sync_construction_ui() -> void:
 			]
 			cancel_placement_button.text = "右键 / Esc 取消"
 		cancel_placement_button.disabled = false
-		rotate_placement_button.disabled = is_road_placing()
+		rotate_placement_button.disabled = (
+			is_road_placing()
+			and not has_road_connection_recommendation_preview()
+		)
 	construction_menu.visible = (
 		not _detail_panel_active
 		and state == ConstructionState.CHOOSING_TEMPLATE
@@ -8255,12 +9264,13 @@ func _refresh_first_war_ui() -> void:
 		and not retreat_confirmation.visible
 		and not awaiting_summary
 	)
-	order_retreat_button.visible = enter_first_war_button.visible
+	# The legacy city-side instant retreat created a transient default force and
+	# bypassed selection, prepaid food, stable formation IDs, and V6 durability.
+	# Retreat remains available inside the formal battle after an expedition is
+	# confirmed; this obsolete shortcut must not remain player-reachable.
+	order_retreat_button.visible = false
 	enter_first_war_button.disabled = not can_enter_first_war()
-	order_retreat_button.disabled = (
-		first_war_state != FirstWarState.PENDING
-		or committed_count <= 0
-	)
+	order_retreat_button.disabled = true
 	if first_war_state != FirstWarState.PENDING:
 		retreat_confirmation.visible = false
 	first_war_result.visible = awaiting_summary

@@ -261,7 +261,7 @@ func _check_formal_outcome_time_settlement(
 	expected_outcome: StringName,
 	player_count: int,
 	command: BattleOrder.Command,
-	route_id: StringName
+	_route_id: StringName
 ) -> void:
 	var setup := await _make_pending_city(player_count)
 	var scene: Node2D = setup.scene
@@ -281,8 +281,7 @@ func _check_formal_outcome_time_settlement(
 		scene.queue_free()
 		await process_frame
 		return
-	for squad in battle.request.committed_force.squads:
-		battle.set_squad_route(int(squad.squad_id), route_id)
+	# The formal departure snapshot owns routes from R1E onward.
 	_check(battle.start_battle(), "%s 启动真实 BattleSession" % expected_outcome)
 	battle.tick_timer.stop()
 	for squad in battle.coordinator.active_session.squads:
@@ -395,11 +394,6 @@ func _check_cross_day_reward_order() -> void:
 		scene.queue_free()
 		await process_frame
 		return
-	for squad in battle.request.committed_force.squads:
-		battle.set_squad_route(
-			int(squad.squad_id),
-			CommittedForceSnapshot.SIDE_ROUTE
-		)
 	battle.start_battle()
 	battle.tick_timer.stop()
 	for squad in battle.coordinator.active_session.squads:
@@ -442,17 +436,21 @@ func _check_cancel_and_invalid_result_do_not_advance_time() -> void:
 	var setup := await _make_pending_city(20)
 	var scene: Node2D = setup.scene
 	var city: Node = setup.city
-	var before_cancel: Dictionary = city.get_city_state()
-	_check(city.enter_first_war_battle(), "战前取消用例进入正式 C0")
+	_check(city.enter_first_war_battle(), "已付费 RESERVED 拒绝用例进入正式 C0")
 	var battle := city.get_formal_battle_scene() as C0BattleGraybox
 	if battle != null:
-		battle.request_exit_or_return()
+		var after_departure: Dictionary = city.get_city_state()
+		_check(
+			not battle.request_exit_or_return()
+				and city.get_city_state() == after_departure,
+			"已付费 RESERVED 不可无战果取消，时间与 attempt 保持不变"
+		)
+		battle.start_battle()
+		battle.tick_timer.stop()
+		battle.open_exit_confirmation()
+		battle.confirm_exit_as_retreat()
 		await process_frame
 		await process_frame
-	_check(
-		city.get_city_state() == before_cancel,
-		"战前取消和零结果返回不推进城市时间"
-	)
 	scene.queue_free()
 	await process_frame
 

@@ -92,6 +92,7 @@ var governance_manual_action: Button
 var governance_remove_action: Button
 var governance_feedback: Label
 var _governance_primary_mode: StringName = &""
+var _hovered_placement_id := -1
 
 
 func _ready() -> void:
@@ -128,6 +129,32 @@ func handle_map_click(screen_position: Vector2) -> void:
 		clear_selection()
 	else:
 		select_placement(placement_id)
+
+
+func handle_map_hover(screen_position: Vector2) -> void:
+	var next_placement_id := -1
+	if not is_screen_point_blocked(screen_position):
+		next_placement_id = get_placement_id_at_screen_position(screen_position)
+	if next_placement_id == _hovered_placement_id:
+		return
+	clear_hover()
+	var building: CanvasItem = construction_controller.get_building_node(
+		next_placement_id
+	)
+	if building != null and building.has_method("set_hovered_state"):
+		building.set_hovered_state(true)
+		_hovered_placement_id = next_placement_id
+
+
+func clear_hover() -> void:
+	if _hovered_placement_id < 0:
+		return
+	var building: CanvasItem = construction_controller.get_building_node(
+		_hovered_placement_id
+	)
+	if building != null and building.has_method("set_hovered_state"):
+		building.set_hovered_state(false)
+	_hovered_placement_id = -1
 
 
 func select_placement(placement_id: int) -> void:
@@ -509,7 +536,7 @@ func _install_governance_action_group() -> void:
 
 	governance_primary_action = Button.new()
 	governance_primary_action.name = "GovernancePrimaryAction"
-	governance_primary_action.custom_minimum_size = Vector2(0.0, 34.0)
+	governance_primary_action.custom_minimum_size = Vector2(0.0, 44.0)
 	governance_primary_action.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	governance_primary_action.focus_mode = Control.FOCUS_ALL
 	governance_primary_action.tooltip_text = "当前建筑的主要操作"
@@ -518,7 +545,7 @@ func _install_governance_action_group() -> void:
 
 	governance_secondary_action = Button.new()
 	governance_secondary_action.name = "GovernanceSecondaryAction"
-	governance_secondary_action.custom_minimum_size = Vector2(0.0, 30.0)
+	governance_secondary_action.custom_minimum_size = Vector2(0.0, 44.0)
 	governance_secondary_action.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	governance_secondary_action.focus_mode = Control.FOCUS_ALL
 	governance_secondary_action.pressed.connect(_on_governance_secondary_pressed)
@@ -533,7 +560,7 @@ func _install_governance_action_group() -> void:
 	governance_manual_action = Button.new()
 	governance_manual_action.name = "GovernanceManualRoadAction"
 	governance_manual_action.text = "手动规划道路"
-	governance_manual_action.custom_minimum_size = Vector2(0.0, 30.0)
+	governance_manual_action.custom_minimum_size = Vector2(0.0, 44.0)
 	governance_manual_action.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	governance_manual_action.focus_mode = Control.FOCUS_ALL
 	governance_manual_action.pressed.connect(_begin_manual_road_planning)
@@ -542,7 +569,7 @@ func _install_governance_action_group() -> void:
 	governance_remove_action = Button.new()
 	governance_remove_action.name = "GovernanceRemoveAction"
 	governance_remove_action.text = "移除建筑"
-	governance_remove_action.custom_minimum_size = Vector2(0.0, 30.0)
+	governance_remove_action.custom_minimum_size = Vector2(0.0, 44.0)
 	governance_remove_action.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	governance_remove_action.focus_mode = Control.FOCUS_ALL
 	governance_remove_action.pressed.connect(request_removal_confirmation)
@@ -715,7 +742,7 @@ func _get_standard_detail_controls() -> Array[Control]:
 
 
 func _get_ui_occlusion_controls() -> Array[Control]:
-	return [
+	var controls: Array[Control] = [
 		top_status_bar,
 		city_bar,
 		city_bar_toggle,
@@ -723,9 +750,17 @@ func _get_ui_occlusion_controls() -> Array[Control]:
 		detail_panel,
 		noticeboard_panel,
 	]
+	var governance_workspace := detail_panel.get_parent().get_node_or_null(
+		"GovernanceWorkspace"
+	) as Control
+	if governance_workspace != null:
+		controls.append(governance_workspace)
+	return controls
 
 
 func _on_building_removed(placement_id: int) -> void:
+	if placement_id == _hovered_placement_id:
+		_hovered_placement_id = -1
 	if placement_id == selected_placement_id:
 		clear_selection()
 

@@ -302,7 +302,7 @@ func _check_slot_roundtrip(
 		and target.get_build_slot_state() == expected_state
 		and target.get_build_slot_snapshot() == snapshot.build_slot
 		and target.get_building_count() == source.get_building_count(),
-		"schema 5 roundtrip preserves %s" % description
+		"schema 6 roundtrip preserves %s" % description
 	)
 	await _drop_city(target_context.scene)
 
@@ -317,9 +317,9 @@ func _check_schema_five_and_legacy_bridge() -> void:
 	controller.activate_ready_placement(Vector2(400.0, 300.0))
 	var active_save: Dictionary = controller.export_v5_campaign_snapshot()
 	_check(
-		int(active_save.schema_version) == 5
+		int(active_save.schema_version) == 6
 		and StringName(active_save.build_slot.state) == controller.BUILD_SLOT_READY_TO_PLACE,
-		"schema 5 normalizes placement-active runtime state to ready"
+		"schema 6 normalizes placement-active runtime state to ready"
 	)
 	var restore_context := await _new_city()
 	var restored: Node = restore_context.controller
@@ -351,11 +351,13 @@ func _check_schema_five_and_legacy_bridge() -> void:
 	controller.advance_city_time_for_test(45.0)
 	var schema4: Dictionary = controller.export_v5_campaign_snapshot()
 	schema4.schema_version = 4
+	schema4.erase("expedition_attempt")
+	schema4.garrison = _legacy_garrison_projection(schema4.garrison)
 	schema4.erase("build_slot")
 	var migration: Dictionary = controller.validate_v5_campaign_snapshot(schema4)
 	_check(
 		legacy_id > 0 and second_legacy_id > 0 and migration.valid
-		and int(migration.snapshot.schema_version) == 5
+		and int(migration.snapshot.schema_version) == 6
 		and StringName(migration.snapshot.build_slot.state) == &"IDLE"
 		and migration.snapshot.placements.size() == 2
 		and int(migration.snapshot.placements[0].construction_progress_milliseconds) == 45000,
@@ -372,6 +374,16 @@ func _check_schema_five_and_legacy_bridge() -> void:
 	)
 	await _drop_city(legacy_context.scene)
 	await _drop_city(scene)
+
+
+func _legacy_garrison_projection(current: Dictionary) -> Dictionary:
+	return {
+		"schema_version": 1,
+		"city_id": current.city_id,
+		"unit_counts_by_definition_id": Dictionary(
+			current.unit_counts_by_definition_id
+		).duplicate(true),
+	}
 
 
 func _new_city() -> Dictionary:

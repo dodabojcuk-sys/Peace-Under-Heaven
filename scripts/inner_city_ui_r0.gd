@@ -52,6 +52,7 @@ var governance_issue_detail: Label
 var governance_catalog_button: Button
 var governance_wood_button: Button
 var governance_food_button: Button
+var _governance_workspace_was_visible := false
 
 
 func _ready() -> void:
@@ -187,7 +188,7 @@ func _layout_for_viewport() -> void:
 	# M1A keeps the current-mainline action inside the existing alert region.
 	# Its dedicated action row protects the status copy without creating a sixth
 	# floating top-bar region or reducing type at narrower viewports.
-	var top_height := clampf(height * 0.095, 82.0, 96.0)
+	var top_height := clampf(height * 0.11, 96.0, 104.0)
 	var left_width := clampf(width * 0.17, 205.0, 250.0)
 	var right_width := clampf(width * 0.23, 278.0, 340.0)
 	var rail_top := top_height + edge
@@ -263,8 +264,10 @@ func _layout_for_viewport() -> void:
 	construction_menu.size = Vector2(right_width, minf(390.0, height - rail_top - 230.0))
 	_layout_catalog(right_width)
 
-	detail_panel.position = Vector2(width - right_width - edge, rail_top + 140.0)
-	detail_panel.size = Vector2(right_width, minf(610.0, height - rail_top - 154.0))
+	# Keep an 8 px gap below the minimap while preserving the established
+	# 390 px readable detail surface at the 1152x648 acceptance viewport.
+	detail_panel.position = Vector2(width - right_width - edge, rail_top + 136.0)
+	detail_panel.size = Vector2(right_width, minf(610.0, height - rail_top - 144.0))
 	_layout_detail(right_width)
 	_layout_governance_workspace(width, height, right_width, edge, rail_top)
 	_refresh_governance_workspace()
@@ -403,7 +406,9 @@ func _refresh_governance_workspace(
 		# The legacy entry becomes the modal placement surface only; it must not
 		# compete with the default governance workspace.
 		construction_entry.visible = false
-		governance_catalog_button.grab_focus.call_deferred()
+		if not _governance_workspace_was_visible and is_visible_in_tree():
+			governance_catalog_button.grab_focus.call_deferred()
+	_governance_workspace_was_visible = show_workspace
 
 
 func _layout_catalog(width: float) -> void:
@@ -460,7 +465,7 @@ func _layout_top_status_regions(width: float, top_height: float, edge: float) ->
 	var settlement_width := maxf(168.0, width - fixed_width)
 	var x := edge
 	var label_y := floorf((top_height - 22.0) * 0.5)
-	var control_y := floorf((top_height - 34.0) * 0.5)
+	var control_y := floorf((top_height - 44.0) * 0.5)
 	var separator_y := 8.0
 	var separator_height := maxf(0.0, top_height - separator_y * 2.0)
 
@@ -494,16 +499,16 @@ func _layout_top_status_regions(width: float, top_height: float, edge: float) ->
 	alert_summary.size = Vector2(alert_width, 38.0)
 	alert_summary.autowrap_mode = TextServer.AUTOWRAP_ARBITRARY
 	alert_summary.clip_text = true
-	current_mainline_button.position = Vector2(x, top_height - 30.0)
-	current_mainline_button.size = Vector2(alert_width, 24.0)
+	current_mainline_button.position = Vector2(x, top_height - 48.0)
+	current_mainline_button.size = Vector2(alert_width, 44.0)
 	x += alert_width + gap
 	_layout_top_separator($TopStatusBar/DividerFour, x - gap * 0.5, separator_y, separator_height)
 
 	time_speed_option.position = Vector2(x, control_y)
-	time_speed_option.size = Vector2(speed_width, 34.0)
+	time_speed_option.size = Vector2(speed_width, 44.0)
 	x += speed_width + gap
 	pause_button.position = Vector2(x, control_y)
-	pause_button.size = Vector2(pause_width, 34.0)
+	pause_button.size = Vector2(pause_width, 44.0)
 
 
 func _layout_top_separator(separator: ColorRect, x: float, y: float, height: float) -> void:

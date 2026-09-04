@@ -158,7 +158,8 @@ static func _build_squad(
 		state_text = "坚守"
 	return {
 		"squad_id": squad_id,
-		"name": squad_name(squad_id),
+		"formation_id": StringName(snapshot.get("formation_id", &"")),
+		"name": str(snapshot.get("display_name", squad_name(squad_id))),
 		"route_id": route_id,
 		"route_name": str(route.get("name", "未知路线")),
 		"initial_members": initial_members,

@@ -31,7 +31,6 @@ func _run() -> void:
 		BattleOrder.Command.RETREAT,
 		CommittedForceSnapshot.FRONT_ROUTE
 	)
-	await _check_command_platform_retreat()
 	_finish()
 
 
@@ -71,8 +70,9 @@ func _check_warning_and_command_platform() -> void:
 		city.current_day == 7
 			and city.get_first_war_state_id() == &"PENDING"
 			and war_actions.get_node("EnterBattleButton").visible
-			and war_actions.get_node("OrderRetreatButton").visible,
-		"第 7 日军令台提供进入战场和下令撤退"
+			and not war_actions.get_node("OrderRetreatButton").visible
+			and war_actions.get_node("OrderRetreatButton").disabled,
+		"第 7 日军令台只提供进入出征准备；旧战前撤退旁路隐藏且禁用"
 	)
 	scene.queue_free()
 	await process_frame
@@ -82,7 +82,7 @@ func _check_formal_outcome(
 	expected_outcome: StringName,
 	player_count: int,
 	command: BattleOrder.Command,
-	route_id: StringName
+	_route_id: StringName
 ) -> void:
 	var setup: Dictionary = await _make_pending_city(
 		player_count,
@@ -107,8 +107,8 @@ func _check_formal_outcome(
 		await process_frame
 		return
 
-	for squad in battle.request.committed_force.squads:
-		battle.set_squad_route(int(squad.squad_id), route_id)
+	# R1E locks deployment into the persisted departure snapshot.  C0 may issue
+	# orders but must never mutate the prepared routes in place.
 	_check(battle.start_battle(), "%s 路径启动真实 C0 tick 演算" % expected_outcome)
 	battle.tick_timer.stop()
 	for squad in battle.coordinator.active_session.squads:
@@ -214,49 +214,6 @@ func _check_formal_outcome(
 	_check(
 		not city.acknowledge_first_war_result(),
 		"%s 摘要拒绝重复确认" % expected_outcome
-	)
-	scene.queue_free()
-	await process_frame
-
-
-func _check_command_platform_retreat() -> void:
-	var setup: Dictionary = await _make_pending_city(20, 80, true)
-	var scene: Node2D = setup.scene
-	var city: Node = setup.city
-	var selection: Node = setup.selection
-	selection.select_placement(_find_command_platform(city))
-	var before: Dictionary = city.get_city_state()
-	_check(
-		city.request_first_war_retreat_confirmation(),
-		"军令台战前撤退先显示明确后果确认"
-	)
-	city.cancel_first_war_retreat_confirmation()
-	_check(
-		city.get_city_state() == before,
-		"取消战前撤退不修改城市权威状态"
-	)
-	city.request_first_war_retreat_confirmation()
-	_check(city.confirm_first_war_retreat(), "确认后走正式撤退事务")
-	var summary: Dictionary = city.get_city_state().last_battle_result_summary
-	_check(
-		StringName(summary.outcome) == &"RETREAT"
-			and bool(summary.formal_city_entry)
-			and int(summary.actual_food_cost) > 0
-			and int(summary.city_defense_damage)
-				== city.FIRST_WAR_RETREAT_DEFENSE_DAMAGE,
-		"军令台撤退产生粮草和城防后果且不伪装胜利"
-	)
-	var after_apply: Dictionary = city.get_city_state()
-	_check(
-		not city.confirm_first_war_retreat()
-			and city.get_city_state() == after_apply,
-		"重复军令台撤退不会二次结算"
-	)
-	_check(
-		city.acknowledge_first_war_result()
-			and city.get_first_war_state_id() == &"RESOLVED_RETREAT"
-			and not city.is_first_war_time_blocked(),
-		"确认撤退摘要后恢复城市战略时间"
 	)
 	scene.queue_free()
 	await process_frame

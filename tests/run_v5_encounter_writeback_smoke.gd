@@ -376,6 +376,7 @@ func _has_exact_battle_fact_keys(snapshot: Dictionary) -> bool:
 		"enemy_snapshot_digest",
 		"finished_tick",
 		"first_clear_key",
+		"formation_results",
 		"level_id",
 		"orders_digest",
 		"outcome",

@@ -40,20 +40,31 @@ func _run() -> void:
 	)
 
 	var initial: Dictionary = city.get_garrison_snapshot()
+	var initial_formations: Array = initial.formations
 	_check(
-		initial.schema_version == 1
+		initial.schema_version == 2
 			and initial.city_id == &"blackstone_city"
-			and initial.definition_id == definition_id,
-		"驻军读模型包含版本、城市和兵种身份"
+			and initial.definition_id == definition_id
+			and initial_formations.size() == 3
+			and StringName(initial_formations[0].formation_id)
+				== &"formation.blackstone.1"
+			and StringName(initial_formations[1].formation_id)
+				== &"formation.blackstone.2"
+			and StringName(initial_formations[2].formation_id)
+				== &"formation.blackstone.3",
+		"驻军读模型包含稳定 roster 版本、城市、兵种及三个永久编队身份"
 	)
 	var initial_counts: Dictionary = initial.unit_counts
 	_check(
 		initial_counts.get(definition_id, -1) == 20
 			and initial.total_count == 20
+			and int(initial_formations[0].member_count) == 7
+			and int(initial_formations[1].member_count) == 7
+			and int(initial_formations[2].member_count) == 6
 			and initial.reserved_count == 0
 			and initial.unreserved_count == 20
 			and initial.dispatchable_count == 20,
-		"初始驻军总数、预留、未预留和可派数一致"
+		"初始 roster 投影总数、预留、未预留和可派数一致"
 	)
 	initial_counts[definition_id] = 999
 	_check(

@@ -15,6 +15,7 @@ var _pending_result_authority: Dictionary = {}
 var last_result_error_id: StringName = &""
 var _army_id: StringName = &""
 var _army_mode := false
+var _adopted_expedition := false
 
 
 func configure(city_controller_value: Node) -> bool:
@@ -77,6 +78,7 @@ func create_request(
 	last_result_error_id = &""
 	_army_id = &""
 	_army_mode = false
+	_adopted_expedition = false
 	var transaction_id: StringName = (
 		_city_controller.reserve_battle_force(committed_total, self)
 	)
@@ -160,6 +162,39 @@ func create_request(
 	return active_request
 
 
+func adopt_expedition_request(request: BattleRequest) -> bool:
+	if (
+		_city_controller == null
+		or active_request != null
+		or request == null
+		or not request.is_valid()
+		or not request.formal_city_entry
+		or request.is_noticeboard_mission()
+		or request.phase not in [
+			BattleRequest.PHASE_RESERVED,
+			BattleRequest.PHASE_ACTIVE,
+		]
+		or not _city_controller.has_method(
+			"authorize_prepared_battle_request"
+		)
+		or not _city_controller.authorize_prepared_battle_request(
+			request,
+			self
+		)
+	):
+		return false
+	return_contract = null
+	_return_completed = false
+	_pending_result_authority = {}
+	_bound_session = null
+	last_result_error_id = &""
+	_army_id = &""
+	_army_mode = false
+	_adopted_expedition = true
+	active_request = request
+	return true
+
+
 func create_army_request(
 	army_id: StringName,
 	level_id: StringName,
@@ -193,6 +228,7 @@ func create_army_request(
 	_pending_result_authority = {}
 	_bound_session = null
 	last_result_error_id = &""
+	_adopted_expedition = false
 	var committed_snapshot := CommittedForceSnapshot.create_default(
 		transaction_id,
 		committed_total,
@@ -259,6 +295,7 @@ func set_squad_route(
 ) -> bool:
 	if (
 		active_request == null
+		or _adopted_expedition
 		or active_request.phase != BattleRequest.PHASE_RESERVED
 		or route_id not in [
 			CommittedForceSnapshot.FRONT_ROUTE,
@@ -370,6 +407,7 @@ func complete_return_to_city(current_frame: int) -> bool:
 	return_contract = null
 	_army_id = &""
 	_army_mode = false
+	_adopted_expedition = false
 	return true
 
 
@@ -387,6 +425,7 @@ func cancel_request() -> bool:
 	active_request = null
 	_bound_session = null
 	_pending_result_authority = {}
+	_adopted_expedition = false
 	return true
 
 

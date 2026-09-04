@@ -8,6 +8,9 @@ signal noticeboard_return_completed(mission_id: StringName, summary: Dictionary)
 signal noticeboard_entry_cancelled(mission_id: StringName)
 
 const CITY_SCENE: PackedScene = preload("res://scenes/blank_map.tscn")
+const NORTHERN_PALETTE := preload(
+	"res://resources/visuals/northern_campaign_palette.gd"
+)
 const DEBUG_PLAYER_COUNT := 50
 
 @onready var coordinator: CombatTransactionCoordinator = (
@@ -103,13 +106,13 @@ const DEBUG_PLAYER_COUNT := 50
 )
 @onready var result_panel: Panel = $UI/RootPanel/ResultPanel
 @onready var result_label: Label = (
-	$UI/RootPanel/ResultPanel/ResultLabel
+	$UI/RootPanel/ResultPanel/Margin/Content/ResultLabel
 )
 @onready var confirm_button: Button = (
-	$UI/RootPanel/ResultPanel/ConfirmButton
+	$UI/RootPanel/ResultPanel/Margin/Content/Actions/ConfirmButton
 )
 @onready var return_button: Button = (
-	$UI/RootPanel/ResultPanel/ReturnButton
+	$UI/RootPanel/ResultPanel/Margin/Content/Actions/ReturnButton
 )
 
 var city_scene: Node2D
@@ -119,6 +122,7 @@ var city_camera: Camera2D
 var request: BattleRequest
 var formal_city_mode := false
 var formal_committed_count := 0
+var prepared_expedition_request: BattleRequest
 var noticeboard_mission_mode := false
 var mission_definition: MissionDefinition
 var _squad_ui: Dictionary = {}
@@ -155,8 +159,10 @@ func _ready() -> void:
 		_create_city_fixture()
 	_create_battle_request()
 	_create_squad_controls()
+	_apply_northern_visual_palette()
 	_append_recent_action("选择小队，安排战前路线")
 	_refresh_battle_ui()
+	call_deferred("_grab_initial_focus")
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -164,7 +170,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		event is not InputEventKey
 		or not event.pressed
 		or event.echo
-		or event.keycode != KEY_ESCAPE
+		or not event.is_action_pressed("ui_cancel")
 	):
 		return
 	if exit_confirmation.visible:
@@ -179,6 +185,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		and request.phase == BattleRequest.PHASE_RESULT_PENDING
 	):
 		get_viewport().set_input_as_handled()
+		return
+	if exit_input_blocker.visible or result_input_blocker.visible:
+		get_viewport().set_input_as_handled()
 
 
 func configure_formal_city(
@@ -190,6 +199,25 @@ func configure_formal_city(
 	city_scene = city_scene_value
 	city_controller = city_controller_value
 	formal_committed_count = committed_count
+
+
+## Uses a request already saved by the city departure transaction.  This must
+## never rebuild a force snapshot or reserve food a second time.
+func configure_formal_expedition(
+	city_scene_value: Node2D,
+	city_controller_value: Node,
+	prepared_request_value: BattleRequest
+) -> void:
+	formal_city_mode = true
+	city_scene = city_scene_value
+	city_controller = city_controller_value
+	prepared_expedition_request = prepared_request_value
+	formal_committed_count = (
+		prepared_request_value.committed_force.get_committed_total()
+		if prepared_request_value != null
+		and prepared_request_value.committed_force != null
+		else 0
+	)
 
 
 func configure_noticeboard_mission(
@@ -214,17 +242,23 @@ func _start_battle_from_ui() -> void:
 
 
 func start_battle(apply_deployment_plan := false) -> bool:
-	if (
-		request == null
-		or request.phase != BattleRequest.PHASE_RESERVED
-		or not coordinator.activate_request()
-		or coordinator.create_session() == null
-	):
+	if request == null:
+		return false
+	if request.phase == BattleRequest.PHASE_RESERVED:
+		if not coordinator.activate_request():
+			return false
+	elif request.phase != BattleRequest.PHASE_ACTIVE:
+		return false
+	if coordinator.active_session == null and coordinator.create_session() == null:
 		return false
 	start_button.disabled = true
 	for squad_id in _squad_ui:
 		_squad_ui[squad_id].route_button.disabled = true
-	if apply_deployment_plan and _queue_concentrated_front_assault():
+	if (
+		apply_deployment_plan
+		and not _uses_prepared_expedition()
+		and _queue_concentrated_front_assault()
+	):
 		_append_recent_action("正门集中部署已同步推进，命令将在下一战斗刻生效")
 	else:
 		_append_recent_action("战斗开始，小队命令将在下一战斗刻生效")
@@ -257,6 +291,7 @@ func open_exit_confirmation() -> bool:
 	tick_timer.stop()
 	exit_input_blocker.visible = true
 	exit_confirmation.visible = true
+	exit_cancel_button.grab_focus()
 	_set_selected_commands_disabled(true)
 	_refresh_exit_ui()
 	return true
@@ -275,6 +310,7 @@ func cancel_exit_confirmation() -> bool:
 		tick_timer.start()
 	_resume_timer_after_exit_cancel = false
 	_refresh_battle_ui()
+	exit_button.grab_focus()
 	return true
 
 
@@ -333,6 +369,8 @@ func set_squad_route(
 	squad_id: int,
 	route_id: StringName
 ) -> bool:
+	if _uses_prepared_expedition():
+		return false
 	if not coordinator.set_squad_route(squad_id, route_id):
 		return false
 	_append_recent_action(
@@ -396,24 +434,37 @@ func confirm_pending_result() -> Dictionary:
 	var summary := coordinator.confirm_result()
 	if summary.is_empty():
 		confirm_button.disabled = false
+		result_label.text = (
+			"战果尚未完成持久化，请重试确认。\n"
+			+ "返回城市保持锁定，兵力与奖励不会重复结算。"
+		)
+		confirm_button.grab_focus()
 		return {}
 	_confirmed_summary = summary.duplicate(true)
 	result_label.text = (
-		"%s\n幸存 %d｜伤亡 %d\n粮草 -%d｜木材 +%d｜粮食 +%d%s"
+		"%s\n幸存 %d｜伤亡 %d\n%s\n木材 +%d｜粮食 +%d%s%s"
 		% [
 			_outcome_id_text(StringName(summary.outcome)),
 			int(summary.survivor_count),
 			int(summary.casualty_count),
-			int(summary.get("actual_food_cost", 0)),
+			(
+				"粮草已于出征确认时扣除 %d"
+				% int(summary.get("actual_food_cost", 0))
+				if _uses_prepared_expedition()
+				else "粮草 -%d" % int(summary.get("actual_food_cost", 0))
+			),
 			int(summary.accepted_wood_reward),
 			int(summary.accepted_food_reward),
 			"\n首通奖励已结算"
 				if bool(summary.first_clear_granted)
 				else "",
+			_formation_result_text(summary),
 		]
 	)
 	return_button.visible = true
 	return_button.disabled = false
+	confirm_button.visible = false
+	call_deferred("_focus_control", return_button)
 	_refresh_exit_ui()
 	return summary
 
@@ -452,6 +503,11 @@ func complete_return_for_test(current_frame: int) -> bool:
 
 
 func _return_before_battle() -> bool:
+	if _uses_prepared_expedition():
+		status_label.text = "出征已确认且粮草已扣除：请开始战斗，或进入战斗后按撤退结算。"
+		_append_recent_action("已付费出征不能静默取消，请开始战斗或按撤退结算")
+		_refresh_recent_actions()
+		return false
 	if not coordinator.cancel_request():
 		return false
 	_exit_in_progress = true
@@ -532,6 +588,10 @@ func _prepare_formal_city() -> void:
 		return
 	city_ui = city_scene.get_node("UI") as CanvasLayer
 	city_camera = city_scene.get_node("Camera2D") as Camera2D
+	# A hidden city Control must not remain the viewport focus owner. Releasing
+	# it before hiding the city lets the battle modal establish a real keyboard
+	# focus chain instead of leaving input on an invisible governance button.
+	get_viewport().gui_release_focus()
 	city_ui.visible = false
 	city_camera.enabled = false
 	city_scene.visible = false
@@ -554,6 +614,13 @@ func _restore_city_presentation() -> void:
 
 
 func _create_battle_request() -> void:
+	if prepared_expedition_request != null:
+		if coordinator.has_method("adopt_expedition_request"):
+			if coordinator.adopt_expedition_request(prepared_expedition_request):
+				request = coordinator.active_request
+				return
+		push_error("C0 formal expedition coordinator rejected prepared request")
+		return
 	request = coordinator.create_request(
 		formal_committed_count if formal_city_mode else DEBUG_PLAYER_COUNT,
 		(
@@ -580,7 +647,13 @@ func _create_squad_controls() -> void:
 
 		var select_button := Button.new()
 		select_button.name = "SelectButton"
-		select_button.text = BattlePresentationModel.squad_name(squad_id)
+		select_button.custom_minimum_size = Vector2(0.0, 44.0)
+		select_button.text = str(
+			squad_snapshot.get(
+				"display_name",
+				BattlePresentationModel.squad_name(squad_id)
+			)
+		)
 		select_button.pressed.connect(select_squad.bind(squad_id))
 		panel.add_child(select_button)
 
@@ -593,7 +666,11 @@ func _create_squad_controls() -> void:
 
 		var route_button := Button.new()
 		route_button.name = "RouteButton"
+		route_button.custom_minimum_size = Vector2(0.0, 44.0)
 		route_button.pressed.connect(_on_route_button_pressed.bind(squad_id))
+		if _uses_prepared_expedition():
+			route_button.disabled = true
+			route_button.tooltip_text = "正式出征的部署已在确认时锁定"
 		panel.add_child(route_button)
 
 		_squad_ui[squad_id] = {
@@ -604,8 +681,10 @@ func _create_squad_controls() -> void:
 
 		var marker := Button.new()
 		marker.name = "SquadMarker%d" % squad_id
-		marker.size = Vector2(76.0, 50.0)
-		marker.text = BattlePresentationModel.squad_name(squad_id)
+		marker.size = Vector2(84.0, 54.0)
+		marker.custom_minimum_size = Vector2(84.0, 54.0)
+		marker.theme_type_variation = &"PrimaryButton"
+		marker.text = select_button.text
 		marker.pressed.connect(select_squad.bind(squad_id))
 		marker_layer.add_child(marker)
 		_squad_markers[squad_id] = marker
@@ -614,7 +693,11 @@ func _create_squad_controls() -> void:
 
 
 func _on_route_button_pressed(squad_id: int) -> void:
-	if request == null or request.phase != BattleRequest.PHASE_RESERVED:
+	if (
+		_uses_prepared_expedition()
+		or request == null
+		or request.phase != BattleRequest.PHASE_RESERVED
+	):
 		return
 	for squad in request.committed_force.squads:
 		if int(squad.squad_id) != squad_id:
@@ -675,14 +758,24 @@ func _refresh_battle_ui() -> void:
 	)
 	_capture_presentation_changes(_presentation_snapshot, next_snapshot)
 	_presentation_snapshot = next_snapshot
-	title_label.text = "C0 Battle Graybox · %s" % str(next_snapshot.title)
-	status_label.text = "%s · 第 %d 战斗刻 · %.1f 秒" % [
-		str(next_snapshot.phase_text),
-		int(next_snapshot.tick),
-		float(next_snapshot.elapsed_seconds),
-	]
+	title_label.text = str(next_snapshot.title)
+	status_label.text = (
+		"战前部署 · 参战 %d 人 · 粮草已锁定 %d"
+		% [
+			request.committed_force.get_committed_total(),
+			request.committed_food_cost,
+		]
+		if request.phase == BattleRequest.PHASE_RESERVED
+		else "%s · %.1f 秒" % [
+			str(next_snapshot.phase_text),
+			float(next_snapshot.elapsed_seconds),
+		]
+	)
+	var objective_text := str(next_snapshot.objective_text)
+	if mission_definition == null:
+		objective_text = "突破任一城门并击溃该路线守军"
 	instruction_label.text = "目标：%s｜%s" % [
-		str(next_snapshot.objective_text),
+		objective_text,
 		str(next_snapshot.objective.progress_text),
 	]
 	var routes: Array = next_snapshot.routes
@@ -711,10 +804,13 @@ func _refresh_battle_ui() -> void:
 			int(state.initial_members),
 			str(state.state_text),
 		]
-		_squad_ui[squad_id].route_button.text = str(state.route_name)
-		_squad_ui[squad_id].route_button.visible = (
-			request.phase == BattleRequest.PHASE_RESERVED
+		_squad_ui[squad_id].route_button.text = (
+			"%s（部署已锁定）" % str(state.route_name)
+			if _uses_prepared_expedition()
+			else str(state.route_name)
 		)
+		_squad_ui[squad_id].route_button.visible = request.phase == BattleRequest.PHASE_RESERVED
+		_squad_ui[squad_id].route_button.disabled = _uses_prepared_expedition()
 		_squad_ui[squad_id].select_button.text = (
 			"▶ %s" % str(state.name)
 			if bool(state.selected)
@@ -734,7 +830,11 @@ func _refresh_exit_ui() -> void:
 		exit_button.disabled = true
 		return
 	if request.phase == BattleRequest.PHASE_RESERVED:
-		exit_button.text = "返回内城"
+		exit_button.text = (
+			"出征已确认"
+			if _uses_prepared_expedition()
+			else "返回内城"
+		)
 	elif request.phase == BattleRequest.PHASE_ACTIVE:
 		exit_button.text = "退出战斗"
 	elif request.phase == BattleRequest.PHASE_RESULT_PENDING:
@@ -1041,17 +1141,94 @@ func _show_pending_result(battle_result: BattleResult) -> void:
 	return_button.visible = false
 	return_button.disabled = true
 	result_label.text = (
-		"%s\n第 %d 战斗刻｜幸存 %d｜伤亡 %d\n确认后写回城市"
+		"%s\n第 %d 战斗刻｜幸存 %d｜伤亡 %d\n%s\n确认后写回城市%s"
 		% [
 			_outcome_text(battle_result.outcome),
 			battle_result.finished_tick,
 			battle_result.survivor_count,
 			battle_result.casualty_count,
+			(
+				"粮草已于出征确认时扣除"
+				if _uses_prepared_expedition()
+				else "确认后结算粮草与伤亡"
+			),
+			_formation_result_text_from_result(battle_result),
 		]
 	)
 	_append_recent_action("战斗结束：%s" % _outcome_text(battle_result.outcome))
 	_set_selected_commands_disabled(true)
+	call_deferred("_focus_control", confirm_button)
 	_refresh_exit_ui()
+
+
+func _grab_initial_focus() -> void:
+	if is_instance_valid(start_button) and start_button.visible:
+		_focus_control(start_button)
+
+
+func _focus_control(control: Control) -> void:
+	if not is_instance_valid(control) or not control.visible or control.disabled:
+		return
+	var previous_owner := get_viewport().gui_get_focus_owner()
+	if is_instance_valid(previous_owner):
+		previous_owner.release_focus()
+	get_viewport().gui_release_focus()
+	control.focus_mode = Control.FOCUS_ALL
+	control.grab_focus()
+
+
+func _apply_northern_visual_palette() -> void:
+	$UI/RootPanel.color = NORTHERN_PALETTE.INK_BLUE
+	$UI/RootPanel/TopBar.color = NORTHERN_PALETTE.INK_TEAL
+	$UI/RootPanel/SideLane.color = Color(
+		NORTHERN_PALETTE.ROAD_DUST.r,
+		NORTHERN_PALETTE.ROAD_DUST.g,
+		NORTHERN_PALETTE.ROAD_DUST.b,
+		0.24
+	)
+	$UI/RootPanel/FrontLane.color = NORTHERN_PALETTE.with_alpha(
+		NORTHERN_PALETTE.ROAD_SURFACE,
+		0.28
+	)
+	front_gate.color = Color.TRANSPARENT
+	side_gate.color = Color.TRANSPARENT
+
+
+func _uses_prepared_expedition() -> bool:
+	return prepared_expedition_request != null and not noticeboard_mission_mode
+
+
+func _formation_result_text(summary: Dictionary) -> String:
+	return _formation_result_text_from_rows(
+		Array(summary.get("formation_results", []))
+	)
+
+
+func _formation_result_text_from_result(battle_result: BattleResult) -> String:
+	if battle_result == null:
+		return ""
+	return _formation_result_text_from_rows(battle_result.formation_results)
+
+
+func _formation_result_text_from_rows(rows: Array) -> String:
+	if rows.is_empty():
+		return ""
+	var names: Dictionary = {}
+	if request != null and request.committed_force != null:
+		for squad in request.committed_force.squads:
+			names[StringName(squad.get("formation_id", &""))] = str(
+				squad.get("display_name", BattlePresentationModel.squad_name(int(squad.squad_id)))
+		)
+	var lines: Array[String] = ["编队结算"]
+	for row in rows:
+		var formation_id := StringName(row.get("formation_id", &""))
+		var display_name := str(names.get(formation_id, formation_id))
+		lines.append("%s：%d/%d" % [
+			display_name,
+			int(row.get("survivor_count", 0)),
+			int(row.get("departure_count", 0)),
+		])
+	return "\n" + "\n".join(lines)
 
 
 func _outcome_text(outcome: BattleOutcome.Value) -> String:

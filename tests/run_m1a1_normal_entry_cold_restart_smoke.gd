@@ -59,6 +59,19 @@ func _check_normal_twenty_entry_authority() -> void:
 	)
 	await _click(entry.get_global_rect().get_center())
 	await process_frame
+	var preparation: Control = shell.get_node("ExpeditionPreparationPanel")
+	_check(
+		preparation.visible
+			and city.get_formal_battle_scene() == null,
+		"top-bar input opens the 出征准备 modal before any stateful departure"
+	)
+	var selected_ids: Array[StringName] = []
+	for formation in city.get_formation_roster():
+		if int(formation.member_count) > 0:
+			selected_ids.append(StringName(formation.formation_id))
+	var departure: Dictionary = city.commit_expedition_attempt(selected_ids)
+	_check(bool(departure.success), "20 人合法 roster 能确认一次真实出征")
+	_check(city.enter_first_war_battle(), "已确认 20 人出征进入正式战场")
 	var battle := city.get_formal_battle_scene() as C0BattleGraybox
 	_check(
 		battle != null
@@ -66,26 +79,19 @@ func _check_normal_twenty_entry_authority() -> void:
 			and battle.request.formal_city_entry
 			and battle.request.committed_force.get_committed_total() == 20
 			and int(city.get_active_battle_reservation().committed_count) == 20,
-		"top-bar input transfers the real 20-person snapshot into one formal battle reservation"
+		"确认将真实 20 人快照写入唯一正式战斗事务"
 	)
 	await _click(entry.get_global_rect().get_center())
 	_check(
 		battle != null
 			and city.get_formal_battle_scene() == battle
 			and int(city.get_active_battle_reservation().committed_count) == 20,
-		"a repeated entry click cannot duplicate the 20-person reservation"
+		"重复顶栏点击不会复制已确认的 20 人事务"
 	)
 	if battle != null:
-		for squad in battle.request.committed_force.squads:
-			battle.set_squad_route(
-				int(squad.squad_id),
-				CommittedForceSnapshot.FRONT_ROUTE
-			)
 		_check(
-			battle.start_battle(true)
-				and battle.coordinator.active_session.accepted_orders.size()
-					== battle.coordinator.active_session.squads.size(),
-			"the concentrated normal force starts as one synchronized front assault"
+			battle.start_battle(),
+			"the confirmed normal force starts through the immutable departure snapshot"
 		)
 		battle.tick_timer.stop()
 		for squad in battle.coordinator.active_session.squads:

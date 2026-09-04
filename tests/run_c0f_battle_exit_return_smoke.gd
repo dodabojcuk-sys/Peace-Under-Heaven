@@ -25,37 +25,51 @@ func _check_prebattle_button_return() -> void:
 	var setup := await _make_pending_city(30)
 	var scene: Node2D = setup.scene
 	var city: Node = setup.city
-	var before: Dictionary = city.get_city_state()
-	_check(city.enter_first_war_battle(), "战前返回测试进入正式 C0")
+	_check(city.enter_first_war_battle(), "正式出征测试进入已付费 C0")
 	var battle := city.get_formal_battle_scene() as C0BattleGraybox
 	_check(
 		battle != null
 			and battle.exit_button.visible
-			and battle.exit_button.text == "返回内城",
-		"RESERVED 阶段始终显示返回内城"
+			and battle.exit_button.text == "出征已确认"
+			and not battle.exit_button.disabled,
+		"已付费 RESERVED 阶段显示可点击的已确认状态"
 	)
 	if battle == null:
 		scene.queue_free()
 		await process_frame
 		return
-	_check(battle.request_exit_or_return(), "战前按钮启动无战果返回")
-	_check(not battle.request_exit_or_return(), "战前返回具备防重入保护")
+	var food_after_departure: int = city.food
+	var attempt_after_departure: Dictionary = city.get_expedition_attempt()
+	_check(
+		not battle.request_exit_or_return()
+			and battle.status_label.text.contains("出征已确认且粮草已扣除")
+			and city.food == food_after_departure
+			and city.get_expedition_attempt() == attempt_after_departure,
+		"已付费 RESERVED 阶段拒绝静默返回，粮草与 immutable attempt 零变化"
+	)
+	_check(battle.start_battle(), "拒绝后仍可正常开始已确认战斗")
+	battle.tick_timer.stop()
+	_check(
+		battle.open_exit_confirmation()
+			and battle.confirm_exit_as_retreat(),
+		"已确认出征通过真实撤退结算收口"
+	)
 	await process_frame
 	await process_frame
 	_check(
 		scene.visible
 			and scene.process_mode == Node.PROCESS_MODE_INHERIT
 			and city.get_formal_battle_scene() == null
-			and city.get_first_war_state_id() == &"PENDING",
-		"战前按钮返回同一内城并恢复首战待处理状态"
+			and city.get_first_war_state_id() == &"IN_BATTLE",
+		"撤退结算返回同一内城并保留战后摘要门禁"
 	)
 	var after: Dictionary = city.get_city_state()
 	_check(
-		int(after.infantry_count) == int(before.infantry_count)
+		int(after.infantry_count) <= 30
 			and Dictionary(after.active_battle_reservation).is_empty()
-			and after.last_battle_result_summary
-				== before.last_battle_result_summary,
-		"战前返回释放预留且不写战果或损失"
+			and StringName(after.last_battle_result_summary.outcome) == &"RETREAT"
+			and city.food == food_after_departure,
+		"撤退只写入一次逐编队战果，不重复扣除出征粮草"
 	)
 	scene.queue_free()
 	await process_frame
@@ -65,25 +79,29 @@ func _check_prebattle_escape_return() -> void:
 	var setup := await _make_pending_city(30)
 	var scene: Node2D = setup.scene
 	var city: Node = setup.city
-	var before: Dictionary = city.get_city_state()
-	_check(city.enter_first_war_battle(), "战前 Esc 测试进入正式 C0")
+	_check(city.enter_first_war_battle(), "战前 Esc 测试进入已付费正式 C0")
 	var battle := city.get_formal_battle_scene() as C0BattleGraybox
 	if battle == null:
 		_check(false, "战前 Esc 测试取得正式 C0")
 		scene.queue_free()
 		await process_frame
 		return
+	var food_after_departure: int = city.food
+	var attempt_after_departure: Dictionary = city.get_expedition_attempt()
 	battle._unhandled_input(_escape_event())
-	await process_frame
-	await process_frame
-	var after: Dictionary = city.get_city_state()
 	_check(
-		city.get_formal_battle_scene() == null
-			and city.get_first_war_state_id() == &"PENDING"
-			and int(after.infantry_count) == int(before.infantry_count)
-			and Dictionary(after.active_battle_reservation).is_empty(),
-		"战前 Esc 与按钮一致：零战果返回并释放预留"
+		city.get_formal_battle_scene() == battle
+			and battle.status_label.text.contains("出征已确认且粮草已扣除")
+			and city.food == food_after_departure
+			and city.get_expedition_attempt() == attempt_after_departure,
+		"战前 Esc 与按钮一致：已付费出征明确拒绝，零退款零状态篡改"
 	)
+	_check(battle.start_battle(), "Esc 拒绝后仍能开始既有出征")
+	battle.tick_timer.stop()
+	battle.open_exit_confirmation()
+	battle.confirm_exit_as_retreat()
+	await process_frame
+	await process_frame
 	scene.queue_free()
 	await process_frame
 
@@ -211,11 +229,7 @@ func _check_result_pending_escape_and_postbattle_return() -> void:
 		scene.queue_free()
 		await process_frame
 		return
-	for squad in battle.request.committed_force.squads:
-		battle.set_squad_route(
-			int(squad.squad_id),
-			CommittedForceSnapshot.SIDE_ROUTE
-		)
+	# Prepared deployment is immutable; the battle may only accept orders.
 	_check(battle.start_battle(), "战后返回测试启动 BattleSession")
 	battle.tick_timer.stop()
 	for squad in battle.coordinator.active_session.squads:

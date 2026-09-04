@@ -92,3 +92,70 @@ func get_digest() -> String:
 		int(side.get("enemy_members", 0)),
 		int(side.get("gate_hp", 0)),
 	]
+
+
+func to_dictionary() -> Dictionary:
+	return {
+		"transaction_id": transaction_id,
+		"snapshot_day": snapshot_day,
+		"enemy_count": enemy_count,
+		"fortification_level": fortification_level,
+		"route_states": route_states.duplicate(true),
+	}
+
+
+static func from_dictionary(value: Dictionary) -> EnemyForceSnapshot:
+	var expected_keys := [
+		"transaction_id", "snapshot_day", "enemy_count",
+		"fortification_level", "route_states",
+	]
+	if not _has_exact_keys(value, expected_keys):
+		return null
+	if (
+		typeof(value.transaction_id) != TYPE_STRING_NAME
+		or StringName(value.transaction_id) == &""
+		or typeof(value.snapshot_day) != TYPE_INT
+		or int(value.snapshot_day) <= 0
+		or typeof(value.enemy_count) != TYPE_INT
+		or int(value.enemy_count) <= 0
+		or typeof(value.fortification_level) != TYPE_INT
+		or int(value.fortification_level) < 0
+		or typeof(value.route_states) != TYPE_DICTIONARY
+	):
+		return null
+	var routes: Dictionary = value.route_states
+	if routes.size() != 2:
+		return null
+	var total := 0
+	for route_id in [FRONT_ROUTE, SIDE_ROUTE]:
+		var route_value = routes.get(route_id)
+		if not route_value is Dictionary:
+			return null
+		var route: Dictionary = route_value
+		if (
+			not _has_exact_keys(route, ["enemy_members", "gate_hp"])
+			or typeof(route.enemy_members) != TYPE_INT
+			or int(route.enemy_members) < 0
+			or typeof(route.gate_hp) != TYPE_INT
+			or int(route.gate_hp) < 0
+		):
+			return null
+		total += int(route.enemy_members)
+	if total != int(value.enemy_count):
+		return null
+	var snapshot := EnemyForceSnapshot.new()
+	snapshot.transaction_id = StringName(value.transaction_id)
+	snapshot.snapshot_day = int(value.snapshot_day)
+	snapshot.enemy_count = int(value.enemy_count)
+	snapshot.fortification_level = int(value.fortification_level)
+	snapshot.route_states = routes.duplicate(true)
+	return snapshot
+
+
+static func _has_exact_keys(value: Dictionary, expected: Array) -> bool:
+	if value.size() != expected.size():
+		return false
+	for key in expected:
+		if not value.has(key):
+			return false
+	return true
