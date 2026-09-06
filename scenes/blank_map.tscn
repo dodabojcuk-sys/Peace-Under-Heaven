@@ -1,0 +1,1883 @@
+[gd_scene load_steps=19 format=3 uid="uid://blankmap00"]
+
+[ext_resource type="Script" path="res://scripts/map_pan_controller.gd" id="1_map_pan"]
+[ext_resource type="Script" path="res://scripts/construction_controller.gd" id="2_construction"]
+[ext_resource type="Script" path="res://scripts/building_selection_controller.gd" id="3_selection"]
+[ext_resource type="PackedScene" path="res://scenes/world_map_v0.tscn" id="4_world_map"]
+[ext_resource type="PackedScene" path="res://scenes/blackstone_expedition_mvp.tscn" id="5_mvp"]
+[ext_resource type="Script" path="res://scripts/inner_city_ui_r0.gd" id="6_inner_city_ui"]
+[ext_resource type="Theme" path="res://resources/ui/inner_city_theme.tres" id="7_inner_city_theme"]
+[ext_resource type="Script" path="res://scripts/regular_city_spatial_foundation.gd" id="8_regular_city"]
+[ext_resource type="Script" path="res://scripts/city_minimap_r1.gd" id="9_city_minimap"]
+[ext_resource type="Script" path="res://scripts/placement_grid_r1.gd" id="10_placement_grid"]
+[ext_resource type="Script" path="res://scripts/city_sandbox/road_preview_visual.gd" id="11_road_preview"]
+[ext_resource type="PackedScene" path="res://scenes/ui/expedition_preparation_panel.tscn" id="12_expedition_panel"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_top_bar"]
+bg_color = Color(0.847059, 0.831373, 0.796078, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.65098, 0.631373, 0.596078, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_city_bar"]
+bg_color = Color(0.890196, 0.870588, 0.831373, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.65098, 0.631373, 0.596078, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_current_city"]
+bg_color = Color(0.807843, 0.784314, 0.733333, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.552941, 0.533333, 0.498039, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_minimap"]
+bg_color = Color(0.862745, 0.847059, 0.811765, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.552941, 0.533333, 0.498039, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_minimap_viewport"]
+bg_color = Color(0, 0, 0, 0)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.286275, 0.27451, 0.254902, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_disabled_action"]
+bg_color = Color(0.835294, 0.815686, 0.776471, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.705882, 0.686275, 0.647059, 1)
+corner_radius_top_left = 3
+corner_radius_top_right = 3
+corner_radius_bottom_right = 3
+corner_radius_bottom_left = 3
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_detail_panel"]
+bg_color = Color(0.901961, 0.886275, 0.85098, 0.98)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.552941, 0.533333, 0.498039, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="BlankMapRoot" type="Node2D"]
+script = ExtResource("1_map_pan")
+
+[node name="MapWorld" type="Node2D" parent="."]
+
+[node name="RegularCitySpatialFoundation" type="Node2D" parent="MapWorld"]
+script = ExtResource("8_regular_city")
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(1100, 700)
+enabled = true
+
+[node name="ConstructionController" type="Node" parent="."]
+script = ExtResource("2_construction")
+
+[node name="BuildingSelectionController" type="Node" parent="."]
+script = ExtResource("3_selection")
+
+[node name="CampaignWorldMap" parent="." instance=ExtResource("4_world_map")]
+
+[node name="MapBoard" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_right = 2200.0
+offset_bottom = 1400.0
+mouse_filter = 2
+color = Color(0.82, 0.8, 0.73, 1)
+
+[node name="BoundaryTop" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 2180.0
+offset_bottom = 32.0
+mouse_filter = 2
+color = Color(0.28, 0.3, 0.29, 1)
+
+[node name="BoundaryLeft" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 20.0
+offset_right = 32.0
+offset_bottom = 1380.0
+mouse_filter = 2
+color = Color(0.28, 0.3, 0.29, 1)
+
+[node name="BoundaryBottom" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_top = 1390.0
+offset_right = 2200.0
+offset_bottom = 1400.0
+mouse_filter = 2
+color = Color(0.28, 0.3, 0.29, 1)
+
+[node name="BoundaryRight" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_left = 2190.0
+offset_right = 2200.0
+offset_bottom = 1400.0
+mouse_filter = 2
+color = Color(0.28, 0.3, 0.29, 1)
+
+[node name="RoadHorizontal" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 335.0
+offset_right = 2120.0
+offset_bottom = 375.0
+mouse_filter = 2
+color = Color(0.59, 0.53, 0.41, 1)
+
+[node name="RoadVertical" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_left = 550.0
+offset_top = 70.0
+offset_right = 590.0
+offset_bottom = 1330.0
+mouse_filter = 2
+color = Color(0.59, 0.53, 0.41, 1)
+
+[node name="NorthDistrict" type="Label" parent="MapWorld"]
+layout_mode = 0
+offset_left = 70.0
+offset_top = 50.0
+offset_right = 250.0
+offset_bottom = 90.0
+theme_override_colors/font_color = Color(0.22, 0.23, 0.22, 1)
+theme_override_font_sizes/font_size = 24
+text = "北区"
+
+[node name="CentralDistrict" type="Label" parent="MapWorld"]
+layout_mode = 0
+offset_left = 420.0
+offset_top = 280.0
+offset_right = 540.0
+offset_bottom = 320.0
+theme_override_colors/font_color = Color(0.22, 0.23, 0.22, 1)
+theme_override_font_sizes/font_size = 22
+text = "中央区"
+
+[node name="EastGateDistrict" type="Label" parent="MapWorld"]
+layout_mode = 0
+offset_left = 1880.0
+offset_top = 760.0
+offset_right = 2080.0
+offset_bottom = 800.0
+theme_override_colors/font_color = Color(0.22, 0.23, 0.22, 1)
+theme_override_font_sizes/font_size = 24
+text = "东门"
+
+[node name="SouthDistrict" type="Label" parent="MapWorld"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 1270.0
+offset_right = 250.0
+offset_bottom = 1310.0
+theme_override_colors/font_color = Color(0.22, 0.23, 0.22, 1)
+theme_override_font_sizes/font_size = 24
+text = "南区"
+
+[node name="CentralMarker" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_left = 525.0
+offset_top = 310.0
+offset_right = 615.0
+offset_bottom = 400.0
+mouse_filter = 2
+color = Color(0.73, 0.5, 0.18, 1)
+
+[node name="CenterText" type="Label" parent="MapWorld/CentralMarker"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+theme_override_colors/font_color = Color(1, 0.96, 0.84, 1)
+theme_override_font_sizes/font_size = 16
+text = "中心"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Manor" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 120.0
+offset_right = 270.0
+offset_bottom = 240.0
+mouse_filter = 2
+color = Color(0.4, 0.5, 0.55, 1)
+
+[node name="Label" type="Label" parent="MapWorld/Manor"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 22.0
+offset_right = 205.0
+offset_bottom = 55.0
+theme_override_colors/font_color = Color(0.98, 0.98, 0.94, 1)
+theme_override_font_sizes/font_size = 22
+text = "城主府 L1"
+
+[node name="LevelMark" type="ColorRect" parent="MapWorld/Manor"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 86.0
+offset_right = 54.0
+offset_bottom = 96.0
+color = Color(0.98, 0.98, 0.94, 1)
+
+[node name="Barracks" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_left = 350.0
+offset_top = 120.0
+offset_right = 540.0
+offset_bottom = 240.0
+mouse_filter = 2
+color = Color(0.53, 0.43, 0.36, 1)
+
+[node name="Label" type="Label" parent="MapWorld/Barracks"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 22.0
+offset_right = 205.0
+offset_bottom = 55.0
+theme_override_colors/font_color = Color(1, 0.97, 0.9, 1)
+theme_override_font_sizes/font_size = 22
+text = "兵营 L1"
+
+[node name="LevelMark" type="ColorRect" parent="MapWorld/Barracks"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 86.0
+offset_right = 54.0
+offset_bottom = 96.0
+color = Color(1, 0.97, 0.9, 1)
+
+[node name="Granary" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_left = 650.0
+offset_top = 120.0
+offset_right = 840.0
+offset_bottom = 240.0
+mouse_filter = 2
+color = Color(0.46, 0.56, 0.4, 1)
+
+[node name="Label" type="Label" parent="MapWorld/Granary"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 22.0
+offset_right = 205.0
+offset_bottom = 55.0
+theme_override_colors/font_color = Color(0.98, 1, 0.93, 1)
+theme_override_font_sizes/font_size = 22
+text = "粮仓 L2"
+
+[node name="LevelMarkOne" type="ColorRect" parent="MapWorld/Granary"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 86.0
+offset_right = 54.0
+offset_bottom = 96.0
+color = Color(0.98, 1, 0.93, 1)
+
+[node name="LevelMarkTwo" type="ColorRect" parent="MapWorld/Granary"]
+layout_mode = 0
+offset_left = 62.0
+offset_top = 86.0
+offset_right = 100.0
+offset_bottom = 96.0
+color = Color(0.98, 1, 0.93, 1)
+
+[node name="Academy" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_left = 80.0
+offset_top = 430.0
+offset_right = 270.0
+offset_bottom = 550.0
+mouse_filter = 2
+color = Color(0.48, 0.42, 0.58, 1)
+
+[node name="Label" type="Label" parent="MapWorld/Academy"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 22.0
+offset_right = 205.0
+offset_bottom = 55.0
+theme_override_colors/font_color = Color(0.97, 0.94, 1, 1)
+theme_override_font_sizes/font_size = 22
+text = "学院 L1"
+
+[node name="LevelMark" type="ColorRect" parent="MapWorld/Academy"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 86.0
+offset_right = 54.0
+offset_bottom = 96.0
+color = Color(0.97, 0.94, 1, 1)
+
+[node name="CityGate" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_left = 350.0
+offset_top = 430.0
+offset_right = 540.0
+offset_bottom = 550.0
+mouse_filter = 2
+color = Color(0.55, 0.38, 0.32, 1)
+
+[node name="Label" type="Label" parent="MapWorld/CityGate"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 22.0
+offset_right = 205.0
+offset_bottom = 55.0
+theme_override_colors/font_color = Color(1, 0.94, 0.89, 1)
+theme_override_font_sizes/font_size = 22
+text = "城门 L1"
+
+[node name="LevelMark" type="ColorRect" parent="MapWorld/CityGate"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 86.0
+offset_right = 54.0
+offset_bottom = 96.0
+color = Color(1, 0.94, 0.89, 1)
+
+[node name="CommandPlatform" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_left = 650.0
+offset_top = 430.0
+offset_right = 840.0
+offset_bottom = 550.0
+mouse_filter = 2
+color = Color(0.39, 0.49, 0.47, 1)
+
+[node name="Label" type="Label" parent="MapWorld/CommandPlatform"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 22.0
+offset_right = 205.0
+offset_bottom = 55.0
+theme_override_colors/font_color = Color(0.92, 1, 0.96, 1)
+theme_override_font_sizes/font_size = 22
+text = "军令台 L1"
+
+[node name="LevelMark" type="ColorRect" parent="MapWorld/CommandPlatform"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 86.0
+offset_right = 54.0
+offset_bottom = 96.0
+color = Color(0.92, 1, 0.96, 1)
+
+[node name="Noticeboard" type="ColorRect" parent="MapWorld"]
+layout_mode = 0
+offset_left = 900.0
+offset_top = 430.0
+offset_right = 1060.0
+offset_bottom = 550.0
+mouse_filter = 2
+color = Color(0.53, 0.43, 0.3, 1)
+
+[node name="Label" type="Label" parent="MapWorld/Noticeboard"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 22.0
+offset_right = 144.0
+offset_bottom = 55.0
+theme_override_colors/font_color = Color(1, 0.95, 0.84, 1)
+theme_override_font_sizes/font_size = 22
+text = "告示板"
+horizontal_alignment = 1
+
+[node name="LevelMark" type="ColorRect" parent="MapWorld/Noticeboard"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 86.0
+offset_right = 54.0
+offset_bottom = 96.0
+color = Color(1, 0.95, 0.84, 1)
+
+[node name="ConstructionLayer" type="Node2D" parent="MapWorld"]
+z_index = 10
+
+[node name="PlacedBuildings" type="Node2D" parent="MapWorld/ConstructionLayer"]
+
+[node name="SelectionOutline" type="Line2D" parent="MapWorld/ConstructionLayer"]
+visible = false
+z_index = 1
+width = 4.0
+default_color = Color(0.72, 0.56, 0.25, 1)
+
+[node name="ConstructionPreview" type="Node2D" parent="MapWorld/ConstructionLayer"]
+visible = false
+z_index = 2
+
+[node name="RoadPreview" type="Node2D" parent="MapWorld/ConstructionLayer/ConstructionPreview"]
+script = ExtResource("11_road_preview")
+
+[node name="PlacementGrid" type="Node2D" parent="MapWorld/ConstructionLayer/ConstructionPreview"]
+script = ExtResource("10_placement_grid")
+
+[node name="Body" type="Polygon2D" parent="MapWorld/ConstructionLayer/ConstructionPreview"]
+polygon = PackedVector2Array(0, 0, 120, 0, 120, 80, 0, 80)
+color = Color(0.31, 0.62, 0.43, 0.72)
+
+[node name="Outline" type="Line2D" parent="MapWorld/ConstructionLayer/ConstructionPreview"]
+points = PackedVector2Array(0, 0, 120, 0, 120, 80, 0, 80, 0, 0)
+width = 3.0
+default_color = Color(0.12, 0.34, 0.2, 1)
+
+[node name="Label" type="Label" parent="MapWorld/ConstructionLayer/ConstructionPreview"]
+offset_right = 120.0
+offset_bottom = 80.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.96, 0.98, 0.94, 1)
+theme_override_font_sizes/font_size = 13
+text = "测试建筑
+可放置"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="BlackstoneExpeditionMvp" parent="UI" instance=ExtResource("5_mvp")]
+visible = false
+
+[node name="Shell" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = ExtResource("7_inner_city_theme")
+script = ExtResource("6_inner_city_ui")
+
+[node name="ExpeditionPreparationPanel" parent="UI/Shell" instance=ExtResource("12_expedition_panel")]
+z_index = 100
+
+[node name="TopStatusBar" type="Panel" parent="UI/Shell"]
+layout_mode = 0
+offset_right = 1152.0
+offset_bottom = 48.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_top_bar")
+
+[node name="ResourceSummary" type="Label" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 15.0
+offset_top = 12.0
+offset_right = 245.0
+offset_bottom = 31.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 13
+text = "木材 100/160 · 粮食 80/160"
+
+[node name="DividerOne" type="ColorRect" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 247.0
+offset_top = 13.0
+offset_right = 248.0
+offset_bottom = 33.0
+mouse_filter = 2
+color = Color(0.65098, 0.631373, 0.596078, 1)
+
+[node name="CurrentCity" type="Label" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 271.0
+offset_top = 12.0
+offset_right = 410.0
+offset_bottom = 31.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 13
+text = "当前城市  城市 01"
+
+[node name="DividerTwo" type="ColorRect" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 469.0
+offset_top = 13.0
+offset_right = 470.0
+offset_bottom = 33.0
+mouse_filter = 2
+color = Color(0.65098, 0.631373, 0.596078, 1)
+
+[node name="DividerThree" type="ColorRect" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 696.0
+offset_top = 13.0
+offset_right = 697.0
+offset_bottom = 33.0
+mouse_filter = 2
+color = Color(0.65098, 0.631373, 0.596078, 1)
+
+[node name="TimeSummary" type="Label" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 481.0
+offset_top = 12.0
+offset_right = 574.0
+offset_bottom = 31.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 13
+text = "第 1 日"
+
+[node name="DailyReport" type="Label" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 574.0
+offset_top = 12.0
+offset_right = 696.0
+offset_bottom = 31.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 12
+text = "尚未结算"
+
+[node name="NextStageSummary" type="Label" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 574.0
+offset_top = 31.0
+offset_right = 696.0
+offset_bottom = 47.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 12
+text = "下一阶段：警戒·3日"
+
+[node name="DividerFour" type="ColorRect" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 852.0
+offset_top = 13.0
+offset_right = 853.0
+offset_bottom = 33.0
+mouse_filter = 2
+color = Color(0.65098, 0.631373, 0.596078, 1)
+
+[node name="TimeSpeedOption" type="OptionButton" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 704.0
+offset_top = 7.0
+offset_right = 768.0
+offset_bottom = 40.0
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+
+[node name="PauseButton" type="Button" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 776.0
+offset_top = 7.0
+offset_right = 852.0
+offset_bottom = 40.0
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "暂停"
+
+[node name="AlertSummary" type="Label" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 864.0
+offset_top = 5.0
+offset_right = 1137.0
+offset_bottom = 43.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 11
+text = "预警  无"
+vertical_alignment = 1
+
+[node name="CurrentMainlineButton" type="Button" parent="UI/Shell/TopStatusBar"]
+layout_mode = 0
+offset_left = 864.0
+offset_top = 48.0
+offset_right = 1137.0
+offset_bottom = 76.0
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "主线：第 7 日应战"
+tooltip_text = "当前主线将在第 7 日进入应战状态"
+
+[node name="CityBar" type="Panel" parent="UI/Shell"]
+visible = false
+layout_mode = 0
+offset_top = 48.0
+offset_right = 152.0
+offset_bottom = 648.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_city_bar")
+
+[node name="CityBarToggle" type="Button" parent="UI/Shell"]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 56.0
+offset_right = 64.0
+offset_bottom = 88.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "展开"
+
+[node name="Title" type="Label" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 15.0
+offset_top = 17.0
+offset_right = 80.0
+offset_bottom = 35.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.454902, 0.439216, 0.407843, 1)
+theme_override_font_sizes/font_size = 12
+text = "城市"
+
+[node name="CurrentCitySelection" type="Panel" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 15.0
+offset_top = 47.0
+offset_right = 135.0
+offset_bottom = 103.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_current_city")
+
+[node name="Label" type="Label" parent="UI/Shell/CityBar/CurrentCitySelection"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 20.0
+offset_right = 100.0
+offset_bottom = 41.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 14
+text = "当前城市"
+
+[node name="City02" type="Label" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 27.0
+offset_top = 131.0
+offset_right = 90.0
+offset_bottom = 150.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 13
+text = "城市 02"
+
+[node name="City03" type="Label" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 27.0
+offset_top = 173.0
+offset_right = 90.0
+offset_bottom = 192.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 13
+text = "城市 03"
+
+[node name="ArmyStatus" type="Label" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 15.0
+offset_top = 212.0
+offset_right = 137.0
+offset_bottom = 238.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 10
+text = "驻军 20 · 可派 20/50
+科技 0"
+autowrap_mode = 2
+
+[node name="RecruitButton" type="Button" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 15.0
+offset_top = 242.0
+offset_right = 137.0
+offset_bottom = 274.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "征募 5 人 · 15 粮"
+
+[node name="GeneralOption" type="OptionButton" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 15.0
+offset_top = 278.0
+offset_right = 137.0
+offset_bottom = 310.0
+focus_mode = 0
+theme_override_font_sizes/font_size = 10
+
+[node name="TechOption" type="OptionButton" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 15.0
+offset_top = 314.0
+offset_right = 94.0
+offset_bottom = 346.0
+focus_mode = 0
+theme_override_font_sizes/font_size = 9
+
+[node name="ResearchButton" type="Button" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 98.0
+offset_top = 314.0
+offset_right = 137.0
+offset_bottom = 346.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 9
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "研究"
+
+[node name="ThreatDetail" type="Label" parent="UI/Shell/CityBar"]
+layout_mode = 0
+offset_left = 15.0
+offset_top = 354.0
+offset_right = 137.0
+offset_bottom = 438.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 11
+text = "城防 10
+当前敌军 32 · 工事 0
+第 5 日骚扰"
+autowrap_mode = 2
+
+[node name="EmergencyMobilizationButton" type="Button" parent="UI/Shell/CityBar"]
+visible = false
+layout_mode = 0
+offset_left = 15.0
+offset_top = 442.0
+offset_right = 137.0
+offset_bottom = 474.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.364706, 0.24, 0.2, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "紧急动员 · 30 粮"
+
+[node name="RestoreCheckpointButton" type="Button" parent="UI/Shell/CityBar"]
+visible = false
+layout_mode = 0
+offset_left = 15.0
+offset_top = 482.0
+offset_right = 137.0
+offset_bottom = 524.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "返回第 9 日"
+
+[node name="RestartMapButton" type="Button" parent="UI/Shell/CityBar"]
+visible = false
+layout_mode = 0
+offset_left = 15.0
+offset_top = 532.0
+offset_right = 137.0
+offset_bottom = 574.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.364706, 0.24, 0.2, 1)
+theme_override_font_sizes/font_size = 11
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "重开首图"
+
+[node name="MinimapPlaceholder" type="Panel" parent="UI/Shell"]
+layout_mode = 0
+offset_left = 976.0
+offset_top = 64.0
+offset_right = 1136.0
+offset_bottom = 164.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_minimap")
+script = ExtResource("9_city_minimap")
+
+[node name="Label" type="Label" parent="UI/Shell/MinimapPlaceholder"]
+layout_mode = 0
+offset_left = 7.0
+offset_top = 5.0
+offset_right = 90.0
+offset_bottom = 20.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 10
+text = "部署概览 · 黑石城"
+
+[node name="ViewportFrame" type="Panel" parent="UI/Shell/MinimapPlaceholder"]
+layout_mode = 0
+offset_left = 51.0
+offset_top = 41.0
+offset_right = 109.0
+offset_bottom = 79.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_minimap_viewport")
+
+[node name="ConstructionEntryPanel" type="Panel" parent="UI/Shell"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -176.0
+offset_top = 176.0
+offset_right = -16.0
+offset_bottom = 228.0
+grow_horizontal = 0
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_detail_panel")
+
+[node name="BuildEntryButton" type="Button" parent="UI/Shell/ConstructionEntryPanel"]
+layout_mode = 0
+offset_left = 8.0
+offset_top = 8.0
+offset_right = 152.0
+offset_bottom = 44.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "建造"
+
+[node name="BuildModeStatus" type="Label" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 0
+offset_left = 8.0
+offset_top = 6.0
+offset_right = 152.0
+offset_bottom = 46.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 11
+text = "建造中：测试建筑
+右键 / Esc 取消"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="PlacementOrientation" type="Label" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 0
+offset_left = 8.0
+offset_top = 48.0
+offset_right = 152.0
+offset_bottom = 70.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 12
+text = "朝向：北"
+
+[node name="RotateButton" type="Button" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 0
+offset_left = 8.0
+offset_top = 76.0
+offset_right = 80.0
+offset_bottom = 110.0
+text = "旋转 R"
+
+[node name="ConfirmRoadButton" type="Button" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 0
+offset_left = 84.0
+offset_top = 76.0
+offset_right = 152.0
+offset_bottom = 110.0
+text = "确认铺设"
+
+[node name="CancelPlacementButton" type="Button" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 0
+offset_left = 8.0
+offset_top = 116.0
+offset_right = 152.0
+offset_bottom = 150.0
+text = "取消 Esc"
+
+[node name="BuildSlotContent" type="VBoxContainer" parent="UI/Shell/ConstructionEntryPanel"]
+visible = false
+layout_mode = 1
+anchors_preset = 12
+anchor_top = 1.0
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 14.0
+offset_top = -206.0
+offset_right = -14.0
+offset_bottom = -12.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 1
+theme_override_constants/separation = 8
+
+[node name="BuildSlotProgress" type="ProgressBar" parent="UI/Shell/ConstructionEntryPanel/BuildSlotContent"]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 22)
+mouse_filter = 2
+show_percentage = true
+
+[node name="BuildSlotDetail" type="Label" parent="UI/Shell/ConstructionEntryPanel/BuildSlotContent"]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 88)
+mouse_filter = 2
+theme_override_font_sizes/font_size = 11
+text = "已投入：木材 0/40\n剩余成本：木材 40\n预计完成：等待材料"
+autowrap_mode = 2
+
+[node name="BuildSlotPrimaryButton" type="Button" parent="UI/Shell/ConstructionEntryPanel/BuildSlotContent"]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 34)
+text = "放置建筑"
+
+[node name="BuildSlotCancelButton" type="Button" parent="UI/Shell/ConstructionEntryPanel/BuildSlotContent"]
+visible = false
+layout_mode = 2
+size_flags_horizontal = 3
+custom_minimum_size = Vector2(0, 34)
+text = "取消项目"
+
+[node name="PlacementFeedback" type="Label" parent="UI/Shell"]
+visible = false
+layout_mode = 1
+anchors_preset = 7
+anchor_left = 0.5
+anchor_top = 1.0
+anchor_right = 0.5
+anchor_bottom = 1.0
+offset_left = -360.0
+offset_top = -90.0
+offset_right = 360.0
+offset_bottom = -28.0
+grow_horizontal = 2
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 0.88, 0.78, 1)
+theme_override_colors/font_shadow_color = Color(0.05, 0.05, 0.05, 0.9)
+theme_override_constants/shadow_offset_x = 2
+theme_override_constants/shadow_offset_y = 2
+theme_override_font_sizes/font_size = 18
+text = "无法建造：与道路重叠"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ConstructionMenu" type="Panel" parent="UI/Shell"]
+visible = false
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -196.0
+offset_top = 236.0
+offset_right = -16.0
+offset_bottom = 588.0
+grow_horizontal = 0
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_detail_panel")
+
+[node name="Title" type="Label" parent="UI/Shell/ConstructionMenu"]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 12.0
+offset_right = 130.0
+offset_bottom = 34.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+text = "选择建筑"
+
+[node name="CloseButton" type="Button" parent="UI/Shell/ConstructionMenu"]
+layout_mode = 0
+offset_left = 140.0
+offset_top = 8.0
+offset_right = 172.0
+offset_bottom = 40.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "×"
+
+[node name="RoadButton" type="Button" parent="UI/Shell/ConstructionMenu"]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 52.0
+offset_right = 166.0
+offset_bottom = 102.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "道路 · 2 木材
+1 × 1"
+
+[node name="LoggingCampButton" type="Button" parent="UI/Shell/ConstructionMenu"]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 110.0
+offset_right = 166.0
+offset_bottom = 160.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "伐木场 · 40 木材
+2 × 2"
+
+[node name="FarmButton" type="Button" parent="UI/Shell/ConstructionMenu"]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 168.0
+offset_right = 166.0
+offset_bottom = 218.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "农田 · 45 木材
+2 × 2"
+
+[node name="WarehouseButton" type="Button" parent="UI/Shell/ConstructionMenu"]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 226.0
+offset_right = 166.0
+offset_bottom = 276.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "仓库 · 60 木材
+容量 +120"
+
+[node name="WatchtowerButton" type="Button" parent="UI/Shell/ConstructionMenu"]
+layout_mode = 0
+offset_left = 14.0
+offset_top = 284.0
+offset_right = 166.0
+offset_bottom = 334.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 10
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "瞭望塔 · 50 木材
+城防 +10"
+
+[node name="BuildingDetailPanel" type="Panel" parent="UI/Shell"]
+visible = false
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -296.0
+offset_top = 130.0
+offset_right = -16.0
+offset_bottom = 630.0
+grow_horizontal = 0
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBoxFlat_detail_panel")
+
+[node name="PanelTitle" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 18.0
+offset_right = 190.0
+offset_bottom = 41.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+text = "已选择目标"
+
+[node name="CloseButton" type="Button" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 232.0
+offset_top = 12.0
+offset_right = 264.0
+offset_bottom = 44.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 15
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "×"
+
+[node name="Divider" type="ColorRect" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 58.0
+offset_right = 260.0
+offset_bottom = 59.0
+mouse_filter = 2
+color = Color(0.65098, 0.631373, 0.596078, 1)
+
+[node name="TargetName" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 68.0
+offset_right = 250.0
+offset_bottom = 98.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 20
+text = "测试建筑"
+
+[node name="TargetType" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 104.0
+offset_right = 250.0
+offset_bottom = 128.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 12
+text = "核心作用：木材 +18/日"
+
+[node name="StatusBadge" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 154.0
+offset_top = 70.0
+offset_right = 252.0
+offset_bottom = 94.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.8, 0.62, 0.29, 1)
+theme_override_font_sizes/font_size = 12
+text = "状态：等待施工"
+horizontal_alignment = 2
+
+[node name="RoadStatus" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 132.0
+offset_right = 260.0
+offset_bottom = 156.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 12
+text = "道路：未连接 · 入口朝北"
+
+[node name="GridPosition" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 398.0
+offset_right = 250.0
+offset_bottom = 420.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 13
+text = "投入：木材 40｜工期：1 日"
+
+[node name="Footprint" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 424.0
+offset_right = 250.0
+offset_bottom = 444.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 13
+text = "下一级：当前切片未开放"
+
+[node name="ConstructionProgress" type="ProgressBar" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 0
+offset_left = 20.0
+offset_top = 166.0
+offset_right = 260.0
+offset_bottom = 182.0
+mouse_filter = 2
+value = 32.0
+show_percentage = false
+
+[node name="PrototypeStatus" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 188.0
+offset_right = 250.0
+offset_bottom = 278.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 13
+text = "进度：32%
+已投入：木材 13/40
+仍需：木材 27
+预计完成：第 2 日"
+autowrap_mode = 2
+
+[node name="Description" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 374.0
+offset_right = 260.0
+offset_bottom = 394.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.454902, 0.439216, 0.407843, 1)
+theme_override_font_sizes/font_size = 11
+text = "恢复时间后继续施工"
+autowrap_mode = 2
+
+[node name="PriorityLabel" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 0
+offset_left = 20.0
+offset_top = 286.0
+offset_right = 130.0
+offset_bottom = 308.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 12
+text = "施工优先级"
+
+[node name="PriorityHelp" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 0
+offset_left = 20.0
+offset_top = 340.0
+offset_right = 260.0
+offset_bottom = 368.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.454902, 0.439216, 0.407843, 1)
+theme_override_font_sizes/font_size = 10
+text = "材料或施工能力不足时，高优先级先推进。"
+autowrap_mode = 2
+
+[node name="UpgradeStatusCard" type="Label" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 286.0
+offset_right = 260.0
+offset_bottom = 346.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 12
+text = "升级状态\n当前权威未提供升级写入命令"
+autowrap_mode = 2
+
+[node name="ConstructionPriorityOption" type="OptionButton" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 0
+offset_left = 20.0
+offset_top = 310.0
+offset_right = 260.0
+offset_bottom = 338.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 12
+
+[node name="UpgradeButton" type="Button" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 448.0
+offset_right = 260.0
+offset_bottom = 476.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 12
+text = "查看升级门禁"
+
+[node name="RemoveButton" type="Button" parent="UI/Shell/BuildingDetailPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 448.0
+offset_right = 260.0
+offset_bottom = 476.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.364706, 0.24, 0.2, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "移除建筑"
+
+[node name="UpgradeConfirmation" type="Control" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="ConfirmationText" type="Label" parent="UI/Shell/BuildingDetailPanel/UpgradeConfirmation"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 88.0
+offset_right = 260.0
+offset_bottom = 226.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 14
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="ConfirmUpgradeButton" type="Button" parent="UI/Shell/BuildingDetailPanel/UpgradeConfirmation"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 250.0
+offset_right = 132.0
+offset_bottom = 286.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 12
+text = "保持当前等级"
+
+[node name="CancelUpgradeButton" type="Button" parent="UI/Shell/BuildingDetailPanel/UpgradeConfirmation"]
+layout_mode = 0
+offset_left = 148.0
+offset_top = 250.0
+offset_right = 260.0
+offset_bottom = 286.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_font_sizes/font_size = 12
+text = "返回详情"
+
+[node name="FirstWarActions" type="Control" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 0
+offset_left = 20.0
+offset_top = 116.0
+offset_right = 260.0
+offset_bottom = 346.0
+mouse_filter = 1
+
+[node name="WarIntel" type="Label" parent="UI/Shell/BuildingDetailPanel/FirstWarActions"]
+layout_mode = 0
+offset_right = 240.0
+offset_bottom = 146.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 14
+text = "北坡敌情"
+autowrap_mode = 2
+
+[node name="MvpExpeditionButton" type="Button" parent="UI/Shell/BuildingDetailPanel/FirstWarActions"]
+layout_mode = 0
+offset_top = 150.0
+offset_right = 240.0
+offset_bottom = 184.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "出征黑石堡"
+
+[node name="MvpResultStatus" type="Label" parent="UI/Shell/BuildingDetailPanel/FirstWarActions"]
+layout_mode = 0
+offset_top = 190.0
+offset_right = 240.0
+offset_bottom = 224.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 14
+text = "尚未出征"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="EnterBattleButton" type="Button" parent="UI/Shell/BuildingDetailPanel/FirstWarActions"]
+layout_mode = 0
+offset_top = 150.0
+offset_right = 240.0
+offset_bottom = 184.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "进入北坡战场"
+
+[node name="OrderRetreatButton" type="Button" parent="UI/Shell/BuildingDetailPanel/FirstWarActions"]
+layout_mode = 0
+offset_top = 190.0
+offset_right = 240.0
+offset_bottom = 224.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.364706, 0.24, 0.2, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "下令撤退"
+
+[node name="RetreatConfirmation" type="Control" parent="UI/Shell/BuildingDetailPanel/FirstWarActions"]
+visible = false
+layout_mode = 0
+offset_right = 240.0
+offset_bottom = 230.0
+mouse_filter = 0
+
+[node name="ConfirmationText" type="Label" parent="UI/Shell/BuildingDetailPanel/FirstWarActions/RetreatConfirmation"]
+layout_mode = 0
+offset_right = 240.0
+offset_bottom = 112.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.24, 0.2, 1)
+theme_override_font_sizes/font_size = 13
+text = "确认下令撤退？
+将消耗出战粮草、损伤城防，
+并按正式撤退战果写回。"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="ConfirmRetreatButton" type="Button" parent="UI/Shell/BuildingDetailPanel/FirstWarActions/RetreatConfirmation"]
+layout_mode = 0
+offset_top = 128.0
+offset_right = 112.0
+offset_bottom = 164.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "确认撤退"
+
+[node name="CancelRetreatButton" type="Button" parent="UI/Shell/BuildingDetailPanel/FirstWarActions/RetreatConfirmation"]
+layout_mode = 0
+offset_left = 128.0
+offset_top = 128.0
+offset_right = 240.0
+offset_bottom = 164.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "取消"
+
+[node name="WarResult" type="Control" parent="UI/Shell/BuildingDetailPanel/FirstWarActions"]
+visible = false
+layout_mode = 0
+offset_right = 240.0
+offset_bottom = 230.0
+mouse_filter = 0
+
+[node name="ResultLabel" type="Label" parent="UI/Shell/BuildingDetailPanel/FirstWarActions/WarResult"]
+layout_mode = 0
+offset_right = 240.0
+offset_bottom = 154.0
+mouse_filter = 2
+theme_override_font_sizes/font_size = 14
+text = "战后摘要"
+horizontal_alignment = 1
+vertical_alignment = 1
+autowrap_mode = 2
+
+[node name="AcknowledgeButton" type="Button" parent="UI/Shell/BuildingDetailPanel/FirstWarActions/WarResult"]
+layout_mode = 0
+offset_top = 170.0
+offset_right = 240.0
+offset_bottom = 214.0
+focus_mode = 2
+mouse_default_cursor_shape = 2
+custom_minimum_size = Vector2(240, 44)
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "确认战后摘要"
+
+[node name="CityGateActions" type="Control" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 0
+offset_left = 20.0
+offset_top = 116.0
+offset_right = 260.0
+offset_bottom = 346.0
+mouse_filter = 1
+
+[node name="MapSummary" type="Label" parent="UI/Shell/BuildingDetailPanel/CityGateActions"]
+layout_mode = 0
+offset_right = 240.0
+offset_bottom = 142.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.364706, 0.352941, 0.329412, 1)
+theme_override_font_sizes/font_size = 13
+text = "外城战役地图
+查看黑石城、北坡、河湾粮道与河湾城。
+
+本轮支持查看、路线预览和返回内城；
+尚未实现正式行军与局部战斗。"
+autowrap_mode = 2
+
+[node name="EnterWorldMapButton" type="Button" parent="UI/Shell/BuildingDetailPanel/CityGateActions"]
+layout_mode = 0
+offset_top = 164.0
+offset_right = 240.0
+offset_bottom = 202.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "进入战役地图"
+
+[node name="RemovalConfirmation" type="Control" parent="UI/Shell/BuildingDetailPanel"]
+visible = false
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="ConfirmationMessage" type="Label" parent="UI/Shell/BuildingDetailPanel/RemovalConfirmation"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 88.0
+offset_right = 260.0
+offset_bottom = 142.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 15
+text = "确认移除当前测试建筑？"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ConfirmationNote" type="Label" parent="UI/Shell/BuildingDetailPanel/RemovalConfirmation"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 154.0
+offset_right = 260.0
+offset_bottom = 204.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.454902, 0.439216, 0.407843, 1)
+theme_override_font_sizes/font_size = 12
+text = "确认后立即移除并释放占用格。
+本原型不提供撤销。"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="ConfirmRemoveButton" type="Button" parent="UI/Shell/BuildingDetailPanel/RemovalConfirmation"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 230.0
+offset_right = 132.0
+offset_bottom = 264.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.364706, 0.24, 0.2, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "确认移除"
+
+[node name="CancelRemoveButton" type="Button" parent="UI/Shell/BuildingDetailPanel/RemovalConfirmation"]
+layout_mode = 0
+offset_left = 148.0
+offset_top = 230.0
+offset_right = 260.0
+offset_bottom = 264.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "取消"
+
+[node name="NoticeboardPanel" type="Panel" parent="UI/Shell"]
+visible = false
+layout_mode = 0
+offset_left = 216.0
+offset_top = 64.0
+offset_right = 936.0
+offset_bottom = 584.0
+mouse_filter = 0
+
+[node name="Title" type="Label" parent="UI/Shell/NoticeboardPanel"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 18.0
+offset_right = 696.0
+offset_bottom = 52.0
+theme_override_font_sizes/font_size = 24
+text = "城内告示板"
+horizontal_alignment = 1
+
+[node name="Subtitle" type="Label" parent="UI/Shell/NoticeboardPanel"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 54.0
+offset_right = 696.0
+offset_bottom = 78.0
+text = "居民委托与小型战斗 · 当前进程内记录"
+horizontal_alignment = 1
+
+[node name="CloseButton" type="Button" parent="UI/Shell/NoticeboardPanel"]
+layout_mode = 0
+offset_left = 656.0
+offset_top = 14.0
+offset_right = 704.0
+offset_bottom = 50.0
+text = "关闭"
+
+[node name="OutskirtsSweepCard" type="Panel" parent="UI/Shell/NoticeboardPanel"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 96.0
+offset_right = 240.0
+offset_bottom = 452.0
+
+[node name="Title" type="Label" parent="UI/Shell/NoticeboardPanel/OutskirtsSweepCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 14.0
+offset_right = 208.0
+offset_bottom = 42.0
+theme_override_font_sizes/font_size = 18
+text = "城郊清剿"
+horizontal_alignment = 1
+
+[node name="Description" type="Label" parent="UI/Shell/NoticeboardPanel/OutskirtsSweepCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 54.0
+offset_right = 208.0
+offset_bottom = 108.0
+autowrap_mode = 2
+
+[node name="Objective" type="Label" parent="UI/Shell/NoticeboardPanel/OutskirtsSweepCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 120.0
+offset_right = 208.0
+offset_bottom = 174.0
+autowrap_mode = 2
+
+[node name="RiskReward" type="Label" parent="UI/Shell/NoticeboardPanel/OutskirtsSweepCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 188.0
+offset_right = 208.0
+offset_bottom = 254.0
+autowrap_mode = 2
+
+[node name="StateLabel" type="Label" parent="UI/Shell/NoticeboardPanel/OutskirtsSweepCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 272.0
+offset_right = 208.0
+offset_bottom = 302.0
+text = "AVAILABLE"
+horizontal_alignment = 1
+
+[node name="StartButton" type="Button" parent="UI/Shell/NoticeboardPanel/OutskirtsSweepCard"]
+layout_mode = 0
+offset_left = 34.0
+offset_top = 312.0
+offset_right = 186.0
+offset_bottom = 344.0
+text = "开始任务"
+
+[node name="SupplyReliefCard" type="Panel" parent="UI/Shell/NoticeboardPanel"]
+layout_mode = 0
+offset_left = 250.0
+offset_top = 96.0
+offset_right = 470.0
+offset_bottom = 452.0
+
+[node name="Title" type="Label" parent="UI/Shell/NoticeboardPanel/SupplyReliefCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 14.0
+offset_right = 208.0
+offset_bottom = 42.0
+theme_override_font_sizes/font_size = 18
+text = "粮道求援"
+horizontal_alignment = 1
+
+[node name="Description" type="Label" parent="UI/Shell/NoticeboardPanel/SupplyReliefCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 54.0
+offset_right = 208.0
+offset_bottom = 108.0
+autowrap_mode = 2
+
+[node name="Objective" type="Label" parent="UI/Shell/NoticeboardPanel/SupplyReliefCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 120.0
+offset_right = 208.0
+offset_bottom = 174.0
+autowrap_mode = 2
+
+[node name="RiskReward" type="Label" parent="UI/Shell/NoticeboardPanel/SupplyReliefCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 188.0
+offset_right = 208.0
+offset_bottom = 254.0
+autowrap_mode = 2
+
+[node name="StateLabel" type="Label" parent="UI/Shell/NoticeboardPanel/SupplyReliefCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 272.0
+offset_right = 208.0
+offset_bottom = 302.0
+text = "AVAILABLE"
+horizontal_alignment = 1
+
+[node name="StartButton" type="Button" parent="UI/Shell/NoticeboardPanel/SupplyReliefCard"]
+layout_mode = 0
+offset_left = 34.0
+offset_top = 312.0
+offset_right = 186.0
+offset_bottom = 344.0
+text = "开始任务"
+
+[node name="MissingScoutCard" type="Panel" parent="UI/Shell/NoticeboardPanel"]
+layout_mode = 0
+offset_left = 480.0
+offset_top = 96.0
+offset_right = 700.0
+offset_bottom = 452.0
+
+[node name="Title" type="Label" parent="UI/Shell/NoticeboardPanel/MissingScoutCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 14.0
+offset_right = 208.0
+offset_bottom = 42.0
+theme_override_font_sizes/font_size = 18
+text = "失踪斥候"
+horizontal_alignment = 1
+
+[node name="Description" type="Label" parent="UI/Shell/NoticeboardPanel/MissingScoutCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 54.0
+offset_right = 208.0
+offset_bottom = 108.0
+autowrap_mode = 2
+
+[node name="Objective" type="Label" parent="UI/Shell/NoticeboardPanel/MissingScoutCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 120.0
+offset_right = 208.0
+offset_bottom = 174.0
+autowrap_mode = 2
+
+[node name="RiskReward" type="Label" parent="UI/Shell/NoticeboardPanel/MissingScoutCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 188.0
+offset_right = 208.0
+offset_bottom = 254.0
+autowrap_mode = 2
+
+[node name="StateLabel" type="Label" parent="UI/Shell/NoticeboardPanel/MissingScoutCard"]
+layout_mode = 0
+offset_left = 12.0
+offset_top = 272.0
+offset_right = 208.0
+offset_bottom = 302.0
+text = "AVAILABLE"
+horizontal_alignment = 1
+
+[node name="StartButton" type="Button" parent="UI/Shell/NoticeboardPanel/MissingScoutCard"]
+layout_mode = 0
+offset_left = 34.0
+offset_top = 312.0
+offset_right = 186.0
+offset_bottom = 344.0
+text = "开始任务"
+
+[node name="LastResult" type="Label" parent="UI/Shell/NoticeboardPanel"]
+layout_mode = 0
+offset_left = 24.0
+offset_top = 466.0
+offset_right = 696.0
+offset_bottom = 504.0
+text = "尚无任务结果"
+horizontal_alignment = 1

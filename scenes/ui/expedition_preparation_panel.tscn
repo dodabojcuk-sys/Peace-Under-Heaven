@@ -1,0 +1,114 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/ui/expedition_preparation_panel.gd" id="1_script"]
+
+[node name="ExpeditionPreparationPanel" type="Control"]
+visible = false
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+process_mode = 3
+script = ExtResource("1_script")
+
+[node name="Backdrop" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 0
+color = Color(0.039, 0.082, 0.094, 0.72)
+
+[node name="Center" type="CenterContainer" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 1
+
+[node name="Card" type="PanelContainer" parent="Center"]
+custom_minimum_size = Vector2(620, 560)
+layout_mode = 2
+theme_type_variation = &"CommandPanel"
+
+[node name="Margin" type="MarginContainer" parent="Center/Card"]
+layout_mode = 2
+theme_override_constants/margin_left = 28
+theme_override_constants/margin_top = 24
+theme_override_constants/margin_right = 28
+theme_override_constants/margin_bottom = 24
+
+[node name="Content" type="VBoxContainer" parent="Center/Card/Margin"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Eyebrow" type="Label" parent="Center/Card/Margin/Content"]
+layout_mode = 2
+theme_type_variation = &"EyebrowLabel"
+text = "军令台  /  出征准备"
+
+[node name="MainlineTitle" type="Label" parent="Center/Card/Margin/Content"]
+layout_mode = 2
+theme_type_variation = &"TitleLabel"
+text = "北坡防御战"
+
+[node name="MainlineDetail" type="Label" parent="Center/Card/Margin/Content"]
+custom_minimum_size = Vector2(0, 52)
+layout_mode = 2
+text = "目标：突破北坡防线\n剩余期限：6 日"
+autowrap_mode = 2
+
+[node name="Separator" type="HSeparator" parent="Center/Card/Margin/Content"]
+layout_mode = 2
+
+[node name="FoodSummary" type="Label" parent="Center/Card/Margin/Content"]
+layout_mode = 2
+theme_type_variation = &"SecondaryLabel"
+text = "当前粮食 80 · 粮草公式 向上取整（兵力 ÷ 5）"
+
+[node name="FormationHeading" type="Label" parent="Center/Card/Margin/Content"]
+layout_mode = 2
+text = "选择 1–3 支永久编队"
+
+[node name="FormationList" type="VBoxContainer" parent="Center/Card/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="SelectionSummary" type="Label" parent="Center/Card/Margin/Content"]
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+theme_type_variation = &"EmphasisLabel"
+text = "已选 0 队 · 0 人   粮草 0   出征后剩余 80"
+
+[node name="ValidationMessage" type="Label" parent="Center/Card/Margin/Content"]
+custom_minimum_size = Vector2(0, 28)
+layout_mode = 2
+text = "请选择至少一支可用编队"
+
+[node name="Actions" type="HBoxContainer" parent="Center/Card/Margin/Content"]
+layout_mode = 2
+theme_override_constants/separation = 12
+alignment = 2
+
+[node name="CancelButton" type="Button" parent="Center/Card/Margin/Content/Actions"]
+custom_minimum_size = Vector2(150, 44)
+layout_mode = 2
+text = "返回城市"
+
+[node name="ConfirmButton" type="Button" parent="Center/Card/Margin/Content/Actions"]
+custom_minimum_size = Vector2(180, 44)
+layout_mode = 2
+theme_type_variation = &"PrimaryButton"
+disabled = true
+text = "确认出征"

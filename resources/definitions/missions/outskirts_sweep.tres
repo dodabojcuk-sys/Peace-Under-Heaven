@@ -1,0 +1,24 @@
+[gd_resource type="Resource" script_class="MissionDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/content/mission_definition.gd" id="1_mission"]
+
+[resource]
+script = ExtResource("1_mission")
+mission_id = &"noticeboard.outskirts_sweep.v0"
+title = "城郊清剿"
+description = "流寇分散在东西两处城郊，需逐一肃清。"
+objective_type = &"ELIMINATE_ALL"
+objective_text = "消灭两条路线上的全部敌军"
+risk_label = "低风险 · 基础作战"
+layout_id = &"outskirts_two_camps_v0"
+committed_count = 18
+player_route_pattern = Array[StringName]([&"FRONT_GATE", &"SIDE_GATE", &"FRONT_GATE"])
+front_route_name = "东郊营地"
+side_route_name = "西郊营地"
+front_enemy_count = 7
+side_enemy_count = 5
+front_distance_units = 28
+side_distance_units = 34
+reward_wood = 12
+reward_food = 8
+first_clear_key = &"noticeboard.outskirts_sweep.v0.first_clear"

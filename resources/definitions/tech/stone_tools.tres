@@ -1,0 +1,12 @@
+[gd_resource type="Resource" script_class="TechNode" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/content/tech_node.gd" id="1_tech"]
+
+[resource]
+script = ExtResource("1_tech")
+tech_id = &"tech.stone_tools"
+display_name = "石器改良"
+branch_id = &"production"
+cost = 2
+effect_type = &"logging_yield_multiplier"
+effect_amount = 0.2

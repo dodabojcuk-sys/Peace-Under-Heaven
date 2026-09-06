@@ -1,0 +1,14 @@
+[gd_resource type="Resource" script_class="UnitRole" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/content/unit_role.gd" id="1_role"]
+
+[resource]
+script = ExtResource("1_role")
+role_id = &"unit_role.infantry_basic"
+display_name = "步兵"
+hp = 100
+attack = 10
+move_speed = 1.0
+recruit_food_per_unit = 3
+maintenance_units_per_food = 5
+command_weight = 1

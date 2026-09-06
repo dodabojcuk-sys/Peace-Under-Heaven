@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="MissionDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/content/mission_definition.gd" id="1_mission"]
+
+[resource]
+script = ExtResource("1_mission")
+mission_id = &"noticeboard.supply_relief.v0"
+title = "粮道求援"
+description = "两侧敌军正袭击固定粮车，必须兼顾拦截与歼敌。"
+objective_type = &"PROTECT_AND_ELIMINATE"
+objective_text = "保护粮车存活，并消灭全部来袭敌军"
+risk_label = "中风险 · 保护目标"
+layout_id = &"supply_wagon_crossroad_v0"
+committed_count = 20
+player_route_pattern = Array[StringName]([&"FRONT_GATE", &"SIDE_GATE", &"FRONT_GATE"])
+front_route_name = "粮道北口"
+side_route_name = "粮道南口"
+front_enemy_count = 8
+side_enemy_count = 8
+front_distance_units = 24
+side_distance_units = 24
+protect_target_name = "粮车"
+protect_target_hp = 420
+protect_damage_per_enemy = 1
+reward_wood = 8
+reward_food = 16
+first_clear_key = &"noticeboard.supply_relief.v0.first_clear"

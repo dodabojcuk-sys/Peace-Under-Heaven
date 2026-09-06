@@ -1,0 +1,279 @@
+[gd_scene load_steps=6 format=3 uid="uid://e3worldmapscene"]
+
+[ext_resource type="Script" path="res://scripts/world_map/world_map_controller.gd" id="1_controller"]
+[ext_resource type="Script" path="res://scripts/world_map/world_map_canvas.gd" id="2_canvas"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_top"]
+bg_color = Color(0.15, 0.17, 0.16, 0.97)
+border_width_bottom = 2
+border_color = Color(0.57, 0.52, 0.39, 1)
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_panel"]
+bg_color = Color(0.90, 0.87, 0.78, 0.98)
+border_width_left = 2
+border_width_top = 2
+border_width_right = 2
+border_width_bottom = 2
+border_color = Color(0.39, 0.38, 0.33, 1)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[sub_resource type="StyleBoxFlat" id="StyleBox_button"]
+bg_color = Color(0.31, 0.34, 0.31, 1)
+border_width_left = 1
+border_width_top = 1
+border_width_right = 1
+border_width_bottom = 1
+border_color = Color(0.66, 0.61, 0.48, 1)
+corner_radius_top_left = 4
+corner_radius_top_right = 4
+corner_radius_bottom_right = 4
+corner_radius_bottom_left = 4
+
+[node name="WorldMapV0" type="Node2D"]
+visible = false
+script = ExtResource("1_controller")
+
+[node name="MapBoard" type="ColorRect" parent="."]
+offset_right = 2400.0
+offset_bottom = 1500.0
+mouse_filter = 2
+color = Color(0.82, 0.79, 0.68, 1)
+
+[node name="WorldCanvas" type="Node2D" parent="."]
+script = ExtResource("2_canvas")
+
+[node name="UI" type="CanvasLayer" parent="."]
+layer = 20
+
+[node name="Root" type="Control" parent="UI"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="TopBar" type="Panel" parent="UI/Root"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_bottom = 56.0
+grow_horizontal = 2
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBox_top")
+
+[node name="MapTitle" type="Label" parent="UI/Root/TopBar"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 9.0
+offset_right = 330.0
+offset_bottom = 36.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.95, 0.87, 0.67, 1)
+theme_override_font_sizes/font_size = 21
+text = "黑石—河湾战役区域"
+
+[node name="StatusSummary" type="Label" parent="UI/Root/TopBar"]
+layout_mode = 0
+offset_left = 338.0
+offset_top = 17.0
+offset_right = 620.0
+offset_bottom = 38.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.78, 0.77, 0.70, 1)
+theme_override_font_sizes/font_size = 14
+text = "第 1 日 · 黑石城至河湾城"
+
+[node name="Legend" type="Label" parent="UI/Root/TopBar"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -522.0
+offset_top = 18.0
+offset_right = -318.0
+offset_bottom = 39.0
+grow_horizontal = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.70, 0.72, 0.68, 1)
+theme_override_font_sizes/font_size = 12
+text = "✓ 畅通 · ! 危险 · ? 未侦察 · × 封锁"
+
+[node name="OverviewButton" type="Button" parent="UI/Root/TopBar"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -312.0
+offset_top = 9.0
+offset_right = -208.0
+offset_bottom = 45.0
+grow_horizontal = 0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.94, 0.90, 0.79, 1)
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_panel")
+theme_override_styles/pressed = SubResource("StyleBox_panel")
+text = "地图全览"
+
+[node name="HomeButton" type="Button" parent="UI/Root/TopBar"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -200.0
+offset_top = 9.0
+offset_right = -104.0
+offset_bottom = 45.0
+grow_horizontal = 0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.94, 0.90, 0.79, 1)
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_panel")
+theme_override_styles/pressed = SubResource("StyleBox_panel")
+text = "定位黑石城"
+
+[node name="ReturnButton" type="Button" parent="UI/Root/TopBar"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -96.0
+offset_top = 9.0
+offset_right = -12.0
+offset_bottom = 45.0
+grow_horizontal = 0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.94, 0.90, 0.79, 1)
+theme_override_styles/normal = SubResource("StyleBox_button")
+theme_override_styles/hover = SubResource("StyleBox_panel")
+theme_override_styles/pressed = SubResource("StyleBox_panel")
+text = "返回内城"
+
+[node name="MapHint" type="Label" parent="UI/Root"]
+layout_mode = 1
+anchors_preset = 2
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = -42.0
+offset_right = 408.0
+offset_bottom = -14.0
+grow_vertical = 0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.19, 0.20, 0.18, 0.86)
+theme_override_font_sizes/font_size = 13
+text = "左键选择 · 拖动平移 · 滚轮缩放 · Esc 关闭／返回"
+
+[node name="SidePanel" type="Panel" parent="UI/Root"]
+visible = false
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -260.0
+offset_top = 72.0
+offset_right = -16.0
+offset_bottom = 568.0
+grow_horizontal = 0
+mouse_filter = 0
+theme_override_styles/panel = SubResource("StyleBox_panel")
+
+[node name="PanelTitle" type="Label" parent="UI/Root/SidePanel"]
+layout_mode = 0
+offset_left = 16.0
+offset_top = 13.0
+offset_right = 188.0
+offset_bottom = 42.0
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.20, 0.19, 0.17, 1)
+theme_override_font_sizes/font_size = 20
+text = "地图节点"
+
+[node name="CloseButton" type="Button" parent="UI/Root/SidePanel"]
+layout_mode = 1
+anchors_preset = 1
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -44.0
+offset_top = 10.0
+offset_right = -10.0
+offset_bottom = 44.0
+grow_horizontal = 0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+text = "×"
+
+[node name="Divider" type="ColorRect" parent="UI/Root/SidePanel"]
+layout_mode = 1
+anchors_preset = 10
+anchor_right = 1.0
+offset_left = 14.0
+offset_top = 52.0
+offset_right = -14.0
+offset_bottom = 53.0
+grow_horizontal = 2
+mouse_filter = 2
+color = Color(0.52, 0.49, 0.41, 0.75)
+
+[node name="Scroll" type="ScrollContainer" parent="UI/Root/SidePanel"]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 14.0
+offset_top = 64.0
+offset_right = -14.0
+offset_bottom = -14.0
+grow_horizontal = 2
+grow_vertical = 2
+horizontal_scroll_mode = 0
+
+[node name="Content" type="VBoxContainer" parent="UI/Root/SidePanel/Scroll"]
+custom_minimum_size = Vector2(206, 380)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 12
+
+[node name="InfoLabel" type="Label" parent="UI/Root/SidePanel/Scroll/Content"]
+custom_minimum_size = Vector2(206, 150)
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.28, 0.27, 0.23, 1)
+theme_override_font_sizes/font_size = 14
+text = "节点信息"
+autowrap_mode = 2
+
+[node name="ActionHint" type="Label" parent="UI/Root/SidePanel/Scroll/Content"]
+custom_minimum_size = Vector2(206, 56)
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.47, 0.30, 0.18, 1)
+theme_override_font_sizes/font_size = 13
+text = "当前操作说明"
+autowrap_mode = 2
+
+[node name="SetTargetButton" type="Button" parent="UI/Root/SidePanel/Scroll/Content"]
+layout_mode = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+text = "设为计划行军目标"
+
+[node name="EnterCityButton" type="Button" parent="UI/Root/SidePanel/Scroll/Content"]
+layout_mode = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+text = "进入内城"
+
+[node name="ViewTaskButton" type="Button" parent="UI/Root/SidePanel/Scroll/Content"]
+layout_mode = 2
+focus_mode = 0
+mouse_default_cursor_shape = 2
+text = "查看关联任务"

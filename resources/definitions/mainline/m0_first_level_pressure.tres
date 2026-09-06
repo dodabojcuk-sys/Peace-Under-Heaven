@@ -1,0 +1,18 @@
+[gd_resource type="Resource" script_class="MainlinePressureProfile" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/content/mainline_pressure_profile.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+profile_id = &"mainline.blackstone.m0"
+level_id = &"first_map.main_assault.v0"
+deadline_day = 7
+stage_overdue_days = Array[int]([0, 1, 3, 5, 7])
+construction_modifier_permille = Array[int]([1000, 900, 700, 450, 150])
+production_modifier_permille = Array[int]([1000, 900, 750, 500, 150])
+essential_floor_permille = 250
+default_security = 50
+maximum_security_mitigation_permille = 600
+wood_loss_by_stage = Array[int]([0, 2, 4, 7, 10])
+food_loss_by_stage = Array[int]([0, 1, 3, 5, 8])
+defense_damage_by_stage = Array[int]([0, 0, 0, 1, 2])

@@ -1,0 +1,26 @@
+[gd_resource type="Resource" script_class="BuildingDefinition" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/content/building_definition.gd" id="1_definition"]
+[ext_resource type="Script" path="res://scripts/content/building_capability.gd" id="2_capability"]
+
+[sub_resource type="Resource" id="BuildingCapability_production"]
+script = ExtResource("2_capability")
+capability_type = &"production"
+resource_id = &"food"
+amount = 22
+
+[resource]
+script = ExtResource("1_definition")
+definition_id = &"building.farm.t1"
+display_name = "农田"
+building_type = "生产建筑"
+description = "接入城主府道路网络后，从下一日开始生产粮食"
+level = 1
+build_days = 1
+footprint = Vector2i(2, 2)
+road_anchor_offsets = Array[Vector2i]([Vector2i(-1, 0), Vector2i(-1, 1), Vector2i(2, 0), Vector2i(2, 1), Vector2i(0, -1), Vector2i(1, -1), Vector2i(0, 2), Vector2i(1, 2)])
+requires_road = true
+wood_cost = 45
+capabilities = Array[ExtResource("2_capability")]([SubResource("BuildingCapability_production")])
+body_color = Color(0.52, 0.58, 0.32, 1)
+outline_color = Color(0.27, 0.32, 0.15, 1)

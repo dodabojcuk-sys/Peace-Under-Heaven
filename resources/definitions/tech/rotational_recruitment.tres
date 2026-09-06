@@ -1,0 +1,13 @@
+[gd_resource type="Resource" script_class="TechNode" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/content/tech_node.gd" id="1_tech"]
+
+[resource]
+script = ExtResource("1_tech")
+tech_id = &"tech.rotational_recruitment"
+display_name = "轮训征募"
+branch_id = &"military"
+cost = 3
+prerequisite_ids = Array[StringName]([&"tech.formation_drill"])
+effect_type = &"training_batch"
+effect_amount = 7.0
