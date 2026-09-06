@@ -43,6 +43,12 @@ cold-recovery engineering claim, not a player acceptance claim.
 - `tests/run_war_loop_disk_recovery_smoke.gd`: 3 assertions passed; its A/B/C
   processes persisted tick 1, restored and advanced exactly one tick, then
   restored tick 2 from the same isolated V5 directory.
+- `tests/run_war_loop_formal_scene_smoke.gd`: 10 assertions passed through the
+  formal city entry, including outer-city ticking, CLOSED reissue, and frame
+  split/pause/speed equivalence.
+- `tests/run_war_loop_arrival_persistence_smoke.gd`: 3 assertions passed;
+  separate processes immediately loaded Redcliff siege creation, first-city
+  completion/Silverford surrender, then the completed two-city state.
 - `tests/run_macro_march_r0_smoke.gd`: 14 assertions passed.
 - `tests/run_macro_march_r0_persistence_smoke.gd`: passed.
 - `tests/run_v5_campaign_persistence_smoke.gd`: passed.

@@ -16,6 +16,17 @@
 
 ### WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate
 
+- Kept the authoritative controller clock running while the outer-city view is
+  open, excluded CLOSED historical armies from commandable-march lookup, and
+  retained completed stationed orders in macro history.
+- Replaced per-frame integer rounding with carried sub-millisecond input at
+  both controller and macro-view time boundaries; pause discards elapsed input
+  and speed applies exactly once.
+- Made enemy arrival retain its synchronous checkpoint obligation after siege
+  or surrender replaces the movement result, with V5 final-reread recovery.
+- Added formal-entry/frame-rate/closed-army focused coverage (10 assertions)
+  and A/B/C immediate-arrival persistence coverage (3 assertions).
+
 - Corrected the reported timing, formation writeback, one-soldier retreat,
   simultaneous annihilation, failed-siege gate persistence, and malformed
   nested war-snapshot boundaries. Retreat now creates a new return order while

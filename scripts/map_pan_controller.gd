@@ -46,7 +46,6 @@ var world_map_open := false
 var macro_march_open := false
 var _city_camera_position := Vector2.ZERO
 var _city_camera_zoom := Vector2.ONE
-var _construction_process_mode := Node.PROCESS_MODE_INHERIT
 var _runtime_persistence: Node
 
 
@@ -583,8 +582,9 @@ func open_macro_march_r0() -> bool:
 	building_selection_controller.clear_selection()
 	_city_camera_position = camera.position
 	_city_camera_zoom = camera.zoom
-	_construction_process_mode = construction_controller.process_mode
-	construction_controller.process_mode = Node.PROCESS_MODE_DISABLED
+	# The outer-city view hides city interaction but must never stop the
+	# controller's single authoritative world clock.  Construction input has
+	# already been cancelled above and the city shell is hidden below.
 	city_map_world.visible = false
 	city_ui_shell.visible = false
 	macro_march_open = true
@@ -600,7 +600,6 @@ func return_from_macro_march_r0() -> bool:
 	macro_march_open = false
 	city_map_world.visible = true
 	city_ui_shell.visible = true
-	construction_controller.process_mode = _construction_process_mode
 	camera.zoom = _city_camera_zoom
 	camera.position = _city_camera_position
 	_clamp_camera()

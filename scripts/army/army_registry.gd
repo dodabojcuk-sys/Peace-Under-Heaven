@@ -654,7 +654,9 @@ func issue_stationed_macro_march(
 		order_id, source_point_id, target_point_id, route_id, route_world_points,
 		Array(prior_macro.formation_snapshots), food_cost, duration_milliseconds
 	)
-	army.macro_order_history = Array(army.get("macro_order_history", [])).duplicate(true)
+	var macro_history: Array = Array(army.get("macro_order_history", [])).duplicate(true)
+	macro_history.append(prior_macro.duplicate(true))
+	army.macro_order_history = macro_history
 	_armies_by_id[army_id] = army
 	return army.duplicate(true)
 

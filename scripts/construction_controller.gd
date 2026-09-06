@@ -484,6 +484,10 @@ var _expedition_attempt: Dictionary = {}
 var _expedition_commit_in_progress := false
 var _expedition_commit_blocked := false
 var _war_loop_state: WarLoopState = WAR_LOOP_STATE.new()
+var _war_loop_frame_remainder_milliseconds := 0.0
+var _macro_march_frame_remainder_milliseconds := 0.0
+var _macro_march_frame_remainder_army_id := &""
+var _macro_march_frame_remainder_order_id := &""
 
 
 func _ready() -> void:
@@ -869,7 +873,7 @@ func _commit_national_resource_targets(
 
 func _process(delta: float) -> void:
 	advance_city_time(delta * city_time_speed)
-	advance_war_loop_time(roundi(delta * 1000.0))
+	advance_war_loop_time_seconds(delta)
 	_refresh_constructing_building_visuals()
 
 
@@ -5307,7 +5311,10 @@ func get_macro_march_read_model() -> Dictionary:
 
 func get_macro_march_army() -> Dictionary:
 	for army in _army_registry.get_armies():
-		if not Dictionary(army.get("macro_march", {})).is_empty():
+		if (
+			not Dictionary(army.get("macro_march", {})).is_empty()
+			and StringName(army.get("phase", &"")) != ArmyRegistry.PHASE_CLOSED
+		):
 			return army.duplicate(true)
 	return {}
 
@@ -5347,6 +5354,7 @@ func _start_macro_siege(army: Dictionary) -> Dictionary:
 	if started.is_empty():
 		_war_loop_state.restore_snapshot(war_before)
 		return _macro_failure(&"SIEGE_ARMY_START_FAILED", "攻城军队状态未能提交")
+	_war_loop_frame_remainder_milliseconds = 0.0
 	if StringName(siege.phase) == WarLoopState.PHASE_OCCUPIED:
 		return _finalize_macro_occupation(siege)
 	return {"success": not started.is_empty(), "army": started.duplicate(true), "siege": siege.duplicate(true)}
@@ -5493,14 +5501,53 @@ func advance_macro_march_time(
 	expected_progress_milliseconds: int,
 	delta_milliseconds: int
 ) -> Dictionary:
+	return _advance_macro_march_elapsed_milliseconds(
+		army_id, order_id, expected_progress_milliseconds,
+		float(delta_milliseconds) * city_time_speed
+	)
+
+
+func advance_macro_march_time_seconds(
+	army_id: StringName,
+	order_id: StringName,
+	expected_progress_milliseconds: int,
+	delta_seconds: float
+) -> Dictionary:
+	return _advance_macro_march_elapsed_milliseconds(
+		army_id, order_id, expected_progress_milliseconds,
+		delta_seconds * 1000.0 * city_time_speed
+	)
+
+
+func _advance_macro_march_elapsed_milliseconds(
+	army_id: StringName,
+	order_id: StringName,
+	expected_progress_milliseconds: int,
+	elapsed_milliseconds: float
+) -> Dictionary:
 	if city_time_paused:
 		return {}
-	var registry_before := _army_registry.get_snapshot()
-	var scaled_delta := maxi(1, roundi(float(delta_milliseconds) * city_time_speed))
-	var result := _army_registry.advance_macro_march(
-		army_id, order_id, expected_progress_milliseconds, scaled_delta
+	if (
+		army_id != _macro_march_frame_remainder_army_id
+		or order_id != _macro_march_frame_remainder_order_id
+	):
+		_macro_march_frame_remainder_milliseconds = 0.0
+		_macro_march_frame_remainder_army_id = army_id
+		_macro_march_frame_remainder_order_id = order_id
+	var pending_milliseconds := _macro_march_frame_remainder_milliseconds + elapsed_milliseconds
+	var whole_milliseconds := floori(pending_milliseconds + 0.000001)
+	_macro_march_frame_remainder_milliseconds = maxf(
+		pending_milliseconds - float(whole_milliseconds), 0.0
 	)
-	if not result.is_empty() and bool(result.get("arrived", false)):
+	if whole_milliseconds <= 0:
+		return {}
+	var registry_before := _army_registry.get_snapshot()
+	var war_before := _war_loop_state.get_snapshot()
+	var result := _army_registry.advance_macro_march(
+		army_id, order_id, expected_progress_milliseconds, whole_milliseconds
+	)
+	var arrival_committed := not result.is_empty() and bool(result.get("arrived", false))
+	if arrival_committed:
 		var arrived_army: Dictionary = result.army
 		var target_id := StringName(Dictionary(arrived_army.macro_march).target_point_id)
 		if _war_loop_state.is_enemy_city(target_id):
@@ -5512,20 +5559,43 @@ func advance_macro_march_time(
 	if not result.is_empty():
 		_refresh_city_ui()
 		city_state_changed.emit()
-		if bool(result.get("arrived", false)) and not bool(_persist_macro_march_checkpoint().get("success", false)):
+		# Siege setup or immediate surrender returns a richer result than the
+		# marching operation, so preserve the arrival commit fact separately.
+		if arrival_committed and not bool(_persist_macro_march_checkpoint().get("success", false)):
 			_rollback_macro_march_registry(registry_before)
+			_war_loop_state.restore_snapshot(war_before)
 			return _macro_failure(&"SAVE_FAILED", "抵达状态存档失败，军令已回滚")
+		if arrival_committed:
+			_macro_march_frame_remainder_milliseconds = 0.0
 	return result.duplicate(true)
 
 
 func advance_war_loop_time(delta_milliseconds: int) -> Dictionary:
-	if city_time_paused or delta_milliseconds <= 0 or _war_loop_state.active_siege.is_empty():
+	return _advance_war_loop_elapsed_milliseconds(
+		float(delta_milliseconds) * city_time_speed
+	)
+
+
+func advance_war_loop_time_seconds(delta_seconds: float) -> Dictionary:
+	return _advance_war_loop_elapsed_milliseconds(
+		delta_seconds * 1000.0 * city_time_speed
+	)
+
+
+func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dictionary:
+	if city_time_paused or elapsed_milliseconds <= 0.0 or _war_loop_state.active_siege.is_empty():
+		return {}
+	var pending_milliseconds := _war_loop_frame_remainder_milliseconds + elapsed_milliseconds
+	var whole_milliseconds := floori(pending_milliseconds + 0.000001)
+	_war_loop_frame_remainder_milliseconds = maxf(
+		pending_milliseconds - float(whole_milliseconds), 0.0
+	)
+	if whole_milliseconds <= 0:
 		return {}
 	var registry_before := _army_registry.get_snapshot()
 	var war_before := _war_loop_state.get_snapshot()
-	var scaled_milliseconds := roundi(float(delta_milliseconds) * city_time_speed)
 	var active: Dictionary = _war_loop_state.active_siege
-	var accumulated := int(active.get("elapsed_remainder_milliseconds", 0)) + scaled_milliseconds
+	var accumulated := int(active.get("elapsed_remainder_milliseconds", 0)) + whole_milliseconds
 	var ticks := accumulated / WAR_LOOP_RULES.combat_tick_milliseconds
 	_war_loop_state.active_siege.elapsed_remainder_milliseconds = accumulated % WAR_LOOP_RULES.combat_tick_milliseconds
 	if ticks <= 0:

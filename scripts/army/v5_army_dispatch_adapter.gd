@@ -145,6 +145,21 @@ func advance_macro_march_time(
 	)
 
 
+func advance_macro_march_time_seconds(
+	army_id: StringName,
+	order_id: StringName,
+	expected_progress_milliseconds: int,
+	delta_seconds: float
+) -> Dictionary:
+	var city := _get_city()
+	return (
+		city.advance_macro_march_time_seconds(
+			army_id, order_id, expected_progress_milliseconds, delta_seconds
+		)
+		if city != null else {}
+	)
+
+
 func advance_war_loop_time(delta_milliseconds: int) -> Dictionary:
 	var city := _get_city()
 	return city.advance_war_loop_time(delta_milliseconds) if city != null else {}

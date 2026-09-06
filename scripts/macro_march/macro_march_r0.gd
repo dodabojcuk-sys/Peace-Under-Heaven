@@ -76,9 +76,9 @@ func _process(delta: float) -> void:
 		_status_label.text = "支路中断：部队已在可达位置临时驻扎，原军令保持锁定。"
 		refresh()
 		return
-	_dispatch_adapter.advance_macro_march_time(
+	_dispatch_adapter.advance_macro_march_time_seconds(
 		StringName(army.army_id), StringName(macro.order_id),
-		int(macro.progress_millis), roundi(delta * 1000.0)
+		int(macro.progress_millis), delta
 	)
 	refresh()
 

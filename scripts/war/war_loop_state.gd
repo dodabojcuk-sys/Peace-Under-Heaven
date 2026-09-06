@@ -368,5 +368,7 @@ static func _is_positive_int(value) -> bool:
 	return typeof(value) == TYPE_INT and int(value) > 0
 
 
+
+
 static func _alive_members(total_hp: int, hp_per_member: int) -> int:
 	return ceili(float(maxi(total_hp, 0)) / float(maxi(hp_per_member, 1)))

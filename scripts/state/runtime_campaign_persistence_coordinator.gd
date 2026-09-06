@@ -171,7 +171,24 @@ func persist_macro_march_checkpoint() -> Dictionary:
 			"uncertain": false,
 			"headless_test_store_disabled": true,
 		}
-	return {"success": flush_now(&"macro_march_checkpoint"), "uncertain": false}
+	if flush_now(&"macro_march_checkpoint"):
+		return {"success": true, "uncertain": false}
+	# V5 save publication may have reached disk before the store's final reread
+	# failed. Reuse the existing latest-generation validation path so callers do
+	# not roll back a durable enemy-city arrival and later create a duplicate
+	# siege/order on restart.
+	if (
+		_store != null
+		and _controller != null
+		and StringName(_status.get("error_id", &"")) == &"FINAL_REREAD_FAILED"
+	):
+		var expected: Dictionary = _controller.export_v5_campaign_snapshot()
+		var loaded := _store.load_latest(
+			Callable(_controller, "validate_v5_campaign_snapshot")
+		)
+		if bool(loaded.get("success", false)) and Dictionary(loaded.get("snapshot", {})) == expected:
+			return {"success": true, "uncertain": false, "recovered_after_final_reread": true}
+	return {"success": false, "uncertain": false}
 
 
 func _persist_expedition_checkpoint(

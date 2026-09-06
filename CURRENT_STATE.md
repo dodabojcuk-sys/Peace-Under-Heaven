@@ -1,5 +1,32 @@
 # 当前状态
 
+## WAR_LOOP_BATCH_R1 formal-scene wiring checkpoint (2026-09-07)
+
+The `a5e7cc1` candidate had four confirmed formal-wiring defects despite the
+existing domain smokes: opening the outer-city view disabled the controller
+clock; a CLOSED macro army was mistaken for the current army; per-frame
+millisecond rounding varied siege outcomes; and enemy-city arrival lost its
+arrival flag after being replaced by a siege/surrender result, skipping the
+mandatory synchronous checkpoint.
+
+The outer-city view now hides/cancels city interaction without disabling the
+authoritative controller. Controller and macro-view frame deltas retain a
+sub-millisecond carry until whole logical milliseconds are available; pause
+does not bank time and speed is applied once. CLOSED armies remain historical
+records but are excluded from the commandable read model. Stationed follow-up
+orders also archive their completed predecessor. Enemy arrival preserves a
+separate commit fact so siege creation or immediate occupation is published
+before the method returns; a final-read failure reuses V5 latest-generation
+validation before deciding it was not durable.
+
+New focused evidence: `run_war_loop_formal_scene_smoke.gd` passes 10 assertions
+for the real formal entry, outer-city ticking, return/pause behavior, seven
+losses to CLOSED then reissue, and 30/60/irregular frame equivalence. The new
+three-process `run_war_loop_arrival_persistence_smoke.gd` passes 3 assertions
+for immediate Redcliff siege, first-city completion/Silverford surrender, and
+new-process double-city restore. This remains engineering and headless formal
+scene evidence, not real system-input media or Founder acceptance.
+
 ## WAR_LOOP_BATCH_R1 deterministic/double-city/disk checkpoint (2026-09-07)
 
 Local candidate `f3249dc` now has a follow-up working checkpoint (not yet a

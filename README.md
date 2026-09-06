@@ -92,6 +92,8 @@ War Loop R1 focused validation (local engineering candidate only):
 ```text
 tests/run_war_loop_r1_smoke.gd
 tests/run_war_loop_disk_recovery_smoke.gd
+tests/run_war_loop_formal_scene_smoke.gd
+tests/run_war_loop_arrival_persistence_smoke.gd
 ```
 
 The first runner covers deterministic combat timing, formation-preserving
@@ -99,6 +101,12 @@ casualties, immutable retreat orders, two required cities, and malformed war
 snapshot rejection. The second starts three isolated Godot processes against
 one explicit V5 save directory and proves active-siege tick/gate recovery.
 Neither runner is real mouse-input media or player acceptance.
+
+The formal-scene runner keeps the real `blank_map` entry open while siege time
+advances, covers closed-army reissue, and compares 30/60/irregular engine-frame
+splits. The arrival runner verifies Redcliff siege creation, first-city
+occupation, and Silverford immediate surrender from separate processes without
+an extra manual flush.
 
 已验收基线为 focused `6/6 · 185`、tracked `33/33 · 1739`、
 all-present `35/35 · 1871 assertions / 1905 PASS`。测试通过不自动推进
