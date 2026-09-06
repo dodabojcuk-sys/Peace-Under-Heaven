@@ -39,6 +39,9 @@ claim, not a player acceptance claim.
 - `tests/run_war_loop_r1_smoke.gd`: 9 assertions passed.
 - `tests/run_macro_march_r0_smoke.gd`: 14 assertions passed.
 - `tests/run_macro_march_r0_persistence_smoke.gd`: passed.
+- `tests/run_v5_campaign_persistence_smoke.gd`: passed.
+- `tests/run_r1e_expedition_causality_smoke.gd`: 50 assertions passed.
+- `tests/run_m1b_playable_shell_smoke.gd`: 44 assertions passed.
 - `git diff --check`: passed.
 
 ## Evidence boundary
@@ -47,3 +50,18 @@ The focused scripts verify authority, deterministic state transitions, and
 cold restore. They do not demonstrate normal mouse-drawn play, a continuous
 player recording, Founder review, Founder acceptance, or a released siege
 victory. `REAL_INPUT_MEDIA=NOT_PROVIDED` for this candidate.
+
+The candidate may be parsed/run from the isolated worktree with:
+
+```sh
+GODOT_BIN="/Users/m4-zhi/Documents/codex-tools/godot/4.5.1-stable-standard/Godot.app/Contents/MacOS/Godot"
+"$GODOT_BIN" --path /Users/m4-zhi/Documents/codex-workspace/txwzs-war-loop-r1
+```
+
+The production game has no command-line user-data override. Do not use an
+existing player save for review; the focused persistence runners create their
+own `user://macro_march_r0_<pid>` or runner-specific temporary directories.
+The only available desktop Godot window belonged to another branch, and the
+new candidate window overlapped it without a safe per-window input target.
+No input was sent to either window, and no startup capture is represented as
+player-operation evidence.
