@@ -869,6 +869,7 @@ func _commit_national_resource_targets(
 
 func _process(delta: float) -> void:
 	advance_city_time(delta * city_time_speed)
+	advance_war_loop_time(roundi(delta * 1000.0))
 	_refresh_constructing_building_visuals()
 
 
@@ -5516,15 +5517,22 @@ func advance_war_loop_time(delta_milliseconds: int) -> Dictionary:
 		return {}
 	var registry_before := _army_registry.get_snapshot()
 	var war_before := _war_loop_state.get_snapshot()
-	var ticks := maxi(1, roundi(float(delta_milliseconds) * city_time_speed) / WAR_LOOP_RULES.combat_tick_milliseconds)
+	var scaled_milliseconds := roundi(float(delta_milliseconds) * city_time_speed)
+	var active: Dictionary = _war_loop_state.active_siege
+	var accumulated := int(active.get("elapsed_remainder_milliseconds", 0)) + scaled_milliseconds
+	var ticks := accumulated / WAR_LOOP_RULES.combat_tick_milliseconds
+	_war_loop_state.active_siege.elapsed_remainder_milliseconds = accumulated % WAR_LOOP_RULES.combat_tick_milliseconds
+	if ticks <= 0:
+		return {}
 	var result: Dictionary = {}
 	for _index in range(ticks):
 		result = _war_loop_state.advance_siege(WAR_LOOP_RULES)
 		if result.is_empty():
 			break
+		var surviving_count := ceili(float(maxi(int(result.attacker_total_hp), 0)) / float(maxi(int(result.attacker_hp_per_member), 1)))
 		var army := _army_registry.replace_macro_composition(
 			StringName(result.army_id), StringName(result.order_id),
-			maxi(1, ceili(float(int(result.attacker_total_hp)) / float(maxi(int(result.attacker_hp_per_member), 1))))
+			surviving_count
 		)
 		if army.is_empty():
 			_war_loop_state.restore_snapshot(war_before)
@@ -5552,10 +5560,14 @@ func request_macro_siege_retreat() -> Dictionary:
 	var failed := _war_loop_state.mark_retreat(WAR_LOOP_RULES)
 	if failed.is_empty():
 		return _macro_failure(&"RETREAT_UNAVAILABLE", "当前没有可撤逃的攻城军令")
+	var surviving_count := ceili(float(maxi(int(failed.attacker_total_hp), 0)) / float(maxi(int(failed.attacker_hp_per_member), 1)))
 	var army := _army_registry.replace_macro_composition(
 		StringName(failed.army_id), StringName(failed.order_id),
-		maxi(1, ceili(float(int(failed.attacker_total_hp)) / float(maxi(int(failed.attacker_hp_per_member), 1))))
+		surviving_count
 	)
+	if surviving_count <= 0:
+		_war_loop_state.close_failed_siege(StringName("%s.retreat_lost" % String(failed.siege_id)))
+		return {"success": true, "army": {}, "siege": failed.duplicate(true)}
 	var retreating := _army_registry.begin_macro_retreat(StringName(failed.army_id), StringName(failed.order_id))
 	var resolution_id := StringName("%s.retreat" % String(failed.siege_id))
 	_war_loop_state.close_failed_siege(resolution_id)

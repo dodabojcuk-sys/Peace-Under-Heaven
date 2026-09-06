@@ -62,7 +62,6 @@ func _process(delta: float) -> void:
 	if army.is_empty():
 		return
 	if StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING:
-		_dispatch_adapter.advance_war_loop_time(roundi(delta * 1000.0))
 		refresh()
 		return
 	if StringName(army.phase) not in [ARMY_REGISTRY.PHASE_MARCHING, ARMY_REGISTRY.PHASE_RETREATING]:

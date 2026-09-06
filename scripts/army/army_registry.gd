@@ -709,17 +709,24 @@ func replace_macro_composition(army_id: StringName, order_id: StringName, surviv
 	var units: Dictionary = army.units_by_definition_id
 	if units.size() != 1:
 		return {}
+	var current_total := 0
+	for formation_value in Array(macro.formation_snapshots):
+		current_total += int(Dictionary(formation_value).member_count)
+	if surviving_count > current_total:
+		return {}
 	var definition_id = units.keys()[0]
 	units[definition_id] = surviving_count
 	army.units_by_definition_id = units
 	var formations: Array = macro.formation_snapshots
-	var remaining := surviving_count
-	for index in range(formations.size()):
+	var losses_remaining := current_total - surviving_count
+	# Deterministic rear-first attrition preserves every formation identity and
+	# never reallocates survivors into an earlier formation.
+	for index in range(formations.size() - 1, -1, -1):
 		var formation: Dictionary = formations[index]
-		var amount := mini(remaining, int(formation.max_members))
-		formation.member_count = amount
+		var loss := mini(losses_remaining, int(formation.member_count))
+		formation.member_count = int(formation.member_count) - loss
 		formations[index] = formation
-		remaining -= amount
+		losses_remaining -= loss
 	macro.formation_snapshots = formations
 	army.macro_march = macro
 	_armies_by_id[army_id] = army

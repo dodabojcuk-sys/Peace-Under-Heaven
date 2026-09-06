@@ -107,6 +107,7 @@ func begin_siege(
 		"gate_breached": int(city.gate_hp) <= 0,
 		"surrender_checked_at_arrival": true,
 		"surrender_checked_after_breach": false,
+		"elapsed_remainder_milliseconds": 0,
 	}
 	return active_siege.duplicate(true)
 
@@ -134,11 +135,11 @@ func advance_siege(rules: WarLoopRules) -> Dictionary:
 		var defender_damage := maxi(1, defender_members * int(active_siege.defender_attack_per_member) * rules.defender_damage_basis_points / 10000)
 		var attacker_mitigated := maxi(1, defender_damage - int(active_siege.attacker_armor_per_member))
 		active_siege.attacker_total_hp = maxi(int(active_siege.attacker_total_hp) - attacker_mitigated, 0)
-	if int(active_siege.defender_total_hp) == 0:
-		active_siege.phase = PHASE_OCCUPIED
-		active_siege.resolution = RESOLUTION_COMBAT
-	elif int(active_siege.attacker_total_hp) == 0:
+	if int(active_siege.attacker_total_hp) <= 0:
 		active_siege.phase = PHASE_FAILED
+		active_siege.resolution = RESOLUTION_COMBAT
+	elif int(active_siege.defender_total_hp) == 0:
+		active_siege.phase = PHASE_OCCUPIED
 		active_siege.resolution = RESOLUTION_COMBAT
 	return active_siege.duplicate(true)
 
@@ -146,13 +147,16 @@ func advance_siege(rules: WarLoopRules) -> Dictionary:
 func mark_retreat(rules: WarLoopRules) -> Dictionary:
 	if active_siege.is_empty() or StringName(active_siege.phase) != PHASE_SIEGING or rules == null:
 		return {}
-	var retreat_loss := maxi(
-		rules.retreat_minimum_loss,
-		ceili(float(int(active_siege.attacker_initial_count)) * float(rules.retreat_loss_basis_points) / 10000.0)
+	var alive_before_retreat := _alive_members(
+		int(active_siege.attacker_total_hp), int(active_siege.attacker_hp_per_member)
 	)
+	var retreat_loss := mini(alive_before_retreat, maxi(
+		rules.retreat_minimum_loss,
+		ceili(float(alive_before_retreat) * float(rules.retreat_loss_basis_points) / 10000.0)
+	))
 	active_siege.attacker_total_hp = maxi(
 		int(active_siege.attacker_total_hp) - retreat_loss * int(active_siege.attacker_hp_per_member),
-		int(active_siege.attacker_hp_per_member)
+		0
 	)
 	active_siege.phase = PHASE_FAILED
 	active_siege.resolution = RESOLUTION_RETREAT
@@ -185,6 +189,15 @@ func close_failed_siege(resolution_id: StringName) -> Dictionary:
 		return {}
 	if completed_resolution_ids.has(resolution_id):
 		return {}
+	var city_id := StringName(active_siege.city_id)
+	var city := get_city(city_id)
+	if city.is_empty():
+		return {}
+	city.gate_hp = int(active_siege.gate_hp)
+	city.defender_count = _alive_members(
+		int(active_siege.defender_total_hp), int(active_siege.defender_hp_per_member)
+	)
+	cities_by_id[city_id] = city
 	completed_resolution_ids[resolution_id] = true
 	var result := active_siege.duplicate(true)
 	active_siege = {}
