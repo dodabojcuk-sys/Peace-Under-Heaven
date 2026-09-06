@@ -1,27 +1,23 @@
 # Product Successor Decisions
 
-## R1E macro command contract (reviewed, not implemented)
+## Macro March R0 outer-city greybox
 
-- Ordinary armies are commanded as source-to-legal-target mission tasks over
-  drawn continuous routes. A draft may be cancelled; after issue, ordinary
-  orders may not be arbitrarily retargeted, rerouted, or withdrawn. Emergency
-  escape is a separately designed loss-bearing action, not a free cancellation.
-- A blocked route normally creates a nearby temporary station while engineers
-  restore connectivity. This exceptional station does not make arbitrary
-  wilderness points ordinary player-selected destinations.
-- Preserve formation data for force, equipment, generals, and casualties, but
-  do not preserve a formation-micro-management UI merely because the data
-  exists. Snipers, engineers, and comparable specialist units remain a separate
-  future control boundary.
-- Generals share one energy pool and strategists share another. Skill use is
-  constrained by both energy and an as-yet-unspecified usage count; energy
-  restoration and medicine do not imply restoring usage counts.
-- `匿迹奔袭` is a one-use off-road permission for one point-to-point army task.
-  It is neither timed expiry, automatic teleportation, permanent off-road
-  freedom, nor universal stealth. Interruption, temporary station, escape, and
-  count-consumption details remain explicitly unresolved.
-- These are product rules and next-slice constraints only. They do not alter
-  current V6 attempt data, save schema, C0 combat orders, or settlement owners.
+- `ArmyRegistry` owns one issued macro order and preserves the existing stable
+  `army_id`; the macro screen owns only draft pointers, selected controls, and
+  rendering. A stationed army receives a new `order_id` for its next leg but
+  keeps its army identity and exact carried formations.
+- `GarrisonState.try_extract_selected_formations()` is the only R0 city
+  departure mutation. Aggregate `try_remove_units()` and `set_unit_count()`
+  remain compatibility paths and must not be used for selected formation
+  marching or rollback.
+- A road draw resolves to one configured polyline before confirmation. The
+  stored path is world-coordinate `Vector2i` data, and the controller validates
+  it again before it charges food or creates an army.
+- `BLOCKED` remains the same durable order at the preceding reachable segment;
+  recovery resumes the same route and fee. `STATIONED` is not an active-army
+  phase, permitting the same army to issue one later garrison-to-garrison leg.
+- The legacy Blackstone MVP scene remains retained for historical reference but
+  is no longer the formal city entry and may not mutate macro army state.
 
 ## M1B standalone playable shell
 

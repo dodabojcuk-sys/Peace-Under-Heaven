@@ -80,6 +80,11 @@ const ARMY_REGISTRY = preload(
 const V5_ARMY_DISPATCH_ADAPTER = preload(
 	"res://scripts/army/v5_army_dispatch_adapter.gd"
 )
+const MACRO_MARCH_THEATER = preload(
+	"res://scripts/macro_march/macro_march_theater.gd"
+)
+const WAR_LOOP_STATE = preload("res://scripts/war/war_loop_state.gd")
+const WAR_LOOP_RULES: WarLoopRules = preload("res://resources/war/war_loop_r1_rules.tres")
 const V5_CAMPAIGN_SNAPSHOT = preload(
 	"res://scripts/state/v5_campaign_snapshot.gd"
 )
@@ -424,6 +429,7 @@ var enemy_fortification := 0
 var last_daily_report := "尚未结算"
 var city_time_paused := false
 var city_time_speed := 1.0
+var _macro_march_blocked_route_ids: Dictionary = {}
 var day_elapsed_seconds := 0.0
 var first_war_state := FirstWarState.PREPARATION
 var first_war_warning_count := 0
@@ -477,9 +483,11 @@ var _next_battle_transaction_sequence := 1
 var _expedition_attempt: Dictionary = {}
 var _expedition_commit_in_progress := false
 var _expedition_commit_blocked := false
+var _war_loop_state: WarLoopState = WAR_LOOP_STATE.new()
 
 
 func _ready() -> void:
+	_ensure_war_loop_initialized()
 	_register_definition(ROAD_DEFINITION)
 	_register_definition(LOGGING_CAMP_DEFINITION)
 	_register_definition(FARM_DEFINITION)
@@ -861,6 +869,7 @@ func _commit_national_resource_targets(
 
 func _process(delta: float) -> void:
 	advance_city_time(delta * city_time_speed)
+	advance_war_loop_time(roundi(delta * 1000.0))
 	_refresh_constructing_building_visuals()
 
 
@@ -3877,6 +3886,7 @@ func export_v5_campaign_snapshot() -> Dictionary:
 		"mainline_level": _current_mainline_level.get_snapshot(),
 		"build_slot": get_build_slot_snapshot(),
 		"expedition_attempt": _expedition_attempt.duplicate(true),
+		"war_loop": _war_loop_state.get_snapshot(),
 	}
 	var validation := validate_v5_campaign_snapshot(snapshot)
 	return (
@@ -3940,6 +3950,22 @@ func validate_v5_campaign_snapshot(
 	if not bool(structural.valid):
 		return structural
 	var candidate: Dictionary = structural.snapshot
+	var war_probe: WarLoopState = WAR_LOOP_STATE.new()
+	if not war_probe.restore_snapshot(candidate.war_loop):
+		return {
+			"valid": false,
+			"error_id": &"INVALID_WAR_LOOP",
+			"error": "WarLoop 快照无法恢复",
+		}
+	if not war_probe.active_siege.is_empty():
+		var siege: Dictionary = war_probe.active_siege
+		var siege_army: Dictionary = Dictionary(candidate.army_registry.armies_by_id).get(StringName(siege.get("army_id", &"")), {})
+		if siege_army.is_empty() or StringName(siege_army.get("phase", &"")) != ArmyRegistry.PHASE_SIEGING or StringName(Dictionary(siege_army.get("macro_march", {})).get("order_id", &"")) != StringName(siege.get("order_id", &"")):
+			return {
+				"valid": false,
+				"error_id": &"WAR_LOOP_ARMY_MISMATCH",
+				"error": "攻城事务与军队快照不一致",
+			}
 	var sequence_validation := _validate_battle_sequence_high_water(candidate)
 	if not bool(sequence_validation.get("valid", false)):
 		return sequence_validation
@@ -4440,6 +4466,12 @@ func _apply_validated_v5_campaign_snapshot(
 			"success": false,
 			"error_id": &"ARMY_APPLY_FAILED",
 			"error": "ArmyRegistry 恢复失败",
+		}
+	if not _war_loop_state.restore_snapshot(snapshot.war_loop):
+		return {
+			"success": false,
+			"error_id": &"WAR_LOOP_APPLY_FAILED",
+			"error": "WarLoop 状态恢复失败",
 		}
 	var ledger: Dictionary = snapshot.settlement_ledger
 	_committed_battle_result_ids = Dictionary(
@@ -5244,6 +5276,441 @@ func get_v5_army_dispatch_adapter() -> V5ArmyDispatchAdapter:
 		_army_dispatch_adapter = V5_ARMY_DISPATCH_ADAPTER.new()
 		_army_dispatch_adapter.configure(self)
 	return _army_dispatch_adapter
+
+
+func get_macro_march_read_model() -> Dictionary:
+	_ensure_war_loop_initialized()
+	var macro_army := get_macro_march_army()
+	return {
+		"army": macro_army,
+		"formations": _garrison_state.get_formations(),
+		"food": food,
+		"maintenance_units_per_food": INFANTRY_ROLE.maintenance_units_per_food,
+		"paused": city_time_paused,
+		"speed": city_time_speed,
+		"blocked_route_ids": _macro_march_blocked_route_ids.duplicate(),
+		"source_point_id": (
+			StringName(macro_army.target_node_id)
+			if not macro_army.is_empty()
+			and StringName(macro_army.phase) == ArmyRegistry.PHASE_STATIONED
+			else &"blackstone_city"
+		),
+		"can_issue_from_city": (
+			macro_army.is_empty()
+			and _active_battle_reservation.is_empty()
+			and not _army_registry.has_active_army()
+		),
+		"war_loop": _war_loop_state.get_snapshot(),
+		"level_cleared": _war_loop_state.is_level_cleared(),
+	}
+
+
+func get_macro_march_army() -> Dictionary:
+	for army in _army_registry.get_armies():
+		if not Dictionary(army.get("macro_march", {})).is_empty():
+			return army.duplicate(true)
+	return {}
+
+
+func get_macro_march_food_cost(total_count: int) -> int:
+	return get_first_war_food_cost(total_count)
+
+
+func _ensure_war_loop_initialized() -> void:
+	_war_loop_state.initialize_from_theater(MACRO_MARCH_THEATER.get_points())
+
+
+func _macro_attacker_count(army: Dictionary) -> int:
+	var total := 0
+	for count in Dictionary(army.get("units_by_definition_id", {})).values():
+		total += int(count)
+	return total
+
+
+func _start_macro_siege(army: Dictionary) -> Dictionary:
+	var war_before := _war_loop_state.get_snapshot()
+	var macro: Dictionary = army.get("macro_march", {})
+	var city_id := StringName(macro.get("target_point_id", &""))
+	if not _war_loop_state.can_issue_attack(city_id):
+		return _macro_failure(&"ATTACK_UNAVAILABLE", "目标不再是可进攻的敌城")
+	var attack := roundi(float(INFANTRY_ROLE.attack) * get_infantry_attack_multiplier())
+	var siege := _war_loop_state.begin_siege(
+		StringName(army.army_id), StringName(macro.order_id), city_id,
+		_macro_attacker_count(army), INFANTRY_ROLE.hp, attack, INFANTRY_ROLE.armor,
+		roundi(get_infantry_attack_multiplier() * 10000.0), WAR_LOOP_RULES
+	)
+	if siege.is_empty():
+		return _macro_failure(&"SIEGE_START_FAILED", "无法建立攻城事务")
+	var started := _army_registry.begin_macro_siege(
+		StringName(army.army_id), StringName(macro.order_id)
+	)
+	if started.is_empty():
+		_war_loop_state.restore_snapshot(war_before)
+		return _macro_failure(&"SIEGE_ARMY_START_FAILED", "攻城军队状态未能提交")
+	if StringName(siege.phase) == WarLoopState.PHASE_OCCUPIED:
+		return _finalize_macro_occupation(siege)
+	return {"success": not started.is_empty(), "army": started.duplicate(true), "siege": siege.duplicate(true)}
+
+
+func _finalize_macro_occupation(siege: Dictionary) -> Dictionary:
+	var war_before := _war_loop_state.get_snapshot()
+	var registry_before := _army_registry.get_snapshot()
+	var resolution_id := StringName("%s.occupation" % String(siege.siege_id))
+	var occupied := _war_loop_state.occupy_active_city(resolution_id)
+	if occupied.is_empty():
+		return _macro_failure(&"OCCUPATION_FAILED", "占领事务未能提交")
+	var army := _army_registry.complete_macro_siege(StringName(occupied.army_id), StringName(occupied.order_id))
+	if army.is_empty():
+		_war_loop_state.restore_snapshot(war_before)
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		return _macro_failure(&"OCCUPATION_ARMY_FAILED", "占领后驻扎状态未能提交")
+	return {"success": true, "army": army.duplicate(true), "siege": occupied.duplicate(true), "level_cleared": _war_loop_state.is_level_cleared()}
+
+
+# R0 exposes one demonstrable environmental condition. It is intentionally
+# transient: the durable army's BLOCKED phase carries the recovery state.
+func set_macro_march_route_blocked_for_scenario(route_id: StringName, blocked: bool) -> bool:
+	var route := MACRO_MARCH_THEATER.get_route(route_id)
+	if route.is_empty() or int(route.get("blockable_segment_index", -1)) < 1:
+		return false
+	if blocked:
+		_macro_march_blocked_route_ids[route_id] = true
+	else:
+		_macro_march_blocked_route_ids.erase(route_id)
+	return true
+
+
+func is_macro_march_route_blocked(route_id: StringName) -> bool:
+	return bool(_macro_march_blocked_route_ids.get(route_id, false))
+
+
+func commit_macro_march_from_city(
+	formation_ids: Array,
+	target_point_id: StringName,
+	route_id: StringName,
+	route_world_points: Array
+) -> Dictionary:
+	if (
+		not _active_battle_reservation.is_empty()
+		or _army_registry.has_active_army()
+		or not get_macro_march_army().is_empty()
+	):
+		return _macro_failure(&"MACRO_BUSY", "已有军令正在执行或等待驻扎")
+	var selected := _garrison_state.get_selected_formations(formation_ids)
+	if selected.is_empty() or not _garrison_state.selection_matches(selected):
+		return _macro_failure(&"FORMATION_CHANGED", "请选择仍在黑石城内的完整编队")
+	var total := 0
+	var units: Dictionary = {}
+	for formation in selected:
+		total += int(formation.member_count)
+		var definition_id := StringName(formation.definition_id)
+		units[definition_id] = int(units.get(definition_id, 0)) + int(formation.member_count)
+	var food_cost := get_macro_march_food_cost(total)
+	var route_validation := MACRO_MARCH_THEATER.validate_route(
+		&"blackstone_city", target_point_id, route_id, route_world_points
+	)
+	if not bool(route_validation.valid):
+		return _macro_failure(StringName(route_validation.error_id), str(route_validation.error))
+	if is_macro_march_route_blocked(route_id):
+		return _macro_failure(&"ROAD_BLOCKED", "该道路当前受阻，请选择另一条道路或等待恢复")
+	if food < food_cost:
+		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足：需要 %d，当前 %d" % [food_cost, food])
+	var garrison_before := _garrison_state.get_persistence_snapshot()
+	var registry_before := _army_registry.get_snapshot()
+	var duration := MACRO_MARCH_THEATER.duration_milliseconds(route_id)
+	var local_commit := func() -> Dictionary:
+		var army := _army_registry.create_macro_march(
+			&"player", &"blackstone_city", &"blackstone_city", target_point_id,
+			route_id, route_world_points, units, selected, food_cost, duration
+		)
+		if army.is_empty() or not _garrison_state.try_extract_selected_formations(selected):
+			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+			_garrison_state.restore_persistence_snapshot(garrison_before)
+			return {"success": false}
+		return {"success": true, "army": army.duplicate(true)}
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": food_cost}],
+		&"macro_march_issue", local_commit
+	)
+	if not bool(transaction.success):
+		return _macro_failure(&"MACRO_TRANSACTION", "军令事务未提交")
+	_refresh_city_ui()
+	city_state_changed.emit()
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_rollback_macro_march_issue(food_cost, garrison_before, registry_before)
+		return _macro_failure(&"SAVE_FAILED", "军令存档失败，粮食与编队已回滚")
+	return {"success": true, "army": Dictionary(transaction.local_commit_result.army).duplicate(true)}
+
+
+func commit_macro_march_from_station(
+	army_id: StringName,
+	target_point_id: StringName,
+	route_id: StringName,
+	route_world_points: Array
+) -> Dictionary:
+	var army := _army_registry.get_army(army_id)
+	if army.is_empty() or StringName(army.phase) != ArmyRegistry.PHASE_STATIONED:
+		return _macro_failure(&"STATION_REQUIRED", "只有已驻扎的军队可以继续发令")
+	var route_validation := MACRO_MARCH_THEATER.validate_route(
+		StringName(army.target_node_id), target_point_id, route_id, route_world_points
+	)
+	if not bool(route_validation.valid):
+		return _macro_failure(StringName(route_validation.error_id), str(route_validation.error))
+	if is_macro_march_route_blocked(route_id):
+		return _macro_failure(&"ROAD_BLOCKED", "该道路当前受阻，请选择另一条道路或等待恢复")
+	var total := 0
+	for count in Dictionary(army.units_by_definition_id).values():
+		total += int(count)
+	var food_cost := get_macro_march_food_cost(total)
+	if food < food_cost:
+		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足：需要 %d，当前 %d" % [food_cost, food])
+	var registry_before := _army_registry.get_snapshot()
+	var duration := MACRO_MARCH_THEATER.duration_milliseconds(route_id)
+	var local_commit := func() -> Dictionary:
+		var issued := _army_registry.issue_stationed_macro_march(
+			army_id, target_point_id, route_id, route_world_points, food_cost, duration
+		)
+		return {"success": not issued.is_empty(), "army": issued.duplicate(true)}
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": food_cost}],
+		&"macro_march_reissue", local_commit
+	)
+	if not bool(transaction.success):
+		return _macro_failure(&"MACRO_TRANSACTION", "驻扎点军令事务未提交")
+	_refresh_city_ui()
+	city_state_changed.emit()
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_rollback_macro_march_issue(food_cost, {}, registry_before)
+		return _macro_failure(&"SAVE_FAILED", "军令存档失败，粮食与军队状态已回滚")
+	return {"success": true, "army": Dictionary(transaction.local_commit_result.army).duplicate(true)}
+
+
+func advance_macro_march_time(
+	army_id: StringName,
+	order_id: StringName,
+	expected_progress_milliseconds: int,
+	delta_milliseconds: int
+) -> Dictionary:
+	if city_time_paused:
+		return {}
+	var registry_before := _army_registry.get_snapshot()
+	var scaled_delta := maxi(1, roundi(float(delta_milliseconds) * city_time_speed))
+	var result := _army_registry.advance_macro_march(
+		army_id, order_id, expected_progress_milliseconds, scaled_delta
+	)
+	if not result.is_empty() and bool(result.get("arrived", false)):
+		var arrived_army: Dictionary = result.army
+		var target_id := StringName(Dictionary(arrived_army.macro_march).target_point_id)
+		if _war_loop_state.is_enemy_city(target_id):
+			var siege_result := _start_macro_siege(arrived_army)
+			if not bool(siege_result.get("success", false)):
+				_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+				return siege_result
+			result = siege_result
+	if not result.is_empty():
+		_refresh_city_ui()
+		city_state_changed.emit()
+		if bool(result.get("arrived", false)) and not bool(_persist_macro_march_checkpoint().get("success", false)):
+			_rollback_macro_march_registry(registry_before)
+			return _macro_failure(&"SAVE_FAILED", "抵达状态存档失败，军令已回滚")
+	return result.duplicate(true)
+
+
+func advance_war_loop_time(delta_milliseconds: int) -> Dictionary:
+	if city_time_paused or delta_milliseconds <= 0 or _war_loop_state.active_siege.is_empty():
+		return {}
+	var registry_before := _army_registry.get_snapshot()
+	var war_before := _war_loop_state.get_snapshot()
+	var scaled_milliseconds := roundi(float(delta_milliseconds) * city_time_speed)
+	var active: Dictionary = _war_loop_state.active_siege
+	var accumulated := int(active.get("elapsed_remainder_milliseconds", 0)) + scaled_milliseconds
+	var ticks := accumulated / WAR_LOOP_RULES.combat_tick_milliseconds
+	_war_loop_state.active_siege.elapsed_remainder_milliseconds = accumulated % WAR_LOOP_RULES.combat_tick_milliseconds
+	if ticks <= 0:
+		return {}
+	var result: Dictionary = {}
+	for _index in range(ticks):
+		result = _war_loop_state.advance_siege(WAR_LOOP_RULES)
+		if result.is_empty():
+			break
+		var surviving_count := ceili(float(maxi(int(result.attacker_total_hp), 0)) / float(maxi(int(result.attacker_hp_per_member), 1)))
+		if surviving_count <= 0:
+			if StringName(result.phase) != WarLoopState.PHASE_FAILED:
+				_war_loop_state.restore_snapshot(war_before)
+				_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+				return _macro_failure(&"SIEGE_ZERO_SURVIVOR_STATE", "全灭攻城未进入失败状态")
+			result = _close_lost_macro_siege(result, StringName("%s.lost" % String(result.siege_id)))
+			if not bool(result.get("success", false)):
+				_war_loop_state.restore_snapshot(war_before)
+				_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+				return result
+			break
+		var army := _army_registry.replace_macro_composition(
+			StringName(result.army_id), StringName(result.order_id),
+			surviving_count
+		)
+		if army.is_empty():
+			_war_loop_state.restore_snapshot(war_before)
+			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+			return _macro_failure(&"SIEGE_ARMY_SYNC_FAILED", "攻城伤亡无法同步到军队")
+		if StringName(result.phase) == WarLoopState.PHASE_OCCUPIED:
+			result = _finalize_macro_occupation(result)
+			break
+		if StringName(result.phase) == WarLoopState.PHASE_FAILED:
+			result = _resolve_failed_macro_siege(result)
+			break
+	if not result.is_empty():
+		_refresh_city_ui()
+		city_state_changed.emit()
+		if not bool(_persist_macro_march_checkpoint().get("success", false)):
+			_war_loop_state.restore_snapshot(war_before)
+			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+			return _macro_failure(&"SAVE_FAILED", "攻城状态存档失败，事务已回滚")
+	return result.duplicate(true)
+
+
+func request_macro_siege_retreat() -> Dictionary:
+	var war_before := _war_loop_state.get_snapshot()
+	var registry_before := _army_registry.get_snapshot()
+	var failed := _war_loop_state.mark_retreat(WAR_LOOP_RULES)
+	if failed.is_empty():
+		return _macro_failure(&"RETREAT_UNAVAILABLE", "当前没有可撤逃的攻城军令")
+	var surviving_count := ceili(float(maxi(int(failed.attacker_total_hp), 0)) / float(maxi(int(failed.attacker_hp_per_member), 1)))
+	var army := _army_registry.replace_macro_composition(
+		StringName(failed.army_id), StringName(failed.order_id),
+		surviving_count
+	)
+	if surviving_count <= 0:
+		var lost := _close_lost_macro_siege(failed, StringName("%s.retreat_lost" % String(failed.siege_id)))
+		if not bool(lost.get("success", false)):
+			_war_loop_state.restore_snapshot(war_before)
+			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+			return lost
+		if not bool(_persist_macro_march_checkpoint().get("success", false)):
+			_war_loop_state.restore_snapshot(war_before)
+			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+			return _macro_failure(&"SAVE_FAILED", "撤逃全灭状态存档失败，事务已回滚")
+		_refresh_city_ui()
+		city_state_changed.emit()
+		return lost
+	var retreating := _army_registry.begin_macro_retreat(StringName(failed.army_id), StringName(failed.order_id))
+	var resolution_id := StringName("%s.retreat" % String(failed.siege_id))
+	_war_loop_state.close_failed_siege(resolution_id)
+	if army.is_empty() or retreating.is_empty():
+		_war_loop_state.restore_snapshot(war_before)
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		return _macro_failure(&"RETREAT_FAILED", "撤逃事务未能提交")
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		return _macro_failure(&"SAVE_FAILED", "撤逃状态存档失败，事务已回滚")
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {"success": true, "army": retreating.duplicate(true), "siege": failed.duplicate(true)}
+
+
+func _resolve_failed_macro_siege(failed: Dictionary) -> Dictionary:
+	var surviving_count := ceili(float(maxi(int(failed.attacker_total_hp), 0)) / float(maxi(int(failed.attacker_hp_per_member), 1)))
+	if surviving_count <= 0:
+		return _close_lost_macro_siege(failed, StringName("%s.lost" % String(failed.siege_id)))
+	var retreating := _army_registry.begin_macro_retreat(StringName(failed.army_id), StringName(failed.order_id))
+	if retreating.is_empty():
+		return _macro_failure(&"SIEGE_RETREAT_FAILED", "战败撤退路线未能建立")
+	var resolution_id := StringName("%s.failed" % String(failed.siege_id))
+	_war_loop_state.close_failed_siege(resolution_id)
+	return {"success": true, "army": retreating.duplicate(true), "siege": failed.duplicate(true)}
+
+
+func _close_lost_macro_siege(failed: Dictionary, resolution_id: StringName) -> Dictionary:
+	var closed := _army_registry.close_macro_lost(
+		StringName(failed.army_id), StringName(failed.order_id), resolution_id
+	)
+	if closed.is_empty():
+		return _macro_failure(&"SIEGE_LOSS_CLOSE_FAILED", "全灭军队状态未能关闭")
+	var resolved := _war_loop_state.close_failed_siege(resolution_id)
+	if resolved.is_empty():
+		return _macro_failure(&"SIEGE_LOSS_RESOLUTION_FAILED", "全灭攻城结算未能关闭")
+	return {"success": true, "army": closed.duplicate(true), "siege": resolved.duplicate(true)}
+
+
+func block_macro_march_at_segment(
+	army_id: StringName,
+	order_id: StringName,
+	segment_index: int,
+	progress_before_segment_millis: int,
+	temporary_station_point: StringName
+) -> Dictionary:
+	var army_before := _army_registry.get_army(army_id)
+	if army_before.is_empty() or not is_macro_march_route_blocked(
+		StringName(Dictionary(army_before.macro_march).route_id)
+	):
+		return _macro_failure(&"ROAD_OPEN", "道路尚未进入受阻状态")
+	var registry_before := _army_registry.get_snapshot()
+	var result := _army_registry.block_macro_march(
+		army_id, order_id, segment_index, progress_before_segment_millis,
+		temporary_station_point
+	)
+	if result.is_empty():
+		return {}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_rollback_macro_march_registry(registry_before)
+		return _macro_failure(&"SAVE_FAILED", "受阻驻扎存档失败，军令已回滚")
+	return result
+
+
+func resume_blocked_macro_march(army_id: StringName, order_id: StringName) -> Dictionary:
+	var registry_before := _army_registry.get_snapshot()
+	var result := _army_registry.resume_blocked_macro_march(army_id, order_id)
+	if result.is_empty():
+		return {}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_rollback_macro_march_registry(registry_before)
+		return _macro_failure(&"SAVE_FAILED", "恢复军令存档失败，军令已回滚")
+	return result
+
+
+func _persist_macro_march_checkpoint() -> Dictionary:
+	var root := get_parent()
+	if root != null and root.has_method("persist_macro_march_checkpoint"):
+		return root.persist_macro_march_checkpoint()
+	if DisplayServer.get_name() == "headless":
+		return {"success": true, "headless_test_store_disabled": true}
+	return {"success": false}
+
+
+func _rollback_macro_march_issue(
+	food_cost: int,
+	garrison_before: Dictionary,
+	registry_before: Dictionary
+) -> void:
+	var local_rollback := func() -> Dictionary:
+		if not garrison_before.is_empty():
+			_garrison_state.restore_persistence_snapshot(garrison_before)
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		return {"success": true}
+	_nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": food_cost}],
+		&"macro_march_rollback", local_rollback
+	)
+
+
+func _rollback_macro_march_registry(registry_before: Dictionary) -> void:
+	_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+	_refresh_city_ui()
+	city_state_changed.emit()
+	_refresh_city_ui()
+	city_state_changed.emit()
+
+
+func _macro_failure(error_id: StringName, error: String) -> Dictionary:
+	return {"success": false, "error_id": error_id, "error": error}
 
 
 func reserve_army_dispatch(

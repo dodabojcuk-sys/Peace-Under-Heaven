@@ -2,7 +2,7 @@ class_name V5CampaignSnapshot
 extends RefCounted
 
 
-const SCHEMA_VERSION := 6
+const SCHEMA_VERSION := 7
 const SNAPSHOT_KIND := &"campaign_authoritative"
 const CITY_ID := "blackstone_city"
 const ROOT_KEYS := [
@@ -19,6 +19,12 @@ const ROOT_KEYS := [
 	"mainline_level",
 	"build_slot",
 	"expedition_attempt",
+	"war_loop",
+]
+const V6_ROOT_KEYS := [
+	"schema_version", "snapshot_kind", "city_id", "city", "placements",
+	"next_placement_id", "garrison", "training_queue", "army_registry",
+	"settlement_ledger", "mainline_level", "build_slot", "expedition_attempt",
 ]
 const V5_ROOT_KEYS := [
 	"schema_version",
@@ -159,6 +165,7 @@ static func validate_structure(
 	var source_version := int(snapshot.get("schema_version", 0))
 	if (
 		(source_version == SCHEMA_VERSION and not _has_exact_keys(snapshot, ROOT_KEYS))
+		or (source_version == 6 and not _has_exact_keys(snapshot, V6_ROOT_KEYS))
 		or (source_version == 5 and not _has_exact_keys(snapshot, V5_ROOT_KEYS))
 		or (source_version == 4 and not _has_exact_keys(snapshot, V4_ROOT_KEYS))
 		or (source_version in [2, 3] and not _has_exact_keys(snapshot, V3_ROOT_KEYS))
@@ -166,7 +173,7 @@ static func validate_structure(
 		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段不完整或含未知字段")
 	if (
 		typeof(snapshot.schema_version) != TYPE_INT
-		or int(snapshot.schema_version) not in [2, 3, 4, 5, SCHEMA_VERSION]
+		or int(snapshot.schema_version) not in [2, 3, 4, 5, 6, SCHEMA_VERSION]
 		or typeof(snapshot.snapshot_kind) != TYPE_STRING_NAME
 		or StringName(snapshot.snapshot_kind) != SNAPSHOT_KIND
 		or typeof(snapshot.city_id) != TYPE_STRING
@@ -209,6 +216,13 @@ static func validate_structure(
 		if not bool(migration.valid):
 			return migration
 		normalized = migration.snapshot
+	if int(normalized.schema_version) == 6:
+		var migration := _migrate_v6_war_loop(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if typeof(normalized.get("war_loop", null)) != TYPE_DICTIONARY:
+		return _failure(&"INVALID_WAR_LOOP", "WarLoop 快照字段非法")
 	var city_result := _validate_city(normalized.city)
 	if not bool(city_result.valid):
 		return city_result
@@ -254,6 +268,10 @@ static func validate_structure(
 			StringName(army_result.error_id),
 			"ArmyRegistry 校验失败"
 		)
+	# ArmyRegistry owns its own schema migration.  Persist the normalized
+	# registry so a restored schema-1 army snapshot cannot fail the controller's
+	# exact postcondition after the macro-march extension writes schema 2.
+	normalized.army_registry = Dictionary(army_result.snapshot).duplicate(true)
 	var ledger_result := _validate_ledger(normalized.settlement_ledger)
 	if not bool(ledger_result.valid):
 		return ledger_result
@@ -462,13 +480,29 @@ static func _migrate_v5_expedition(
 		total_count
 	)
 	normalized.expedition_attempt = empty_expedition_attempt()
-	normalized.schema_version = SCHEMA_VERSION
+	normalized.schema_version = 6
 	return {
 		"valid": true,
 		"error_id": &"",
 		"error": "",
 		"snapshot": normalized,
+}
+
+
+static func _migrate_v6_war_loop(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, V6_ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V6 CampaignSnapshot 根字段非法")
+	normalized.war_loop = {
+		"schema_version": 1,
+		"cities_by_id": {},
+		"required_city_ids": {},
+		"active_siege": {},
+		"completed_resolution_ids": {},
+		"next_siege_sequence": 1,
 	}
+	normalized.schema_version = SCHEMA_VERSION
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
 
 
 static func empty_build_slot() -> Dictionary:

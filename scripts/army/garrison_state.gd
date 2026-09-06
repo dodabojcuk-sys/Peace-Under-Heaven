@@ -155,6 +155,22 @@ func get_selected_formations(formation_ids: Array) -> Array[Dictionary]:
 	return result
 
 
+func try_extract_selected_formations(
+	formation_snapshots: Array
+) -> bool:
+	# Macro marching moves named formations, never an aggregate quantity.  The
+	# old total-count removal drains the roster from the tail and is therefore
+	# intentionally unsuitable for this transaction.
+	if not selection_matches(formation_snapshots):
+		return false
+	for snapshot_value in formation_snapshots:
+		var formation_id := StringName(Dictionary(snapshot_value).formation_id)
+		var formation: Dictionary = _formations_by_id[formation_id]
+		formation.member_count = 0
+		_formations_by_id[formation_id] = formation
+	return true
+
+
 func selection_matches(formation_snapshots: Array) -> bool:
 	if formation_snapshots.is_empty() or formation_snapshots.size() > FORMATION_IDS.size():
 		return false

@@ -1,44 +1,126 @@
 # 当前状态
 
-## 当前有效状态：R1E 宏观军令审阅与源码同步（2026-09-06）
+## WAR_LOOP_BATCH_R1 deterministic/double-city/disk checkpoint (2026-09-07)
 
-本段是本审阅快照的首要状态。它把来源工程、当前产品合同、已实现行为和下一轮
-建议分开；后文保留的 V5、successor、M0、M1A 和 R3B 内容都是历史证据，不能
-再作为本 R1E 审阅分支的“唯一可改分支”或“下一步只能 G4”指令。
+Local candidate `f3249dc` now has a follow-up working checkpoint (not yet a
+remote-reviewed revision). `ArmyRegistry` schema 4 keeps immutable original
+macro orders in history when a retreat creates a separate reverse-route order;
+complete losses close the army rather than storing a zero-member active army.
+The war state rejects malformed nested city/siege fields, retains damaged gate
+and defender facts on failed siege, and gives simultaneous attacker/defender
+elimination to the attacker-failed branch.
 
-- **来源工程：** `codex/txwzs-expedition-visual-r1e` at
-  `4c3e501c16d1a882b996a6a96b2473128312d12c`，相对 R1E 基线
-  `147430ed1d4fe584abcb423755da4455e5d5f95c` 含内部编队 ID 的玩家可见修复及
-  对应烟测。
-- **本轮性质：** 文档/源码审阅同步和可复现交付，不实现宏观军令、共享精力、
-  技能次数、按次越野、突围、占领或新 UI。`GAMEPLAY_SOURCE_CHANGED=NO`。
-- **有效产品合同：** 普通军队应以“来源据点 → 绘制到合法据点目标的路径 → 发出
-  后不可任意撤改 → 自动连续行军 → 到达或受阻就近驻扎”的任务调度；草稿可取消，
-  已发普通军令与应急逃跑必须分开。普通军队不以任意野地点击作为正常终点。将领和
-  军师分别共享精力池；技能还受尚未冻结的次数约束；`匿迹奔袭` 是单军队、单次
-  点到点行军的越野许可，不是限时或永久自由移动。
-- **当前原型边界：** R1E 出征会选取 1–3 个驻军编队、扣一次粮、保存不可变尝试，
-  然后进入 C0；C0 仍允许按小队反复发 `ADVANCE`、`HOLD`、`RETREAT`，并以一条
-  路线“城门为零 + 该路线守军为零 + 我方存活”即判胜。这不是宏观军令，也不是
-  破门后的占领、多城胜负或用户验收。
-- **下轮最小接线建议：** 以现有 `ArmyRegistry` 的来源/目标/路线/阶段和
-  `ConstructionController` 的资源、驻军、保存/恢复事务为基础，新增不可变
-  `MarchOrder` 领域任务及合法据点/路径草稿读模型；先只覆盖来源据点到合法目标、
-  发令锁定、自动推进与受阻就近驻扎。保留战斗、伤亡和一次性结算 owner，不迁移
-  V6 或把 `BattleOrder` 当战略军令。
+Redcliff and Silverford are now both required enemy cities: Redcliff retains
+its River Lords story ownership but begins under Border Rebels military control;
+Silverford remains configured for automatic surrender. The level clears only
+after both military controllers become player. The focused war-loop runner now
+has 15 assertions, including the reported timing, 7+7 formation, single-loss,
+mutual-destruction, gate persistence, immutable-return-order, malformed nested
+snapshot, and double-city conditions. A separate 3-assertion runner launched
+three isolated Godot processes against one V5 directory and recovered active
+siege tick 1 → tick 2 exactly once.
 
-完整代码职责和差距见
-[`R1E_MACRO_COMMAND_REVIEW_20260906.md`](docs/milestones/txwzs-r1e/R1E_MACRO_COMMAND_REVIEW_20260906.md)。
+This is an engineering/cold-recovery checkpoint only. A candidate `e0eec91`
+window was launched with a per-run isolated save and exact title identity, but
+the available desktop automation could only enumerate a pre-existing R1E Godot
+window, not the candidate window. No input was sent to either process and the
+identified candidate process was terminated normally. Real normal-input media,
+Founder acceptance, deployment, Meshy work, and any fog/engineer/siege-expansion
+work remain open. Remote source sync remains unverified until a later ordinary
+push and remote SHA check succeeds. The final authorized ordinary push on
+2026-09-07 used non-interactive HTTPS with a 10-second connect and 15-second
+low-speed bound; it failed with `Operation too slow` before any bytes arrived.
+No credential was read, no remote ref was created, and no force/merge/deploy
+operation was attempted. `SOURCE_SYNC=BLOCKED_NETWORK`.
 
-## R1E expedition reconciliation（历史工程证据，已由上述当前状态覆盖）
+## WAR_LOOP_BATCH_R1 corrective checkpoint (2026-09-06)
+
+`a800a84` corrects the first verified WAR_LOOP defects: siege advancement is
+owned by `ConstructionController` rather than the macro presentation control,
+uses persisted sub-tick remainder instead of a forced tick per render update,
+does not double-drive from the modal, preserves formation identity during
+rear-first attrition, allows zero survivors, resolves simultaneous annihilation
+as failure, and persists damaged gate/guard facts after a failed siege.
+
+The existing Macro March and V5 persistence runners pass after this checkpoint.
+The required dedicated timing-equivalence, multi-required-city, and siege
+cross-process-disk cases remain open; normal-input evidence is also open.
+The review remote was configured as `origin` for the authorized repository,
+but two normal non-interactive push attempts timed out while connecting and
+produced no remote SHA. No force push, credential read, merge, or deployment
+was attempted.
+
+## WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate (2026-09-06)
+
+WAR_LOOP_BATCH_R1 is a local engineering candidate on
+`codex/txwzs-war-loop-r1`, based on `a5fda3dd`. It extends the outer-city
+theatre with Redcliff (required) and Silverford (optional) enemy cities. A
+macro army that reaches an enemy city first evaluates the persisted surrender
+configuration; a refusal enters deterministic gate-then-guard combat using
+the committed unit HP, attack, armor, city gate, and guard facts. This is a
+new durable war-loop authority, not a shortcut through the legacy C0 result
+writer.
+
+`ArmyRegistry` schema 3 adds SIEGING and RETREATING phases while retaining the
+same macro army and order. `V5CampaignSnapshot` schema 7 persists enemy
+military control, gate/guard facts, active siege tick, losses, and idempotent
+resolution IDs; V6 saves migrate to an empty WarLoop state and do not invent a
+campaign order. Occupation changes military control only; story ownership is
+retained. A required-city set makes Redcliff the single-city clear condition;
+the data model supports a future multi-city required set without treating
+optional Silverford as a victory requirement.
+
+Focused WAR_LOOP_R1 smoke passes 9 assertions (surrender, attack, cold
+restore, breach/guards/occupation, victory rule, casualties, and retreat).
+Existing Macro March R0 movement and three-process persistence smokes also
+pass. These are engineering checks, not a Founder acceptance. No verified
+normal-input screenshots or continuous player recording are provided in this
+candidate; no merge, push, deployment, 3D modelling, fog, or expanded strategy
+systems were performed.
+
+`WAR_LOOP_BATCH_R1=ENGINEERING_CANDIDATE_REAL_INPUT_MEDIA_NOT_PROVIDED`
+
+## Macro March R0 outer-city greybox (2026-09-06)
+
+Macro March R0 is a local engineering candidate on
+`codex/txwzs-macro-march-r0`. It introduces one replaceable theatre Resource
+with Blackstone City, Northwatch Garrison, Reedbank Garrison, two selectable
+Blackstone-to-Northwatch road paths, and one demonstrable blockable branch
+road. The normal city now enters the macro screen through `外城军令`; the
+legacy Blackstone MVP scene remains source-only and no longer receives the
+formal city entry or writes strategic army state.
+
+`ArmyRegistry` schema 2 holds the stable army, issued order, snapped road
+polyline, exact selected formation snapshots, fee, logical progress, and
+blocked/stationed phase. `GarrisonState` extracts exact selected formations
+instead of using the legacy aggregate tail-removal path. `ConstructionController`
+keeps the food transaction, rollback snapshot, registry mutation, and runtime
+save checkpoint as one boundary. The current expedition food formula is reused
+only as temporary macro-march balancing, not as a final supply design.
+
+Focused Macro March smoke passes 14 assertions. A three-process isolated-disk
+smoke passes: process A persists a blocked order, B restores it, resumes and
+arrives, and C cold-restores the stationed army. Existing V5 army and R1E
+focused suites also pass. This is not siege victory, enemy-city attack,
+occupation, energy/ability, 3D-art, Founder acceptance, merge, push, or
+deployment.
+
+The current desktop environment contains a separate user Godot window that
+could not be displaced safely by the available UI controller. The real
+candidate window was started and visually inspected during preflight, but real
+mouse-drawn draft/marching/blocked screenshots and a 45–90 second system-input
+video are **not provided**. No script/test state was relabelled as real-input
+media.
+
+`MACRO_MARCH_R0=ENGINEERING_PARTIAL_REAL_INPUT_MEDIA_NOT_PROVIDED`
+
+## R1E expedition reconciliation (2026-09-06)
 
 This section records the current expedition branch without re-labelling it as a
 full-game acceptance.
 
-- **Historical reconciliation baseline:** `147430ed1d4fe584abcb423755da4455e5d5f95c`
-  (Godot 4.5.1). The current reviewed source is the later
-  `4c3e501c16d1a882b996a6a96b2473128312d12c`; do not substitute this historical
-  baseline for the current source identity.
+- **Identity:** `codex/txwzs-expedition-visual-r1e` at
+  `147430ed1d4fe584abcb423755da4455e5d5f95c` (Godot 4.5.1).
 - **Engineering baseline:** the R1E causality smoke, C0 presentation smoke, and
   headless scene startup checks have passed. The focused R1E suite protects the
   city preparation, payment, persistence, retreat, victory, defeat, and reload
@@ -59,9 +141,9 @@ full-game acceptance.
   permanent-general-death semantics, fog/disguise/mine system, weather, or
   full UI system was introduced here.
 
-At the time of this historical reconciliation, the suggested later gate was a
-normal-input siege victory followed by breach and occupation checks. It is not
-the current task and is not performed by this review snapshot.
+The next meaningful gate is to establish a normal-input route that can produce
+a real siege victory under the intended rules, then verify breach and
+occupation semantics without substituting a static result or a test-only win.
 
 ## TXWZS City Governance Interaction 001
 

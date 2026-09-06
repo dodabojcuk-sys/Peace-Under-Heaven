@@ -157,6 +157,23 @@ func persist_expedition_settlement(
 	)
 
 
+func persist_macro_march_checkpoint() -> Dictionary:
+	# Macro marching has no battle result ledger. Its canonical ArmyRegistry
+	# snapshot is the checkpoint, and ordinary headless scene tests retain the
+	# existing opt-out unless they explicitly configure an isolated store.
+	if (
+		_writes_blocked
+		and StringName(_status.get("error_id", &""))
+			== &"HEADLESS_STORE_NOT_CONFIGURED"
+	):
+		return {
+			"success": true,
+			"uncertain": false,
+			"headless_test_store_disabled": true,
+		}
+	return {"success": flush_now(&"macro_march_checkpoint"), "uncertain": false}
+
+
 func _persist_expedition_checkpoint(
 	attempt_id: StringName,
 	result_id: StringName,

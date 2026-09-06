@@ -92,5 +92,95 @@ func get_army_projection(army_id: StringName) -> Dictionary:
 	}
 
 
+# Macro March is intentionally exposed through this narrow adapter as well.
+# The modal may render a projection and request commands, but only
+# ConstructionController may mutate garrison, army, food, or persistence state.
+func get_macro_march_read_model() -> Dictionary:
+	var city := _get_city()
+	return city.get_macro_march_read_model() if city != null else {}
+
+
+func commit_macro_march_from_city(
+	formation_ids: Array,
+	target_point_id: StringName,
+	route_id: StringName,
+	route_world_points: Array
+) -> Dictionary:
+	var city := _get_city()
+	return (
+		city.commit_macro_march_from_city(
+			formation_ids, target_point_id, route_id, route_world_points
+		)
+		if city != null else {}
+	)
+
+
+func commit_macro_march_from_station(
+	army_id: StringName,
+	target_point_id: StringName,
+	route_id: StringName,
+	route_world_points: Array
+) -> Dictionary:
+	var city := _get_city()
+	return (
+		city.commit_macro_march_from_station(
+			army_id, target_point_id, route_id, route_world_points
+		)
+		if city != null else {}
+	)
+
+
+func advance_macro_march_time(
+	army_id: StringName,
+	order_id: StringName,
+	expected_progress_milliseconds: int,
+	delta_milliseconds: int
+) -> Dictionary:
+	var city := _get_city()
+	return (
+		city.advance_macro_march_time(
+			army_id, order_id, expected_progress_milliseconds, delta_milliseconds
+		)
+		if city != null else {}
+	)
+
+
+func advance_war_loop_time(delta_milliseconds: int) -> Dictionary:
+	var city := _get_city()
+	return city.advance_war_loop_time(delta_milliseconds) if city != null else {}
+
+
+func request_macro_siege_retreat() -> Dictionary:
+	var city := _get_city()
+	return city.request_macro_siege_retreat() if city != null else {}
+
+
+func block_macro_march_at_segment(
+	army_id: StringName,
+	order_id: StringName,
+	segment_index: int,
+	progress_before_segment_millis: int,
+	temporary_station_point: StringName
+) -> Dictionary:
+	var city := _get_city()
+	return (
+		city.block_macro_march_at_segment(
+			army_id, order_id, segment_index, progress_before_segment_millis,
+			temporary_station_point
+		)
+		if city != null else {}
+	)
+
+
+func resume_blocked_macro_march(army_id: StringName, order_id: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.resume_blocked_macro_march(army_id, order_id) if city != null else {}
+
+
+func set_macro_march_route_blocked_for_scenario(route_id: StringName, blocked: bool) -> bool:
+	var city := _get_city()
+	return city.set_macro_march_route_blocked_for_scenario(route_id, blocked) if city != null else false
+
+
 func _get_city() -> Node:
 	return _city_ref.get_ref() if _city_ref != null else null

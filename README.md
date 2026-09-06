@@ -1,10 +1,9 @@
 # 天下无战事2
 
 这是一个以 Godot `4.5.1.stable.official.f62fdbde1` 开发的战争策略游戏
-工程。`project.godot` 声明 4.5 feature set。当前审阅基线为 R1E 出征因果链，
-来源提交 `4c3e501c16d1a882b996a6a96b2473128312d12c`。它保留 V4/V5 的城市、
-驻军、战果写回和持久化所有权，并完成出征准备、不可变尝试、C0 战斗、结算与
-回城的工程连接；宏观军令仍未实现。
+工程。`project.godot` 声明 4.5 feature set。当前可复用基线已经完成
+V4 派遣主链路冻结，以及 V5-G0 至 V5-G2 的单兵种、驻军、训练、军队、
+战果写回和持久化运行时验收。
 
 当前不是可发布版本。V5 仍为 `IN_PROGRESS`，G3–G6、P6、P7 和 V6 均未
 启动。
@@ -12,8 +11,6 @@
 ## 当前权威入口
 
 - 当前状态：[CURRENT_STATE.md](CURRENT_STATE.md)
-- R1E 宏观军令审阅：[R1E_MACRO_COMMAND_REVIEW_20260906.md](docs/milestones/txwzs-r1e/R1E_MACRO_COMMAND_REVIEW_20260906.md)
-- R1E 产品/实现分层：[R1E_RECONCILIATION_20260906.md](docs/milestones/txwzs-r1e/R1E_RECONCILIATION_20260906.md)
 - 架构合同：[TXWZS_ARCHITECTURE_CONTRACT.md](docs/architecture/TXWZS_ARCHITECTURE_CONTRACT.md)
 - 主控计划：[TXWZS_MASTER_DEVELOPMENT_CONTROL.md](docs/planning/TXWZS_MASTER_DEVELOPMENT_CONTROL.md)
 - V5-G2 验收：[TXWZS_V5_G2_FINAL_ACCEPTANCE.md](docs/reports/TXWZS_V5_G2_FINAL_ACCEPTANCE.md)
@@ -51,6 +48,14 @@ GODOT=/Applications/Godot.app/Contents/MacOS/Godot
 "$GODOT" --headless --path . --editor --quit
 ```
 
+To keep a review run out of the default player store, pass the existing
+runtime override after `--`:
+
+```sh
+REVIEW_SAVE="/tmp/txwzs-war-loop-review"
+"$GODOT" --path . -- --txwzs-v5-save-dir="$REVIEW_SAVE"
+```
+
 ## 测试
 
 单个 runner：
@@ -71,18 +76,39 @@ tests/run_v5_campaign_persistence_smoke.gd
 tests/run_v5_vertical_loop_smoke.gd
 ```
 
+Macro March R0 focused validation (local engineering candidate only):
+
+```text
+tests/run_macro_march_r0_smoke.gd
+tests/run_macro_march_r0_persistence_smoke.gd
+```
+
+The second runner uses three isolated Godot processes to verify blocked,
+resumed, and stationed cold restoration. These checks do not substitute for
+the required real mouse-input screenshots, short recording, or user acceptance.
+
+War Loop R1 focused validation (local engineering candidate only):
+
+```text
+tests/run_war_loop_r1_smoke.gd
+tests/run_war_loop_disk_recovery_smoke.gd
+```
+
+The first runner covers deterministic combat timing, formation-preserving
+casualties, immutable retreat orders, two required cities, and malformed war
+snapshot rejection. The second starts three isolated Godot processes against
+one explicit V5 save directory and proves active-siege tick/gate recovery.
+Neither runner is real mouse-input media or player acceptance.
+
 已验收基线为 focused `6/6 · 185`、tracked `33/33 · 1739`、
 all-present `35/35 · 1871 assertions / 1905 PASS`。测试通过不自动推进
 G3 或替代真实窗口、独立复查和用户试玩 Gate。
 
 ## Git 与保护边界
 
-- 当前源码审阅来源：`codex/txwzs-expedition-visual-r1e` at
-  `4c3e501c16d1a882b996a6a96b2473128312d12c`。本交付副本使用独立、无开发
-  历史的审阅分支；历史 V5 分支名只用于追溯，不是当前执行指令。
+- 当前工作分支：`codex/v5-g0-review-g1-contracts-001`。
 - V5-G2 acceptance checkpoint：`af244167f7b0a31f3de2cc34673faa953113b96b`。
-- 不 push、不 tag、不发布，除非用户明确授权。本 R1E 审阅同步已获一次性上传
-  授权，但仅限其独立审阅分支；不得 force、合并或部署。
+- 不 push、不 tag、不发布，除非用户明确授权。
 - S1A.2 八个文件必须保持 untracked、unstaged 和哈希不变；它们不是 Markdown，
   也不是已采用的 V5 writer/schema。
 - 不使用 `git add -A`；提交时按精确路径暂存。

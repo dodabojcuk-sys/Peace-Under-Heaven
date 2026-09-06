@@ -5,7 +5,6 @@ const DRAG_THRESHOLD := 8.0
 const MIN_ZOOM := 0.6
 const MAX_ZOOM := 1.6
 const ZOOM_STEP := 0.1
-const MVP_VICTORY_WOOD_REWARD := 20
 const RUNTIME_PERSISTENCE_COORDINATOR = preload(
 	"res://scripts/state/runtime_campaign_persistence_coordinator.gd"
 )
@@ -15,8 +14,8 @@ const RUNTIME_PERSISTENCE_COORDINATOR = preload(
 @onready var city_map_world: Node2D = $MapWorld
 @onready var city_ui_shell: Control = $UI/Shell
 @onready var campaign_world_map: WorldMapController = $CampaignWorldMap
-@onready var blackstone_expedition_mvp: BlackstoneExpeditionMvp = (
-	$UI/BlackstoneExpeditionMvp
+@onready var macro_march_r0: MacroMarchR0 = (
+	$UI/MacroMarchR0
 )
 @onready var construction_controller: Node = $ConstructionController
 @onready var building_selection_controller: Node = $BuildingSelectionController
@@ -31,10 +30,11 @@ const RUNTIME_PERSISTENCE_COORDINATOR = preload(
 	$UI/Shell/ExpeditionPreparationPanel
 )
 @onready var expedition_entry_button: Button = (
-	$UI/Shell/BuildingDetailPanel/FirstWarActions/MvpExpeditionButton
+	$UI/Shell/BuildingDetailPanel/FirstWarActions/MacroMarchEntryButton
 )
+@onready var macro_march_entry_button: Button = $UI/Shell/MacroMarchButton
 @onready var expedition_result_status: Label = (
-	$UI/Shell/BuildingDetailPanel/FirstWarActions/MvpResultStatus
+	$UI/Shell/BuildingDetailPanel/FirstWarActions/MacroMarchStatus
 )
 
 var active_drag_button: int = -1
@@ -43,7 +43,7 @@ var pending_drag_delta := Vector2.ZERO
 var is_dragging := false
 var city_bar_expanded := true
 var world_map_open := false
-var mvp_expedition_open := false
+var macro_march_open := false
 var _city_camera_position := Vector2.ZERO
 var _city_camera_zoom := Vector2.ONE
 var _construction_process_mode := Node.PROCESS_MODE_INHERIT
@@ -71,25 +71,19 @@ func _ready() -> void:
 	campaign_world_map.noticeboard_requested.connect(
 		_on_world_map_noticeboard_requested
 	)
-	expedition_entry_button.pressed.connect(open_blackstone_expedition_mvp)
-	blackstone_expedition_mvp.run_finished.connect(
-		_on_blackstone_mvp_run_finished
-	)
-	blackstone_expedition_mvp.return_to_city_requested.connect(
-		return_from_blackstone_expedition_mvp
-	)
-	blackstone_expedition_mvp.configure_v5_army_dispatch_adapter(
-		construction_controller.get_v5_army_dispatch_adapter()
-	)
+	expedition_entry_button.pressed.connect(open_macro_march_r0)
+	macro_march_entry_button.pressed.connect(open_macro_march_r0)
+	macro_march_r0.return_to_city_requested.connect(return_from_macro_march_r0)
+	macro_march_r0.configure(construction_controller.get_v5_army_dispatch_adapter())
 	construction_controller.city_state_changed.connect(
-		_refresh_blackstone_mvp_entry
+		_refresh_macro_march_entry
 	)
 	construction_controller.city_state_changed.connect(_refresh_minimap)
 	campaign_world_map.configure(construction_controller)
 	# R1 moves city operation into the right build rail. The legacy left rail is
 	# collapsible context, not a second permanent panel competing with the city.
 	set_city_bar_expanded(false)
-	_refresh_blackstone_mvp_entry()
+	_refresh_macro_march_entry()
 	call_deferred("_initialize_camera")
 	call_deferred("_refresh_minimap")
 	call_deferred("_resume_persisted_expedition_if_needed")
@@ -131,17 +125,23 @@ func persist_expedition_settlement(
 	)
 
 
+func persist_macro_march_checkpoint() -> Dictionary:
+	if _runtime_persistence == null:
+		return {"success": false}
+	return _runtime_persistence.persist_macro_march_checkpoint()
+
+
 func _input(event: InputEvent) -> void:
 	# This fullscreen modal owns every pointer/key while visible. Returning here
 	# keeps root map gestures from racing GUI dispatch; the Control handles
 	# ui_cancel through its own unhandled-key path.
 	if expedition_preparation_panel.visible:
 		return
-	if mvp_expedition_open:
+	if macro_march_open:
 		if (
 			event.is_action_pressed(&"ui_cancel")
 		):
-			blackstone_expedition_mvp.handle_escape()
+			return_from_macro_march_r0()
 			get_viewport().set_input_as_handled()
 		return
 
@@ -570,13 +570,13 @@ func is_campaign_world_map_open() -> bool:
 	return world_map_open
 
 
-func open_blackstone_expedition_mvp() -> bool:
+func open_macro_march_r0() -> bool:
 	if (
-		mvp_expedition_open
+		macro_march_open
 		or world_map_open
 		or construction_controller.is_city_action_locked_for_battle()
 	):
-		_refresh_blackstone_mvp_entry()
+		_refresh_macro_march_entry()
 		return false
 	_stop_drag()
 	construction_controller.cancel_build_interaction()
@@ -587,64 +587,46 @@ func open_blackstone_expedition_mvp() -> bool:
 	construction_controller.process_mode = Node.PROCESS_MODE_DISABLED
 	city_map_world.visible = false
 	city_ui_shell.visible = false
-	mvp_expedition_open = true
-	blackstone_expedition_mvp.visible = true
-	blackstone_expedition_mvp.start_new_run()
+	macro_march_open = true
+	macro_march_r0.visible = true
+	macro_march_r0.refresh()
 	return true
 
 
-func return_from_blackstone_expedition_mvp() -> bool:
-	if not mvp_expedition_open:
+func return_from_macro_march_r0() -> bool:
+	if not macro_march_open:
 		return false
-	blackstone_expedition_mvp.visible = false
-	mvp_expedition_open = false
+	macro_march_r0.visible = false
+	macro_march_open = false
 	city_map_world.visible = true
 	city_ui_shell.visible = true
 	construction_controller.process_mode = _construction_process_mode
 	camera.zoom = _city_camera_zoom
 	camera.position = _city_camera_position
 	_clamp_camera()
-	_refresh_blackstone_mvp_entry()
+	_refresh_macro_march_entry()
 	return true
 
 
-func is_blackstone_expedition_mvp_open() -> bool:
-	return mvp_expedition_open
+func is_macro_march_r0_open() -> bool:
+	return macro_march_open
 
 
-func _on_blackstone_mvp_run_finished(
-	outcome: StringName,
-	soldiers_remaining: int,
-	summary: String
-) -> void:
-	if outcome == BlackstoneExpeditionMvp.OUTCOME_VICTORY:
-		var accepted_reward: int = (
-			construction_controller.grant_blackstone_mvp_victory_reward(
-				MVP_VICTORY_WOOD_REWARD
-			)
-		)
-		expedition_result_status.text = (
-			"胜利 · 木材 +%d · 余兵 %d"
-			% [accepted_reward, soldiers_remaining]
-		)
-	elif outcome == BlackstoneExpeditionMvp.OUTCOME_DEFEAT:
-		expedition_result_status.text = "出征失败 · 可再次挑战"
-	if summary.is_empty():
-		expedition_result_status.text = "本次出征已结束"
-
-
-func _refresh_blackstone_mvp_entry() -> void:
+func _refresh_macro_march_entry() -> void:
 	var is_locked: bool = (
 		construction_controller.is_city_action_locked_for_battle()
 	)
 	expedition_entry_button.visible = not is_locked
 	expedition_result_status.visible = not is_locked
 	expedition_entry_button.disabled = is_locked
+	macro_march_entry_button.visible = not is_locked
+	macro_march_entry_button.disabled = is_locked
 	expedition_entry_button.tooltip_text = (
 		"敌袭待处理，先完成北坡首战"
 		if is_locked
-		else "进入黑石堡小型战区"
+		else "进入黑石外城宏观军令战区"
 	)
+	macro_march_entry_button.tooltip_text = expedition_entry_button.tooltip_text
 
 
 func _on_viewport_size_changed() -> void:

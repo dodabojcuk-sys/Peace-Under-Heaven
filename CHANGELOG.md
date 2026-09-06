@@ -14,17 +14,45 @@
 
 ## Unreleased
 
-### R1E macro command review and delivery synchronization
+### WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate
 
-- Recorded the current macro-command contract separately from the existing R1E
-  expedition/C0 prototype, including issued-order immutability, legal
-  point-to-point targets, one-use off-road permission, and shared energy plus
-  skill-count boundaries.
-- Added a source-grounded responsibility map and minimal future wiring proposal;
-  no gameplay source, save schema, battle balance, victory condition, or UI was
-  changed.
-- Marked older branch/next-step language as historical evidence where it
-  conflicts with the current R1E review source and independent delivery task.
+- Corrected the reported timing, formation writeback, one-soldier retreat,
+  simultaneous annihilation, failed-siege gate persistence, and malformed
+  nested war-snapshot boundaries. Retreat now creates a new return order while
+  preserving the original order record; zero survivors close the army.
+- Promoted Silverford to a second required enemy city and added the direct
+  Redcliff-to-Silverford road, so the clear rule is exercised as a real
+  two-city occupation chain rather than a hypothetical data capability.
+- Added 15 focused deterministic War Loop assertions and a separate three
+  process active-siege V5 disk recovery runner (3 assertions). These remain
+  engineering/cold-recovery evidence, not real-input media or acceptance.
+
+- Added Redcliff and Silverford enemy-city data to the replaceable outer-city
+  theatre. Arrival uses a configurable surrender check, then deterministic
+  gate-first and guard-resolution combat when surrender is refused.
+- Extended `ArmyRegistry` to schema 3 and `V5CampaignSnapshot` to schema 7.
+  Siege, retreat, occupation control, exact combat tick facts, casualties, and
+  resolution idempotence use the existing controller/save boundary; V6 saves
+  migrate without creating a new macro army or order.
+- Added a focused WAR_LOOP_R1 smoke for surrender, attack, cold restore,
+  occupation, the required-city clear rule, casualty persistence, and retreat.
+  This is a local engineering candidate only: no verified real-input media,
+  Founder acceptance, merge, push, or deployment is claimed.
+
+### Macro March R0 outer-city greybox
+
+- Added a formal `外城军令` city entry and one small Blackstone/Northwatch/
+  Reedbank theatre with player-drawn road selection, draft cancellation,
+  confirmation, continuous movement, station-to-station follow-up orders, and
+  a blockable branch-road recovery scenario.
+- Extended `ArmyRegistry` to schema 2 with validated macro order facts and
+  schema-1 normalization. Macro departures preserve exact formation identities
+  and use a full roster/registry rollback snapshot around the existing food and
+  V5 runtime persistence boundary.
+- Added focused macro movement and isolated three-process disk persistence
+  smokes. The legacy Blackstone MVP scene is no longer wired to the formal
+  entry. Real system-input screenshots and video remain unprovided and are not
+  substituted with scripted test footage.
 
 ### R1E reconciliation and player-facing roster labels
 

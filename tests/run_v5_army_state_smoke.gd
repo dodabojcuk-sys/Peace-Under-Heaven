@@ -20,9 +20,7 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	var city: Node = scene.get_node("ConstructionController")
-	var theater: BlackstoneExpeditionMvp = scene.get_node(
-		"UI/BlackstoneExpeditionMvp"
-	)
+	var theater: MacroMarchR0 = scene.get_node("UI/MacroMarchR0")
 	city.set_process(false)
 	var definition_id: StringName = city.INFANTRY_ROLE.role_id
 	var adapter: V5ArmyDispatchAdapter = (
@@ -37,8 +35,8 @@ func _run() -> void:
 		"V4 窄适配层只读真实城市驻军和权威可派数"
 	)
 	_check(
-		theater.get_v5_dispatch_read_model() == read_model,
-		"既有黑石堡 UI 已绑定窄适配层但不持有世界状态"
+		theater != null and theater.visible == false,
+		"旧黑石堡原型入口已由只读投影的宏观军令界面替换"
 	)
 
 	city.recruitment_cap = 10
@@ -155,8 +153,9 @@ func _run() -> void:
 
 	var registry_snapshot: Dictionary = city.get_army_registry_snapshot()
 	_check(
-		registry_snapshot.schema_version == 1
+		registry_snapshot.schema_version == 2
 			and registry_snapshot.next_army_sequence == 2
+			and registry_snapshot.next_macro_order_sequence == 1
 			and registry_snapshot.armies_by_id.size() == 1
 			and not registry_snapshot.has("active_army"),
 		"权威持久模型是 armies_by_id 集合，不固化 singleton"
@@ -326,7 +325,7 @@ func _run() -> void:
 		not enforced.valid
 			and enforced.error_id == &"V5_ACTIVE_ARMY_LIMIT"
 			and lifted.valid
-			and lifted.snapshot.schema_version == 1,
+			and lifted.snapshot.schema_version == 2,
 		"解除 V5 policy 后同一 schema 可容纳两支 active army"
 	)
 

@@ -425,11 +425,11 @@ func _check_cross_day_training_and_applied_integrity() -> void:
 	var evolved_snapshot: Dictionary = city.export_v5_campaign_snapshot()
 	_check(
 		not evolved_snapshot.is_empty()
-			and int(evolved_snapshot.schema_version) == 6
+			and int(evolved_snapshot.schema_version) == V5CampaignSnapshot.SCHEMA_VERSION
 			and _roster_projection_total(evolved_snapshot.garrison)
 				== city.infantry_count
 			and StringName(evolved_snapshot.expedition_attempt.phase) == &"APPLIED",
-		"APPLIED 后正常训练改变 roster 仍可导出 V6，不误判历史终局事实"
+		"APPLIED 后正常训练改变 roster 仍可导出当前 schema，不误判历史终局事实"
 	)
 	battle.abort_formal_entry()
 	await _drop_scene(scene)
@@ -443,6 +443,7 @@ func _check_v5_envelope_migrates_to_v6_roster() -> void:
 	var legacy: Dictionary = current.duplicate(true)
 	legacy.schema_version = 5
 	legacy.erase("expedition_attempt")
+	legacy.erase("war_loop")
 	legacy.garrison = {
 		"schema_version": 1,
 		"city_id": &"blackstone_city",
@@ -462,11 +463,11 @@ func _check_v5_envelope_migrates_to_v6_roster() -> void:
 	_check(
 		bool(encoded.success)
 			and bool(decoded.success)
-			and int(decoded.snapshot.schema_version) == 6
+			and int(decoded.snapshot.schema_version) == V5CampaignSnapshot.SCHEMA_VERSION
 			and Dictionary(decoded.snapshot.expedition_attempt).is_empty()
 			and Dictionary(decoded.snapshot.garrison.formations_by_id).size() == 3
 			and _roster_projection_total(decoded.snapshot.garrison) == 20,
-		"真实 canonical V5 envelope 解码后迁移为 V6 roster，保留总兵力且不伪造活跃出征"
+		"真实 canonical V5 envelope 解码后迁移为当前 roster，保留总兵力且不伪造活跃出征"
 	)
 	var restored_context := await _new_city(1, 1)
 	var restored_scene: Node2D = restored_context.scene
@@ -476,7 +477,7 @@ func _check_v5_envelope_migrates_to_v6_roster() -> void:
 			and _roster_projection_total(
 				restored_context.city.export_v5_campaign_snapshot().garrison
 			) == 20,
-		"V5→V6 migration 结果可跨进程式冷恢复到同一唯一 roster authority"
+		"V5 migration 结果可跨进程式冷恢复到同一唯一 roster authority"
 	)
 	await _drop_scene(scene)
 	await _drop_scene(restored_scene)
