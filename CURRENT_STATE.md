@@ -20,7 +20,11 @@ snapshot, and double-city conditions. A separate 3-assertion runner launched
 three isolated Godot processes against one V5 directory and recovered active
 siege tick 1 → tick 2 exactly once.
 
-This is an engineering/cold-recovery checkpoint only. Real normal-input media,
+This is an engineering/cold-recovery checkpoint only. A candidate `e0eec91`
+window was launched with a per-run isolated save and exact title identity, but
+the available desktop automation could only enumerate a pre-existing R1E Godot
+window, not the candidate window. No input was sent to either process and the
+identified candidate process was terminated normally. Real normal-input media,
 Founder acceptance, deployment, Meshy work, and any fog/engineer/siege-expansion
 work remain open. Remote source sync remains unverified until a later ordinary
 push and remote SHA check succeeds.

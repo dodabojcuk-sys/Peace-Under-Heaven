@@ -68,6 +68,8 @@ The production runtime accepts `--txwzs-v5-save-dir=<absolute path>` after
 `--`. Do not use an existing player save for review; the focused persistence
 runners create their own runner-specific temporary directories.
 The only available desktop Godot window belonged to another branch, and the
-new candidate window overlapped it without a safe per-window input target.
-No input was sent to either window, and no startup capture is represented as
-player-operation evidence.
+new candidate `e0eec91` window was launched with its own `--txwzs-v5-save-dir`
+and exact runtime identity, but the desktop automation still exposed only that
+pre-existing R1E window. No input was sent to either window; the identified
+candidate process was terminated normally, and no startup capture is
+represented as player-operation evidence.
