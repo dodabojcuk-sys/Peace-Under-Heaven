@@ -1,5 +1,36 @@
 # 当前状态
 
+## R1E expedition reconciliation (2026-09-06)
+
+This section records the current expedition branch without re-labelling it as a
+full-game acceptance.
+
+- **Identity:** `codex/txwzs-expedition-visual-r1e` at
+  `147430ed1d4fe584abcb423755da4455e5d5f95c` (Godot 4.5.1).
+- **Engineering baseline:** the R1E causality smoke, C0 presentation smoke, and
+  headless scene startup checks have passed. The focused R1E suite protects the
+  city preparation, payment, persistence, retreat, victory, defeat, and reload
+  boundaries; it is not a player acceptance decision.
+- **Player-facing repair:** expedition roster cards no longer expose internal
+  identifiers such as `formation.blackstone.1`; the focused smoke asserts that
+  only player-readable formation names and force counts are shown.
+- **Native run result:** an isolated Day 1 save was used for a real path of
+  city → select the first two formations (14 people) → battle → issue advance
+  orders on the front route → defeat → return to city. The battle failed at
+  tick 532 with 0 survivors; food was charged once and the result returned to
+  the city. This proves the current defeat/return path, **not** a normal-input
+  siege victory, breach, occupation, or Founder acceptance.
+- **Product reconciliation:** the latest product rules and explicit deferred
+  items are recorded in
+  [`R1E_RECONCILIATION_20260906.md`](docs/milestones/txwzs-r1e/R1E_RECONCILIATION_20260906.md).
+  No shared-energy migration, active-ability system, replenishment economy,
+  permanent-general-death semantics, fog/disguise/mine system, weather, or
+  full UI system was introduced here.
+
+The next meaningful gate is to establish a normal-input route that can produce
+a real siege victory under the intended rules, then verify breach and
+occupation semantics without substituting a static result or a test-only win.
+
 ## TXWZS City Governance Interaction 001
 
 This isolated branch started from exact M1B documentation base

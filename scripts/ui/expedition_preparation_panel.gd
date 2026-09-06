@@ -106,9 +106,8 @@ func _rebuild_formations(formations: Array) -> void:
 		var button := CheckButton.new()
 		button.name = "Formation%s" % str(formation_id).get_slice(".", 2)
 		button.custom_minimum_size = Vector2(0.0, 52.0)
-		button.text = "%s  ·  %s    %d / %d 人%s" % [
+		button.text = "%s  ·  %d / %d 人%s" % [
 			str(formation.get("display_name", "未命名编队")),
-			String(formation_id),
 			int(formation.get("member_count", 0)),
 			int(formation.get("max_members", 0)),
 			"  ·  待整补" if int(formation.get("member_count", 0)) == 0 else "",

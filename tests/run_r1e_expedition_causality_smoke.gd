@@ -63,11 +63,20 @@ func _check_preparation_modal_layout() -> void:
 			"%dx%d 出征准备使用容器边界、完整按钮命中区和模态输入捕获"
 			% [target_size.x, target_size.y]
 		)
+		var formation_text := ""
+		for child in modal.formation_list.get_children():
+			var formation_button := child as CheckButton
+			if formation_button != null:
+				formation_text += formation_button.text
 		_check(
 			modal.formation_list.get_child_count() == 3
+				and formation_text.contains("北门先锋")
+				and formation_text.contains("山道卫队")
+				and formation_text.contains("城门后备")
+				and not formation_text.contains("formation.")
 				and modal.validation_message.text.contains("请选择至少一支")
 				and modal.confirm_button.disabled,
-			"%dx%d 三支永久编队、空选原因和禁用确认一致"
+			"%dx%d 三支玩家可读编队、空选原因和禁用确认一致"
 			% [target_size.x, target_size.y]
 		)
 		_check(

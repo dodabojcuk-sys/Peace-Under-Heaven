@@ -14,6 +14,15 @@
 
 ## Unreleased
 
+### R1E reconciliation and player-facing roster labels
+
+- Removed raw internal formation identifiers from expedition preparation cards.
+- Added a focused regression assertion for player-readable roster labels.
+- Recorded the current R1E product-rule reconciliation, implementation limits,
+  and native single-city siege evidence.
+- Recorded that the ordinary 14-person Day 1 assault reached the real defeat
+  path; this is not a siege-victory or product-acceptance claim.
+
 ### M1B standalone playable shell R0
 
 - Added a minimal title entry for 天下无战事 / 黑石城 and made it the formal
