@@ -92,3 +92,9 @@ force push, merge, tag, deployment, or protection change occurred.
 commit and a complete `git archive` source bundle with SHA-256 in the untracked
 `delivery/TXWZS_WAR_LOOP_BATCH_R1_<commit>/` directory; this is a review
 artifact, not proof of remote upload or acceptance.
+
+Subsequently, ordinary push and `ls-remote` succeeded for
+`codex/txwzs-war-loop-r1` at `1fd2014afee19dd7465d308b74eb39ff24d39e92`.
+The later fresh remote clone began but its object transfer stalled; this does
+not change the verified remote ref, and no alternate transfer method, force
+push, merge, or release was used.

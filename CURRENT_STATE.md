@@ -27,6 +27,14 @@ for immediate Redcliff siege, first-city completion/Silverford surrender, and
 new-process double-city restore. This remains engineering and headless formal
 scene evidence, not real system-input media or Founder acceptance.
 
+The local source branch was then ordinarily pushed and read back as
+`origin/codex/txwzs-war-loop-r1` at `1fd2014afee19dd7465d308b74eb39ff24d39e92`.
+The remote review snapshot `df754e2c` remains a content-equivalent prior
+snapshot with different history; it was not merged. A fresh remote clone was
+started but its object transfer stalled after the ref query, so clone-based
+verification is `BLOCKED_NETWORK_AFTER_REF_VERIFY`; the remote SHA itself was
+verified and the local bundle remains available for independent review.
+
 ## WAR_LOOP_BATCH_R1 deterministic/double-city/disk checkpoint (2026-09-07)
 
 Local candidate `f3249dc` now has a follow-up working checkpoint (not yet a
