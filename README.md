@@ -48,6 +48,14 @@ GODOT=/Applications/Godot.app/Contents/MacOS/Godot
 "$GODOT" --headless --path . --editor --quit
 ```
 
+To keep a review run out of the default player store, pass the existing
+runtime override after `--`:
+
+```sh
+REVIEW_SAVE="/tmp/txwzs-war-loop-review"
+"$GODOT" --path . -- --txwzs-v5-save-dir="$REVIEW_SAVE"
+```
+
 ## 测试
 
 单个 runner：

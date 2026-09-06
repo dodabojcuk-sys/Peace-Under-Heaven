@@ -1,5 +1,22 @@
 # 当前状态
 
+## WAR_LOOP_BATCH_R1 corrective checkpoint (2026-09-06)
+
+`a800a84` corrects the first verified WAR_LOOP defects: siege advancement is
+owned by `ConstructionController` rather than the macro presentation control,
+uses persisted sub-tick remainder instead of a forced tick per render update,
+does not double-drive from the modal, preserves formation identity during
+rear-first attrition, allows zero survivors, resolves simultaneous annihilation
+as failure, and persists damaged gate/guard facts after a failed siege.
+
+The existing Macro March and V5 persistence runners pass after this checkpoint.
+The required dedicated timing-equivalence, multi-required-city, and siege
+cross-process-disk cases remain open; normal-input evidence is also open.
+The review remote was configured as `origin` for the authorized repository,
+but two normal non-interactive push attempts timed out while connecting and
+produced no remote SHA. No force push, credential read, merge, or deployment
+was attempted.
+
 ## WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate (2026-09-06)
 
 WAR_LOOP_BATCH_R1 is a local engineering candidate on
