@@ -145,6 +145,16 @@ func advance_macro_march_time(
 	)
 
 
+func advance_war_loop_time(delta_milliseconds: int) -> Dictionary:
+	var city := _get_city()
+	return city.advance_war_loop_time(delta_milliseconds) if city != null else {}
+
+
+func request_macro_siege_retreat() -> Dictionary:
+	var city := _get_city()
+	return city.request_macro_siege_retreat() if city != null else {}
+
+
 func block_macro_march_at_segment(
 	army_id: StringName,
 	order_id: StringName,

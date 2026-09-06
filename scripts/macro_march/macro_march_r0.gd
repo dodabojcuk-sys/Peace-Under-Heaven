@@ -21,6 +21,7 @@ var _detail_label := Label.new()
 var _confirm_button := Button.new()
 var _block_button := Button.new()
 var _recover_button := Button.new()
+var _retreat_button := Button.new()
 var _return_button := Button.new()
 
 
@@ -47,8 +48,7 @@ func refresh() -> void:
 		return
 	var model := _model()
 	var army: Dictionary = model.get("army", {})
-	if not army.is_empty() and StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED:
-		_branch_blocked = true
+	_branch_blocked = not army.is_empty() and StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED
 	_refresh_formation_controls(Array(model.get("formations", [])), army)
 	_refresh_copy(model, army)
 	_layout_ui()
@@ -59,7 +59,13 @@ func _process(delta: float) -> void:
 	if _dispatch_adapter == null:
 		return
 	var army: Dictionary = _model().get("army", {})
-	if army.is_empty() or StringName(army.phase) != ARMY_REGISTRY.PHASE_MARCHING:
+	if army.is_empty():
+		return
+	if StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING:
+		_dispatch_adapter.advance_war_loop_time(roundi(delta * 1000.0))
+		refresh()
+		return
+	if StringName(army.phase) not in [ARMY_REGISTRY.PHASE_MARCHING, ARMY_REGISTRY.PHASE_RETREATING]:
 		return
 	var macro: Dictionary = army.macro_march
 	if _branch_blocked and _should_stop_before_blocked_segment(macro):
@@ -89,16 +95,18 @@ func _build_ui() -> void:
 	_status_label.add_theme_color_override("font_color", Color("f4f0df"))
 	_detail_label.add_theme_font_size_override("font_size", 14)
 	_detail_label.add_theme_color_override("font_color", Color("3e3428"))
-	for button in [_confirm_button, _block_button, _recover_button, _return_button]:
+	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _return_button]:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
 	_confirm_button.text = "确认并锁定军令"
 	_block_button.text = "演示：中断南洼支路"
 	_recover_button.text = "恢复支路并继续原军令"
+	_retreat_button.text = "撤逃并沿原路返回"
 	_return_button.text = "返回黑石城"
 	_confirm_button.pressed.connect(_confirm_draft)
 	_block_button.pressed.connect(_block_branch)
 	_recover_button.pressed.connect(_recover_branch)
+	_retreat_button.pressed.connect(_request_retreat)
 	_return_button.pressed.connect(func(): return_to_city_requested.emit())
 
 
@@ -121,6 +129,8 @@ func _layout_ui() -> void:
 	_block_button.size = Vector2(274, 38)
 	_recover_button.position = Vector2(panel_left + 16, y + 100)
 	_recover_button.size = Vector2(274, 38)
+	_retreat_button.position = Vector2(panel_left + 16, y + 144)
+	_retreat_button.size = Vector2(274, 38)
 	_return_button.position = Vector2(panel_left + 16, size.y - 58)
 	_return_button.size = Vector2(274, 38)
 
@@ -145,7 +155,7 @@ func _refresh_formation_controls(formations: Array, army: Dictionary) -> void:
 
 
 func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
-	_title_label.text = "黑石外城战区 · 宏观军令灰盒"
+	_title_label.text = "黑石外城战区 · 军令与攻城"
 	var source_id := _source_point_id(model, army)
 	var source := THEATER.get_point(source_id)
 	var draft_text := "未画路线"
@@ -155,7 +165,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			str(THEATER.get_point(StringName(_draft_route.target_point_id)).display_name),
 		]
 	if army.is_empty():
-		_status_label.text = "从%s按住左键沿道路画到友方驻扎点；草稿可取消，确认后不可改道。" % str(source.display_name)
+		_status_label.text = "从%s按住左键沿道路画到驻扎点或敌城；草稿可取消，确认后不可改道。" % str(source.display_name)
 		_detail_label.text = "驻点：%s\n路线草稿：%s\n选择编队：%d\n粮食：%d\n当前公式：ceil(兵力 / %d)" % [
 			str(source.display_name), draft_text, _selected_formation_ids.size(), int(model.food),
 			int(model.get("maintenance_units_per_food", 1)),
@@ -168,17 +178,21 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			phase_text = "受阻临时驻扎"
 		elif StringName(army.phase) == ARMY_REGISTRY.PHASE_STATIONED:
 			phase_text = "已抵达驻扎点"
-		_status_label.text = "%s：%s → %s · 军令 %s" % [
-			phase_text, str(source.display_name), str(target.display_name), str(macro.order_id)
-		]
-		_detail_label.text = "军队：%s\n路线：%s\n进度：%d / %d ms\n粮食已扣：%d\n%s" % [
-			str(army.army_id), str(macro.route_id), int(macro.progress_millis), int(macro.total_millis),
-			int(macro.food_cost),
-			("道路恢复后会继续原军令，不再扣粮。" if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED else "到达后可从驻扎点发出下一道军令。"),
-		]
+		if StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING:
+			phase_text = "自动攻城中"
+		elif StringName(army.phase) == ARMY_REGISTRY.PHASE_RETREATING:
+			phase_text = "有损撤逃中"
+		_status_label.text = "%s：%s → %s" % [phase_text, str(source.display_name), str(target.display_name)]
+		var war: Dictionary = model.get("war_loop", {})
+		var siege: Dictionary = war.get("active_siege", {})
+		if StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING:
+			_detail_label.text = "城门耐久：%d\n守军：%d\n我军可战：%d\n自动先行招降，未降则攻门并清剿守军。" % [int(siege.get("gate_hp", 0)), ceili(float(int(siege.get("defender_total_hp", 0))) / maxf(float(int(siege.get("defender_hp_per_member", 1))), 1.0)), ceili(float(int(siege.get("attacker_total_hp", 0))) / maxf(float(int(siege.get("attacker_hp_per_member", 1))), 1.0))]
+		else:
+			_detail_label.text = "进度：%d / %d ms\n粮食已扣：%d\n%s" % [int(macro.progress_millis), int(macro.total_millis), int(macro.food_cost), ("道路恢复后会继续原军令，不再扣粮。" if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED else "到达后可从驻扎点发出下一道军令。")]
 		_confirm_button.disabled = true
 		_block_button.visible = StringName(army.phase) == ARMY_REGISTRY.PHASE_MARCHING and StringName(macro.route_id) == &"road.blackstone.northwatch.lowland"
 		_recover_button.visible = StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED
+		_retreat_button.visible = StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_STATIONED:
 			_confirm_button.disabled = _draft_route.is_empty()
 			_confirm_button.text = "确认下一段军令"
@@ -188,6 +202,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_confirm_button.visible = true
 	_block_button.visible = false
 	_recover_button.visible = false
+	_retreat_button.visible = false
 	_confirm_button.disabled = _draft_route.is_empty() or _selected_formation_ids.is_empty()
 
 
@@ -246,7 +261,7 @@ func _finish_draw() -> void:
 	var target_id := _nearest_target_at_draw_end(source_id)
 	if target_id == &"":
 		_draft_route = {}
-		_status_label.text = "终点必须是另一处友方驻扎点。"
+		_status_label.text = "终点必须是另一处驻扎点或可进攻的敌城。"
 		queue_redraw()
 		return
 	var decision := THEATER.choose_route_from_draw(source_id, target_id, _draw_points)
@@ -309,6 +324,15 @@ func _recover_branch() -> void:
 	if not resumed.is_empty():
 		_dispatch_adapter.set_macro_march_route_blocked_for_scenario(StringName(macro.route_id), false)
 		_branch_blocked = false
+	refresh()
+
+
+func _request_retreat() -> void:
+	if _dispatch_adapter == null:
+		return
+	var result := _dispatch_adapter.request_macro_siege_retreat()
+	if not bool(result.get("success", false)):
+		_status_label.text = str(result.get("error", "撤逃军令失败"))
 	refresh()
 
 
@@ -404,10 +428,11 @@ func _draw() -> void:
 	for point_value in THEATER.get_points().values():
 		var point: Dictionary = point_value
 		var center := _world_to_screen(Vector2(point.world_position))
-		draw_circle(center, 25.0, Color("273d3c"))
-		draw_circle(center, 18.0, Color("d7b465"))
+		var enemy := StringName(point.get("point_kind", &"")) == &"ENEMY_CITY"
+		draw_circle(center, 25.0, Color("5c2b25") if enemy else Color("273d3c"))
+		draw_circle(center, 18.0, Color("c65a42") if enemy else Color("d7b465"))
 		draw_string(ThemeDB.fallback_font, center + Vector2(-38, 47), str(point.display_name), HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.WHITE)
-	draw_string(ThemeDB.fallback_font, Vector2(30, size.y - 20), "主道不可破坏 · 南洼支路可中断 · 仅友方驻扎点可作为终点", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("e3dcc5"))
+	draw_string(ThemeDB.fallback_font, Vector2(30, size.y - 20), "主道不可破坏 · 南洼支路可中断 · 可向敌城发起攻城军令", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("e3dcc5"))
 
 
 func _draw_army_marker(army: Dictionary) -> void:

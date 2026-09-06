@@ -1,5 +1,35 @@
 # 当前状态
 
+## WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate (2026-09-06)
+
+WAR_LOOP_BATCH_R1 is a local engineering candidate on
+`codex/txwzs-war-loop-r1`, based on `a5fda3dd`. It extends the outer-city
+theatre with Redcliff (required) and Silverford (optional) enemy cities. A
+macro army that reaches an enemy city first evaluates the persisted surrender
+configuration; a refusal enters deterministic gate-then-guard combat using
+the committed unit HP, attack, armor, city gate, and guard facts. This is a
+new durable war-loop authority, not a shortcut through the legacy C0 result
+writer.
+
+`ArmyRegistry` schema 3 adds SIEGING and RETREATING phases while retaining the
+same macro army and order. `V5CampaignSnapshot` schema 7 persists enemy
+military control, gate/guard facts, active siege tick, losses, and idempotent
+resolution IDs; V6 saves migrate to an empty WarLoop state and do not invent a
+campaign order. Occupation changes military control only; story ownership is
+retained. A required-city set makes Redcliff the single-city clear condition;
+the data model supports a future multi-city required set without treating
+optional Silverford as a victory requirement.
+
+Focused WAR_LOOP_R1 smoke passes 9 assertions (surrender, attack, cold
+restore, breach/guards/occupation, victory rule, casualties, and retreat).
+Existing Macro March R0 movement and three-process persistence smokes also
+pass. These are engineering checks, not a Founder acceptance. No verified
+normal-input screenshots or continuous player recording are provided in this
+candidate; no merge, push, deployment, 3D modelling, fog, or expanded strategy
+systems were performed.
+
+`WAR_LOOP_BATCH_R1=ENGINEERING_CANDIDATE_REAL_INPUT_MEDIA_NOT_PROVIDED`
+
 ## Macro March R0 outer-city greybox (2026-09-06)
 
 Macro March R0 is a local engineering candidate on

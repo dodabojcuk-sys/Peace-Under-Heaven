@@ -2,7 +2,7 @@ class_name ArmyRegistry
 extends RefCounted
 
 
-const SCHEMA_VERSION := 2
+const SCHEMA_VERSION := 3
 const MAX_EXACT_PERSISTED_SEQUENCE := 9007199254740991
 const PHASE_RESERVED := &"RESERVED"
 const PHASE_MARCHING := &"MARCHING"
@@ -11,6 +11,8 @@ const PHASE_RETURNING := &"RETURNING"
 const PHASE_SETTLEMENT_PENDING := &"SETTLEMENT_PENDING"
 const PHASE_BLOCKED := &"BLOCKED"
 const PHASE_STATIONED := &"STATIONED"
+const PHASE_SIEGING := &"SIEGING"
+const PHASE_RETREATING := &"RETREATING"
 const PHASE_CLOSED := &"CLOSED"
 const DISPOSITION_STATIONED_TARGET := &"STATIONED_TARGET"
 const DISPOSITION_RETURNING_HOME := &"RETURNING_HOME"
@@ -22,6 +24,8 @@ const ACTIVE_PHASES := [
 	PHASE_RETURNING,
 	PHASE_SETTLEMENT_PENDING,
 	PHASE_BLOCKED,
+	PHASE_SIEGING,
+	PHASE_RETREATING,
 ]
 const ALL_PHASES := [
 	PHASE_RESERVED,
@@ -31,6 +35,8 @@ const ALL_PHASES := [
 	PHASE_SETTLEMENT_PENDING,
 	PHASE_BLOCKED,
 	PHASE_STATIONED,
+	PHASE_SIEGING,
+	PHASE_RETREATING,
 	PHASE_CLOSED,
 ]
 
@@ -356,7 +362,7 @@ static func validate_snapshot(
 ) -> Dictionary:
 	var source_schema_version := int(snapshot.get("schema_version", 0))
 	if (
-		source_schema_version not in [1, SCHEMA_VERSION]
+		source_schema_version not in [1, 2, SCHEMA_VERSION]
 		or typeof(snapshot.get("next_army_sequence", null)) != TYPE_INT
 		or int(snapshot.get("next_army_sequence", 0)) <= 0
 		or int(snapshot.get("next_army_sequence", 0))
@@ -369,9 +375,10 @@ static func validate_snapshot(
 	):
 		return {"valid": false, "error_id": &"INVALID_ARMY_REGISTRY"}
 	var normalized := snapshot.duplicate(true)
-	if source_schema_version == 1:
+	if source_schema_version in [1, 2]:
 		normalized["schema_version"] = SCHEMA_VERSION
-		normalized["next_macro_order_sequence"] = 1
+		if source_schema_version == 1:
+			normalized["next_macro_order_sequence"] = 1
 	if (
 		int(normalized.next_macro_order_sequence) <= 0
 		or int(normalized.next_macro_order_sequence)
@@ -650,7 +657,7 @@ func advance_macro_march(
 	if (
 		army.is_empty()
 		or macro.is_empty()
-		or StringName(army.phase) != PHASE_MARCHING
+		or StringName(army.phase) not in [PHASE_MARCHING, PHASE_RETREATING]
 		or StringName(macro.order_id) != order_id
 		or int(macro.progress_millis) != expected_progress_milliseconds
 	):
@@ -668,6 +675,77 @@ func advance_macro_march(
 	army.macro_march = macro
 	_armies_by_id[army_id] = army
 	return {"success": true, "arrived": arrived, "army": army.duplicate(true)}
+
+
+func begin_macro_siege(army_id: StringName, order_id: StringName) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	if army.is_empty() or macro.is_empty() or StringName(army.phase) != PHASE_STATIONED or StringName(macro.order_id) != order_id:
+		return {}
+	army.phase = PHASE_SIEGING
+	macro.phase = PHASE_SIEGING
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func complete_macro_siege(army_id: StringName, order_id: StringName) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	if army.is_empty() or macro.is_empty() or StringName(army.phase) != PHASE_SIEGING or StringName(macro.order_id) != order_id:
+		return {}
+	army.phase = PHASE_STATIONED
+	macro.phase = PHASE_STATIONED
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func replace_macro_composition(army_id: StringName, order_id: StringName, surviving_count: int) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	if army.is_empty() or macro.is_empty() or StringName(macro.order_id) != order_id or surviving_count < 0:
+		return {}
+	var units: Dictionary = army.units_by_definition_id
+	if units.size() != 1:
+		return {}
+	var definition_id = units.keys()[0]
+	units[definition_id] = surviving_count
+	army.units_by_definition_id = units
+	var formations: Array = macro.formation_snapshots
+	var remaining := surviving_count
+	for index in range(formations.size()):
+		var formation: Dictionary = formations[index]
+		var amount := mini(remaining, int(formation.max_members))
+		formation.member_count = amount
+		formations[index] = formation
+		remaining -= amount
+	macro.formation_snapshots = formations
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func begin_macro_retreat(army_id: StringName, order_id: StringName) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	if army.is_empty() or macro.is_empty() or StringName(army.phase) != PHASE_SIEGING or StringName(macro.order_id) != order_id:
+		return {}
+	var points: Array = Array(macro.route_world_points).duplicate()
+	points.reverse()
+	var old_source := StringName(macro.source_point_id)
+	macro.source_point_id = StringName(macro.target_point_id)
+	macro.target_point_id = old_source
+	macro.route_world_points = points
+	macro.progress_millis = 0
+	macro.phase = PHASE_RETREATING
+	army.source_node_id = StringName(macro.source_point_id)
+	army.target_node_id = StringName(macro.target_point_id)
+	army.progress_milliseconds = 0
+	army.phase = PHASE_RETREATING
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
 
 
 func block_macro_march(
@@ -775,7 +853,7 @@ static func _has_valid_macro_formations(
 			or typeof(formation.get("display_name", null)) != TYPE_STRING
 			or typeof(formation.get("member_count", null)) != TYPE_INT
 			or typeof(formation.get("max_members", null)) != TYPE_INT
-			or int(formation.member_count) <= 0
+			or int(formation.member_count) < 0
 			or int(formation.max_members) < int(formation.member_count)
 		):
 			return false
@@ -825,7 +903,7 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 		or int(army.duration_milliseconds) != int(macro.total_millis)
 		or typeof(macro.blocked_segment_index) != TYPE_INT
 		or typeof(macro.temporary_station_point) != TYPE_STRING_NAME
-		or StringName(macro.phase) not in [PHASE_MARCHING, PHASE_BLOCKED, PHASE_STATIONED]
+		or StringName(macro.phase) not in [PHASE_MARCHING, PHASE_BLOCKED, PHASE_STATIONED, PHASE_SIEGING, PHASE_RETREATING]
 		or StringName(army.phase) != StringName(macro.phase)
 		or not _has_valid_macro_formations(
 			Array(macro.formation_snapshots), Dictionary(army.units_by_definition_id)

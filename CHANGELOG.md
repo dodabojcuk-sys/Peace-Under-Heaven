@@ -14,6 +14,20 @@
 
 ## Unreleased
 
+### WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate
+
+- Added Redcliff and Silverford enemy-city data to the replaceable outer-city
+  theatre. Arrival uses a configurable surrender check, then deterministic
+  gate-first and guard-resolution combat when surrender is refused.
+- Extended `ArmyRegistry` to schema 3 and `V5CampaignSnapshot` to schema 7.
+  Siege, retreat, occupation control, exact combat tick facts, casualties, and
+  resolution idempotence use the existing controller/save boundary; V6 saves
+  migrate without creating a new macro army or order.
+- Added a focused WAR_LOOP_R1 smoke for surrender, attack, cold restore,
+  occupation, the required-city clear rule, casualty persistence, and retreat.
+  This is a local engineering candidate only: no verified real-input media,
+  Founder acceptance, merge, push, or deployment is claimed.
+
 ### Macro March R0 outer-city greybox
 
 - Added a formal `外城军令` city entry and one small Blackstone/Northwatch/
