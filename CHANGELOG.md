@@ -16,6 +16,17 @@
 
 ### WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate
 
+- Corrected the reported timing, formation writeback, one-soldier retreat,
+  simultaneous annihilation, failed-siege gate persistence, and malformed
+  nested war-snapshot boundaries. Retreat now creates a new return order while
+  preserving the original order record; zero survivors close the army.
+- Promoted Silverford to a second required enemy city and added the direct
+  Redcliff-to-Silverford road, so the clear rule is exercised as a real
+  two-city occupation chain rather than a hypothetical data capability.
+- Added 15 focused deterministic War Loop assertions and a separate three
+  process active-siege V5 disk recovery runner (3 assertions). These remain
+  engineering/cold-recovery evidence, not real-input media or acceptance.
+
 - Added Redcliff and Silverford enemy-city data to the replaceable outer-city
   theatre. Arrival uses a configurable surrender check, then deterministic
   gate-first and guard-resolution combat when surrender is refused.

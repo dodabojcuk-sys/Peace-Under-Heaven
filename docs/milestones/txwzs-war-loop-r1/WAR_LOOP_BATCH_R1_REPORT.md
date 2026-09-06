@@ -22,21 +22,27 @@ on refusal, attacker damage targets the gate until breached and then guards,
 while living guards retaliate. `UnitRole` HP/attack/armor and the committed
 army count are the attacker inputs. Occupation changes military control only;
 story ownership is intentionally retained. Retreat applies the configured
-minimum/proportional loss, returns the same army over its reversed recorded
-route, and does not create a second food transaction.
+minimum/proportional loss, records the immutable outgoing order, creates a new
+return order over its reversed route, and does not create a second food
+transaction. A zero-survivor retreat/defeat closes the army explicitly rather
+than leaving a zero-count active formation.
 
 ## Persistence
 
 `V5CampaignSnapshot` schema 7 includes `war_loop`; schema 6 is migrated to an
-empty schema-7 war record. `ArmyRegistry` schema 3 preserves SIEGING and
-RETREATING macro phases. Restore cross-validates any active siege against the
-stored army/order before applying it. This is a cold-recovery engineering
-claim, not a player acceptance claim.
+empty schema-7 war record. `ArmyRegistry` schema 4 preserves siege/retreat/
+closed macro phases and normalizes prior registry snapshots with an empty order
+history. Restore rejects malformed nested city/siege facts and cross-validates
+any active siege against the stored army/order before applying it. This is a
+cold-recovery engineering claim, not a player acceptance claim.
 
 ## Verification
 
 - Godot `4.5.1.stable.official.f62fdbde1` editor import/parse completed.
-- `tests/run_war_loop_r1_smoke.gd`: 9 assertions passed.
+- `tests/run_war_loop_r1_smoke.gd`: 15 assertions passed.
+- `tests/run_war_loop_disk_recovery_smoke.gd`: 3 assertions passed; its A/B/C
+  processes persisted tick 1, restored and advanced exactly one tick, then
+  restored tick 2 from the same isolated V5 directory.
 - `tests/run_macro_march_r0_smoke.gd`: 14 assertions passed.
 - `tests/run_macro_march_r0_persistence_smoke.gd`: passed.
 - `tests/run_v5_campaign_persistence_smoke.gd`: passed.
@@ -58,9 +64,9 @@ GODOT_BIN="/Users/m4-zhi/Documents/codex-tools/godot/4.5.1-stable-standard/Godot
 "$GODOT_BIN" --path /Users/m4-zhi/Documents/codex-workspace/txwzs-war-loop-r1
 ```
 
-The production game has no command-line user-data override. Do not use an
-existing player save for review; the focused persistence runners create their
-own `user://macro_march_r0_<pid>` or runner-specific temporary directories.
+The production runtime accepts `--txwzs-v5-save-dir=<absolute path>` after
+`--`. Do not use an existing player save for review; the focused persistence
+runners create their own runner-specific temporary directories.
 The only available desktop Godot window belonged to another branch, and the
 new candidate window overlapped it without a safe per-window input target.
 No input was sent to either window, and no startup capture is represented as

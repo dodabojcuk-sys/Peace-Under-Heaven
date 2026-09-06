@@ -226,7 +226,22 @@ func get_snapshot() -> Dictionary:
 
 
 func restore_snapshot(snapshot: Dictionary) -> bool:
-	if int(snapshot.get("schema_version", 0)) != SCHEMA_VERSION or typeof(snapshot.get("cities_by_id", null)) != TYPE_DICTIONARY or typeof(snapshot.get("required_city_ids", null)) != TYPE_DICTIONARY or typeof(snapshot.get("active_siege", null)) != TYPE_DICTIONARY or typeof(snapshot.get("completed_resolution_ids", null)) != TYPE_DICTIONARY or int(snapshot.get("next_siege_sequence", 0)) <= 0:
+	if (
+		not _has_exact_keys(snapshot, [
+			"schema_version", "cities_by_id", "required_city_ids", "active_siege",
+			"completed_resolution_ids", "next_siege_sequence",
+		])
+		or int(snapshot.get("schema_version", 0)) != SCHEMA_VERSION
+		or typeof(snapshot.get("cities_by_id", null)) != TYPE_DICTIONARY
+		or typeof(snapshot.get("required_city_ids", null)) != TYPE_DICTIONARY
+		or typeof(snapshot.get("active_siege", null)) != TYPE_DICTIONARY
+		or typeof(snapshot.get("completed_resolution_ids", null)) != TYPE_DICTIONARY
+		or typeof(snapshot.get("next_siege_sequence", null)) != TYPE_INT
+		or int(snapshot.get("next_siege_sequence", 0)) <= 0
+		or not _has_valid_cities(Dictionary(snapshot.cities_by_id), Dictionary(snapshot.required_city_ids))
+		or not _has_valid_completed_resolutions(Dictionary(snapshot.completed_resolution_ids))
+		or not _has_valid_active_siege(Dictionary(snapshot.active_siege), Dictionary(snapshot.cities_by_id))
+	):
 		return false
 	cities_by_id = Dictionary(snapshot.cities_by_id).duplicate(true)
 	required_city_ids = Dictionary(snapshot.required_city_ids).duplicate(true)
@@ -234,6 +249,123 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	completed_resolution_ids = Dictionary(snapshot.completed_resolution_ids).duplicate(true)
 	next_siege_sequence = int(snapshot.next_siege_sequence)
 	return true
+
+
+static func _has_valid_cities(cities: Dictionary, required: Dictionary) -> bool:
+	if cities.is_empty():
+		# A migrated pre-war V6 campaign has no external theatre facts yet. It is
+		# valid only as the paired empty record, and initialize_from_theater will
+		# populate it on first use.
+		return required.is_empty()
+	var expected_city_keys := [
+		"city_id", "story_owner_faction_id", "military_controller_faction_id",
+		"required_for_victory", "surrender_allowed", "gate_hp", "defender_count",
+		"defender_hp_per_member", "defender_attack_per_member", "defender_armor_per_member",
+		"occupation_resolution_id",
+	]
+	for city_id_value in cities:
+		var city_id := StringName(city_id_value)
+		var city_value = cities[city_id_value]
+		if city_id == &"" or not city_value is Dictionary:
+			return false
+		var city: Dictionary = city_value
+		if (
+			not _has_exact_keys(city, expected_city_keys)
+			or StringName(city.get("city_id", &"")) != city_id
+			or typeof(city.get("story_owner_faction_id", null)) != TYPE_STRING_NAME
+			or StringName(city.story_owner_faction_id) == &""
+			or typeof(city.get("military_controller_faction_id", null)) != TYPE_STRING_NAME
+			or StringName(city.military_controller_faction_id) == &""
+			or typeof(city.get("required_for_victory", null)) != TYPE_BOOL
+			or typeof(city.get("surrender_allowed", null)) != TYPE_BOOL
+			or not _is_non_negative_int(city.get("gate_hp", null))
+			or not _is_non_negative_int(city.get("defender_count", null))
+			or not _is_positive_int(city.get("defender_hp_per_member", null))
+			or not _is_non_negative_int(city.get("defender_attack_per_member", null))
+			or not _is_non_negative_int(city.get("defender_armor_per_member", null))
+			or typeof(city.get("occupation_resolution_id", null)) != TYPE_STRING_NAME
+		):
+			return false
+		if bool(city.required_for_victory) != bool(required.get(city_id, false)):
+			return false
+	for required_city_id_value in required:
+		var required_city_id := StringName(required_city_id_value)
+		if required_city_id == &"" or not cities.has(required_city_id) or required[required_city_id_value] != true:
+			return false
+	return true
+
+
+static func _has_valid_completed_resolutions(resolutions: Dictionary) -> bool:
+	for resolution_id_value in resolutions:
+		if StringName(resolution_id_value) == &"" or resolutions[resolution_id_value] != true:
+			return false
+	return true
+
+
+static func _has_valid_active_siege(siege: Dictionary, cities: Dictionary) -> bool:
+	if siege.is_empty():
+		return true
+	var expected_siege_keys := [
+		"siege_id", "army_id", "order_id", "city_id", "phase", "resolution", "tick",
+		"attacker_initial_count", "attacker_hp_per_member", "attacker_attack_per_member",
+		"attacker_armor_per_member", "attacker_total_hp", "gate_hp", "defender_initial_count",
+		"defender_hp_per_member", "defender_attack_per_member", "defender_armor_per_member",
+		"defender_total_hp", "gate_breached", "surrender_checked_at_arrival",
+		"surrender_checked_after_breach", "elapsed_remainder_milliseconds",
+	]
+	if not _has_exact_keys(siege, expected_siege_keys):
+		return false
+	var city_id := StringName(siege.get("city_id", &""))
+	if (
+		StringName(siege.get("siege_id", &"")) == &""
+		or StringName(siege.get("army_id", &"")) == &""
+		or StringName(siege.get("order_id", &"")) == &""
+		or city_id == &"" or not cities.has(city_id)
+		or StringName(Dictionary(cities[city_id]).get("military_controller_faction_id", &"")) == &"player"
+		or StringName(siege.get("phase", &"")) not in [PHASE_SIEGING, PHASE_OCCUPIED, PHASE_FAILED]
+		or StringName(siege.get("resolution", &"")) not in [&"", RESOLUTION_SURRENDER, RESOLUTION_COMBAT, RESOLUTION_RETREAT]
+		or not _is_non_negative_int(siege.get("tick", null))
+		or not _is_positive_int(siege.get("attacker_initial_count", null))
+		or not _is_positive_int(siege.get("attacker_hp_per_member", null))
+		or not _is_non_negative_int(siege.get("attacker_attack_per_member", null))
+		or not _is_non_negative_int(siege.get("attacker_armor_per_member", null))
+		or not _is_non_negative_int(siege.get("attacker_total_hp", null))
+		or not _is_non_negative_int(siege.get("gate_hp", null))
+		or not _is_non_negative_int(siege.get("defender_initial_count", null))
+		or not _is_positive_int(siege.get("defender_hp_per_member", null))
+		or not _is_non_negative_int(siege.get("defender_attack_per_member", null))
+		or not _is_non_negative_int(siege.get("defender_armor_per_member", null))
+		or not _is_non_negative_int(siege.get("defender_total_hp", null))
+		or typeof(siege.get("gate_breached", null)) != TYPE_BOOL
+		or typeof(siege.get("surrender_checked_at_arrival", null)) != TYPE_BOOL
+		or typeof(siege.get("surrender_checked_after_breach", null)) != TYPE_BOOL
+		or not _is_non_negative_int(siege.get("elapsed_remainder_milliseconds", null))
+	):
+		return false
+	if int(siege.gate_hp) == 0 and not bool(siege.gate_breached):
+		return false
+	if StringName(siege.phase) == PHASE_SIEGING and StringName(siege.resolution) != &"":
+		return false
+	if StringName(siege.phase) != PHASE_SIEGING and StringName(siege.resolution) == &"":
+		return false
+	return true
+
+
+static func _has_exact_keys(value: Dictionary, expected_keys: Array) -> bool:
+	if value.size() != expected_keys.size():
+		return false
+	for key in expected_keys:
+		if not value.has(key):
+			return false
+	return true
+
+
+static func _is_non_negative_int(value) -> bool:
+	return typeof(value) == TYPE_INT and int(value) >= 0
+
+
+static func _is_positive_int(value) -> bool:
+	return typeof(value) == TYPE_INT and int(value) > 0
 
 
 static func _alive_members(total_hp: int, hp_per_member: int) -> int:

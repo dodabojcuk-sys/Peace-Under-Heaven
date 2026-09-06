@@ -87,6 +87,19 @@ The second runner uses three isolated Godot processes to verify blocked,
 resumed, and stationed cold restoration. These checks do not substitute for
 the required real mouse-input screenshots, short recording, or user acceptance.
 
+War Loop R1 focused validation (local engineering candidate only):
+
+```text
+tests/run_war_loop_r1_smoke.gd
+tests/run_war_loop_disk_recovery_smoke.gd
+```
+
+The first runner covers deterministic combat timing, formation-preserving
+casualties, immutable retreat orders, two required cities, and malformed war
+snapshot rejection. The second starts three isolated Godot processes against
+one explicit V5 save directory and proves active-siege tick/gate recovery.
+Neither runner is real mouse-input media or player acceptance.
+
 已验收基线为 focused `6/6 · 185`、tracked `33/33 · 1739`、
 all-present `35/35 · 1871 assertions / 1905 PASS`。测试通过不自动推进
 G3 或替代真实窗口、独立复查和用户试玩 Gate。

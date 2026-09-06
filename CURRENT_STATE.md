@@ -1,5 +1,30 @@
 # 当前状态
 
+## WAR_LOOP_BATCH_R1 deterministic/double-city/disk checkpoint (2026-09-07)
+
+Local candidate `f3249dc` now has a follow-up working checkpoint (not yet a
+remote-reviewed revision). `ArmyRegistry` schema 4 keeps immutable original
+macro orders in history when a retreat creates a separate reverse-route order;
+complete losses close the army rather than storing a zero-member active army.
+The war state rejects malformed nested city/siege fields, retains damaged gate
+and defender facts on failed siege, and gives simultaneous attacker/defender
+elimination to the attacker-failed branch.
+
+Redcliff and Silverford are now both required enemy cities: Redcliff retains
+its River Lords story ownership but begins under Border Rebels military control;
+Silverford remains configured for automatic surrender. The level clears only
+after both military controllers become player. The focused war-loop runner now
+has 15 assertions, including the reported timing, 7+7 formation, single-loss,
+mutual-destruction, gate persistence, immutable-return-order, malformed nested
+snapshot, and double-city conditions. A separate 3-assertion runner launched
+three isolated Godot processes against one V5 directory and recovered active
+siege tick 1 → tick 2 exactly once.
+
+This is an engineering/cold-recovery checkpoint only. Real normal-input media,
+Founder acceptance, deployment, Meshy work, and any fog/engineer/siege-expansion
+work remain open. Remote source sync remains unverified until a later ordinary
+push and remote SHA check succeeds.
+
 ## WAR_LOOP_BATCH_R1 corrective checkpoint (2026-09-06)
 
 `a800a84` corrects the first verified WAR_LOOP defects: siege advancement is

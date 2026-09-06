@@ -2,7 +2,7 @@ class_name ArmyRegistry
 extends RefCounted
 
 
-const SCHEMA_VERSION := 3
+const SCHEMA_VERSION := 4
 const MAX_EXACT_PERSISTED_SEQUENCE := 9007199254740991
 const PHASE_RESERVED := &"RESERVED"
 const PHASE_MARCHING := &"MARCHING"
@@ -121,6 +121,7 @@ func create_reserved(
 		"phase": PHASE_RESERVED,
 		"transaction_id": transaction_id,
 		"last_applied_result_id": &"",
+		"macro_order_history": [],
 	}
 	_armies_by_id[army_id] = army
 	return army.duplicate(true)
@@ -362,7 +363,7 @@ static func validate_snapshot(
 ) -> Dictionary:
 	var source_schema_version := int(snapshot.get("schema_version", 0))
 	if (
-		source_schema_version not in [1, 2, SCHEMA_VERSION]
+		source_schema_version not in [1, 2, 3, SCHEMA_VERSION]
 		or typeof(snapshot.get("next_army_sequence", null)) != TYPE_INT
 		or int(snapshot.get("next_army_sequence", 0)) <= 0
 		or int(snapshot.get("next_army_sequence", 0))
@@ -375,10 +376,14 @@ static func validate_snapshot(
 	):
 		return {"valid": false, "error_id": &"INVALID_ARMY_REGISTRY"}
 	var normalized := snapshot.duplicate(true)
-	if source_schema_version in [1, 2]:
+	if source_schema_version in [1, 2, 3]:
 		normalized["schema_version"] = SCHEMA_VERSION
 		if source_schema_version == 1:
 			normalized["next_macro_order_sequence"] = 1
+		for army_id_value in normalized.armies_by_id:
+			var migrated_army: Dictionary = Dictionary(normalized.armies_by_id[army_id_value]).duplicate(true)
+			migrated_army["macro_order_history"] = []
+			normalized.armies_by_id[army_id_value] = migrated_army
 	if (
 		int(normalized.next_macro_order_sequence) <= 0
 		or int(normalized.next_macro_order_sequence)
@@ -439,6 +444,14 @@ static func validate_snapshot(
 			)
 		):
 			return {"valid": false, "error_id": &"INVALID_ARMY_STATE"}
+		if not army.get("macro_order_history", null) is Array:
+			return {"valid": false, "error_id": &"INVALID_MACRO_HISTORY"}
+		var history_validation := _validate_macro_order_history(
+			Array(army.macro_order_history),
+			StringName(army.get("transaction_id", &""))
+		)
+		if not bool(history_validation.valid):
+			return history_validation
 		var macro_validation := _validate_macro_march(army)
 		if not bool(macro_validation.valid):
 			return macro_validation
@@ -597,6 +610,7 @@ func create_macro_march(
 		"transaction_id": order_id,
 		"last_applied_result_id": &"",
 		"macro_march": macro_march,
+		"macro_order_history": [],
 	}
 	_armies_by_id[army_id] = army
 	return army.duplicate(true)
@@ -640,6 +654,7 @@ func issue_stationed_macro_march(
 		order_id, source_point_id, target_point_id, route_id, route_world_points,
 		Array(prior_macro.formation_snapshots), food_cost, duration_milliseconds
 	)
+	army.macro_order_history = Array(army.get("macro_order_history", [])).duplicate(true)
 	_armies_by_id[army_id] = army
 	return army.duplicate(true)
 
@@ -740,16 +755,53 @@ func begin_macro_retreat(army_id: StringName, order_id: StringName) -> Dictionar
 		return {}
 	var points: Array = Array(macro.route_world_points).duplicate()
 	points.reverse()
-	var old_source := StringName(macro.source_point_id)
-	macro.source_point_id = StringName(macro.target_point_id)
-	macro.target_point_id = old_source
-	macro.route_world_points = points
-	macro.progress_millis = 0
+	var return_order_id := _allocate_macro_order_id()
+	var original_order := macro.duplicate(true)
+	var original_history: Array = Array(army.get("macro_order_history", [])).duplicate(true)
+	original_history.append(original_order)
+	macro = _build_macro_march(
+		return_order_id,
+		StringName(original_order.target_point_id),
+		StringName(original_order.source_point_id),
+		StringName("%s.return" % String(original_order.route_id)),
+		points,
+		Array(original_order.formation_snapshots),
+		int(original_order.food_cost),
+		int(original_order.total_millis)
+	)
 	macro.phase = PHASE_RETREATING
 	army.source_node_id = StringName(macro.source_point_id)
 	army.target_node_id = StringName(macro.target_point_id)
+	army.route_id = StringName(macro.route_id)
 	army.progress_milliseconds = 0
+	army.duration_milliseconds = int(macro.total_millis)
+	army.transaction_id = return_order_id
 	army.phase = PHASE_RETREATING
+	army.macro_march = macro
+	army.macro_order_history = original_history
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func close_macro_lost(army_id: StringName, order_id: StringName, result_id: StringName) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	if (
+		army.is_empty() or macro.is_empty() or result_id == &""
+		or StringName(army.phase) != PHASE_SIEGING
+		or StringName(macro.order_id) != order_id
+	):
+		return {}
+	var formations: Array = Array(macro.formation_snapshots).duplicate(true)
+	for index in formations.size():
+		var formation: Dictionary = formations[index]
+		formation.member_count = 0
+		formations[index] = formation
+	macro.formation_snapshots = formations
+	macro.phase = PHASE_CLOSED
+	army.units_by_definition_id = {}
+	army.last_applied_result_id = result_id
+	army.phase = PHASE_CLOSED
 	army.macro_march = macro
 	_armies_by_id[army_id] = army
 	return army.duplicate(true)
@@ -910,7 +962,7 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 		or int(army.duration_milliseconds) != int(macro.total_millis)
 		or typeof(macro.blocked_segment_index) != TYPE_INT
 		or typeof(macro.temporary_station_point) != TYPE_STRING_NAME
-		or StringName(macro.phase) not in [PHASE_MARCHING, PHASE_BLOCKED, PHASE_STATIONED, PHASE_SIEGING, PHASE_RETREATING]
+		or StringName(macro.phase) not in [PHASE_MARCHING, PHASE_BLOCKED, PHASE_STATIONED, PHASE_SIEGING, PHASE_RETREATING, PHASE_CLOSED]
 		or StringName(army.phase) != StringName(macro.phase)
 		or not _has_valid_macro_formations(
 			Array(macro.formation_snapshots), Dictionary(army.units_by_definition_id)
@@ -930,6 +982,24 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 		and (int(macro.blocked_segment_index) != -1 or StringName(macro.temporary_station_point) != &"")
 	):
 		return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+	return {"valid": true}
+
+
+static func _validate_macro_order_history(history: Array, current_order_id: StringName) -> Dictionary:
+	var seen: Dictionary = {}
+	for value in history:
+		if not value is Dictionary:
+			return {"valid": false, "error_id": &"INVALID_MACRO_HISTORY"}
+		var order: Dictionary = value
+		if StringName(order.get("order_id", &"")) == current_order_id or seen.has(StringName(order.get("order_id", &""))):
+			return {"valid": false, "error_id": &"INVALID_MACRO_HISTORY"}
+		# Historical orders are immutable records, so validate their shape without
+		# tying their casualties back to the army's current composition.
+		if StringName(order.get("phase", &"")) not in [PHASE_SIEGING, PHASE_STATIONED]:
+			return {"valid": false, "error_id": &"INVALID_MACRO_HISTORY"}
+		if not order.get("formation_snapshots", null) is Array:
+			return {"valid": false, "error_id": &"INVALID_MACRO_HISTORY"}
+		seen[StringName(order.order_id)] = true
 	return {"valid": true}
 
 
