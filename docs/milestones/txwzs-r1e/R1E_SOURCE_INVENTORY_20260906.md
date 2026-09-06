@@ -40,7 +40,8 @@ Before upload, the candidate is reviewed for credential-carrier filenames and
 common secret-assignment patterns without printing secret values. A detected
 ignored carrier or any untracked personal save is excluded rather than copied.
 The final SHA-256 manifest is generated from the candidate's tracked files and
-excludes only the manifest itself to avoid a self-referential checksum.
+excludes only the manifest itself to avoid a self-referential checksum. Generated
+Godot import outputs are not manifest entries.
 
 Capture review result: `0` credential-carrier filename hits and `0` common
 secret-pattern filename hits in the candidate's tracked source set. This is an
