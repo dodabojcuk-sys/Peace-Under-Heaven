@@ -27,7 +27,11 @@ window, not the candidate window. No input was sent to either process and the
 identified candidate process was terminated normally. Real normal-input media,
 Founder acceptance, deployment, Meshy work, and any fog/engineer/siege-expansion
 work remain open. Remote source sync remains unverified until a later ordinary
-push and remote SHA check succeeds.
+push and remote SHA check succeeds. The final authorized ordinary push on
+2026-09-07 used non-interactive HTTPS with a 10-second connect and 15-second
+low-speed bound; it failed with `Operation too slow` before any bytes arrived.
+No credential was read, no remote ref was created, and no force/merge/deploy
+operation was attempted. `SOURCE_SYNC=BLOCKED_NETWORK`.
 
 ## WAR_LOOP_BATCH_R1 corrective checkpoint (2026-09-06)
 

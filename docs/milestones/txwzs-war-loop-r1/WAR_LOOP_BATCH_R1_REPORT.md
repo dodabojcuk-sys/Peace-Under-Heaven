@@ -73,3 +73,16 @@ and exact runtime identity, but the desktop automation still exposed only that
 pre-existing R1E window. No input was sent to either window; the identified
 candidate process was terminated normally, and no startup capture is
 represented as player-operation evidence.
+
+## Source synchronization
+
+The authorized ordinary push of `codex/txwzs-war-loop-r1` was attempted once
+after the final local engineering checkpoint, using non-interactive HTTPS and
+a bounded connect/low-speed timeout. Git reported `Operation too slow` before
+any bytes were transferred. No credentials were read or printed; no remote ref,
+force push, merge, tag, deployment, or protection change occurred.
+
+`SOURCE_SYNC=BLOCKED_NETWORK`. The local handoff therefore includes the exact
+commit and a complete `git archive` source bundle with SHA-256 in the untracked
+`delivery/TXWZS_WAR_LOOP_BATCH_R1_<commit>/` directory; this is a review
+artifact, not proof of remote upload or acceptance.
