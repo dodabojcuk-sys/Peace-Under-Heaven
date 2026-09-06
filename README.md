@@ -68,6 +68,17 @@ tests/run_v5_campaign_persistence_smoke.gd
 tests/run_v5_vertical_loop_smoke.gd
 ```
 
+Macro March R0 focused validation (local engineering candidate only):
+
+```text
+tests/run_macro_march_r0_smoke.gd
+tests/run_macro_march_r0_persistence_smoke.gd
+```
+
+The second runner uses three isolated Godot processes to verify blocked,
+resumed, and stationed cold restoration. These checks do not substitute for
+the required real mouse-input screenshots, short recording, or user acceptance.
+
 已验收基线为 focused `6/6 · 185`、tracked `33/33 · 1739`、
 all-present `35/35 · 1871 assertions / 1905 PASS`。测试通过不自动推进
 G3 或替代真实窗口、独立复查和用户试玩 Gate。

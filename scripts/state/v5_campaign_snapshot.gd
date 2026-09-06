@@ -254,6 +254,10 @@ static func validate_structure(
 			StringName(army_result.error_id),
 			"ArmyRegistry 校验失败"
 		)
+	# ArmyRegistry owns its own schema migration.  Persist the normalized
+	# registry so a restored schema-1 army snapshot cannot fail the controller's
+	# exact postcondition after the macro-march extension writes schema 2.
+	normalized.army_registry = Dictionary(army_result.snapshot).duplicate(true)
 	var ledger_result := _validate_ledger(normalized.settlement_ledger)
 	if not bool(ledger_result.valid):
 		return ledger_result

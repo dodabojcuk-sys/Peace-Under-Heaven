@@ -1,5 +1,39 @@
 # 当前状态
 
+## Macro March R0 outer-city greybox (2026-09-06)
+
+Macro March R0 is a local engineering candidate on
+`codex/txwzs-macro-march-r0`. It introduces one replaceable theatre Resource
+with Blackstone City, Northwatch Garrison, Reedbank Garrison, two selectable
+Blackstone-to-Northwatch road paths, and one demonstrable blockable branch
+road. The normal city now enters the macro screen through `外城军令`; the
+legacy Blackstone MVP scene remains source-only and no longer receives the
+formal city entry or writes strategic army state.
+
+`ArmyRegistry` schema 2 holds the stable army, issued order, snapped road
+polyline, exact selected formation snapshots, fee, logical progress, and
+blocked/stationed phase. `GarrisonState` extracts exact selected formations
+instead of using the legacy aggregate tail-removal path. `ConstructionController`
+keeps the food transaction, rollback snapshot, registry mutation, and runtime
+save checkpoint as one boundary. The current expedition food formula is reused
+only as temporary macro-march balancing, not as a final supply design.
+
+Focused Macro March smoke passes 14 assertions. A three-process isolated-disk
+smoke passes: process A persists a blocked order, B restores it, resumes and
+arrives, and C cold-restores the stationed army. Existing V5 army and R1E
+focused suites also pass. This is not siege victory, enemy-city attack,
+occupation, energy/ability, 3D-art, Founder acceptance, merge, push, or
+deployment.
+
+The current desktop environment contains a separate user Godot window that
+could not be displaced safely by the available UI controller. The real
+candidate window was started and visually inspected during preflight, but real
+mouse-drawn draft/marching/blocked screenshots and a 45–90 second system-input
+video are **not provided**. No script/test state was relabelled as real-input
+media.
+
+`MACRO_MARCH_R0=ENGINEERING_PARTIAL_REAL_INPUT_MEDIA_NOT_PROVIDED`
+
 ## R1E expedition reconciliation (2026-09-06)
 
 This section records the current expedition branch without re-labelling it as a

@@ -1,5 +1,24 @@
 # Product Successor Decisions
 
+## Macro March R0 outer-city greybox
+
+- `ArmyRegistry` owns one issued macro order and preserves the existing stable
+  `army_id`; the macro screen owns only draft pointers, selected controls, and
+  rendering. A stationed army receives a new `order_id` for its next leg but
+  keeps its army identity and exact carried formations.
+- `GarrisonState.try_extract_selected_formations()` is the only R0 city
+  departure mutation. Aggregate `try_remove_units()` and `set_unit_count()`
+  remain compatibility paths and must not be used for selected formation
+  marching or rollback.
+- A road draw resolves to one configured polyline before confirmation. The
+  stored path is world-coordinate `Vector2i` data, and the controller validates
+  it again before it charges food or creates an army.
+- `BLOCKED` remains the same durable order at the preceding reachable segment;
+  recovery resumes the same route and fee. `STATIONED` is not an active-army
+  phase, permitting the same army to issue one later garrison-to-garrison leg.
+- The legacy Blackstone MVP scene remains retained for historical reference but
+  is no longer the formal city entry and may not mutate macro army state.
+
 ## M1B standalone playable shell
 
 - `title_shell.tscn` is the formal player entry and owns only title copy,

@@ -14,6 +14,21 @@
 
 ## Unreleased
 
+### Macro March R0 outer-city greybox
+
+- Added a formal `外城军令` city entry and one small Blackstone/Northwatch/
+  Reedbank theatre with player-drawn road selection, draft cancellation,
+  confirmation, continuous movement, station-to-station follow-up orders, and
+  a blockable branch-road recovery scenario.
+- Extended `ArmyRegistry` to schema 2 with validated macro order facts and
+  schema-1 normalization. Macro departures preserve exact formation identities
+  and use a full roster/registry rollback snapshot around the existing food and
+  V5 runtime persistence boundary.
+- Added focused macro movement and isolated three-process disk persistence
+  smokes. The legacy Blackstone MVP scene is no longer wired to the formal
+  entry. Real system-input screenshots and video remain unprovided and are not
+  substituted with scripted test footage.
+
 ### R1E reconciliation and player-facing roster labels
 
 - Removed raw internal formation identifiers from expedition preparation cards.

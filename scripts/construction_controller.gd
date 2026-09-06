@@ -80,6 +80,9 @@ const ARMY_REGISTRY = preload(
 const V5_ARMY_DISPATCH_ADAPTER = preload(
 	"res://scripts/army/v5_army_dispatch_adapter.gd"
 )
+const MACRO_MARCH_THEATER = preload(
+	"res://scripts/macro_march/macro_march_theater.gd"
+)
 const V5_CAMPAIGN_SNAPSHOT = preload(
 	"res://scripts/state/v5_campaign_snapshot.gd"
 )
@@ -424,6 +427,7 @@ var enemy_fortification := 0
 var last_daily_report := "尚未结算"
 var city_time_paused := false
 var city_time_speed := 1.0
+var _macro_march_blocked_route_ids: Dictionary = {}
 var day_elapsed_seconds := 0.0
 var first_war_state := FirstWarState.PREPARATION
 var first_war_warning_count := 0
@@ -5244,6 +5248,261 @@ func get_v5_army_dispatch_adapter() -> V5ArmyDispatchAdapter:
 		_army_dispatch_adapter = V5_ARMY_DISPATCH_ADAPTER.new()
 		_army_dispatch_adapter.configure(self)
 	return _army_dispatch_adapter
+
+
+func get_macro_march_read_model() -> Dictionary:
+	var macro_army := get_macro_march_army()
+	return {
+		"army": macro_army,
+		"formations": _garrison_state.get_formations(),
+		"food": food,
+		"maintenance_units_per_food": INFANTRY_ROLE.maintenance_units_per_food,
+		"paused": city_time_paused,
+		"speed": city_time_speed,
+		"blocked_route_ids": _macro_march_blocked_route_ids.duplicate(),
+		"source_point_id": (
+			StringName(macro_army.target_node_id)
+			if not macro_army.is_empty()
+			and StringName(macro_army.phase) == ArmyRegistry.PHASE_STATIONED
+			else &"blackstone_city"
+		),
+		"can_issue_from_city": (
+			macro_army.is_empty()
+			and _active_battle_reservation.is_empty()
+			and not _army_registry.has_active_army()
+		),
+	}
+
+
+func get_macro_march_army() -> Dictionary:
+	for army in _army_registry.get_armies():
+		if not Dictionary(army.get("macro_march", {})).is_empty():
+			return army.duplicate(true)
+	return {}
+
+
+func get_macro_march_food_cost(total_count: int) -> int:
+	return get_first_war_food_cost(total_count)
+
+
+# R0 exposes one demonstrable environmental condition. It is intentionally
+# transient: the durable army's BLOCKED phase carries the recovery state.
+func set_macro_march_route_blocked_for_scenario(route_id: StringName, blocked: bool) -> bool:
+	var route := MACRO_MARCH_THEATER.get_route(route_id)
+	if route.is_empty() or int(route.get("blockable_segment_index", -1)) < 1:
+		return false
+	if blocked:
+		_macro_march_blocked_route_ids[route_id] = true
+	else:
+		_macro_march_blocked_route_ids.erase(route_id)
+	return true
+
+
+func is_macro_march_route_blocked(route_id: StringName) -> bool:
+	return bool(_macro_march_blocked_route_ids.get(route_id, false))
+
+
+func commit_macro_march_from_city(
+	formation_ids: Array,
+	target_point_id: StringName,
+	route_id: StringName,
+	route_world_points: Array
+) -> Dictionary:
+	if (
+		not _active_battle_reservation.is_empty()
+		or _army_registry.has_active_army()
+		or not get_macro_march_army().is_empty()
+	):
+		return _macro_failure(&"MACRO_BUSY", "已有军令正在执行或等待驻扎")
+	var selected := _garrison_state.get_selected_formations(formation_ids)
+	if selected.is_empty() or not _garrison_state.selection_matches(selected):
+		return _macro_failure(&"FORMATION_CHANGED", "请选择仍在黑石城内的完整编队")
+	var total := 0
+	var units: Dictionary = {}
+	for formation in selected:
+		total += int(formation.member_count)
+		var definition_id := StringName(formation.definition_id)
+		units[definition_id] = int(units.get(definition_id, 0)) + int(formation.member_count)
+	var food_cost := get_macro_march_food_cost(total)
+	var route_validation := MACRO_MARCH_THEATER.validate_route(
+		&"blackstone_city", target_point_id, route_id, route_world_points
+	)
+	if not bool(route_validation.valid):
+		return _macro_failure(StringName(route_validation.error_id), str(route_validation.error))
+	if is_macro_march_route_blocked(route_id):
+		return _macro_failure(&"ROAD_BLOCKED", "该道路当前受阻，请选择另一条道路或等待恢复")
+	if food < food_cost:
+		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足：需要 %d，当前 %d" % [food_cost, food])
+	var garrison_before := _garrison_state.get_persistence_snapshot()
+	var registry_before := _army_registry.get_snapshot()
+	var duration := MACRO_MARCH_THEATER.duration_milliseconds(route_id)
+	var local_commit := func() -> Dictionary:
+		var army := _army_registry.create_macro_march(
+			&"player", &"blackstone_city", &"blackstone_city", target_point_id,
+			route_id, route_world_points, units, selected, food_cost, duration
+		)
+		if army.is_empty() or not _garrison_state.try_extract_selected_formations(selected):
+			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+			_garrison_state.restore_persistence_snapshot(garrison_before)
+			return {"success": false}
+		return {"success": true, "army": army.duplicate(true)}
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": food_cost}],
+		&"macro_march_issue", local_commit
+	)
+	if not bool(transaction.success):
+		return _macro_failure(&"MACRO_TRANSACTION", "军令事务未提交")
+	_refresh_city_ui()
+	city_state_changed.emit()
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_rollback_macro_march_issue(food_cost, garrison_before, registry_before)
+		return _macro_failure(&"SAVE_FAILED", "军令存档失败，粮食与编队已回滚")
+	return {"success": true, "army": Dictionary(transaction.local_commit_result.army).duplicate(true)}
+
+
+func commit_macro_march_from_station(
+	army_id: StringName,
+	target_point_id: StringName,
+	route_id: StringName,
+	route_world_points: Array
+) -> Dictionary:
+	var army := _army_registry.get_army(army_id)
+	if army.is_empty() or StringName(army.phase) != ArmyRegistry.PHASE_STATIONED:
+		return _macro_failure(&"STATION_REQUIRED", "只有已驻扎的军队可以继续发令")
+	var route_validation := MACRO_MARCH_THEATER.validate_route(
+		StringName(army.target_node_id), target_point_id, route_id, route_world_points
+	)
+	if not bool(route_validation.valid):
+		return _macro_failure(StringName(route_validation.error_id), str(route_validation.error))
+	if is_macro_march_route_blocked(route_id):
+		return _macro_failure(&"ROAD_BLOCKED", "该道路当前受阻，请选择另一条道路或等待恢复")
+	var total := 0
+	for count in Dictionary(army.units_by_definition_id).values():
+		total += int(count)
+	var food_cost := get_macro_march_food_cost(total)
+	if food < food_cost:
+		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足：需要 %d，当前 %d" % [food_cost, food])
+	var registry_before := _army_registry.get_snapshot()
+	var duration := MACRO_MARCH_THEATER.duration_milliseconds(route_id)
+	var local_commit := func() -> Dictionary:
+		var issued := _army_registry.issue_stationed_macro_march(
+			army_id, target_point_id, route_id, route_world_points, food_cost, duration
+		)
+		return {"success": not issued.is_empty(), "army": issued.duplicate(true)}
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": food_cost}],
+		&"macro_march_reissue", local_commit
+	)
+	if not bool(transaction.success):
+		return _macro_failure(&"MACRO_TRANSACTION", "驻扎点军令事务未提交")
+	_refresh_city_ui()
+	city_state_changed.emit()
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_rollback_macro_march_issue(food_cost, {}, registry_before)
+		return _macro_failure(&"SAVE_FAILED", "军令存档失败，粮食与军队状态已回滚")
+	return {"success": true, "army": Dictionary(transaction.local_commit_result.army).duplicate(true)}
+
+
+func advance_macro_march_time(
+	army_id: StringName,
+	order_id: StringName,
+	expected_progress_milliseconds: int,
+	delta_milliseconds: int
+) -> Dictionary:
+	if city_time_paused:
+		return {}
+	var registry_before := _army_registry.get_snapshot()
+	var scaled_delta := maxi(1, roundi(float(delta_milliseconds) * city_time_speed))
+	var result := _army_registry.advance_macro_march(
+		army_id, order_id, expected_progress_milliseconds, scaled_delta
+	)
+	if not result.is_empty():
+		_refresh_city_ui()
+		city_state_changed.emit()
+		if bool(result.get("arrived", false)) and not bool(_persist_macro_march_checkpoint().get("success", false)):
+			_rollback_macro_march_registry(registry_before)
+			return _macro_failure(&"SAVE_FAILED", "抵达状态存档失败，军令已回滚")
+	return result.duplicate(true)
+
+
+func block_macro_march_at_segment(
+	army_id: StringName,
+	order_id: StringName,
+	segment_index: int,
+	progress_before_segment_millis: int,
+	temporary_station_point: StringName
+) -> Dictionary:
+	var army_before := _army_registry.get_army(army_id)
+	if army_before.is_empty() or not is_macro_march_route_blocked(
+		StringName(Dictionary(army_before.macro_march).route_id)
+	):
+		return _macro_failure(&"ROAD_OPEN", "道路尚未进入受阻状态")
+	var registry_before := _army_registry.get_snapshot()
+	var result := _army_registry.block_macro_march(
+		army_id, order_id, segment_index, progress_before_segment_millis,
+		temporary_station_point
+	)
+	if result.is_empty():
+		return {}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_rollback_macro_march_registry(registry_before)
+		return _macro_failure(&"SAVE_FAILED", "受阻驻扎存档失败，军令已回滚")
+	return result
+
+
+func resume_blocked_macro_march(army_id: StringName, order_id: StringName) -> Dictionary:
+	var registry_before := _army_registry.get_snapshot()
+	var result := _army_registry.resume_blocked_macro_march(army_id, order_id)
+	if result.is_empty():
+		return {}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_rollback_macro_march_registry(registry_before)
+		return _macro_failure(&"SAVE_FAILED", "恢复军令存档失败，军令已回滚")
+	return result
+
+
+func _persist_macro_march_checkpoint() -> Dictionary:
+	var root := get_parent()
+	if root != null and root.has_method("persist_macro_march_checkpoint"):
+		return root.persist_macro_march_checkpoint()
+	if DisplayServer.get_name() == "headless":
+		return {"success": true, "headless_test_store_disabled": true}
+	return {"success": false}
+
+
+func _rollback_macro_march_issue(
+	food_cost: int,
+	garrison_before: Dictionary,
+	registry_before: Dictionary
+) -> void:
+	var local_rollback := func() -> Dictionary:
+		if not garrison_before.is_empty():
+			_garrison_state.restore_persistence_snapshot(garrison_before)
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		return {"success": true}
+	_nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": food_cost}],
+		&"macro_march_rollback", local_rollback
+	)
+
+
+func _rollback_macro_march_registry(registry_before: Dictionary) -> void:
+	_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+	_refresh_city_ui()
+	city_state_changed.emit()
+	_refresh_city_ui()
+	city_state_changed.emit()
+
+
+func _macro_failure(error_id: StringName, error: String) -> Dictionary:
+	return {"success": false, "error_id": error_id, "error": error}
 
 
 func reserve_army_dispatch(
