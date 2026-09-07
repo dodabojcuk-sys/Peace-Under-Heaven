@@ -19,6 +19,14 @@ static func get_water_regions() -> Array[Rect2i]:
 	return _definition.water_regions.duplicate()
 
 
+static func get_world_bounds() -> Rect2:
+	return Rect2(_definition.world_bounds)
+
+
+static func get_terrain_regions() -> Array[Dictionary]:
+	return _definition.terrain_regions.duplicate(true)
+
+
 static func route_crosses_water(route_world_points: Array) -> bool:
 	for index in range(1, route_world_points.size()):
 		var start := Vector2(route_world_points[index - 1])

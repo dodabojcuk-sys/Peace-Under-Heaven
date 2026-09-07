@@ -72,6 +72,8 @@
 - Command-cost copy uses a controller-owned immutable preview. The map may
 	display its selected force, food shortfall and duration, but it never copies
 	the food formula or reserves resources before the user confirms a command.
+- Tactical world bounds and terrain regions are theatre Resource data. The
+	map renders them but does not define tactical geography independently.
 
 ## Macro March R0 outer-city greybox
 

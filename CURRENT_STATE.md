@@ -37,6 +37,11 @@ mouse events for zoom/pan/dragging, UI bounds at three widths, click separation
 and the read-only command preview. Those are automated UI checks, not a
 recorded normal-input run.
 
+Terrain bounds and forest facts now come from `MacroMarchTheaterDefinition`;
+the map no longer owns a second hard-coded terrain layout. The runtime road
+model is still single-road-per-order at this checkpoint, so multi-segment graph
+orders remain the next implementation step.
+
 ## FIELD_TACTICS_R2 engineering checkpoint (2026-09-07)
 
 ### R2 formal-input and on-site-repair checkpoint

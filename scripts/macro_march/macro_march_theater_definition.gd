@@ -9,6 +9,11 @@ const REDCLIFF_CITY := &"redcliff_city"
 const SILVERFORD_CITY := &"silverford_city"
 
 
+# Coordinates are tactical-world facts. The map camera may frame only part of
+# this area, but it must not invent land, forests or water in presentation.
+@export var world_bounds := Rect2i(-260, -180, 1520, 1040)
+
+
 # This is intentionally a Resource, so a later campaign can replace point
 # names, IDs, coordinates, or road polylines without changing march authority.
 @export var points: Dictionary = {
@@ -64,6 +69,13 @@ const SILVERFORD_CITY := &"silverford_city"
 # special case. A construction line crossing this strip becomes a bridge job.
 @export var water_regions: Array[Rect2i] = [
 	Rect2i(515, 350, 120, 145),
+]
+
+
+@export var terrain_regions: Array[Dictionary] = [
+	{"terrain_id": &"forest.north", "kind": &"FOREST", "rect": Rect2i(250, 80, 170, 135)},
+	{"terrain_id": &"forest.east", "kind": &"FOREST", "rect": Rect2i(690, 330, 160, 115)},
+	{"terrain_id": &"forest.south", "kind": &"FOREST", "rect": Rect2i(50, 510, 190, 125)},
 ]
 
 

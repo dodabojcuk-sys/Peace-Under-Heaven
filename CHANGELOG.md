@@ -20,6 +20,8 @@
   and made formation controls incremental, eliminating the 648px overlap and
   cross-frame button replacement risks. Added overlap and stable-node tests;
   Macro March smoke now has 27 automated assertions.
+- Moved tactical world bounds and forest regions from map presentation into the
+  theatre Resource, preserving existing road coordinates and save semantics.
 
 - Replaced fixed 1000×650 screen compression with a shared tactical-map camera:
   cursor-anchored wheel zoom, middle-drag pan, minimap recentering and

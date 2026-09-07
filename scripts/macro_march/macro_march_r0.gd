@@ -10,10 +10,6 @@ const ARMY_REGISTRY = preload("res://scripts/army/army_registry.gd")
 const CAMERA_MIN_ZOOM := 0.62
 const CAMERA_MAX_ZOOM := 2.4
 const CAMERA_ZOOM_STEP := 1.18
-# The tactical theatre deliberately extends beyond the current roads.  It
-# gives the camera room for scouting, future camps, and cross-screen drawing
-# without changing the persisted coordinates of existing R0/R1 roads.
-const TACTICAL_WORLD_BOUNDS := Rect2(Vector2(-260, -180), Vector2(1520, 1040))
 
 var _dispatch_adapter: V5ArmyDispatchAdapter
 var _draft_route: Dictionary = {}
@@ -801,14 +797,15 @@ func _visible_world_rect() -> Rect2:
 
 func _clamp_camera() -> void:
 	var visible_size := _visible_world_rect().size
-	var minimum_center := TACTICAL_WORLD_BOUNDS.position + visible_size * 0.5
-	var maximum_center := TACTICAL_WORLD_BOUNDS.end - visible_size * 0.5
+	var world_bounds := THEATER.get_world_bounds()
+	var minimum_center := world_bounds.position + visible_size * 0.5
+	var maximum_center := world_bounds.end - visible_size * 0.5
 	if minimum_center.x > maximum_center.x:
-		_camera_center.x = TACTICAL_WORLD_BOUNDS.get_center().x
+		_camera_center.x = world_bounds.get_center().x
 	else:
 		_camera_center.x = clampf(_camera_center.x, minimum_center.x, maximum_center.x)
 	if minimum_center.y > maximum_center.y:
-		_camera_center.y = TACTICAL_WORLD_BOUNDS.get_center().y
+		_camera_center.y = world_bounds.get_center().y
 	else:
 		_camera_center.y = clampf(_camera_center.y, minimum_center.y, maximum_center.y)
 
@@ -816,7 +813,7 @@ func _clamp_camera() -> void:
 func _center_camera_from_minimap(screen_position: Vector2) -> void:
 	var minimap := _minimap_rect()
 	var normalized := (screen_position - minimap.position) / minimap.size
-	_camera_center = TACTICAL_WORLD_BOUNDS.position + TACTICAL_WORLD_BOUNDS.size * normalized
+	_camera_center = THEATER.get_world_bounds().position + THEATER.get_world_bounds().size * normalized
 	_clamp_camera()
 	queue_redraw()
 
@@ -891,7 +888,11 @@ func _draw() -> void:
 func _draw_terrain(rect: Rect2) -> void:
 	# Greybox terrain is presentational only.  Routes and interactions continue
 	# to use world coordinates and FieldTacticsState as their sole authority.
-	for forest in [Rect2(250, 80, 170, 135), Rect2(690, 330, 160, 115), Rect2(50, 510, 190, 125)]:
+	for terrain_value in THEATER.get_terrain_regions():
+		var terrain: Dictionary = terrain_value
+		if StringName(terrain.get("kind", &"")) != &"FOREST":
+			continue
+		var forest := Rect2(terrain.get("rect", Rect2i()))
 		var forest_rect := Rect2(_world_to_screen(forest.position), forest.size * _camera_zoom)
 		draw_rect(forest_rect, Color("466044"), true)
 		for offset in [Vector2(18, 24), Vector2(64, 58), Vector2(118, 30), Vector2(140, 92)]:
@@ -905,16 +906,19 @@ func _draw_minimap() -> void:
 	var minimap := _minimap_rect()
 	draw_rect(minimap, Color("25332f"), true)
 	for water_region in THEATER.get_water_regions():
-		var normalized_position := (Vector2(water_region.position) - TACTICAL_WORLD_BOUNDS.position) / TACTICAL_WORLD_BOUNDS.size
-		var normalized_size := Vector2(water_region.size) / TACTICAL_WORLD_BOUNDS.size
+		var world_bounds := THEATER.get_world_bounds()
+		var normalized_position := (Vector2(water_region.position) - world_bounds.position) / world_bounds.size
+		var normalized_size := Vector2(water_region.size) / world_bounds.size
 		draw_rect(Rect2(minimap.position + minimap.size * normalized_position, minimap.size * normalized_size), Color("4c95b5"), true)
 	for point_value in _all_points(_model()).values():
 		var point: Dictionary = point_value
-		var normalized := (Vector2(point.get("world_position", Vector2.ZERO)) - TACTICAL_WORLD_BOUNDS.position) / TACTICAL_WORLD_BOUNDS.size
+		var world_bounds := THEATER.get_world_bounds()
+		var normalized := (Vector2(point.get("world_position", Vector2.ZERO)) - world_bounds.position) / world_bounds.size
 		draw_circle(minimap.position + minimap.size * normalized, 3.0, Color("d94d3f") if StringName(point.get("point_kind", &"")) == &"ENEMY_CITY" else Color("f0c46b"))
 	var view := _visible_world_rect()
-	var viewport_position := minimap.position + minimap.size * ((view.position - TACTICAL_WORLD_BOUNDS.position) / TACTICAL_WORLD_BOUNDS.size)
-	var viewport_size := minimap.size * (view.size / TACTICAL_WORLD_BOUNDS.size)
+	var world_bounds := THEATER.get_world_bounds()
+	var viewport_position := minimap.position + minimap.size * ((view.position - world_bounds.position) / world_bounds.size)
+	var viewport_size := minimap.size * (view.size / world_bounds.size)
 	draw_rect(Rect2(viewport_position, viewport_size), Color("f6e5ba"), false, 1.5)
 	draw_rect(minimap, Color("e3dcc5"), false, 1.0)
 
