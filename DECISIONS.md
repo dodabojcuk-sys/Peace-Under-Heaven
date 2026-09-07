@@ -29,6 +29,9 @@
 - Macro map interaction resolves a selected `army_id` from player-visible army
 	markers. Route continuation and retreat use that identity rather than the
 	legacy first-army read-model projection.
+- Field project completion and encounters are persistence boundaries. They use
+	the controller's existing checkpoint and rollback transaction rather than
+	depending on unrelated siege activity.
 
 ## Macro March R0 outer-city greybox
 

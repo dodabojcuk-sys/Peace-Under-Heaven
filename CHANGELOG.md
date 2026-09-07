@@ -42,6 +42,8 @@
   newly placed runtime camp endpoint.
 - Bound map army selection, follow-up drafting and retreat to the selected
   army rather than the legacy first-army projection.
+- Publish critical field completion and engagement events through the existing
+  V5 checkpoint without requiring a concurrent siege tick.
 
 ### WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate
 

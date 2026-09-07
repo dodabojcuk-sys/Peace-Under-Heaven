@@ -62,6 +62,13 @@ drafting and retreat use its identity, instead of silently targeting the first
 army returned by the compatibility read model. This still needs normal-input
 evidence alongside the remaining specialist and encounter work.
 
+Field project completion and specialist encounter records now trigger the
+controller's V5 checkpoint even when no siege ticks during that frame. The
+controller snapshots field state before advancing and restores it if the
+checkpoint fails. The existing three-process engineering chain remains green;
+an immediate encounter-specific disk chain is still part of the unfinished
+encounter delivery.
+
 This is not a complete R2 play-flow delivery. The formal map does not yet offer
 a full player-operated specialist drag-line workflow, nor does the formal
 controller yet settle patrol/ambush damage against armies or apply

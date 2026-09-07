@@ -5728,9 +5728,13 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 	)
 	if whole_milliseconds <= 0:
 		return {}
-	var field_advance := _war_loop_state.field_tactics.advance_world(whole_milliseconds)
 	var registry_before := _army_registry.get_snapshot()
 	var war_before := _war_loop_state.get_snapshot()
+	var field_advance := _war_loop_state.field_tactics.advance_world(whole_milliseconds)
+	var field_checkpoint_required := (
+		Array(field_advance.get("completed_project_ids", [])).size() > 0
+		or Array(field_advance.get("engagements", [])).size() > 0
+	)
 	var result: Dictionary = {}
 	for siege_value in _war_loop_state.get_active_sieges():
 		var siege: Dictionary = siege_value
@@ -5762,13 +5766,13 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 			if StringName(result.phase) == WarLoopState.PHASE_FAILED:
 				result = _resolve_failed_macro_siege(result)
 				break
-	if not result.is_empty():
+	if not result.is_empty() or field_checkpoint_required:
 		_refresh_city_ui()
 		city_state_changed.emit()
 		if not bool(_persist_macro_march_checkpoint().get("success", false)):
 			_war_loop_state.restore_snapshot(war_before)
 			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
-			return _macro_failure(&"SAVE_FAILED", "攻城状态存档失败，事务已回滚")
+			return _macro_failure(&"SAVE_FAILED", "战区关键状态存档失败，事务已回滚")
 	return result.duplicate(true) if not result.is_empty() else field_advance
 
 

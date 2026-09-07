@@ -51,6 +51,14 @@ markers are visibly highlighted. This removes the normal-map first-army
 default while retaining the compatibility projection used by older callers.
 The macro adapter now forwards an explicit siege city for retreat.
 
+### R2 key-event persistence checkpoint
+
+The world-advance transaction now snapshots before field mutation and publishes
+an immediate V5 checkpoint when an engineering project completes or a field
+engagement changes specialist state, even with no siege tick. A failed publish
+restores both army and war snapshots. Existing R2 smoke and the independent
+three-process engineering restore runner pass after this change.
+
 ### R2 continuation checkpoint
 
 Specialists now move over shared logical milliseconds rather than jumping to a
