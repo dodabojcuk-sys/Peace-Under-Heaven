@@ -25,6 +25,9 @@
 - Added deterministic runtime-path planning over connected open roads. The
   path validator and duration calculation reuse its ordered physical segments;
   a multi-road path receives the minimum duration only once.
+- Made planning honor the player's drawn path across alternative connected
+  routes, validate every directed segment join, and remove the map's duplicate
+  duration calculation.
 
 - Replaced fixed 1000×650 screen compression with a shared tactical-map camera:
   cursor-anchored wheel zoom, middle-drag pan, minimap recentering and

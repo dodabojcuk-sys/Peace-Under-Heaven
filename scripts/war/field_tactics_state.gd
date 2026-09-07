@@ -359,11 +359,12 @@ func runtime_route_duration_milliseconds(route_id: StringName) -> int:
 	return maxi(6000, ceili(length * 20.0))
 
 
-func plan_runtime_path(source_point_id: StringName, target_point_id: StringName) -> Dictionary:
+func plan_runtime_path(source_point_id: StringName, target_point_id: StringName, preferred_world_points: Array = []) -> Dictionary:
 	if source_point_id == &"" or target_point_id == &"" or source_point_id == target_point_id:
 		return {"valid": false, "error": "起点和目标必须是不同的合法据点"}
-	var queue: Array[Dictionary] = [{"point_id": source_point_id, "segments": []}]
-	var visited: Dictionary = {source_point_id: true}
+	var queue: Array[Dictionary] = [{"point_id": source_point_id, "segments": [], "visited": {source_point_id: true}}]
+	var best: Dictionary = {}
+	var best_score := INF
 	while not queue.is_empty():
 		var current: Dictionary = queue.pop_front()
 		var current_point := StringName(current.get("point_id", &""))
@@ -371,7 +372,13 @@ func plan_runtime_path(source_point_id: StringName, target_point_id: StringName)
 			var segments: Array = current.get("segments", [])
 			var route_id := _path_id(segments)
 			var points := _path_world_points_from_segments(segments)
-			return {"valid": true, "route_id": route_id, "segments": segments, "points": points, "duration_milliseconds": _path_duration_milliseconds(points)}
+			var score := _path_draw_score(preferred_world_points, points)
+			if score < best_score or (is_equal_approx(score, best_score) and (best.is_empty() or String(route_id) < String(best.get("route_id", &"")))):
+				best_score = score
+				best = {"valid": true, "route_id": route_id, "segments": segments, "points": points, "duration_milliseconds": _path_duration_milliseconds(points)}
+			continue
+		if Array(current.get("segments", [])).size() >= 12:
+			continue
 		for road_value in roads_by_id.values():
 			var road: Dictionary = road_value
 			if not bool(road.get("built", false)) or StringName(road.get("state", &"")) != ROAD_OPEN:
@@ -383,12 +390,16 @@ func plan_runtime_path(source_point_id: StringName, target_point_id: StringName)
 			elif StringName(road.get("target_point_id", &"")) == current_point:
 				next_point = StringName(road.get("source_point_id", &""))
 				forward = false
+			var visited: Dictionary = current.get("visited", {})
 			if next_point == &"" or visited.has(next_point):
 				continue
-			visited[next_point] = true
 			var next_segments: Array = Array(current.get("segments", [])).duplicate(true)
 			next_segments.append({"road_id": StringName(road.get("road_id", &"")), "forward": forward})
-			queue.append({"point_id": next_point, "segments": next_segments})
+			var next_visited := visited.duplicate(true)
+			next_visited[next_point] = true
+			queue.append({"point_id": next_point, "segments": next_segments, "visited": next_visited})
+	if not best.is_empty():
+		return best
 	return {"valid": false, "error": "没有连通的已完工道路路径"}
 
 
@@ -425,6 +436,8 @@ func _path_world_points_from_segments(segments: Array) -> Array:
 		var points: Array = Array(Dictionary(roads_by_id.get(StringName(segment.get("road_id", &"")), {})).get("route_world_points", [])).duplicate(true)
 		if not bool(segment.get("forward", false)):
 			points.reverse()
+		if not result.is_empty() and (points.is_empty() or Vector2(result.back()) != Vector2(points.front())):
+			return []
 		if not result.is_empty() and not points.is_empty():
 			points.pop_front()
 		result.append_array(points)
@@ -452,6 +465,28 @@ func _validate_runtime_path(source_point_id: StringName, target_point_id: String
 	if actual_source != source_point_id or actual_target != target_point_id or not is_route_open(route_id):
 		return {"valid": false, "error_id": &"ROAD_DAMAGED", "error": "路径道路不再可通行"}
 	return {"valid": true, "error_id": &"", "error": "", "route": {"route_id": route_id, "route_world_points": points, "segment_ids": segments}}
+
+
+func _path_draw_score(drawn: Array, path: Array) -> float:
+	if drawn.is_empty():
+		return 0.0
+	if path.size() < 2:
+		return INF
+	var total := 0.0
+	for value in drawn:
+		var nearest := INF
+		for index in range(1, path.size()):
+			nearest = minf(nearest, _distance_to_segment(Vector2(value), Vector2(path[index - 1]), Vector2(path[index])))
+		total += nearest
+	return total / float(drawn.size()) + Vector2(drawn.front()).distance_to(Vector2(path.front())) + Vector2(drawn.back()).distance_to(Vector2(path.back()))
+
+
+func _distance_to_segment(point: Vector2, start: Vector2, end: Vector2) -> float:
+	var segment := end - start
+	var squared := segment.length_squared()
+	if squared <= 0.0001:
+		return point.distance_to(start)
+	return point.distance_to(start + segment * clampf((point - start).dot(segment) / squared, 0.0, 1.0))
 
 
 func get_runtime_points() -> Dictionary:

@@ -48,6 +48,12 @@ each physical road ID for open/damaged checks, and computes the minimum travel
 time once across the merged geometry. This has not yet added explicit segment
 execution fields to `ArmyRegistry` or the required cross-process path test.
 
+Path planning now receives the player's drawn world points and scores all
+simple connected candidates against that intent rather than silently taking
+the first breadth-first result. The authority rejects a path whose directed
+road endpoints do not connect. Map duration copy now consumes the authoritative
+draft duration; it no longer reimplements the travel formula.
+
 ## FIELD_TACTICS_R2 engineering checkpoint (2026-09-07)
 
 ### R2 formal-input and on-site-repair checkpoint

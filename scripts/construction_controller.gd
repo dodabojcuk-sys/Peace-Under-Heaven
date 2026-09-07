@@ -5364,9 +5364,9 @@ func _ensure_war_loop_initialized() -> void:
 	)
 
 
-func plan_field_path(source_point_id: StringName, target_point_id: StringName) -> Dictionary:
+func plan_field_path(source_point_id: StringName, target_point_id: StringName, preferred_world_points: Array = []) -> Dictionary:
 	_ensure_war_loop_initialized()
-	return _war_loop_state.field_tactics.plan_runtime_path(source_point_id, target_point_id)
+	return _war_loop_state.field_tactics.plan_runtime_path(source_point_id, target_point_id, preferred_world_points)
 
 
 func get_field_tactics_read_model() -> Dictionary:

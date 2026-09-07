@@ -113,9 +113,9 @@ func get_field_tactics_read_model() -> Dictionary:
 	return city.get_field_tactics_read_model() if city != null else {}
 
 
-func plan_field_path(source_point_id: StringName, target_point_id: StringName) -> Dictionary:
+func plan_field_path(source_point_id: StringName, target_point_id: StringName, preferred_world_points: Array = []) -> Dictionary:
 	var city := _get_city()
-	return city.plan_field_path(source_point_id, target_point_id) if city != null else {}
+	return city.plan_field_path(source_point_id, target_point_id, preferred_world_points) if city != null else {}
 
 
 func dispatch_field_specialist(role: StringName) -> Dictionary:

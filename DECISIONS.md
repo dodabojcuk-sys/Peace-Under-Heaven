@@ -77,6 +77,9 @@
 - A runtime path is an ordered traversal of physical roads, not a newly merged
 	road record. Its handle encodes road identity and direction for validation;
 	damage and repairs still belong to the physical road records.
+- Player drawing is a route-choice constraint. The route planner may complete
+	connections only by the candidate closest to the drawn world path; the map
+	displays the authoritative selected geometry and duration.
 
 ## Macro March R0 outer-city greybox
 
