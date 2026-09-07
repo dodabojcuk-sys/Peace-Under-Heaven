@@ -396,3 +396,9 @@
   state from macro UI projections, and reject dangling field persistence
   references before restore.
 - This is an engineering repair, not a completed R2 playthrough or acceptance.
+
+## 2026-09-07 — R2 map-state presentation
+
+- Render all active armies, runtime roads, camps and living specialist roles
+  from the safe field projection, with main/field/damaged road distinction.
+- Removed player-facing timing formulas from the normal map panel.

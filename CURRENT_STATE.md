@@ -21,6 +21,12 @@ engineering workflow, active patrol/ambush settlement, real system-input
 playthrough, screenshots or video. It is not a complete R2 delivery or player
 acceptance.
 
+The formal outer-city map now presents every active army, runtime roads,
+completed camps, and living specialist roles in the same projection. Main,
+field and damaged roads are visibly distinct; hidden patrol authority remains
+excluded. This is clarity work only: it does not turn the unfinished fixed
+engineering shortcut into the required player-drawn construction interaction.
+
 ### R2 continuation checkpoint
 
 Specialists now move over shared logical milliseconds rather than jumping to a

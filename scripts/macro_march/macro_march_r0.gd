@@ -163,10 +163,9 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		]
 	if army.is_empty():
 		_status_label.text = "从%s按住左键沿道路画到驻扎点或敌城；草稿可取消，确认后不可改道。" % str(source.display_name)
-		_detail_label.text = "驻点：%s\n路线草稿：%s\n选择编队：%d\n粮食：%d\n侦察情报：%d\n工程：%d\n当前公式：ceil(兵力 / %d)" % [
+		_detail_label.text = "驻点：%s\n路线草稿：%s\n选择编队：%d\n粮食：%d\n侦察情报：%d\n工程：%d" % [
 			str(source.display_name), draft_text, _selected_formation_ids.size(), int(model.food),
 			visible_patrols.size(), projects.size(),
-			int(model.get("maintenance_units_per_food", 1)),
 		]
 	else:
 		var macro: Dictionary = army.macro_march
@@ -186,7 +185,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING:
 			_detail_label.text = "城门耐久：%d\n守军：%d\n我军可战：%d\n自动先行招降，未降则攻门并清剿守军。" % [int(siege.get("gate_hp", 0)), ceili(float(int(siege.get("defender_total_hp", 0))) / maxf(float(int(siege.get("defender_hp_per_member", 1))), 1.0)), ceili(float(int(siege.get("attacker_total_hp", 0))) / maxf(float(int(siege.get("attacker_hp_per_member", 1))), 1.0))]
 		else:
-			_detail_label.text = "进度：%d / %d ms\n粮食已扣：%d\n%s" % [int(macro.progress_millis), int(macro.total_millis), int(macro.food_cost), ("道路恢复后会继续原军令，不再扣粮。" if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED else "到达后可从驻扎点发出下一道军令。")]
+			_detail_label.text = "行军进度：%d%%\n粮食已扣：%d\n%s" % [roundi(float(macro.progress_millis) / maxf(float(macro.total_millis), 1.0) * 100.0), int(macro.food_cost), ("道路恢复后会继续原军令，不再扣粮。" if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED else "到达后可从驻扎点发出下一道军令。")]
 		_confirm_button.disabled = true
 		_block_button.visible = false
 		_recover_button.visible = false
@@ -429,12 +428,16 @@ func _draw() -> void:
 	draw_rect(Rect2(Vector2.ZERO, size), Color("19211e"))
 	draw_rect(rect, Color("728b67"))
 	draw_rect(Rect2(Vector2(size.x - 306, 94), Vector2(292, size.y - 108)), Color("eee4cc"))
-	for route_value in THEATER.get_routes().values():
+	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+	for route_value in Dictionary(field.get("roads_by_id", {})).values():
 		var route: Dictionary = route_value
 		var points := PackedVector2Array()
-		for point in route.points:
+		for point in Array(route.get("route_world_points", [])):
 			points.append(_world_to_screen(Vector2(point)))
-		var color := Color("b89257") if int(route.blockable_segment_index) < 1 else Color("a7734b")
+		if points.size() < 2:
+			continue
+		var damaged := StringName(route.get("state", &"")) == FieldTacticsState.ROAD_DAMAGED
+		var color := Color("66535c") if damaged else (Color("68b8a7") if StringName(route.get("road_kind", &"")) != FieldTacticsState.ROAD_MAIN else Color("b89257"))
 		draw_polyline(points, color, 14.0, true)
 		draw_polyline(points, Color("4b3927"), 2.0, true)
 	if not _draft_route.is_empty():
@@ -447,9 +450,23 @@ func _draw() -> void:
 		for point in _draw_points:
 			drawn.append(_world_to_screen(point))
 		draw_polyline(drawn, Color("54d7df"), 4.0, true)
-	var army: Dictionary = _model().get("army", {})
-	if not army.is_empty():
-		_draw_army_marker(army)
+	for army_value in Array(_model().get("armies", [])):
+		_draw_army_marker(Dictionary(army_value))
+	for camp_value in Dictionary(field.get("camps_by_id", {})).values():
+		var camp: Dictionary = camp_value
+		var point := THEATER.get_point(StringName(camp.get("point_id", &"")))
+		if not point.is_empty():
+			var camp_center := _world_to_screen(Vector2(point.world_position))
+			draw_rect(Rect2(camp_center - Vector2(11, 11), Vector2(22, 22)), Color("f0c46b"), true)
+	for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
+		var specialist: Dictionary = specialist_value
+		if not bool(specialist.get("alive", false)):
+			continue
+		var point := THEATER.get_point(StringName(specialist.get("current_point_id", &"")))
+		if point.is_empty():
+			continue
+		var specialist_color := Color("73d7ed") if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else Color("f2b86e")
+		draw_circle(_world_to_screen(Vector2(point.world_position)), 9.0, specialist_color)
 	for point_value in THEATER.get_points().values():
 		var point: Dictionary = point_value
 		var center := _world_to_screen(Vector2(point.world_position))
@@ -457,7 +474,7 @@ func _draw() -> void:
 		draw_circle(center, 25.0, Color("5c2b25") if enemy else Color("273d3c"))
 		draw_circle(center, 18.0, Color("c65a42") if enemy else Color("d7b465"))
 		draw_string(ThemeDB.fallback_font, center + Vector2(-38, 47), str(point.display_name), HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.WHITE)
-	draw_string(ThemeDB.fallback_font, Vector2(30, size.y - 20), "主道不可破坏 · 南洼支路可中断 · 可向敌城发起攻城军令", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("e3dcc5"))
+	draw_string(ThemeDB.fallback_font, Vector2(30, size.y - 20), "金色：主道 · 青色：工程道路 · 灰色：受损道路 · 蓝：侦察 · 橙：工程", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("e3dcc5"))
 
 
 func _draw_army_marker(army: Dictionary) -> void:
