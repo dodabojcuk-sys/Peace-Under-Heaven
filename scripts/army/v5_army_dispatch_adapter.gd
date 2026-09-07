@@ -124,6 +124,11 @@ func begin_field_road_project(
 	) if city != null else {}
 
 
+func begin_field_road_repair(engineer_id: StringName, road_id: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.begin_field_road_repair(engineer_id, road_id) if city != null else {}
+
+
 func commit_macro_march_from_city(
 	formation_ids: Array,
 	target_point_id: StringName,

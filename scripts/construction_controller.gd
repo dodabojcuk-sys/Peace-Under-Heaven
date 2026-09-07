@@ -5441,6 +5441,31 @@ func begin_field_road_project(
 	return {"success": true, "project": Dictionary(transaction.local_commit_result.project).duplicate(true), "food_cost": food_cost}
 
 
+func begin_field_road_repair(engineer_id: StringName, road_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	const REPAIR_FOOD_COST := 3
+	if food < REPAIR_FOOD_COST:
+		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足，无法安排道路维修")
+	var war_before := _war_loop_state.get_snapshot()
+	var local_commit := func() -> Dictionary:
+		var project := _war_loop_state.field_tactics.begin_road_repair(engineer_id, road_id)
+		return {"success": not project.is_empty(), "project": project}
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": REPAIR_FOOD_COST}],
+		&"field_road_repair", local_commit
+	)
+	if not bool(transaction.get("success", false)):
+		return _macro_failure(&"REPAIR_TRANSACTION", "道路维修未能提交")
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		_nation_state.commit_resource_transaction(NationState.BLACKSTONE_CITY_ID,
+			[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": REPAIR_FOOD_COST}],
+			&"field_road_repair_rollback")
+		return _macro_failure(&"SAVE_FAILED", "道路维修存档失败，资源已回滚")
+	return {"success": true, "project": Dictionary(transaction.local_commit_result.project).duplicate(true), "food_cost": REPAIR_FOOD_COST}
+
+
 func _macro_attacker_count(army: Dictionary) -> int:
 	var total := 0
 	for count in Dictionary(army.get("units_by_definition_id", {})).values():

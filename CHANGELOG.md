@@ -16,6 +16,17 @@
 
 ### FIELD_TACTICS_R2 engineering checkpoint
 
+- Reserved dynamic camp IDs at engineering confirmation, added repeat-click
+  cycling for overlapping army markers, and made specialist replacement UI
+  consult living specialists instead of historical records.
+- Replaced instantaneous remote road repair with persisted engineer travel and
+  timed repair work.  Field-road validation now accepts a correctly reversed
+  polyline for return travel.  Focused field smoke is 27 assertions, Macro
+  March smoke is 17, and the three-process field persistence runner passes.
+- This remains an engineering checkpoint; it does not claim bridge terrain,
+  patrol/ambush play, route-block auto-resume, normal-input media, or Founder
+  acceptance.
+
 - Added a V5-persistent field-state record for runtime roads, camps,
   scouts/engineers, engineering projects, finite patrol intelligence, fog
   knowledge, road damage, and repair. R1 WarLoop snapshots normalize through

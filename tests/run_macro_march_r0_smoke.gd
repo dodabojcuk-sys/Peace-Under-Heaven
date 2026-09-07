@@ -223,6 +223,47 @@ func _run_map_draft_contract() -> void:
 		"自动化工程绘线松手只形成草稿，确认后才扣资源并创建施工项目"
 	)
 	await _drop_scene(scene)
+	await _run_mouse_selection_and_replacement_contract()
+
+
+func _run_mouse_selection_and_replacement_contract() -> void:
+	var context := await _new_city(100)
+	var scene: Node = context.scene
+	var city: Node = context.city
+	var macro_screen: MacroMarchR0 = scene.get_node("UI/MacroMarchR0")
+	scene.open_macro_march_r0()
+	var route: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var first: Dictionary = city.commit_macro_march_from_city([StringName(roster[0].formation_id)], &"northwatch_garrison", StringName(route.route_id), Array(route.points))
+	var second: Dictionary = city.commit_macro_march_from_city([StringName(roster[1].formation_id)], &"northwatch_garrison", StringName(route.route_id), Array(route.points))
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.position = macro_screen._world_to_screen(Vector2(Array(route.points).front()))
+	macro_screen._on_gui_input(click)
+	var first_selected := macro_screen._selected_army_id
+	macro_screen._on_gui_input(click)
+	var second_selected := macro_screen._selected_army_id
+	var scout: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_SCOUT)
+	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var field: FieldTacticsState = city._war_loop_state.field_tactics
+	var scout_id := StringName(Dictionary(scout.get("specialist", {})).get("specialist_id", &""))
+	var engineer_id := StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &""))
+	var lost_scout := Dictionary(field.specialists_by_id[scout_id])
+	var lost_engineer := Dictionary(field.specialists_by_id[engineer_id])
+	lost_scout.alive = false
+	lost_engineer.alive = false
+	field.specialists_by_id[scout_id] = lost_scout
+	field.specialists_by_id[engineer_id] = lost_engineer
+	macro_screen._selected_army_id = &""
+	macro_screen.refresh()
+	_check(
+		bool(first.success) and bool(second.success)
+			and first_selected != &"" and second_selected != &"" and first_selected != second_selected
+			and macro_screen._scout_button.visible and macro_screen._engineer_button.visible,
+		"鼠标命中同点重叠军队可轮换选队；死亡历史不会阻止补派"
+	)
+	await _drop_scene(scene)
 
 
 func _new_city(food_amount: int) -> Dictionary:

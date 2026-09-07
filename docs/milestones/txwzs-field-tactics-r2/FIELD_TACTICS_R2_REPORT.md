@@ -11,6 +11,25 @@ transaction and persistence-checkpoint caller.
 
 ## Delivered engineering evidence
 
+### Formal-input and repair follow-up
+
+- Confirming a camp-building project reserves its `camp_id` and its generated
+  runtime camp point immediately.  A second engineer confirmed before the
+  first completion receives a distinct persisted identity.
+- Repeated automatic mouse input at an overlapping army marker cycles the
+  selected `army_id`; dead specialist history does not hide a replacement
+  dispatch control.
+- A damaged field road now remains closed while its selected engineer travels
+  to the endpoint and completes a timed repair project.  The same road ID is
+  restored only at completion.  A completed road can be validated in either
+  direction when the submitted polyline is directionally exact.
+
+Verification after this follow-up: `run_field_tactics_r2_smoke.gd` passes 27
+assertions, `run_macro_march_r0_smoke.gd` passes 17, and
+`run_field_tactics_r2_persistence_smoke.gd` passes its independent three-process
+construction/restore chain.  The repair path has focused state coverage, but
+not yet map-operable damaged-road selection or a dedicated repair disk chain.
+
 - Two macro armies can be issued from distinct garrison formations. The
   registry rejects a persisted formation identity in two non-closed macro
   armies, and closed history no longer blocks a new departure.

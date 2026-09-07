@@ -2,6 +2,24 @@
 
 ## FIELD_TACTICS_R2 engineering checkpoint (2026-09-07)
 
+### R2 formal-input and on-site-repair checkpoint
+
+The map now preserves a camp identity at engineering confirmation, so two
+engineers cannot reserve the same runtime camp while both projects are still
+in progress.  The visible-army hit target cycles on repeated mouse clicks at
+the same location, and historical dead specialists no longer suppress the
+replacement-dispatch controls.
+
+Damaged field roads now create a persisted repair project.  The assigned
+engineer travels to the road endpoint, the road remains blocked during the
+separate repair duration, and only completion restores the original road ID.
+Runtime roads validate in both directions, including their reversed polyline.
+Focused field smoke passes 27 assertions, Macro March passes 17, and the
+three-process field construction restore runner passes.  This is still not a
+complete R2 play flow: bridge classification, map-operable repair selection,
+patrol/ambush settlement, road-damage auto-resume, full normal-input playthrough
+and real media remain open.
+
 ### R2 concurrency and safe-projection follow-up
 
 The controller now owns one shared world clock for all macro armies, field

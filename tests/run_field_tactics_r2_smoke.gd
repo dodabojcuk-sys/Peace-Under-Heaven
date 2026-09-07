@@ -67,11 +67,37 @@ func _run_field_tactics_contract() -> void:
 	var runtime_route := state.validate_runtime_route(&"blackstone_city", &"reedbank_garrison", StringName(project.road_id), Array(project.route_world_points))
 	_check(bool(runtime_route.get("valid", false)) and state.runtime_route_duration_milliseconds(StringName(project.road_id)) >= 6000, "完工工程道路进入正式军令校验与行军时长计算")
 	_check(state.damage_road(StringName(project.road_id), 999) and not state.is_route_open(StringName(project.road_id)), "敌方造成的真实路损会改变通行状态")
-	_check(state.repair_road(StringName(engineer.specialist_id), StringName(project.road_id)) and state.is_route_open(StringName(project.road_id)), "工程师维修后恢复原道路身份而不重写已发军令")
+	var repair := state.begin_road_repair(StringName(engineer.specialist_id), StringName(project.road_id))
+	var repair_travel := int(Dictionary(state.specialists_by_id[StringName(engineer.specialist_id)]).get("move_total_milliseconds", 0))
+	_check(not repair.is_empty() and not state.is_route_open(StringName(project.road_id)) and repair_travel > 0, "远处受损道路先建立工程师到场维修事务，不能隔空立即修好")
+	state.advance_world(repair_travel)
+	_check(not state.is_route_open(StringName(project.road_id)), "工程师到达维修点的同一时间步不跳过维修工期")
+	state.advance_world(int(repair.required_milliseconds) - 1)
+	_check(not state.is_route_open(StringName(project.road_id)), "维修进度未完成时道路继续阻断军队通行")
+	state.advance_world(1)
+	var reverse_points := Array(project.route_world_points).duplicate(true)
+	reverse_points.reverse()
+	_check(
+		state.is_route_open(StringName(project.road_id))
+			and bool(state.validate_runtime_route(&"reedbank_garrison", &"blackstone_city", StringName(project.road_id), reverse_points).get("valid", false)),
+		"工程师到场完成后恢复原道路身份，并允许同一路段反向往返"
+	)
+	state.order_specialist_move(StringName(engineer.specialist_id), &"blackstone_city")
+	state.advance_world(int(Dictionary(state.specialists_by_id[StringName(engineer.specialist_id)]).get("move_total_milliseconds", 0)))
 	var camp_project := state.begin_road_project(StringName(engineer.specialist_id), &"blackstone_city", &"camp.site.000001", [Vector2i(150, 430), Vector2i(355, 410), Vector2i(470, 355)], FieldTacticsState.ROAD_NORMAL, true)
 	state.advance_world(int(camp_project.get("required_milliseconds", 0)))
 	var runtime_points := state.get_runtime_points()
 	_check(not camp_project.is_empty() and runtime_points.has(&"camp.site.000001") and state.validate_runtime_route(&"blackstone_city", &"camp.site.000001", StringName(camp_project.get("road_id", &"")), Array(camp_project.get("route_world_points", []))).get("valid", false), "玩家指定的新工程驻点以运行时坐标进入可通军路网")
+	var concurrent_engineer := state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"blackstone_city")
+	var first_concurrent := state.begin_road_project(StringName(engineer.specialist_id), &"blackstone_city", &"", [Vector2i(150, 430), Vector2i(275, 360)], FieldTacticsState.ROAD_NORMAL, true)
+	var second_concurrent := state.begin_road_project(StringName(concurrent_engineer.specialist_id), &"blackstone_city", &"", [Vector2i(150, 430), Vector2i(285, 510)], FieldTacticsState.ROAD_NORMAL, true)
+	_check(
+		not first_concurrent.is_empty() and not second_concurrent.is_empty()
+			and StringName(first_concurrent.target_point_id) != StringName(second_concurrent.target_point_id)
+			and StringName(first_concurrent.camp_id) != StringName(second_concurrent.camp_id)
+			and state.next_camp_sequence == 5,
+		"两名工程师在首项完工前确认工程时分别保留不同驻点编号"
+	)
 	var snapshot := state.get_snapshot()
 	var restored: FieldTacticsState = FIELD_TACTICS_STATE.new()
 	_check(restored.restore_snapshot(snapshot) and restored.is_route_open(StringName(project.road_id)), "施工、驻点、道路与探索记录可随战役快照冷恢复")

@@ -16,6 +16,8 @@ var _is_drawing := false
 var _engineering_mode := false
 var _engineering_engineer_id: StringName = &""
 var _selected_army_id: StringName = &""
+var _last_army_hit_position := Vector2.INF
+var _army_hit_cycle_index := 0
 var _formation_buttons: Array[Button] = []
 
 var _title_label := Label.new()
@@ -216,9 +218,11 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_block_button.visible = false
 	_recover_button.visible = false
 	_retreat_button.visible = false
-	_scout_button.visible = specialists.size() < 2
-	_engineer_button.visible = specialists.size() < 2
-	_side_road_button.visible = not specialists.is_empty()
+	# Do not use historical specialist entries here: lost specialists remain in
+	# the save for evidence, but must not block a replacement dispatch.
+	_scout_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_SCOUT) < 1
+	_engineer_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_ENGINEER) < 1
+	_side_road_button.visible = _has_idle_engineer(specialists)
 	_confirm_button.text = "确认施工" if not _engineering_draft.is_empty() else "确认并锁定军令"
 	_confirm_button.disabled = (_engineering_draft.is_empty() and (_draft_route.is_empty() or _selected_formation_ids.is_empty()))
 
@@ -484,6 +488,7 @@ func _selected_army(model: Dictionary) -> Dictionary:
 
 
 func _army_id_at_screen(model: Dictionary, screen_position: Vector2) -> StringName:
+	var hits: Array[StringName] = []
 	for army_value in Array(model.get("armies", [])):
 		var army: Dictionary = army_value
 		var macro: Dictionary = army.get("macro_march", {})
@@ -492,8 +497,17 @@ func _army_id_at_screen(model: Dictionary, screen_position: Vector2) -> StringNa
 			continue
 		var progress := float(macro.get("progress_millis", 0)) / maxf(float(macro.get("total_millis", 1)), 1.0)
 		if _world_to_screen(_point_along_route(points, progress)).distance_to(screen_position) <= 24.0:
-			return StringName(army.get("army_id", &""))
-	return &""
+			hits.append(StringName(army.get("army_id", &"")))
+	if hits.is_empty():
+		_last_army_hit_position = Vector2.INF
+		_army_hit_cycle_index = 0
+		return &""
+	if screen_position.distance_to(_last_army_hit_position) <= 6.0:
+		_army_hit_cycle_index = posmod(_army_hit_cycle_index + 1, hits.size())
+	else:
+		_last_army_hit_position = screen_position
+		_army_hit_cycle_index = 0
+	return hits[_army_hit_cycle_index]
 
 
 func _nearest_target_at_draw_end(source_id: StringName) -> StringName:
@@ -526,17 +540,29 @@ func _choose_runtime_route_from_draw(model: Dictionary, source_id: StringName, t
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
 	for route_value in Dictionary(field.get("roads_by_id", {})).values():
 		var route: Dictionary = route_value
-		if (
-			StringName(route.get("source_point_id", &"")) != source_id
-			or StringName(route.get("target_point_id", &"")) != target_id
-			or StringName(route.get("state", &"")) != FieldTacticsState.ROAD_OPEN
-		):
+		if StringName(route.get("state", &"")) != FieldTacticsState.ROAD_OPEN:
 			continue
 		var route_points: Array = route.get("route_world_points", [])
+		var forward := (
+			StringName(route.get("source_point_id", &"")) == source_id
+			and StringName(route.get("target_point_id", &"")) == target_id
+		)
+		var reverse := (
+			StringName(route.get("target_point_id", &"")) == source_id
+			and StringName(route.get("source_point_id", &"")) == target_id
+		)
+		if not forward and not reverse:
+			continue
+		var traversed := route.duplicate(true)
+		if reverse:
+			route_points.reverse()
+			traversed.source_point_id = source_id
+			traversed.target_point_id = target_id
+			traversed.route_world_points = route_points
 		var score := _draw_route_score(draw_world_points, route_points)
 		if score < best_score:
 			best_score = score
-			best_route = route
+			best_route = traversed
 	if best_route.is_empty() or best_score > 105.0:
 		return {"valid": false, "error": "路线偏离可通行道路，或道路尚未完成。"}
 	return {"valid": true, "route": best_route}

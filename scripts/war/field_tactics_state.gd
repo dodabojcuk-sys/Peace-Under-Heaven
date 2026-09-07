@@ -17,6 +17,7 @@ const SPECIALIST_ENGINEER := &"ENGINEER"
 const SPECIALIST_IDLE := &"IDLE"
 const SPECIALIST_MOVING := &"MOVING"
 const SPECIALIST_BUILDING := &"BUILDING"
+const SPECIALIST_REPAIRING := &"REPAIRING"
 const SPECIALIST_LOST := &"LOST"
 const FOG_UNOBSERVED := &"UNOBSERVED"
 const FOG_OBSERVED := &"OBSERVED"
@@ -100,7 +101,7 @@ func order_specialist_move(specialist_id: StringName, target_point_id: StringNam
 	var specialist := Dictionary(specialists_by_id.get(specialist_id, {}))
 	if specialist.is_empty() or not bool(specialist.get("alive", false)) or target_point_id == &"":
 		return {}
-	if StringName(specialist.get("phase", &"")) == SPECIALIST_BUILDING:
+	if StringName(specialist.get("project_id", &"")) != &"":
 		return {}
 	if StringName(specialist.get("current_point_id", &"")) == target_point_id:
 		return specialist.duplicate(true)
@@ -129,8 +130,15 @@ func begin_road_project(
 ) -> Dictionary:
 	var engineer := Dictionary(specialists_by_id.get(engineer_id, {}))
 	var resolved_target_point_id := target_point_id
-	if resolved_target_point_id == &"" and build_camp:
-		resolved_target_point_id = StringName("camp.site.%06d" % next_camp_sequence)
+	# A camp identity is reserved when the command is confirmed, rather than
+	# when work finishes.  Two engineers can therefore build concurrently
+	# without both targeting the next not-yet-created camp site.
+	var reserved_camp_id: StringName = &""
+	if build_camp:
+		var camp_sequence := next_camp_sequence
+		reserved_camp_id = StringName("camp.%06d" % camp_sequence)
+		if resolved_target_point_id == &"":
+			resolved_target_point_id = StringName("camp.site.%06d" % camp_sequence)
 	if (
 		engineer.is_empty() or not bool(engineer.get("alive", false))
 		or StringName(engineer.get("role", &"")) != SPECIALIST_ENGINEER
@@ -142,6 +150,8 @@ func begin_road_project(
 		or road_kind not in [ROAD_NORMAL, ROAD_REINFORCED, ROAD_BRIDGE]
 	):
 		return {}
+	if build_camp:
+		next_camp_sequence += 1
 	var project_id := StringName("project.%06d" % next_project_sequence)
 	next_project_sequence += 1
 	var road_id := StringName("road.built.%06d" % next_project_sequence)
@@ -163,6 +173,7 @@ func begin_road_project(
 		"required_milliseconds": required_milliseconds,
 		"max_durability": max_durability,
 		"build_camp": build_camp,
+		"camp_id": reserved_camp_id,
 		"phase": &"BUILDING",
 	}
 	projects_by_id[project_id] = project
@@ -184,18 +195,57 @@ func damage_road(road_id: StringName, amount: int) -> bool:
 
 
 func repair_road(engineer_id: StringName, road_id: StringName) -> bool:
+	return not begin_road_repair(engineer_id, road_id).is_empty()
+
+
+func begin_road_repair(engineer_id: StringName, road_id: StringName) -> Dictionary:
 	var engineer := Dictionary(specialists_by_id.get(engineer_id, {}))
 	var road := Dictionary(roads_by_id.get(road_id, {}))
 	if (
 		engineer.is_empty() or StringName(engineer.get("role", &"")) != SPECIALIST_ENGINEER
 		or not bool(engineer.get("alive", false)) or road.is_empty()
 		or StringName(road.get("road_kind", &"")) == ROAD_MAIN
+		or StringName(road.get("state", &"")) != ROAD_DAMAGED
+		or StringName(engineer.get("project_id", &"")) != &""
 	):
-		return false
-	road.durability = int(road.max_durability)
-	road.state = ROAD_OPEN
-	roads_by_id[road_id] = road
-	return true
+		return {}
+	var project_id := StringName("repair.%06d" % next_project_sequence)
+	next_project_sequence += 1
+	var target_point_id := StringName(road.get("target_point_id", &""))
+	var target_position := _road_endpoint_position(road_id)
+	var start_position := Vector2(engineer.get("world_position", _point_position(StringName(engineer.get("current_point_id", &"")))))
+	var travel_milliseconds := maxi(0, ceili(start_position.distance_to(target_position) * 2.5))
+	var project := {
+		"project_id": project_id,
+		"project_kind": &"REPAIR",
+		"engineer_id": engineer_id,
+		"road_id": road_id,
+		"source_point_id": StringName(engineer.get("current_point_id", &"")),
+		"target_point_id": target_point_id,
+		"route_world_points": [],
+		"road_kind": StringName(road.get("road_kind", &"")),
+		"progress_milliseconds": 0,
+		"required_milliseconds": 2500,
+		"max_durability": int(road.get("max_durability", 0)),
+		"build_camp": false,
+		"camp_id": &"",
+		"phase": &"TRAVELING" if travel_milliseconds > 0 else &"BUILDING",
+	}
+	projects_by_id[project_id] = project
+	engineer.project_id = project_id
+	if travel_milliseconds > 0:
+		engineer.target_point_id = target_point_id
+		engineer.move_start_position = Vector2i(start_position)
+		engineer.target_world_position = Vector2i(target_position)
+		engineer.world_position = Vector2i(start_position)
+		engineer.move_total_milliseconds = travel_milliseconds
+		engineer.move_elapsed_milliseconds = 0
+		engineer.move_remaining_milliseconds = travel_milliseconds
+		engineer.phase = SPECIALIST_MOVING
+	else:
+		engineer.phase = SPECIALIST_REPAIRING
+	specialists_by_id[engineer_id] = engineer
+	return project.duplicate(true)
 
 
 static func _has_valid_references(roads: Dictionary, camps: Dictionary, specialists: Dictionary, projects: Dictionary, patrols: Dictionary, intel: Dictionary) -> bool:
@@ -238,14 +288,28 @@ func validate_runtime_route(source_point_id: StringName, target_point_id: String
 		return {"valid": false, "error_id": &"UNKNOWN_ROAD", "error": "该道路不存在"}
 	if not is_route_open(route_id):
 		return {"valid": false, "error_id": &"ROAD_DAMAGED", "error": "该道路尚未完工或已损坏"}
-	if (
-		StringName(road.get("source_point_id", &"")) != source_point_id
-		or StringName(road.get("target_point_id", &"")) != target_point_id
-		or source_point_id == target_point_id
-		or route_world_points != Array(road.get("route_world_points", []))
-	):
+	if source_point_id == target_point_id:
 		return {"valid": false, "error_id": &"ILLEGAL_ENDPOINT", "error": "道路不连接当前驻点与目标驻点"}
-	return {"valid": true, "error_id": &"", "error": "", "route": road.duplicate(true)}
+	var forward := (
+		StringName(road.get("source_point_id", &"")) == source_point_id
+		and StringName(road.get("target_point_id", &"")) == target_point_id
+		and route_world_points == Array(road.get("route_world_points", []))
+	)
+	var reverse_points := Array(road.get("route_world_points", [])).duplicate(true)
+	reverse_points.reverse()
+	var reverse := (
+		StringName(road.get("target_point_id", &"")) == source_point_id
+		and StringName(road.get("source_point_id", &"")) == target_point_id
+		and route_world_points == reverse_points
+	)
+	if not forward and not reverse:
+		return {"valid": false, "error_id": &"ILLEGAL_ENDPOINT", "error": "道路不连接当前驻点与目标驻点"}
+	var traversed := road.duplicate(true)
+	if reverse:
+		traversed.source_point_id = source_point_id
+		traversed.target_point_id = target_point_id
+		traversed.route_world_points = reverse_points
+	return {"valid": true, "error_id": &"", "error": "", "route": traversed}
 
 
 func runtime_route_duration_milliseconds(route_id: StringName) -> int:
@@ -279,6 +343,7 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 	world_milliseconds += delta_milliseconds
 	var completed: Array[StringName] = []
 	var engagements: Array[Dictionary] = []
+	var repair_arrivals: Dictionary = {}
 	for specialist_id_value in specialists_by_id.keys():
 		var moving_id := StringName(specialist_id_value)
 		var moving := Dictionary(specialists_by_id[moving_id])
@@ -291,12 +356,20 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 		if int(moving.move_remaining_milliseconds) == 0:
 			moving.current_point_id = StringName(moving.target_point_id)
 			moving.world_position = Vector2i(moving.get("target_world_position", Vector2i.ZERO))
-			moving.phase = SPECIALIST_IDLE
+			var active_project_id := StringName(moving.get("project_id", &""))
+			var active_project := Dictionary(projects_by_id.get(active_project_id, {}))
+			if StringName(active_project.get("project_kind", &"")) == &"REPAIR" and StringName(active_project.get("phase", &"")) == &"TRAVELING":
+				active_project.phase = &"BUILDING"
+				projects_by_id[active_project_id] = active_project
+				repair_arrivals[active_project_id] = true
+				moving.phase = SPECIALIST_REPAIRING
+			else:
+				moving.phase = SPECIALIST_IDLE
 		specialists_by_id[moving_id] = moving
 	for project_id_value in projects_by_id.keys():
 		var project_id := StringName(project_id_value)
 		var project := Dictionary(projects_by_id[project_id])
-		if StringName(project.get("phase", &"")) != &"BUILDING":
+		if StringName(project.get("phase", &"")) != &"BUILDING" or repair_arrivals.has(project_id):
 			continue
 		var engineer := Dictionary(specialists_by_id.get(StringName(project.engineer_id), {}))
 		if engineer.is_empty() or not bool(engineer.get("alive", false)):
@@ -309,23 +382,36 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 		)
 		if int(project.progress_milliseconds) == int(project.required_milliseconds):
 			project.phase = &"COMPLETE"
-			roads_by_id[StringName(project.road_id)] = {
-				"road_id": StringName(project.road_id),
-				"source_point_id": StringName(project.source_point_id),
-				"target_point_id": StringName(project.target_point_id),
-				"route_world_points": Array(project.route_world_points).duplicate(true),
-				"road_kind": StringName(project.road_kind),
-				"state": ROAD_OPEN,
-				"durability": int(project.max_durability),
-				"max_durability": int(project.max_durability),
-				"built": true,
-				"project_id": project_id,
-			}
+			if StringName(project.get("project_kind", &"")) == &"REPAIR":
+				var repaired_road := Dictionary(roads_by_id.get(StringName(project.road_id), {}))
+				if repaired_road.is_empty():
+					project.phase = &"INTERRUPTED"
+					projects_by_id[project_id] = project
+					continue
+				repaired_road.durability = int(repaired_road.max_durability)
+				repaired_road.state = ROAD_OPEN
+				roads_by_id[StringName(project.road_id)] = repaired_road
+			else:
+				roads_by_id[StringName(project.road_id)] = {
+					"road_id": StringName(project.road_id),
+					"source_point_id": StringName(project.source_point_id),
+					"target_point_id": StringName(project.target_point_id),
+					"route_world_points": Array(project.route_world_points).duplicate(true),
+					"road_kind": StringName(project.road_kind),
+					"state": ROAD_OPEN,
+					"durability": int(project.max_durability),
+					"max_durability": int(project.max_durability),
+					"built": true,
+					"project_id": project_id,
+				}
 			engineer.phase = SPECIALIST_IDLE
 			engineer.project_id = &""
 			specialists_by_id[StringName(project.engineer_id)] = engineer
 			if bool(project.build_camp):
-				_create_completed_camp(StringName(project.target_point_id), StringName(project.road_id))
+				_create_completed_camp(
+					StringName(project.target_point_id), StringName(project.road_id),
+					StringName(project.get("camp_id", &""))
+				)
 			completed.append(project_id)
 		projects_by_id[project_id] = project
 	for patrol_id_value in patrols_by_id.keys():
@@ -418,14 +504,18 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	return true
 
 
-func _create_completed_camp(point_id: StringName, road_id: StringName) -> void:
-	var camp_id := StringName("camp.%06d" % next_camp_sequence)
-	next_camp_sequence += 1
+func _create_completed_camp(point_id: StringName, road_id: StringName, reserved_camp_id: StringName = &"") -> void:
+	# Old saves predate command-time camp reservations.  Keep their completion
+	# path readable, while all new projects use their already persisted ID.
+	var camp_id := reserved_camp_id
+	if camp_id == &"":
+		camp_id = StringName("camp.%06d" % next_camp_sequence)
+		next_camp_sequence += 1
 	camps_by_id[camp_id] = {
 		"camp_id": camp_id,
 		"point_id": point_id,
 		"road_id": road_id,
-		"display_name": "工程驻点 %d" % next_camp_sequence,
+		"display_name": "工程驻点 %s" % String(camp_id).trim_prefix("camp."),
 		"world_position": Vector2i(_road_endpoint_position(road_id)),
 		"durability": 80,
 		"connected": true,

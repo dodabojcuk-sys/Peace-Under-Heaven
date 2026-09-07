@@ -38,6 +38,15 @@
 - Map drafts are a presentation contract distinct from persisted road records.
 	They normalize road identity and polyline before confirmation; engineering
 	drafts have no resource side effect until the explicit confirm action.
+- Camp IDs are reserved at engineering confirmation, not completion, so an
+	in-progress project already owns its future runtime point and camp record.
+	The reservation is kept inside `FieldTacticsState` and therefore the V5
+	snapshot; no UI counter owns a strategic identity.
+- Field-road repair is an explicit persisted project: an engineer first travels
+	to the damaged endpoint, then repairs over shared world time.  The original
+	road remains closed until the completion transaction, and runtime road
+	validation accepts either direction only when the submitted polyline matches
+	the corresponding direction.
 
 ## Macro March R0 outer-city greybox
 
