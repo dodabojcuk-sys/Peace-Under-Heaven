@@ -386,3 +386,13 @@
 - 建立第一张地图的道路、生产、日期、威胁、训练、科技和军令台技术闭环。
 - 建立 C0 确定性战斗灰盒和城市写回事务。
 - S1A.1 内存快照 roundtrip 获得接受；S1A.2 留在保护边界外。
+## 2026-09-07 — R2 shared-clock and parallel-siege repair
+
+- Made ConstructionController the sole advancing world-clock owner; map views
+  no longer tick armies and each order keeps its own fractional remainder.
+- Added explicit city-keyed siege advance, retreat, occupation and failure
+  settlement so concurrent battles do not consume one another.
+- Removed normal-map static route-break controls, hid authoritative field
+  state from macro UI projections, and reject dangling field persistence
+  references before restore.
+- This is an engineering repair, not a completed R2 playthrough or acceptance.

@@ -43,6 +43,13 @@ Godot `4.5.1.stable.official.f62fdbde1` imported and parsed the project.
 
 ## Remaining work and evidence boundary
 
+Follow-up engineering made the city-keyed siege records the controller's
+settlement boundary and moved macro progression to the shared controller
+clock. It also removed the normal-map static route-break demonstration controls
+and prevents the macro read model from disclosing the authoritative field
+snapshot. These changes close timing and cross-siege ownership defects, not
+the remaining player-operated tactics work.
+
 This is not a complete R2 play-flow delivery. The formal map does not yet offer
 a full player-operated specialist drag-line workflow, nor does the formal
 controller yet settle patrol/ambush damage against armies or apply

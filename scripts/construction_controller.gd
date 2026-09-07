@@ -485,9 +485,7 @@ var _expedition_commit_in_progress := false
 var _expedition_commit_blocked := false
 var _war_loop_state: WarLoopState = WAR_LOOP_STATE.new()
 var _war_loop_frame_remainder_milliseconds := 0.0
-var _macro_march_frame_remainder_milliseconds := 0.0
-var _macro_march_frame_remainder_army_id := &""
-var _macro_march_frame_remainder_order_id := &""
+var _macro_march_frame_remainders_by_order: Dictionary = {}
 
 
 func _ready() -> void:
@@ -873,6 +871,7 @@ func _commit_national_resource_targets(
 
 func _process(delta: float) -> void:
 	advance_city_time(delta * city_time_speed)
+	_advance_all_macro_marches_seconds(delta)
 	advance_war_loop_time_seconds(delta)
 	_refresh_constructing_building_visuals()
 
@@ -5302,11 +5301,17 @@ func get_macro_march_read_model() -> Dictionary:
 			else &"blackstone_city"
 		),
 		"can_issue_from_city": (
-			macro_armies.size() < 2
-			and _active_battle_reservation.is_empty()
+			_active_battle_reservation.is_empty()
 			and not _army_registry.has_active_non_macro_army()
 		),
-		"war_loop": _war_loop_state.get_snapshot(),
+		# Do not expose authoritative field state through the macro view: it
+		# contains hidden patrol positions.  Combat records are already player
+		# visible because the corresponding army is in an active siege.
+		"war_loop": {
+			"active_siege": _war_loop_state.active_siege.duplicate(true),
+			"sieges": _war_loop_state.get_active_sieges(),
+			"cities_by_id": _war_loop_state.cities_by_id.duplicate(true),
+		},
 		"level_cleared": _war_loop_state.is_level_cleared(),
 	}
 
@@ -5472,7 +5477,7 @@ func _finalize_macro_occupation(siege: Dictionary) -> Dictionary:
 	var war_before := _war_loop_state.get_snapshot()
 	var registry_before := _army_registry.get_snapshot()
 	var resolution_id := StringName("%s.occupation" % String(siege.siege_id))
-	var occupied := _war_loop_state.occupy_active_city(resolution_id)
+	var occupied := _war_loop_state.occupy_siege(StringName(siege.city_id), resolution_id)
 	if occupied.is_empty():
 		return _macro_failure(&"OCCUPATION_FAILED", "占领事务未能提交")
 	var army := _army_registry.complete_macro_siege(StringName(occupied.army_id), StringName(occupied.order_id))
@@ -5509,7 +5514,6 @@ func commit_macro_march_from_city(
 	if (
 		not _active_battle_reservation.is_empty()
 		or _army_registry.has_active_non_macro_army()
-		or get_macro_march_armies().size() >= 2
 	):
 		return _macro_failure(&"MACRO_BUSY", "已有军令正在执行或等待驻扎")
 	var selected := _garrison_state.get_selected_formations(formation_ids)
@@ -5627,6 +5631,24 @@ func advance_macro_march_time_seconds(
 	)
 
 
+# The city owns world time.  Views may refresh every frame but must never
+# advance individual armies, otherwise a second selected army changes the
+# simulation rate.  Manual APIs above remain for deterministic test fixtures.
+func _advance_all_macro_marches_seconds(delta_seconds: float) -> void:
+	if city_time_paused or delta_seconds <= 0.0:
+		return
+	var snapshot := get_macro_march_armies()
+	for army_value in snapshot:
+		var army: Dictionary = army_value
+		if StringName(army.get("phase", &"")) not in [ArmyRegistry.PHASE_MARCHING, ArmyRegistry.PHASE_RETREATING]:
+			continue
+		var macro: Dictionary = army.get("macro_march", {})
+		_advance_macro_march_elapsed_milliseconds(
+			StringName(army.get("army_id", &"")), StringName(macro.get("order_id", &"")),
+			int(macro.get("progress_millis", 0)), delta_seconds * 1000.0 * city_time_speed
+		)
+
+
 func _advance_macro_march_elapsed_milliseconds(
 	army_id: StringName,
 	order_id: StringName,
@@ -5635,16 +5657,10 @@ func _advance_macro_march_elapsed_milliseconds(
 ) -> Dictionary:
 	if city_time_paused:
 		return {}
-	if (
-		army_id != _macro_march_frame_remainder_army_id
-		or order_id != _macro_march_frame_remainder_order_id
-	):
-		_macro_march_frame_remainder_milliseconds = 0.0
-		_macro_march_frame_remainder_army_id = army_id
-		_macro_march_frame_remainder_order_id = order_id
-	var pending_milliseconds := _macro_march_frame_remainder_milliseconds + elapsed_milliseconds
+	var remainder_key := StringName("%s:%s" % [String(army_id), String(order_id)])
+	var pending_milliseconds := float(_macro_march_frame_remainders_by_order.get(remainder_key, 0.0)) + elapsed_milliseconds
 	var whole_milliseconds := floori(pending_milliseconds + 0.000001)
-	_macro_march_frame_remainder_milliseconds = maxf(
+	_macro_march_frame_remainders_by_order[remainder_key] = maxf(
 		pending_milliseconds - float(whole_milliseconds), 0.0
 	)
 	if whole_milliseconds <= 0:
@@ -5674,7 +5690,7 @@ func _advance_macro_march_elapsed_milliseconds(
 			_war_loop_state.restore_snapshot(war_before)
 			return _macro_failure(&"SAVE_FAILED", "抵达状态存档失败，军令已回滚")
 		if arrival_committed:
-			_macro_march_frame_remainder_milliseconds = 0.0
+			_macro_march_frame_remainders_by_order.erase(remainder_key)
 	return result.duplicate(true)
 
 
@@ -5694,13 +5710,6 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 	if city_time_paused or elapsed_milliseconds <= 0.0:
 		return {}
 	_ensure_war_loop_initialized()
-	var field_advance := _war_loop_state.field_tactics.advance_world(
-		floori(elapsed_milliseconds + 0.000001)
-	)
-	if _war_loop_state.active_siege.is_empty():
-		if not field_advance.is_empty() and Array(field_advance.get("completed_project_ids", [])).size() > 0:
-			_persist_macro_march_checkpoint()
-		return field_advance
 	var pending_milliseconds := _war_loop_frame_remainder_milliseconds + elapsed_milliseconds
 	var whole_milliseconds := floori(pending_milliseconds + 0.000001)
 	_war_loop_frame_remainder_milliseconds = maxf(
@@ -5708,45 +5717,40 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 	)
 	if whole_milliseconds <= 0:
 		return {}
+	var field_advance := _war_loop_state.field_tactics.advance_world(whole_milliseconds)
 	var registry_before := _army_registry.get_snapshot()
 	var war_before := _war_loop_state.get_snapshot()
-	var active: Dictionary = _war_loop_state.active_siege
-	var accumulated := int(active.get("elapsed_remainder_milliseconds", 0)) + whole_milliseconds
-	var ticks := accumulated / WAR_LOOP_RULES.combat_tick_milliseconds
-	_war_loop_state.active_siege.elapsed_remainder_milliseconds = accumulated % WAR_LOOP_RULES.combat_tick_milliseconds
-	if ticks <= 0:
-		return {}
 	var result: Dictionary = {}
-	for _index in range(ticks):
-		result = _war_loop_state.advance_siege(WAR_LOOP_RULES)
-		if result.is_empty():
-			break
-		var surviving_count := ceili(float(maxi(int(result.attacker_total_hp), 0)) / float(maxi(int(result.attacker_hp_per_member), 1)))
-		if surviving_count <= 0:
-			if StringName(result.phase) != WarLoopState.PHASE_FAILED:
+	for siege_value in _war_loop_state.get_active_sieges():
+		var siege: Dictionary = siege_value
+		var city_id := StringName(siege.get("city_id", &""))
+		for tick_result in _war_loop_state.advance_siege_elapsed(city_id, whole_milliseconds, WAR_LOOP_RULES):
+			result = Dictionary(tick_result)
+			var surviving_count := ceili(float(maxi(int(result.attacker_total_hp), 0)) / float(maxi(int(result.attacker_hp_per_member), 1)))
+			if surviving_count <= 0:
+				if StringName(result.phase) != WarLoopState.PHASE_FAILED:
+					_war_loop_state.restore_snapshot(war_before)
+					_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+					return _macro_failure(&"SIEGE_ZERO_SURVIVOR_STATE", "全灭攻城未进入失败状态")
+				result = _close_lost_macro_siege(result, StringName("%s.lost" % String(result.siege_id)))
+				if not bool(result.get("success", false)):
+					_war_loop_state.restore_snapshot(war_before)
+					_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+					return result
+				break
+			var army := _army_registry.replace_macro_composition(
+				StringName(result.army_id), StringName(result.order_id), surviving_count
+			)
+			if army.is_empty():
 				_war_loop_state.restore_snapshot(war_before)
 				_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
-				return _macro_failure(&"SIEGE_ZERO_SURVIVOR_STATE", "全灭攻城未进入失败状态")
-			result = _close_lost_macro_siege(result, StringName("%s.lost" % String(result.siege_id)))
-			if not bool(result.get("success", false)):
-				_war_loop_state.restore_snapshot(war_before)
-				_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
-				return result
-			break
-		var army := _army_registry.replace_macro_composition(
-			StringName(result.army_id), StringName(result.order_id),
-			surviving_count
-		)
-		if army.is_empty():
-			_war_loop_state.restore_snapshot(war_before)
-			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
-			return _macro_failure(&"SIEGE_ARMY_SYNC_FAILED", "攻城伤亡无法同步到军队")
-		if StringName(result.phase) == WarLoopState.PHASE_OCCUPIED:
-			result = _finalize_macro_occupation(result)
-			break
-		if StringName(result.phase) == WarLoopState.PHASE_FAILED:
-			result = _resolve_failed_macro_siege(result)
-			break
+				return _macro_failure(&"SIEGE_ARMY_SYNC_FAILED", "攻城伤亡无法同步到军队")
+			if StringName(result.phase) == WarLoopState.PHASE_OCCUPIED:
+				result = _finalize_macro_occupation(result)
+				break
+			if StringName(result.phase) == WarLoopState.PHASE_FAILED:
+				result = _resolve_failed_macro_siege(result)
+				break
 	if not result.is_empty():
 		_refresh_city_ui()
 		city_state_changed.emit()
@@ -5754,13 +5758,16 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 			_war_loop_state.restore_snapshot(war_before)
 			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 			return _macro_failure(&"SAVE_FAILED", "攻城状态存档失败，事务已回滚")
-	return result.duplicate(true)
+	return result.duplicate(true) if not result.is_empty() else field_advance
 
 
-func request_macro_siege_retreat() -> Dictionary:
+func request_macro_siege_retreat(city_id: StringName = &"") -> Dictionary:
 	var war_before := _war_loop_state.get_snapshot()
 	var registry_before := _army_registry.get_snapshot()
-	var failed := _war_loop_state.mark_retreat(WAR_LOOP_RULES)
+	var target_city_id := city_id
+	if target_city_id == &"":
+		target_city_id = StringName(_war_loop_state.active_siege.get("city_id", &""))
+	var failed := _war_loop_state.mark_retreat_at(target_city_id, WAR_LOOP_RULES)
 	if failed.is_empty():
 		return _macro_failure(&"RETREAT_UNAVAILABLE", "当前没有可撤逃的攻城军令")
 	var surviving_count := ceili(float(maxi(int(failed.attacker_total_hp), 0)) / float(maxi(int(failed.attacker_hp_per_member), 1)))
@@ -5783,7 +5790,7 @@ func request_macro_siege_retreat() -> Dictionary:
 		return lost
 	var retreating := _army_registry.begin_macro_retreat(StringName(failed.army_id), StringName(failed.order_id))
 	var resolution_id := StringName("%s.retreat" % String(failed.siege_id))
-	_war_loop_state.close_failed_siege(resolution_id)
+	_war_loop_state.close_failed_siege_at(target_city_id, resolution_id)
 	if army.is_empty() or retreating.is_empty():
 		_war_loop_state.restore_snapshot(war_before)
 		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
@@ -5805,7 +5812,7 @@ func _resolve_failed_macro_siege(failed: Dictionary) -> Dictionary:
 	if retreating.is_empty():
 		return _macro_failure(&"SIEGE_RETREAT_FAILED", "战败撤退路线未能建立")
 	var resolution_id := StringName("%s.failed" % String(failed.siege_id))
-	_war_loop_state.close_failed_siege(resolution_id)
+	_war_loop_state.close_failed_siege_at(StringName(failed.city_id), resolution_id)
 	return {"success": true, "army": retreating.duplicate(true), "siege": failed.duplicate(true)}
 
 
@@ -5815,7 +5822,7 @@ func _close_lost_macro_siege(failed: Dictionary, resolution_id: StringName) -> D
 	)
 	if closed.is_empty():
 		return _macro_failure(&"SIEGE_LOSS_CLOSE_FAILED", "全灭军队状态未能关闭")
-	var resolved := _war_loop_state.close_failed_siege(resolution_id)
+	var resolved := _war_loop_state.close_failed_siege_at(StringName(failed.city_id), resolution_id)
 	if resolved.is_empty():
 		return _macro_failure(&"SIEGE_LOSS_RESOLUTION_FAILED", "全灭攻城结算未能关闭")
 	return {"success": true, "army": closed.duplicate(true), "siege": resolved.duplicate(true)}

@@ -113,6 +113,8 @@ func begin_road_project(
 	if (
 		engineer.is_empty() or not bool(engineer.get("alive", false))
 		or StringName(engineer.get("role", &"")) != SPECIALIST_ENGINEER
+		or StringName(engineer.get("phase", &"")) == SPECIALIST_BUILDING
+		or StringName(engineer.get("project_id", &"")) != &""
 		or StringName(engineer.get("current_point_id", &"")) != source_point_id
 		or target_point_id == &"" or target_point_id == source_point_id
 		or route_world_points.size() < 2
@@ -172,6 +174,35 @@ func repair_road(engineer_id: StringName, road_id: StringName) -> bool:
 	road.durability = int(road.max_durability)
 	road.state = ROAD_OPEN
 	roads_by_id[road_id] = road
+	return true
+
+
+static func _has_valid_references(roads: Dictionary, camps: Dictionary, specialists: Dictionary, projects: Dictionary, patrols: Dictionary, intel: Dictionary) -> bool:
+	for road_id_value in roads:
+		var road: Dictionary = Dictionary(roads[road_id_value])
+		if StringName(road_id_value) == &"" or StringName(road.get("road_id", &"")) != StringName(road_id_value) or StringName(road.get("state", &"")) not in [ROAD_OPEN, ROAD_DAMAGED]:
+			return false
+	for specialist_id_value in specialists:
+		var specialist: Dictionary = Dictionary(specialists[specialist_id_value])
+		if StringName(specialist_id_value) == &"" or StringName(specialist.get("specialist_id", &"")) != StringName(specialist_id_value) or StringName(specialist.get("role", &"")) not in [SPECIALIST_SCOUT, SPECIALIST_ENGINEER]:
+			return false
+		var project_id := StringName(specialist.get("project_id", &""))
+		if project_id != &"" and not projects.has(project_id):
+			return false
+	for project_id_value in projects:
+		var project: Dictionary = Dictionary(projects[project_id_value])
+		if StringName(project_id_value) == &"" or StringName(project.get("project_id", &"")) != StringName(project_id_value) or not specialists.has(StringName(project.get("engineer_id", &""))) or StringName(project.get("road_id", &"")) == &"":
+			return false
+	for camp_id_value in camps:
+		var camp: Dictionary = Dictionary(camps[camp_id_value])
+		if StringName(camp_id_value) == &"" or StringName(camp.get("camp_id", &"")) != StringName(camp_id_value) or not roads.has(StringName(camp.get("road_id", &""))):
+			return false
+	for patrol_id_value in patrols:
+		if StringName(patrol_id_value) == &"" or not patrols[patrol_id_value] is Dictionary:
+			return false
+	for subject_id_value in intel:
+		if StringName(subject_id_value) == &"" or not intel[subject_id_value] is Dictionary:
+			return false
 	return true
 
 
@@ -300,6 +331,12 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		or not snapshot.patrols_by_id is Dictionary or not snapshot.intel_by_subject_id is Dictionary
 		or int(snapshot.world_milliseconds) < 0 or int(snapshot.next_specialist_sequence) <= 0
 		or int(snapshot.next_project_sequence) <= 0 or int(snapshot.next_camp_sequence) <= 0
+	):
+		return false
+	if not _has_valid_references(
+		Dictionary(snapshot.roads_by_id), Dictionary(snapshot.camps_by_id),
+		Dictionary(snapshot.specialists_by_id), Dictionary(snapshot.projects_by_id),
+		Dictionary(snapshot.patrols_by_id), Dictionary(snapshot.intel_by_subject_id)
 	):
 		return false
 	roads_by_id = Dictionary(snapshot.roads_by_id).duplicate(true)

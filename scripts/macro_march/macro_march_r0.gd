@@ -12,7 +12,6 @@ var _draft_route: Dictionary = {}
 var _selected_formation_ids: Array[StringName] = []
 var _draw_points: Array[Vector2] = []
 var _is_drawing := false
-var _branch_blocked := false
 var _formation_buttons: Array[Button] = []
 
 var _title_label := Label.new()
@@ -51,7 +50,6 @@ func refresh() -> void:
 		return
 	var model := _model()
 	var army: Dictionary = model.get("army", {})
-	_branch_blocked = not army.is_empty() and StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED
 	_refresh_formation_controls(Array(model.get("formations", [])), army)
 	_refresh_copy(model, army)
 	_layout_ui()
@@ -59,25 +57,9 @@ func refresh() -> void:
 
 
 func _process(delta: float) -> void:
-	if _dispatch_adapter == null:
-		return
-	for army_value in Array(_model().get("armies", [])):
-		var army: Dictionary = army_value
-		if StringName(army.phase) not in [ARMY_REGISTRY.PHASE_MARCHING, ARMY_REGISTRY.PHASE_RETREATING]:
-			continue
-		var macro: Dictionary = army.macro_march
-		if _branch_blocked and _should_stop_before_blocked_segment(macro):
-			var before := _progress_before_segment(macro, int(macro.blocked_segment_index))
-			_dispatch_adapter.block_macro_march_at_segment(
-				StringName(army.army_id), StringName(macro.order_id),
-				int(macro.blocked_segment_index), before, &"临时路旁驻扎点"
-			)
-			_status_label.text = "支路中断：部队已在可达位置临时驻扎，原军令保持锁定。"
-			continue
-		_dispatch_adapter.advance_macro_march_time_seconds(
-			StringName(army.army_id), StringName(macro.order_id),
-			int(macro.progress_millis), delta
-		)
+	# World time belongs to ConstructionController.  This view is presentation
+	# only, so changing map frame rate or observing two armies cannot tick them
+	# twice.
 	refresh()
 
 
@@ -96,16 +78,14 @@ func _build_ui() -> void:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
 	_confirm_button.text = "确认并锁定军令"
-	_block_button.text = "演示：中断南洼支路"
-	_recover_button.text = "恢复支路并继续原军令"
+	_block_button.visible = false
+	_recover_button.visible = false
 	_retreat_button.text = "撤逃并沿原路返回"
 	_scout_button.text = "派遣侦察兵（4 粮）"
 	_engineer_button.text = "派遣工程师（8 粮）"
 	_side_road_button.text = "修建侧路与驻点（5 粮）"
 	_return_button.text = "返回黑石城"
 	_confirm_button.pressed.connect(_confirm_draft)
-	_block_button.pressed.connect(_block_branch)
-	_recover_button.pressed.connect(_recover_branch)
 	_retreat_button.pressed.connect(_request_retreat)
 	_scout_button.pressed.connect(_dispatch_scout)
 	_engineer_button.pressed.connect(_dispatch_engineer)
@@ -208,8 +188,8 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		else:
 			_detail_label.text = "进度：%d / %d ms\n粮食已扣：%d\n%s" % [int(macro.progress_millis), int(macro.total_millis), int(macro.food_cost), ("道路恢复后会继续原军令，不再扣粮。" if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED else "到达后可从驻扎点发出下一道军令。")]
 		_confirm_button.disabled = true
-		_block_button.visible = StringName(army.phase) == ARMY_REGISTRY.PHASE_MARCHING and StringName(macro.route_id) == &"road.blackstone.northwatch.lowland"
-		_recover_button.visible = StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED
+		_block_button.visible = false
+		_recover_button.visible = false
 		_retreat_button.visible = StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_STATIONED:
 			_confirm_button.disabled = _draft_route.is_empty()
@@ -318,34 +298,15 @@ func _confirm_draft() -> void:
 	_selected_formation_ids.clear()
 	_draw_points.clear()
 	_draft_route = {}
-	_branch_blocked = false
 	refresh()
 
 
 func _block_branch() -> void:
-	var army: Dictionary = _model().get("army", {})
-	if army.is_empty():
-		return
-	var macro: Dictionary = army.macro_march
-	if _dispatch_adapter.set_macro_march_route_blocked_for_scenario(
-		StringName(macro.route_id), true
-	):
-		_branch_blocked = true
-		_status_label.text = "南洼支路已中断；部队将在到达该路段前的可达位置停驻。"
+	return
 
 
 func _recover_branch() -> void:
-	var army: Dictionary = _model().get("army", {})
-	if army.is_empty():
-		return
-	var macro: Dictionary = army.macro_march
-	var resumed := _dispatch_adapter.resume_blocked_macro_march(
-		StringName(army.army_id), StringName(macro.order_id)
-	)
-	if not resumed.is_empty():
-		_dispatch_adapter.set_macro_march_route_blocked_for_scenario(StringName(macro.route_id), false)
-		_branch_blocked = false
-	refresh()
+	return
 
 
 func _request_retreat() -> void:

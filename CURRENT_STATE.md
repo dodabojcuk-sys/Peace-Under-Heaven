@@ -2,6 +2,25 @@
 
 ## FIELD_TACTICS_R2 engineering checkpoint (2026-09-07)
 
+### R2 concurrency and safe-projection follow-up
+
+The controller now owns one shared world clock for all macro armies, field
+projects and sieges. The map is presentation-only and no longer advances each
+visible army, so observing a second army cannot change time accumulation.
+Each order retains its own fractional-millisecond remainder. Parallel sieges
+are settled by explicit city identity; finishing, losing or retreating one
+siege no longer consumes the other city's record. The macro read model is now
+a safe projection (cities and player-visible siege facts only), rather than a
+path to hidden patrol data. Field restore also rejects dangling road, camp,
+project and specialist references before replacing live state.
+
+Focused parsing, R2 field smoke (20), R1 war smoke (15), and the independent
+field persistence chain pass after this change. This is still an engineering
+checkpoint: the normal map has not yet gained the required player-drawn
+engineering workflow, active patrol/ambush settlement, real system-input
+playthrough, screenshots or video. It is not a complete R2 delivery or player
+acceptance.
+
 ### R2 continuation checkpoint
 
 Specialists now move over shared logical milliseconds rather than jumping to a

@@ -169,6 +169,99 @@ func get_active_sieges() -> Array[Dictionary]:
 	return result
 
 
+# Siege identity is the transaction boundary.  `active_siege` is retained as a
+# backwards-compatible primary projection; callers that run more than one
+# battle must always address the city explicitly.
+func get_siege(city_id: StringName) -> Dictionary:
+	if StringName(active_siege.get("city_id", &"")) == city_id:
+		return active_siege.duplicate(true)
+	return Dictionary(parallel_sieges_by_city.get(city_id, {})).duplicate(true)
+
+
+func advance_siege_at(city_id: StringName, rules: WarLoopRules) -> Dictionary:
+	if city_id == &"":
+		return {}
+	if StringName(active_siege.get("city_id", &"")) == city_id:
+		return advance_siege(rules)
+	var parallel := Dictionary(parallel_sieges_by_city.get(city_id, {})).duplicate(true)
+	if parallel.is_empty():
+		return {}
+	var primary := active_siege.duplicate(true)
+	active_siege = parallel
+	var result := advance_siege(rules)
+	parallel_sieges_by_city[city_id] = active_siege.duplicate(true)
+	active_siege = primary
+	return result
+
+
+func mark_retreat_at(city_id: StringName, rules: WarLoopRules) -> Dictionary:
+	if StringName(active_siege.get("city_id", &"")) == city_id:
+		return mark_retreat(rules)
+	var parallel := Dictionary(parallel_sieges_by_city.get(city_id, {})).duplicate(true)
+	if parallel.is_empty():
+		return {}
+	var primary := active_siege.duplicate(true)
+	active_siege = parallel
+	var result := mark_retreat(rules)
+	parallel_sieges_by_city[city_id] = active_siege.duplicate(true)
+	active_siege = primary
+	return result
+
+
+func occupy_siege(city_id: StringName, resolution_id: StringName) -> Dictionary:
+	if StringName(active_siege.get("city_id", &"")) == city_id:
+		return occupy_active_city(resolution_id)
+	var parallel := Dictionary(parallel_sieges_by_city.get(city_id, {})).duplicate(true)
+	if parallel.is_empty():
+		return {}
+	var primary := active_siege.duplicate(true)
+	active_siege = parallel
+	var result := occupy_active_city(resolution_id)
+	parallel_sieges_by_city.erase(city_id)
+	active_siege = primary
+	return result
+
+
+func close_failed_siege_at(city_id: StringName, resolution_id: StringName) -> Dictionary:
+	if StringName(active_siege.get("city_id", &"")) == city_id:
+		return close_failed_siege(resolution_id)
+	var parallel := Dictionary(parallel_sieges_by_city.get(city_id, {})).duplicate(true)
+	if parallel.is_empty():
+		return {}
+	var primary := active_siege.duplicate(true)
+	active_siege = parallel
+	var result := close_failed_siege(resolution_id)
+	parallel_sieges_by_city.erase(city_id)
+	active_siege = primary
+	return result
+
+
+func advance_siege_elapsed(city_id: StringName, elapsed_milliseconds: int, rules: WarLoopRules) -> Array[Dictionary]:
+	var siege := get_siege(city_id)
+	if siege.is_empty() or StringName(siege.get("phase", &"")) != PHASE_SIEGING or elapsed_milliseconds <= 0 or rules == null:
+		return []
+	var accumulated := int(siege.get("elapsed_remainder_milliseconds", 0)) + elapsed_milliseconds
+	var ticks := accumulated / rules.combat_tick_milliseconds
+	siege.elapsed_remainder_milliseconds = accumulated % rules.combat_tick_milliseconds
+	_write_siege(city_id, siege)
+	var results: Array[Dictionary] = []
+	for _tick in range(ticks):
+		var result := advance_siege_at(city_id, rules)
+		if result.is_empty():
+			break
+		results.append(result)
+		if StringName(result.get("phase", &"")) != PHASE_SIEGING:
+			break
+	return results
+
+
+func _write_siege(city_id: StringName, siege: Dictionary) -> void:
+	if StringName(active_siege.get("city_id", &"")) == city_id:
+		active_siege = siege.duplicate(true)
+	elif parallel_sieges_by_city.has(city_id):
+		parallel_sieges_by_city[city_id] = siege.duplicate(true)
+
+
 func advance_parallel_sieges(rules: WarLoopRules) -> Array[Dictionary]:
 	var results: Array[Dictionary] = []
 	var primary := active_siege.duplicate(true)
