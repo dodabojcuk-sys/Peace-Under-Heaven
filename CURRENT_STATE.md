@@ -1,5 +1,33 @@
 # 当前状态
 
+## FIELD_TACTICS_R2 engineering checkpoint (2026-09-07)
+
+R2 introduces a persistent `FieldTacticsState` nested under the existing
+`WarLoopState`: static roads enter a runtime graph, while field roads, camps,
+specialists, construction projects, patrol facts, and player-facing last-known
+intel live in the same V5-published authority. `ConstructionController` still
+owns food/resource commits and the persistence checkpoint. An R1 war snapshot
+is normalized to the R2 nested representation before restore postconditions
+are checked, so migration does not change an otherwise valid old save into a
+false failure.
+
+`ArmyRegistry` no longer blocks macro orders globally: two distinct formation
+sets can issue independently, and snapshot validation rejects any formation
+identity shared by two non-closed macro armies. The macro map advances every
+active army, while existing R1 single-army read access remains as a compatibility
+projection. `get_field_tactics_read_model()` never exposes an unobserved
+patrol's location or strength.
+
+Focused `run_field_tactics_r2_smoke.gd` passes 19 assertions for independent
+orders, duplicate formation rejection, fog knowledge boundaries, specialist
+resource dispatch, construction/road/camp state, damage/repair, R1 migration,
+and formal V5 cold restore. `run_macro_march_r0_smoke.gd` (14),
+`run_war_loop_r1_smoke.gd` (15), and the three-process
+`run_v5_campaign_persistence_smoke.gd` also pass. This is a greybox engineering
+checkpoint: multi-city simultaneous siege/road encounters, enemy patrol combat
+resolution, system-input playthrough, screenshots, and recording remain open.
+It is not Founder acceptance or a completed tactical-release claim.
+
 ## WAR_LOOP_BATCH_R1 formal-scene wiring checkpoint (2026-09-07)
 
 The `a5e7cc1` candidate had four confirmed formal-wiring defects despite the

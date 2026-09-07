@@ -223,6 +223,13 @@ static func validate_structure(
 		normalized = migration.snapshot
 	if typeof(normalized.get("war_loop", null)) != TYPE_DICTIONARY:
 		return _failure(&"INVALID_WAR_LOOP", "WarLoop 快照字段非法")
+	# WarLoop owns its nested R1 -> R2 migration.  Normalize it here so the
+	# controller's exact restore postcondition compares one canonical snapshot
+	# rather than a valid legacy input against a newer exported representation.
+	var normalized_war_loop := WarLoopState.new()
+	if not normalized_war_loop.restore_snapshot(Dictionary(normalized.war_loop)):
+		return _failure(&"INVALID_WAR_LOOP", "WarLoop 快照字段非法")
+	normalized.war_loop = normalized_war_loop.get_snapshot()
 	var city_result := _validate_city(normalized.city)
 	if not bool(city_result.valid):
 		return city_result

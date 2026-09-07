@@ -1,5 +1,25 @@
 # Product Successor Decisions
 
+## Field Tactics R2 outer-city state
+
+- `FieldTacticsState` is a serializable subrecord of `WarLoopState`, not a
+  second scene timer, resource ledger, or save owner. `ConstructionController`
+  remains the only route for food commits and runtime checkpoint publication.
+- The R1 `active_siege` compatibility record remains intact while R2 work
+  moves dynamic roads, camps, specialists, patrol knowledge, and project
+  progress into the persistent field record. R1 war snapshots normalize before
+  the controller's exact restore postcondition.
+- Macro command concurrency is limited by available distinct formations, not
+  a global “first active army” lookup. Closed history never occupies a formation;
+  a current macro formation may belong to only one non-closed army snapshot.
+- The player projection contains field construction and own specialists but
+  only observed or last-known patrol intel. It must not render the authoritative
+  patrol table directly.
+- R2 initial food costs, construction durations, and durability are reversible
+  greybox defaults, not user-approved final balance. Patrol combat, parallel
+  siege completion, full drag-line specialist UI, and player media remain
+  deliberately unaccepted follow-up work.
+
 ## Macro March R0 outer-city greybox
 
 - `ArmyRegistry` owns one issued macro order and preserves the existing stable

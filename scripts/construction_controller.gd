@@ -5285,8 +5285,10 @@ func get_v5_army_dispatch_adapter() -> V5ArmyDispatchAdapter:
 func get_macro_march_read_model() -> Dictionary:
 	_ensure_war_loop_initialized()
 	var macro_army := get_macro_march_army()
+	var macro_armies := get_macro_march_armies()
 	return {
 		"army": macro_army,
+		"armies": macro_armies,
 		"formations": _garrison_state.get_formations(),
 		"food": food,
 		"maintenance_units_per_food": INFANTRY_ROLE.maintenance_units_per_food,
@@ -5300,9 +5302,9 @@ func get_macro_march_read_model() -> Dictionary:
 			else &"blackstone_city"
 		),
 		"can_issue_from_city": (
-			macro_army.is_empty()
+			macro_armies.size() < 2
 			and _active_battle_reservation.is_empty()
-			and not _army_registry.has_active_army()
+			and not _army_registry.has_active_non_macro_army()
 		),
 		"war_loop": _war_loop_state.get_snapshot(),
 		"level_cleared": _war_loop_state.is_level_cleared(),
@@ -5310,13 +5312,19 @@ func get_macro_march_read_model() -> Dictionary:
 
 
 func get_macro_march_army() -> Dictionary:
+	var armies := get_macro_march_armies()
+	return armies.front().duplicate(true) if not armies.is_empty() else {}
+
+
+func get_macro_march_armies() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
 	for army in _army_registry.get_armies():
 		if (
 			not Dictionary(army.get("macro_march", {})).is_empty()
 			and StringName(army.get("phase", &"")) != ArmyRegistry.PHASE_CLOSED
 		):
-			return army.duplicate(true)
-	return {}
+			result.append(army.duplicate(true))
+	return result
 
 
 func get_macro_march_food_cost(total_count: int) -> int:
@@ -5324,7 +5332,107 @@ func get_macro_march_food_cost(total_count: int) -> int:
 
 
 func _ensure_war_loop_initialized() -> void:
-	_war_loop_state.initialize_from_theater(MACRO_MARCH_THEATER.get_points())
+	_war_loop_state.initialize_from_theater(
+		MACRO_MARCH_THEATER.get_points(), MACRO_MARCH_THEATER.get_routes()
+	)
+
+
+func get_field_tactics_read_model() -> Dictionary:
+	_ensure_war_loop_initialized()
+	var field_snapshot := _war_loop_state.field_tactics.get_snapshot()
+	# The public projection deliberately excludes hidden patrol records.  UI,
+	# hit testing and risk labels must consume this projection rather than the
+	# authoritative simulation dictionary.
+	var visible_patrols: Dictionary = {}
+	for patrol_id_value in Dictionary(field_snapshot.patrols_by_id):
+		var patrol_id := StringName(patrol_id_value)
+		var intel := _war_loop_state.field_tactics.observe_subject(patrol_id)
+		if StringName(intel.get("fog_state", &"")) != FieldTacticsState.FOG_UNOBSERVED:
+			visible_patrols[patrol_id] = intel
+	return {
+		"roads_by_id": Dictionary(field_snapshot.roads_by_id).duplicate(true),
+		"camps_by_id": Dictionary(field_snapshot.camps_by_id).duplicate(true),
+		"specialists_by_id": Dictionary(field_snapshot.specialists_by_id).duplicate(true),
+		"projects_by_id": Dictionary(field_snapshot.projects_by_id).duplicate(true),
+		"intel_by_subject_id": Dictionary(field_snapshot.intel_by_subject_id).duplicate(true),
+		"visible_patrols_by_id": visible_patrols,
+		"world_milliseconds": int(field_snapshot.world_milliseconds),
+	}
+
+
+func dispatch_field_specialist(role: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	if role not in [FieldTacticsState.SPECIALIST_SCOUT, FieldTacticsState.SPECIALIST_ENGINEER]:
+		return _macro_failure(&"SPECIALIST_ROLE", "只能派遣侦察兵或工程师")
+	var food_cost := 4 if role == FieldTacticsState.SPECIALIST_SCOUT else 8
+	if food < food_cost:
+		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足，无法派遣特殊单位")
+	var war_before := _war_loop_state.get_snapshot()
+	var local_commit := func() -> Dictionary:
+		var specialist := _war_loop_state.field_tactics.dispatch_specialist(role, &"blackstone_city")
+		return {"success": not specialist.is_empty(), "specialist": specialist}
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": food_cost}],
+		&"field_specialist_dispatch", local_commit
+	)
+	if not bool(transaction.get("success", false)):
+		return _macro_failure(&"SPECIALIST_TRANSACTION", "特殊单位派遣未提交")
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		_nation_state.commit_resource_transaction(NationState.BLACKSTONE_CITY_ID,
+			[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": food_cost}],
+			&"field_specialist_dispatch_rollback")
+		return _macro_failure(&"SAVE_FAILED", "特殊单位派遣存档失败，资源已回滚")
+	return {"success": true, "specialist": Dictionary(transaction.local_commit_result.specialist).duplicate(true), "food_cost": food_cost}
+
+
+func order_field_specialist_move(specialist_id: StringName, target_point_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	var war_before := _war_loop_state.get_snapshot()
+	var specialist := _war_loop_state.field_tactics.order_specialist_move(specialist_id, target_point_id)
+	if specialist.is_empty():
+		return _macro_failure(&"SPECIALIST_MOVE", "特殊单位无法前往该位置")
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		return _macro_failure(&"SAVE_FAILED", "特殊单位军令存档失败")
+	return {"success": true, "specialist": specialist}
+
+
+func begin_field_road_project(
+	engineer_id: StringName,
+	source_point_id: StringName,
+	target_point_id: StringName,
+	route_world_points: Array,
+	road_kind: StringName,
+	build_camp := false
+) -> Dictionary:
+	_ensure_war_loop_initialized()
+	var food_cost := 5 if road_kind == FieldTacticsState.ROAD_NORMAL else 10
+	if road_kind == FieldTacticsState.ROAD_BRIDGE:
+		food_cost = 12
+	if food < food_cost:
+		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足，无法安排工程施工")
+	var war_before := _war_loop_state.get_snapshot()
+	var local_commit := func() -> Dictionary:
+		var project := _war_loop_state.field_tactics.begin_road_project(
+			engineer_id, source_point_id, target_point_id, route_world_points, road_kind, build_camp
+		)
+		return {"success": not project.is_empty(), "project": project}
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": food_cost}],
+		&"field_road_project", local_commit
+	)
+	if not bool(transaction.get("success", false)):
+		return _macro_failure(&"PROJECT_TRANSACTION", "工程施工未提交")
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		_nation_state.commit_resource_transaction(NationState.BLACKSTONE_CITY_ID,
+			[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": food_cost}],
+			&"field_road_project_rollback")
+		return _macro_failure(&"SAVE_FAILED", "工程施工存档失败，资源已回滚")
+	return {"success": true, "project": Dictionary(transaction.local_commit_result.project).duplicate(true), "food_cost": food_cost}
 
 
 func _macro_attacker_count(army: Dictionary) -> int:
@@ -5400,8 +5508,8 @@ func commit_macro_march_from_city(
 ) -> Dictionary:
 	if (
 		not _active_battle_reservation.is_empty()
-		or _army_registry.has_active_army()
-		or not get_macro_march_army().is_empty()
+		or _army_registry.has_active_non_macro_army()
+		or get_macro_march_armies().size() >= 2
 	):
 		return _macro_failure(&"MACRO_BUSY", "已有军令正在执行或等待驻扎")
 	var selected := _garrison_state.get_selected_formations(formation_ids)
@@ -5583,8 +5691,16 @@ func advance_war_loop_time_seconds(delta_seconds: float) -> Dictionary:
 
 
 func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dictionary:
-	if city_time_paused or elapsed_milliseconds <= 0.0 or _war_loop_state.active_siege.is_empty():
+	if city_time_paused or elapsed_milliseconds <= 0.0:
 		return {}
+	_ensure_war_loop_initialized()
+	var field_advance := _war_loop_state.field_tactics.advance_world(
+		floori(elapsed_milliseconds + 0.000001)
+	)
+	if _war_loop_state.active_siege.is_empty():
+		if not field_advance.is_empty() and Array(field_advance.get("completed_project_ids", [])).size() > 0:
+			_persist_macro_march_checkpoint()
+		return field_advance
 	var pending_milliseconds := _war_loop_frame_remainder_milliseconds + elapsed_milliseconds
 	var whole_milliseconds := floori(pending_milliseconds + 0.000001)
 	_war_loop_frame_remainder_milliseconds = maxf(

@@ -14,6 +14,22 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 engineering checkpoint
+
+- Added a V5-persistent field-state record for runtime roads, camps,
+  scouts/engineers, engineering projects, finite patrol intelligence, fog
+  knowledge, road damage, and repair. R1 WarLoop snapshots normalize through
+  the nested migration before controller postcondition checks.
+- Allowed two independently formed macro armies, surfaced their read model to
+  the outer-city screen, advanced each marching army, and rejected duplicate
+  formation ownership in non-closed macro snapshots.
+- Added `run_field_tactics_r2_smoke.gd` (19 assertions), including a
+  city-keyed parallel-siege domain record/restore probe, and retained Macro
+  March, War Loop, and V5 three-process persistence regression coverage.
+- This checkpoint does not claim simultaneous siege/encounter resolution,
+  patrol combat, full specialist drag UI, normal-input media, Founder
+  acceptance, deployment, or release.
+
 ### WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate
 
 - Kept the authoritative controller clock running while the outer-city view is

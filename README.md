@@ -94,6 +94,7 @@ tests/run_war_loop_r1_smoke.gd
 tests/run_war_loop_disk_recovery_smoke.gd
 tests/run_war_loop_formal_scene_smoke.gd
 tests/run_war_loop_arrival_persistence_smoke.gd
+tests/run_field_tactics_r2_smoke.gd
 ```
 
 The first runner covers deterministic combat timing, formation-preserving

@@ -2,7 +2,7 @@ class_name WarLoopState
 extends RefCounted
 
 
-const SCHEMA_VERSION := 1
+const SCHEMA_VERSION := 3
 const PHASE_IDLE := &"IDLE"
 const PHASE_SIEGING := &"SIEGING"
 const PHASE_OCCUPIED := &"OCCUPIED"
@@ -14,11 +14,14 @@ const RESOLUTION_RETREAT := &"RETREAT"
 var cities_by_id: Dictionary = {}
 var required_city_ids: Dictionary = {}
 var active_siege: Dictionary = {}
+var parallel_sieges_by_city: Dictionary = {}
 var completed_resolution_ids: Dictionary = {}
 var next_siege_sequence := 1
+var field_tactics: FieldTacticsState = FieldTacticsState.new()
 
 
-func initialize_from_theater(theater_points: Dictionary) -> void:
+func initialize_from_theater(theater_points: Dictionary, theater_routes: Dictionary = {}) -> void:
+	field_tactics.initialize_from_theater(theater_points, theater_routes)
 	if not cities_by_id.is_empty():
 		return
 	for point_id_value in theater_points:
@@ -53,7 +56,10 @@ func is_enemy_city(city_id: StringName) -> bool:
 
 
 func can_issue_attack(city_id: StringName) -> bool:
-	return is_enemy_city(city_id) and active_siege.is_empty()
+	return is_enemy_city(city_id) and (
+		(active_siege.is_empty() or StringName(active_siege.get("city_id", &"")) != city_id)
+		and not parallel_sieges_by_city.has(city_id)
+	)
 
 
 func begin_siege(
@@ -67,9 +73,19 @@ func begin_siege(
 	attacker_quality_basis_points: int,
 	rules: WarLoopRules
 ) -> Dictionary:
+	if not active_siege.is_empty():
+		if not can_issue_attack(city_id):
+			return {}
+		var primary := active_siege.duplicate(true)
+		active_siege = {}
+		var parallel := begin_siege(army_id, order_id, city_id, attacker_count, attacker_hp_per_member, attacker_attack_per_member, attacker_armor_per_member, attacker_quality_basis_points, rules)
+		active_siege = primary
+		if not parallel.is_empty():
+			parallel_sieges_by_city[city_id] = parallel.duplicate(true)
+		return parallel
 	var city := get_city(city_id)
 	if (
-		city.is_empty() or not active_siege.is_empty() or attacker_count <= 0
+		city.is_empty() or attacker_count <= 0
 		or attacker_hp_per_member <= 0 or attacker_attack_per_member < 0
 		or attacker_armor_per_member < 0 or rules == null
 	):
@@ -142,6 +158,34 @@ func advance_siege(rules: WarLoopRules) -> Dictionary:
 		active_siege.phase = PHASE_OCCUPIED
 		active_siege.resolution = RESOLUTION_COMBAT
 	return active_siege.duplicate(true)
+
+
+func get_active_sieges() -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	if not active_siege.is_empty():
+		result.append(active_siege.duplicate(true))
+	for city_id_value in parallel_sieges_by_city:
+		result.append(Dictionary(parallel_sieges_by_city[city_id_value]).duplicate(true))
+	return result
+
+
+func advance_parallel_sieges(rules: WarLoopRules) -> Array[Dictionary]:
+	var results: Array[Dictionary] = []
+	var primary := active_siege.duplicate(true)
+	if not primary.is_empty():
+		var primary_result := advance_siege(rules)
+		if not primary_result.is_empty():
+			results.append(primary_result)
+		primary = active_siege.duplicate(true)
+	for city_id_value in parallel_sieges_by_city.keys():
+		var city_id := StringName(city_id_value)
+		active_siege = Dictionary(parallel_sieges_by_city[city_id]).duplicate(true)
+		var result := advance_siege(rules)
+		parallel_sieges_by_city[city_id] = active_siege.duplicate(true)
+		if not result.is_empty():
+			results.append(result)
+	active_siege = primary
+	return results
 
 
 func mark_retreat(rules: WarLoopRules) -> Dictionary:
@@ -220,34 +264,61 @@ func get_snapshot() -> Dictionary:
 		"cities_by_id": cities_by_id.duplicate(true),
 		"required_city_ids": required_city_ids.duplicate(true),
 		"active_siege": active_siege.duplicate(true),
+		"parallel_sieges_by_city": parallel_sieges_by_city.duplicate(true),
 		"completed_resolution_ids": completed_resolution_ids.duplicate(true),
 		"next_siege_sequence": next_siege_sequence,
+		"field_tactics": field_tactics.get_snapshot(),
 	}
 
 
 func restore_snapshot(snapshot: Dictionary) -> bool:
-	if (
-		not _has_exact_keys(snapshot, [
+	var normalized := snapshot.duplicate(true)
+	if int(normalized.get("schema_version", 0)) in [1, 2]:
+		if not _has_exact_keys(normalized, [
 			"schema_version", "cities_by_id", "required_city_ids", "active_siege",
 			"completed_resolution_ids", "next_siege_sequence",
+		]):
+			if int(normalized.get("schema_version", 0)) == 2 and _has_exact_keys(normalized, [
+				"schema_version", "cities_by_id", "required_city_ids", "active_siege",
+				"completed_resolution_ids", "next_siege_sequence", "field_tactics",
+			]):
+				normalized.parallel_sieges_by_city = {}
+			else:
+				return false
+		normalized.schema_version = SCHEMA_VERSION
+		if int(snapshot.get("schema_version", 0)) == 1:
+			normalized.field_tactics = FieldTacticsState.new().get_snapshot()
+			normalized.parallel_sieges_by_city = {}
+	if (
+		not _has_exact_keys(normalized, [
+			"schema_version", "cities_by_id", "required_city_ids", "active_siege",
+			"completed_resolution_ids", "next_siege_sequence", "field_tactics", "parallel_sieges_by_city",
 		])
-		or int(snapshot.get("schema_version", 0)) != SCHEMA_VERSION
-		or typeof(snapshot.get("cities_by_id", null)) != TYPE_DICTIONARY
-		or typeof(snapshot.get("required_city_ids", null)) != TYPE_DICTIONARY
-		or typeof(snapshot.get("active_siege", null)) != TYPE_DICTIONARY
-		or typeof(snapshot.get("completed_resolution_ids", null)) != TYPE_DICTIONARY
-		or typeof(snapshot.get("next_siege_sequence", null)) != TYPE_INT
-		or int(snapshot.get("next_siege_sequence", 0)) <= 0
-		or not _has_valid_cities(Dictionary(snapshot.cities_by_id), Dictionary(snapshot.required_city_ids))
-		or not _has_valid_completed_resolutions(Dictionary(snapshot.completed_resolution_ids))
-		or not _has_valid_active_siege(Dictionary(snapshot.active_siege), Dictionary(snapshot.cities_by_id))
+		or int(normalized.get("schema_version", 0)) != SCHEMA_VERSION
+		or typeof(normalized.get("cities_by_id", null)) != TYPE_DICTIONARY
+		or typeof(normalized.get("required_city_ids", null)) != TYPE_DICTIONARY
+		or typeof(normalized.get("active_siege", null)) != TYPE_DICTIONARY
+		or typeof(normalized.get("completed_resolution_ids", null)) != TYPE_DICTIONARY
+		or typeof(normalized.get("next_siege_sequence", null)) != TYPE_INT
+		or typeof(normalized.get("field_tactics", null)) != TYPE_DICTIONARY
+		or typeof(normalized.get("parallel_sieges_by_city", null)) != TYPE_DICTIONARY
+		or int(normalized.get("next_siege_sequence", 0)) <= 0
+		or not _has_valid_cities(Dictionary(normalized.cities_by_id), Dictionary(normalized.required_city_ids))
+		or not _has_valid_completed_resolutions(Dictionary(normalized.completed_resolution_ids))
+		or not _has_valid_active_siege(Dictionary(normalized.active_siege), Dictionary(normalized.cities_by_id))
+		or not _has_valid_parallel_sieges(Dictionary(normalized.parallel_sieges_by_city), Dictionary(normalized.cities_by_id), Dictionary(normalized.active_siege))
 	):
 		return false
-	cities_by_id = Dictionary(snapshot.cities_by_id).duplicate(true)
-	required_city_ids = Dictionary(snapshot.required_city_ids).duplicate(true)
-	active_siege = Dictionary(snapshot.active_siege).duplicate(true)
-	completed_resolution_ids = Dictionary(snapshot.completed_resolution_ids).duplicate(true)
-	next_siege_sequence = int(snapshot.next_siege_sequence)
+	var restored_field_tactics := FieldTacticsState.new()
+	if not restored_field_tactics.restore_snapshot(Dictionary(normalized.field_tactics)):
+		return false
+	cities_by_id = Dictionary(normalized.cities_by_id).duplicate(true)
+	required_city_ids = Dictionary(normalized.required_city_ids).duplicate(true)
+	active_siege = Dictionary(normalized.active_siege).duplicate(true)
+	parallel_sieges_by_city = Dictionary(normalized.parallel_sieges_by_city).duplicate(true)
+	completed_resolution_ids = Dictionary(normalized.completed_resolution_ids).duplicate(true)
+	next_siege_sequence = int(normalized.next_siege_sequence)
+	field_tactics = restored_field_tactics
 	return true
 
 
@@ -348,6 +419,20 @@ static func _has_valid_active_siege(siege: Dictionary, cities: Dictionary) -> bo
 		return false
 	if StringName(siege.phase) != PHASE_SIEGING and StringName(siege.resolution) == &"":
 		return false
+	return true
+
+
+static func _has_valid_parallel_sieges(parallel: Dictionary, cities: Dictionary, primary: Dictionary) -> bool:
+	for city_id_value in parallel:
+		var city_id := StringName(city_id_value)
+		var siege_value = parallel[city_id_value]
+		if (
+			city_id == &"" or not siege_value is Dictionary
+			or city_id == StringName(primary.get("city_id", &""))
+			or not _has_valid_active_siege(Dictionary(siege_value), cities)
+			or StringName(Dictionary(siege_value).get("city_id", &"")) != city_id
+		):
+			return false
 	return true
 
 

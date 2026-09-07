@@ -58,28 +58,23 @@ func refresh() -> void:
 func _process(delta: float) -> void:
 	if _dispatch_adapter == null:
 		return
-	var army: Dictionary = _model().get("army", {})
-	if army.is_empty():
-		return
-	if StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING:
-		refresh()
-		return
-	if StringName(army.phase) not in [ARMY_REGISTRY.PHASE_MARCHING, ARMY_REGISTRY.PHASE_RETREATING]:
-		return
-	var macro: Dictionary = army.macro_march
-	if _branch_blocked and _should_stop_before_blocked_segment(macro):
-		var before := _progress_before_segment(macro, int(macro.blocked_segment_index))
-		_dispatch_adapter.block_macro_march_at_segment(
+	for army_value in Array(_model().get("armies", [])):
+		var army: Dictionary = army_value
+		if StringName(army.phase) not in [ARMY_REGISTRY.PHASE_MARCHING, ARMY_REGISTRY.PHASE_RETREATING]:
+			continue
+		var macro: Dictionary = army.macro_march
+		if _branch_blocked and _should_stop_before_blocked_segment(macro):
+			var before := _progress_before_segment(macro, int(macro.blocked_segment_index))
+			_dispatch_adapter.block_macro_march_at_segment(
+				StringName(army.army_id), StringName(macro.order_id),
+				int(macro.blocked_segment_index), before, &"临时路旁驻扎点"
+			)
+			_status_label.text = "支路中断：部队已在可达位置临时驻扎，原军令保持锁定。"
+			continue
+		_dispatch_adapter.advance_macro_march_time_seconds(
 			StringName(army.army_id), StringName(macro.order_id),
-			int(macro.blocked_segment_index), before, &"临时路旁驻扎点"
+			int(macro.progress_millis), delta
 		)
-		_status_label.text = "支路中断：部队已在可达位置临时驻扎，原军令保持锁定。"
-		refresh()
-		return
-	_dispatch_adapter.advance_macro_march_time_seconds(
-		StringName(army.army_id), StringName(macro.order_id),
-		int(macro.progress_millis), delta
-	)
 	refresh()
 
 
@@ -138,7 +133,7 @@ func _refresh_formation_controls(formations: Array, army: Dictionary) -> void:
 	for button in _formation_buttons:
 		button.queue_free()
 	_formation_buttons.clear()
-	if not army.is_empty():
+	if not army.is_empty() and not bool(_model().get("can_issue_from_city", false)):
 		return
 	for formation_value in formations:
 		var formation: Dictionary = formation_value
@@ -280,14 +275,14 @@ func _confirm_draft() -> void:
 	var model := _model()
 	var army: Dictionary = model.get("army", {})
 	var result: Dictionary = {}
-	if not army.is_empty():
-		result = _dispatch_adapter.commit_macro_march_from_station(
-			StringName(army.army_id), StringName(_draft_route.target_point_id),
+	if not _selected_formation_ids.is_empty() or army.is_empty():
+		result = _dispatch_adapter.commit_macro_march_from_city(
+			_selected_formation_ids, StringName(_draft_route.target_point_id),
 			StringName(_draft_route.route_id), Array(_draft_route.points)
 		)
 	else:
-		result = _dispatch_adapter.commit_macro_march_from_city(
-			_selected_formation_ids, StringName(_draft_route.target_point_id),
+		result = _dispatch_adapter.commit_macro_march_from_station(
+			StringName(army.army_id), StringName(_draft_route.target_point_id),
 			StringName(_draft_route.route_id), Array(_draft_route.points)
 		)
 	if not bool(result.get("success", false)):
@@ -337,11 +332,19 @@ func _request_retreat() -> void:
 
 func _can_draw_route() -> bool:
 	var army: Dictionary = _model().get("army", {})
-	return army.is_empty() or StringName(army.phase) == ARMY_REGISTRY.PHASE_STATIONED
+	return (
+		not _selected_formation_ids.is_empty()
+		or army.is_empty()
+		or StringName(army.phase) == ARMY_REGISTRY.PHASE_STATIONED
+	)
 
 
 func _source_point_id(model: Dictionary, army: Dictionary) -> StringName:
-	return StringName(model.get("source_point_id", &"blackstone_city")) if army.is_empty() else StringName(army.target_node_id)
+	return (
+		StringName(model.get("source_point_id", &"blackstone_city"))
+		if not _selected_formation_ids.is_empty() or army.is_empty()
+		else StringName(army.target_node_id)
+	)
 
 
 func _nearest_target_at_draw_end(source_id: StringName) -> StringName:

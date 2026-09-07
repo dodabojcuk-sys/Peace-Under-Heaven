@@ -75,6 +75,24 @@ func get_active_armies() -> Array[Dictionary]:
 	return active
 
 
+## R2 deliberately allows several independent macro orders.  The legacy
+## reservation flow still calls [method has_active_army] and therefore keeps
+## its one-at-a-time contract; macro callers use this narrow query instead.
+func get_active_macro_armies() -> Array[Dictionary]:
+	var active: Array[Dictionary] = []
+	for army in get_active_armies():
+		if not Dictionary(army.get("macro_march", {})).is_empty():
+			active.append(army)
+	return active
+
+
+func has_active_non_macro_army() -> bool:
+	for army in get_active_armies():
+		if Dictionary(army.get("macro_march", {})).is_empty():
+			return true
+	return false
+
+
 func create_reserved(
 	owner_faction_id: StringName,
 	home_city_id: StringName,
@@ -391,6 +409,8 @@ static func validate_snapshot(
 	):
 		return {"valid": false, "error_id": &"INVALID_MACRO_ORDER_SEQUENCE"}
 	var active_count := 0
+	var active_non_macro_count := 0
+	var active_formation_ids: Dictionary = {}
 	var maximum_army_sequence := 0
 	var maximum_macro_order_sequence := 0
 	for army_id_value in normalized.armies_by_id:
@@ -455,7 +475,15 @@ static func validate_snapshot(
 		var macro_validation := _validate_macro_march(army)
 		if not bool(macro_validation.valid):
 			return macro_validation
-		if not Dictionary(army.get("macro_march", {})).is_empty():
+		if (
+			not Dictionary(army.get("macro_march", {})).is_empty()
+			and phase != PHASE_CLOSED
+		):
+			for formation_value in Array(Dictionary(army.macro_march).get("formation_snapshots", [])):
+				var formation_id := StringName(Dictionary(formation_value).get("formation_id", &""))
+				if formation_id == &"" or active_formation_ids.has(formation_id):
+					return {"valid": false, "error_id": &"DUPLICATE_MACRO_FORMATION"}
+				active_formation_ids[formation_id] = StringName(army.army_id)
 			maximum_macro_order_sequence = maxi(
 				maximum_macro_order_sequence,
 				_parse_macro_order_sequence(StringName(
@@ -468,7 +496,9 @@ static func validate_snapshot(
 		)
 		if phase in ACTIVE_PHASES:
 			active_count += 1
-	if enforce_single_active and active_count > 1:
+			if Dictionary(army.get("macro_march", {})).is_empty():
+				active_non_macro_count += 1
+	if enforce_single_active and active_non_macro_count > 1:
 		return {"valid": false, "error_id": &"V5_ACTIVE_ARMY_LIMIT"}
 	if int(normalized.next_army_sequence) <= maximum_army_sequence:
 		return {"valid": false, "error_id": &"ARMY_SEQUENCE_MISMATCH"}
@@ -571,8 +601,7 @@ func create_macro_march(
 	duration_milliseconds: int
 ) -> Dictionary:
 	if (
-		has_active_army()
-		or owner_faction_id == &""
+		owner_faction_id == &""
 		or home_city_id == &""
 		or source_point_id == &""
 		or target_point_id == &""
@@ -628,7 +657,6 @@ func issue_stationed_macro_march(
 	if (
 		army.is_empty()
 		or StringName(army.phase) != PHASE_STATIONED
-		or has_active_army()
 		or target_point_id == &""
 		or target_point_id == StringName(army.target_node_id)
 		or route_id == &""
