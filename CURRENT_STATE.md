@@ -27,6 +27,22 @@ field and damaged roads are visibly distinct; hidden patrol authority remains
 excluded. This is clarity work only: it does not turn the unfinished fixed
 engineering shortcut into the required player-drawn construction interaction.
 
+### R2 runtime-road command checkpoint
+
+Completed field roads now validate through the same controller path used by
+macro commands, including their persisted polyline and computed march time.
+Unfinished or damaged field roads are rejected before a food transaction. The
+map's engineering action selects a living idle engineer and accepts a player
+drawn route; its endpoint can be an existing point or a newly named runtime
+camp. Completed camps retain their actual endpoint coordinate and appear in
+the map's selectable point projection. R2 field smoke now has 22 assertions,
+including dynamic-road validation and a non-authored camp endpoint.
+
+This is a source-level checkpoint, not proof of the complete normal-input
+journey: selected-army command targeting, specialist continuous movement,
+bridge classification, repair arrival, patrol encounters and media remain
+open.
+
 ### R2 continuation checkpoint
 
 Specialists now move over shared logical milliseconds rather than jumping to a

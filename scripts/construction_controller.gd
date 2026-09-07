@@ -5294,6 +5294,7 @@ func get_macro_march_read_model() -> Dictionary:
 		"paused": city_time_paused,
 		"speed": city_time_speed,
 		"blocked_route_ids": _macro_march_blocked_route_ids.duplicate(),
+		"runtime_points": _war_loop_state.field_tactics.get_runtime_points(),
 		"source_point_id": (
 			StringName(macro_army.target_node_id)
 			if not macro_army.is_empty()
@@ -5505,6 +5506,20 @@ func is_macro_march_route_blocked(route_id: StringName) -> bool:
 	return bool(_macro_march_blocked_route_ids.get(route_id, false))
 
 
+func _validate_macro_march_route(source_point_id: StringName, target_point_id: StringName, route_id: StringName, route_world_points: Array) -> Dictionary:
+	_ensure_war_loop_initialized()
+	# Static roads were copied into FieldTacticsState at theater initialization,
+	# so this one validation accepts both authored roads and player-completed
+	# roads without letting unfinished/damaged segments through.
+	return _war_loop_state.field_tactics.validate_runtime_route(
+		source_point_id, target_point_id, route_id, route_world_points
+	)
+
+
+func _macro_march_route_duration(route_id: StringName) -> int:
+	return _war_loop_state.field_tactics.runtime_route_duration_milliseconds(route_id)
+
+
 func commit_macro_march_from_city(
 	formation_ids: Array,
 	target_point_id: StringName,
@@ -5526,18 +5541,16 @@ func commit_macro_march_from_city(
 		var definition_id := StringName(formation.definition_id)
 		units[definition_id] = int(units.get(definition_id, 0)) + int(formation.member_count)
 	var food_cost := get_macro_march_food_cost(total)
-	var route_validation := MACRO_MARCH_THEATER.validate_route(
-		&"blackstone_city", target_point_id, route_id, route_world_points
-	)
+	var route_validation := _validate_macro_march_route(&"blackstone_city", target_point_id, route_id, route_world_points)
 	if not bool(route_validation.valid):
 		return _macro_failure(StringName(route_validation.error_id), str(route_validation.error))
-	if is_macro_march_route_blocked(route_id):
+	if is_macro_march_route_blocked(route_id) or not _war_loop_state.field_tactics.is_route_open(route_id):
 		return _macro_failure(&"ROAD_BLOCKED", "该道路当前受阻，请选择另一条道路或等待恢复")
 	if food < food_cost:
 		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足：需要 %d，当前 %d" % [food_cost, food])
 	var garrison_before := _garrison_state.get_persistence_snapshot()
 	var registry_before := _army_registry.get_snapshot()
-	var duration := MACRO_MARCH_THEATER.duration_milliseconds(route_id)
+	var duration := _macro_march_route_duration(route_id)
 	var local_commit := func() -> Dictionary:
 		var army := _army_registry.create_macro_march(
 			&"player", &"blackstone_city", &"blackstone_city", target_point_id,
@@ -5572,12 +5585,10 @@ func commit_macro_march_from_station(
 	var army := _army_registry.get_army(army_id)
 	if army.is_empty() or StringName(army.phase) != ArmyRegistry.PHASE_STATIONED:
 		return _macro_failure(&"STATION_REQUIRED", "只有已驻扎的军队可以继续发令")
-	var route_validation := MACRO_MARCH_THEATER.validate_route(
-		StringName(army.target_node_id), target_point_id, route_id, route_world_points
-	)
+	var route_validation := _validate_macro_march_route(StringName(army.target_node_id), target_point_id, route_id, route_world_points)
 	if not bool(route_validation.valid):
 		return _macro_failure(StringName(route_validation.error_id), str(route_validation.error))
-	if is_macro_march_route_blocked(route_id):
+	if is_macro_march_route_blocked(route_id) or not _war_loop_state.field_tactics.is_route_open(route_id):
 		return _macro_failure(&"ROAD_BLOCKED", "该道路当前受阻，请选择另一条道路或等待恢复")
 	var total := 0
 	for count in Dictionary(army.units_by_definition_id).values():
@@ -5586,7 +5597,7 @@ func commit_macro_march_from_station(
 	if food < food_cost:
 		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足：需要 %d，当前 %d" % [food_cost, food])
 	var registry_before := _army_registry.get_snapshot()
-	var duration := MACRO_MARCH_THEATER.duration_milliseconds(route_id)
+	var duration := _macro_march_route_duration(route_id)
 	var local_commit := func() -> Dictionary:
 		var issued := _army_registry.issue_stationed_macro_march(
 			army_id, target_point_id, route_id, route_world_points, food_cost, duration

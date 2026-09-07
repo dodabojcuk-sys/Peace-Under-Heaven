@@ -50,6 +50,13 @@ and prevents the macro read model from disclosing the authoritative field
 snapshot. These changes close timing and cross-siege ownership defects, not
 the remaining player-operated tactics work.
 
+The current R2 continuation also connects a completed field road to the
+controller's actual macro-order validator and duration calculation. An
+engineer-selected drawn route can terminate at a newly created runtime camp;
+its persisted endpoint coordinate is returned to the safe map projection. The
+focused field runner now has 22 assertions. This confirms the state/command
+connection, not a completed normal-input journey or road encounter loop.
+
 This is not a complete R2 play-flow delivery. The formal map does not yet offer
 a full player-operated specialist drag-line workflow, nor does the formal
 controller yet settle patrol/ambush damage against armies or apply

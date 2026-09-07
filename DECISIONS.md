@@ -20,8 +20,12 @@
   siege completion, full drag-line specialist UI, and player media remain
   deliberately unaccepted follow-up work.
 - Specialists consume shared world time before changing location. Patrol contact
-  may remove a specialist only at the same recorded node and preserves the last
-  observed report; a building project with a lost engineer remains interrupted.
+	may remove a specialist only at the same recorded node and preserves the last
+	observed report; a building project with a lost engineer remains interrupted.
+- Completed field roads are authoritative macro-command routes, not display
+	overlays. Their endpoint coordinates become runtime camp points and the same
+	persisted route identity is validated before an army order can be issued.
+	Unfinished and damaged routes remain non-commandable.
 
 ## Macro March R0 outer-city greybox
 

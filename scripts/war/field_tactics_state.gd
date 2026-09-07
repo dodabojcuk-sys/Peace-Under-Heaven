@@ -211,6 +211,47 @@ func is_route_open(route_id: StringName) -> bool:
 	return not road.is_empty() and bool(road.get("built", false)) and StringName(road.get("state", &"")) == ROAD_OPEN
 
 
+func validate_runtime_route(source_point_id: StringName, target_point_id: StringName, route_id: StringName, route_world_points: Array) -> Dictionary:
+	var road := Dictionary(roads_by_id.get(route_id, {}))
+	if road.is_empty():
+		return {"valid": false, "error_id": &"UNKNOWN_ROAD", "error": "该道路不存在"}
+	if not is_route_open(route_id):
+		return {"valid": false, "error_id": &"ROAD_DAMAGED", "error": "该道路尚未完工或已损坏"}
+	if (
+		StringName(road.get("source_point_id", &"")) != source_point_id
+		or StringName(road.get("target_point_id", &"")) != target_point_id
+		or source_point_id == target_point_id
+		or route_world_points != Array(road.get("route_world_points", []))
+	):
+		return {"valid": false, "error_id": &"ILLEGAL_ENDPOINT", "error": "道路不连接当前驻点与目标驻点"}
+	return {"valid": true, "error_id": &"", "error": "", "route": road.duplicate(true)}
+
+
+func runtime_route_duration_milliseconds(route_id: StringName) -> int:
+	var road := Dictionary(roads_by_id.get(route_id, {}))
+	var points: Array = road.get("route_world_points", [])
+	var length := 0.0
+	for index in range(1, points.size()):
+		length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
+	return maxi(6000, ceili(length * 20.0))
+
+
+func get_runtime_points() -> Dictionary:
+	var points: Dictionary = {}
+	for camp_value in camps_by_id.values():
+		var camp: Dictionary = camp_value
+		var point_id := StringName(camp.get("point_id", &""))
+		if point_id == &"":
+			continue
+		points[point_id] = {
+			"point_id": point_id,
+			"display_name": String(camp.get("display_name", "工程驻点")),
+			"world_position": Vector2(camp.get("world_position", _road_endpoint_position(StringName(camp.get("road_id", &""))))),
+			"point_kind": &"FRIENDLY_GARRISON",
+		}
+	return points
+
+
 func advance_world(delta_milliseconds: int) -> Dictionary:
 	if delta_milliseconds <= 0:
 		return {}
@@ -359,9 +400,17 @@ func _create_completed_camp(point_id: StringName, road_id: StringName) -> void:
 		"camp_id": camp_id,
 		"point_id": point_id,
 		"road_id": road_id,
+		"display_name": "工程驻点 %d" % next_camp_sequence,
+		"world_position": Vector2i(_road_endpoint_position(road_id)),
 		"durability": 80,
 		"connected": true,
 	}
+
+
+func _road_endpoint_position(road_id: StringName) -> Vector2:
+	var road: Dictionary = Dictionary(roads_by_id.get(road_id, {}))
+	var points: Array = road.get("route_world_points", [])
+	return Vector2(points.back()) if not points.is_empty() else Vector2.ZERO
 
 
 func _refresh_intel() -> void:

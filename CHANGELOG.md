@@ -35,6 +35,11 @@
   patrol contact loss, and interrupted engineering state are now represented.
 - Added a dedicated three-process field-tactics disk runner covering
   construction-in-progress → restored completion → cold-restored road/camp.
+- Connected completed runtime roads and camps to normal macro-route validation
+  and march-duration calculation; the map engineering action now starts from
+  a selected idle engineer's drawn route rather than the old fixed side-road.
+- Added R2 smoke coverage for completed dynamic-road command validation and a
+  newly placed runtime camp endpoint.
 
 ### WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate
 

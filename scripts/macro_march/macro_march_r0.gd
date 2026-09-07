@@ -12,6 +12,8 @@ var _draft_route: Dictionary = {}
 var _selected_formation_ids: Array[StringName] = []
 var _draw_points: Array[Vector2] = []
 var _is_drawing := false
+var _engineering_mode := false
+var _engineering_engineer_id: StringName = &""
 var _formation_buttons: Array[Button] = []
 
 var _title_label := Label.new()
@@ -83,7 +85,7 @@ func _build_ui() -> void:
 	_retreat_button.text = "撤逃并沿原路返回"
 	_scout_button.text = "派遣侦察兵（4 粮）"
 	_engineer_button.text = "派遣工程师（8 粮）"
-	_side_road_button.text = "修建侧路与驻点（5 粮）"
+	_side_road_button.text = "工程师拖线修路"
 	_return_button.text = "返回黑石城"
 	_confirm_button.pressed.connect(_confirm_draft)
 	_retreat_button.pressed.connect(_request_retreat)
@@ -154,22 +156,22 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_side_road_button.visible = not specialists.is_empty()
 	_side_road_button.disabled = projects.size() > 0
 	var source_id := _source_point_id(model, army)
-	var source := THEATER.get_point(source_id)
+	var source := _point_from_model(model, source_id)
 	var draft_text := "未画路线"
 	if not _draft_route.is_empty():
 		draft_text = "%s → %s" % [
-			str(source.display_name),
-			str(THEATER.get_point(StringName(_draft_route.target_point_id)).display_name),
+		str(source.get("display_name", source_id)),
+		str(_point_from_model(model, StringName(_draft_route.target_point_id)).get("display_name", _draft_route.target_point_id)),
 		]
 	if army.is_empty():
-		_status_label.text = "从%s按住左键沿道路画到驻扎点或敌城；草稿可取消，确认后不可改道。" % str(source.display_name)
+		_status_label.text = ("工程绘线：从%s拖到可施工位置，确认后工程师前往施工。" if _engineering_mode else "从%s按住左键沿道路画到驻扎点或敌城；草稿可取消，确认后不可改道。") % str(source.get("display_name", source_id))
 		_detail_label.text = "驻点：%s\n路线草稿：%s\n选择编队：%d\n粮食：%d\n侦察情报：%d\n工程：%d" % [
-			str(source.display_name), draft_text, _selected_formation_ids.size(), int(model.food),
+			str(source.get("display_name", source_id)), draft_text, _selected_formation_ids.size(), int(model.food),
 			visible_patrols.size(), projects.size(),
 		]
 	else:
 		var macro: Dictionary = army.macro_march
-		var target := THEATER.get_point(StringName(macro.target_point_id))
+		var target := _point_from_model(model, StringName(macro.target_point_id))
 		var phase_text := "行军中"
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED:
 			phase_text = "受阻临时驻扎"
@@ -179,7 +181,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			phase_text = "自动攻城中"
 		elif StringName(army.phase) == ARMY_REGISTRY.PHASE_RETREATING:
 			phase_text = "有损撤逃中"
-		_status_label.text = "%s：%s → %s" % [phase_text, str(source.display_name), str(target.display_name)]
+		_status_label.text = "%s：%s → %s" % [phase_text, str(source.get("display_name", source_id)), str(target.get("display_name", macro.target_point_id))]
 		var war: Dictionary = model.get("war_loop", {})
 		var siege: Dictionary = war.get("active_siege", {})
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING:
@@ -231,7 +233,8 @@ func _on_gui_input(event: InputEvent) -> void:
 	if event.pressed:
 		if not map_rect.has_point(event.position) or not _can_draw_route():
 			return
-		var source_position := _world_to_screen(Vector2(THEATER.get_point(_source_point_id(_model(), _model().get("army", {}))).world_position))
+		var source := _point_from_model(_model(), _source_point_id(_model(), _model().get("army", {})))
+		var source_position := _world_to_screen(Vector2(source.get("world_position", Vector2.ZERO)))
 		if event.position.distance_to(source_position) > 52.0:
 			_status_label.text = "请从当前驻点开始画线。"
 			return
@@ -258,13 +261,16 @@ func _finish_draw() -> void:
 	var model := _model()
 	var army: Dictionary = model.get("army", {})
 	var source_id := _source_point_id(model, army)
+	if _engineering_mode:
+		_finish_engineering_draw(model, source_id)
+		return
 	var target_id := _nearest_target_at_draw_end(source_id)
 	if target_id == &"":
 		_draft_route = {}
 		_status_label.text = "终点必须是另一处驻扎点或可进攻的敌城。"
 		queue_redraw()
 		return
-	var decision := THEATER.choose_route_from_draw(source_id, target_id, _draw_points)
+	var decision := _choose_runtime_route_from_draw(model, source_id, target_id, _draw_points)
 	if not bool(decision.valid):
 		_draft_route = {}
 		_status_label.text = str(decision.error)
@@ -272,6 +278,27 @@ func _finish_draw() -> void:
 		return
 	_draft_route = Dictionary(decision.route).duplicate(true)
 	_status_label.text = "路线草稿已吸附到%s；确认后军令和粮食将锁定。" % str(_draft_route.display_name)
+	refresh()
+
+
+func _finish_engineering_draw(model: Dictionary, source_id: StringName) -> void:
+	if _engineering_engineer_id == &"" or _draw_points.size() < 2:
+		_status_label.text = "工程路线至少需要两个位置。"
+		return
+	var target_id := _nearest_target_at_draw_end(source_id)
+	if target_id == &"":
+		target_id = StringName("camp.site.%06d" % (Dictionary(model.get("runtime_points", {})).size() + 1))
+	var result := _dispatch_adapter.begin_field_road_project(
+		_engineering_engineer_id, source_id, target_id, _draw_points,
+		FieldTacticsState.ROAD_NORMAL, true
+	)
+	if not bool(result.get("success", false)):
+		_status_label.text = str(result.get("error", "工程施工失败"))
+		return
+	_engineering_mode = false
+	_engineering_engineer_id = &""
+	_draw_points.clear()
+	_status_label.text = "工程军令已锁定；道路和驻点将在施工完成后开放通军。"
 	refresh()
 
 
@@ -339,22 +366,27 @@ func _build_side_road() -> void:
 	var field := _dispatch_adapter.get_field_tactics_read_model()
 	for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
 		var specialist: Dictionary = specialist_value
-		if StringName(specialist.get("role", &"")) != FieldTacticsState.SPECIALIST_ENGINEER or not bool(specialist.get("alive", false)):
+		if (
+			StringName(specialist.get("role", &"")) != FieldTacticsState.SPECIALIST_ENGINEER
+			or not bool(specialist.get("alive", false))
+			or StringName(specialist.get("phase", &"")) == FieldTacticsState.SPECIALIST_BUILDING
+		):
 			continue
-		var result := _dispatch_adapter.begin_field_road_project(
-			StringName(specialist.specialist_id), &"blackstone_city", &"reedbank_garrison",
-			[Vector2i(150, 430), Vector2i(440, 570), Vector2i(850, 505)],
-			FieldTacticsState.ROAD_NORMAL, true
-		)
-		_status_label.text = "工程侧路已锁定，完工后开放驻点。" if bool(result.get("success", false)) else str(result.get("error", "工程施工失败"))
-		refresh()
+		_engineering_mode = true
+		_engineering_engineer_id = StringName(specialist.get("specialist_id", &""))
+		_draw_points.clear()
+		_draft_route = {}
+		_status_label.text = "工程师已选中：从其所在位置按住左键拖出道路，终点可新建驻点。"
+		queue_redraw()
 		return
-	_status_label.text = "需要一名仍在黑石城的工程师。"
+	_status_label.text = "需要一名空闲且存活的工程师。"
 
 
 func _can_draw_route() -> bool:
 	var army: Dictionary = _model().get("army", {})
 	return (
+		_engineering_mode
+		or
 		not _selected_formation_ids.is_empty()
 		or army.is_empty()
 		or StringName(army.phase) == ARMY_REGISTRY.PHASE_STATIONED
@@ -362,6 +394,9 @@ func _can_draw_route() -> bool:
 
 
 func _source_point_id(model: Dictionary, army: Dictionary) -> StringName:
+	if _engineering_mode and _dispatch_adapter != null:
+		var specialist := Dictionary(_dispatch_adapter.get_field_tactics_read_model().get("specialists_by_id", {}).get(_engineering_engineer_id, {}))
+		return StringName(specialist.get("current_point_id", &""))
 	return (
 		StringName(model.get("source_point_id", &"blackstone_city"))
 		if not _selected_formation_ids.is_empty() or army.is_empty()
@@ -373,10 +408,64 @@ func _nearest_target_at_draw_end(source_id: StringName) -> StringName:
 	if _draw_points.is_empty():
 		return &""
 	var end: Vector2 = _draw_points.back()
-	for point_id in THEATER.get_points():
-		if StringName(point_id) != source_id and end.distance_to(Vector2(THEATER.get_point(point_id).world_position)) <= 65.0:
+	for point_id in _all_points(_model()):
+		var point := _point_from_model(_model(), StringName(point_id))
+		if StringName(point_id) != source_id and end.distance_to(Vector2(point.get("world_position", Vector2.ZERO))) <= 65.0:
 			return StringName(point_id)
 	return &""
+
+
+func _all_points(model: Dictionary) -> Dictionary:
+	var points := THEATER.get_points()
+	for point_id_value in Dictionary(model.get("runtime_points", {})):
+		points[StringName(point_id_value)] = Dictionary(model.runtime_points[point_id_value]).duplicate(true)
+	return points
+
+
+func _point_from_model(model: Dictionary, point_id: StringName) -> Dictionary:
+	return Dictionary(_all_points(model).get(point_id, {})).duplicate(true)
+
+
+func _choose_runtime_route_from_draw(model: Dictionary, source_id: StringName, target_id: StringName, draw_world_points: Array) -> Dictionary:
+	if draw_world_points.size() < 2:
+		return {"valid": false, "error": "请沿道路画出到目标驻点的路线"}
+	var best_route: Dictionary = {}
+	var best_score := INF
+	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+	for route_value in Dictionary(field.get("roads_by_id", {})).values():
+		var route: Dictionary = route_value
+		if (
+			StringName(route.get("source_point_id", &"")) != source_id
+			or StringName(route.get("target_point_id", &"")) != target_id
+			or StringName(route.get("state", &"")) != FieldTacticsState.ROAD_OPEN
+		):
+			continue
+		var route_points: Array = route.get("route_world_points", [])
+		var score := _draw_route_score(draw_world_points, route_points)
+		if score < best_score:
+			best_score = score
+			best_route = route
+	if best_route.is_empty() or best_score > 105.0:
+		return {"valid": false, "error": "路线偏离可通行道路，或道路尚未完成。"}
+	return {"valid": true, "route": best_route}
+
+
+func _draw_route_score(drawn: Array, route: Array) -> float:
+	var total := 0.0
+	for point_value in drawn:
+		var nearest := INF
+		for index in range(1, route.size()):
+			nearest = minf(nearest, _distance_to_segment(Vector2(point_value), Vector2(route[index - 1]), Vector2(route[index])))
+		total += nearest
+	return total / maxf(float(drawn.size()), 1.0) + Vector2(drawn.front()).distance_to(Vector2(route.front())) + Vector2(drawn.back()).distance_to(Vector2(route.back()))
+
+
+func _distance_to_segment(point: Vector2, start: Vector2, end: Vector2) -> float:
+	var segment := end - start
+	var squared := segment.length_squared()
+	if squared <= 0.0001:
+		return point.distance_to(start)
+	return point.distance_to(start + segment * clampf((point - start).dot(segment) / squared, 0.0, 1.0))
 
 
 func _should_stop_before_blocked_segment(macro: Dictionary) -> bool:
@@ -454,20 +543,18 @@ func _draw() -> void:
 		_draw_army_marker(Dictionary(army_value))
 	for camp_value in Dictionary(field.get("camps_by_id", {})).values():
 		var camp: Dictionary = camp_value
-		var point := THEATER.get_point(StringName(camp.get("point_id", &"")))
-		if not point.is_empty():
-			var camp_center := _world_to_screen(Vector2(point.world_position))
-			draw_rect(Rect2(camp_center - Vector2(11, 11), Vector2(22, 22)), Color("f0c46b"), true)
+		var camp_center := _world_to_screen(Vector2(camp.get("world_position", Vector2.ZERO)))
+		draw_rect(Rect2(camp_center - Vector2(11, 11), Vector2(22, 22)), Color("f0c46b"), true)
 	for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
 		var specialist: Dictionary = specialist_value
 		if not bool(specialist.get("alive", false)):
 			continue
-		var point := THEATER.get_point(StringName(specialist.get("current_point_id", &"")))
+		var point := _point_from_model(_model(), StringName(specialist.get("current_point_id", &"")))
 		if point.is_empty():
 			continue
 		var specialist_color := Color("73d7ed") if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else Color("f2b86e")
 		draw_circle(_world_to_screen(Vector2(point.world_position)), 9.0, specialist_color)
-	for point_value in THEATER.get_points().values():
+	for point_value in _all_points(_model()).values():
 		var point: Dictionary = point_value
 		var center := _world_to_screen(Vector2(point.world_position))
 		var enemy := StringName(point.get("point_kind", &"")) == &"ENEMY_CITY"
