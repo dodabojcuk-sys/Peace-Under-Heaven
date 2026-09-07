@@ -205,7 +205,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			phase_text = "有损撤逃中"
 		_status_label.text = "%s：%s → %s" % [phase_text, str(source.get("display_name", source_id)), str(target.get("display_name", macro.target_point_id))]
 		var war: Dictionary = model.get("war_loop", {})
-		var siege: Dictionary = war.get("active_siege", {})
+		var siege := _siege_for_army(war, StringName(army.get("army_id", &"")))
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING:
 			_detail_label.text = "城门耐久：%d\n守军：%d\n我军可战：%d\n自动先行招降，未降则攻门并清剿守军。" % [int(siege.get("gate_hp", 0)), ceili(float(int(siege.get("defender_total_hp", 0))) / maxf(float(int(siege.get("defender_hp_per_member", 1))), 1.0)), ceili(float(int(siege.get("attacker_total_hp", 0))) / maxf(float(int(siege.get("attacker_hp_per_member", 1))), 1.0))]
 		else:
@@ -528,6 +528,14 @@ func _selected_army(model: Dictionary) -> Dictionary:
 		return {}
 	_selected_army_id = StringName(Dictionary(armies.front()).get("army_id", &""))
 	return Dictionary(armies.front()).duplicate(true)
+
+
+func _siege_for_army(war: Dictionary, army_id: StringName) -> Dictionary:
+	for siege_value in Array(war.get("sieges", [])):
+		var candidate: Dictionary = siege_value
+		if StringName(candidate.get("army_id", &"")) == army_id:
+			return candidate.duplicate(true)
+	return {}
 
 
 func _army_id_at_screen(model: Dictionary, screen_position: Vector2) -> StringName:

@@ -148,3 +148,7 @@ Suggested next engineering entry: make the existing city-keyed siege records
 the controller's settlement loop, then bind `MacroMarchR0` selection/drawing
 to the already-persisted field-road and specialist APIs. Keep
 `ConstructionController` as resource/save authority.
+
+The map now selects a concurrent siege record by the selected army ID; the
+20-assertion Macro smoke verifies the lookup against two synthetic records.
+This fixes detail cross-talk only and does not imply an encounter resolver.

@@ -292,6 +292,11 @@ func _run_mouse_selection_and_replacement_contract() -> void:
 			and macro_screen._scout_button.visible and macro_screen._engineer_button.visible,
 		"鼠标命中同点重叠军队可轮换选队；死亡历史不会阻止补派"
 	)
+	var selected_siege := macro_screen._siege_for_army({
+		"active_siege": {"army_id": &"army.first", "gate_hp": 99},
+		"sieges": [{"army_id": &"army.first", "gate_hp": 99}, {"army_id": &"army.second", "gate_hp": 41}],
+	}, &"army.second")
+	_check(int(selected_siege.get("gate_hp", 0)) == 41, "攻城详情按选中 army_id 读取对应交战，而非兼容用第一场攻城")
 	await _drop_scene(scene)
 
 

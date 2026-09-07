@@ -40,6 +40,8 @@
 - Replaced the static patrol position with a persisted wait-and-route movement
   record and retained a non-tracking last-observed coordinate after visibility
   ends. This is not yet an army encounter or casualty implementation.
+- Resolved map siege details by selected `army_id` instead of the compatibility
+  first-siege projection; Macro March smoke now has 20 assertions.
 
 - Added a V5-persistent field-state record for runtime roads, camps,
   scouts/engineers, engineering projects, finite patrol intelligence, fog

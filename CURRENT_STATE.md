@@ -31,6 +31,9 @@ proves both the movement and the non-tracking historical-intel boundary. This
 does not yet resolve a patrol-versus-army encounter, apply losses, or provide
 an ambush rule.
 
+Siege details now resolve through the selected army's matching concurrent siege,
+instead of the legacy first-siege compatibility projection.
+
 The map now preserves a camp identity at engineering confirmation, so two
 engineers cannot reserve the same runtime camp while both projects are still
 in progress.  The visible-army hit target cycles on repeated mouse clicks at
