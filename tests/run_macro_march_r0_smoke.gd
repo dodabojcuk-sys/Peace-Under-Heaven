@@ -314,6 +314,7 @@ func _run_camera_and_layout_contract() -> void:
 		var map_rect := macro_screen._map_rect()
 		var panel_rect := macro_screen._side_panel_rect()
 		var all_controls: Array[Control] = [
+			macro_screen._detail_label,
 			macro_screen._formation_scroll,
 			macro_screen._confirm_button,
 			macro_screen._scout_button,
@@ -322,14 +323,19 @@ func _run_camera_and_layout_contract() -> void:
 			macro_screen._return_button,
 		]
 		var controls_fit := map_rect.end.x < panel_rect.position.x
+		var controls_do_not_overlap := true
 		for control in all_controls:
 			if not control.visible:
 				continue
 			var control_rect := control.get_global_rect()
 			controls_fit = controls_fit and control_rect.position.x >= panel_rect.position.x and control_rect.end.x <= float(width) and control_rect.position.y >= panel_rect.position.y and control_rect.end.y <= 648.0
+			for other in all_controls:
+				if control == other or not other.visible:
+					continue
+				controls_do_not_overlap = controls_do_not_overlap and not control_rect.intersects(other.get_global_rect())
 		_check(
-			controls_fit and macro_screen._formation_scroll.get_parent() == macro_screen and macro_screen._formation_buttons.all(func(button: Button) -> bool: return button.get_parent() == macro_screen._formation_list),
-			"自动化 UI 布局在 %d×648 下保持地图、滚动编队和底部行动区互不覆盖" % width
+			controls_fit and controls_do_not_overlap and macro_screen._formation_scroll.get_parent() == macro_screen and macro_screen._formation_buttons.all(func(button: Button) -> bool: return button.get_parent() == macro_screen._formation_list),
+			"自动化 UI 布局在 %d×648 下保持地图、滚动编队和每个可见行动区互不覆盖" % width
 		)
 	root.size = Vector2i(1152, 648)
 	await process_frame
@@ -362,6 +368,13 @@ func _run_camera_and_layout_contract() -> void:
 	)
 	macro_screen._camera_center = Vector2(500, 325)
 	macro_screen._camera_zoom = 1.0
+	var first_button: Button = macro_screen._formation_buttons.front()
+	await process_frame
+	await process_frame
+	_check(
+		is_instance_valid(first_button) and macro_screen._formation_buttons.front() == first_button,
+		"编队 roster 未变化时跨帧保留同一个控件实例，按下与松开不会落到重建按钮"
+	)
 	macro_screen._selected_formation_ids = [StringName(Dictionary(city.get_formation_roster().front()).get("formation_id", &""))]
 	var snapshot_before_preview: Dictionary = city.export_v5_campaign_snapshot()
 	var command_preview := macro_screen._dispatch_adapter.get_macro_march_command_preview(macro_screen._selected_formation_ids)

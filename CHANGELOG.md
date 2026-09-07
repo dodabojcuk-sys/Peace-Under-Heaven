@@ -16,6 +16,11 @@
 
 ### FIELD_TACTICS_R2 map and command UI checkpoint
 
+- Put the return action in the same fixed command stack as the engineer action
+  and made formation controls incremental, eliminating the 648px overlap and
+  cross-frame button replacement risks. Added overlap and stable-node tests;
+  Macro March smoke now has 27 automated assertions.
+
 - Replaced fixed 1000×650 screen compression with a shared tactical-map camera:
   cursor-anchored wheel zoom, middle-drag pan, minimap recentering and
   cross-edge draft continuity all preserve world-coordinate command semantics.

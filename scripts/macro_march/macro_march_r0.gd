@@ -28,6 +28,7 @@ var _selected_damaged_road_id: StringName = &""
 var _last_army_hit_position := Vector2.INF
 var _army_hit_cycle_index := 0
 var _formation_buttons: Array[Button] = []
+var _formation_signature := ""
 var _camera_center := Vector2(500, 325)
 var _camera_zoom := 1.0
 var _is_panning := false
@@ -122,10 +123,10 @@ func _build_ui() -> void:
 
 func _layout_ui() -> void:
 	var panel_rect := _side_panel_rect()
-	var action_height := 40.0
-	var action_gap := 6.0
-	var action_count := 5
-	var action_top := maxf(panel_rect.position.y + 302.0, size.y - 18.0 - (action_height + action_gap) * action_count)
+	var action_height := 34.0
+	var action_gap := 4.0
+	var action_count := 6
+	var action_top := maxf(panel_rect.position.y + 302.0, size.y - 16.0 - action_height * action_count - action_gap * (action_count - 1))
 	var panel_inner := Rect2(panel_rect.position + Vector2(14, 12), panel_rect.size - Vector2(28, 24))
 	_title_label.position = Vector2(22, 12)
 	_title_label.size = Vector2(size.x - 44, 34)
@@ -133,11 +134,11 @@ func _layout_ui() -> void:
 	_status_label.size = Vector2(size.x - 44, 36)
 	_detail_label.position = panel_inner.position
 	_detail_label.size = Vector2(panel_inner.size.x, 106)
-	_formation_scroll.position = panel_inner.position + Vector2(0, 114)
+	_formation_scroll.position = panel_inner.position + Vector2(0, 148)
 	_formation_scroll.size = Vector2(panel_inner.size.x, maxf(68.0, action_top - _formation_scroll.position.y - 8.0))
 	for button in _formation_buttons:
 		button.custom_minimum_size = Vector2(panel_inner.size.x - 10.0, 38)
-	var action_buttons: Array[Button] = [_confirm_button, _retreat_button, _scout_button, _engineer_button, _side_road_button]
+	var action_buttons: Array[Button] = [_confirm_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _return_button]
 	for index in action_buttons.size():
 		var button := action_buttons[index]
 		button.position = Vector2(panel_inner.position.x, action_top + index * (action_height + action_gap))
@@ -146,14 +147,23 @@ func _layout_ui() -> void:
 	_block_button.size = Vector2(panel_inner.size.x, action_height)
 	_recover_button.position = Vector2(panel_inner.position.x, action_top + action_height + action_gap)
 	_recover_button.size = Vector2(panel_inner.size.x, action_height)
-	_return_button.position = Vector2(panel_inner.position.x, size.y - 52)
-	_return_button.size = Vector2(panel_inner.size.x, 36)
 
 
 func _refresh_formation_controls(formations: Array, army: Dictionary) -> void:
+	var signature_parts: Array[String] = [str(not army.is_empty()), str(bool(_model().get("can_issue_from_city", false)))]
+	for formation_value in formations:
+		var formation: Dictionary = formation_value
+		signature_parts.append("%s:%d" % [String(formation.get("formation_id", &"")), int(formation.get("member_count", 0))])
+	var next_signature := "|".join(signature_parts)
+	if next_signature == _formation_signature:
+		for button in _formation_buttons:
+			var formation_id := StringName(button.get_meta("formation_id", &""))
+			button.button_pressed = formation_id in _selected_formation_ids
+		return
 	for button in _formation_buttons:
 		button.queue_free()
 	_formation_buttons.clear()
+	_formation_signature = next_signature
 	if not army.is_empty() and not bool(_model().get("can_issue_from_city", false)):
 		return
 	for formation_value in formations:
@@ -164,6 +174,7 @@ func _refresh_formation_controls(formations: Array, army: Dictionary) -> void:
 		button.disabled = int(formation.member_count) <= 0
 		button.toggle_mode = true
 		button.button_pressed = formation_id in _selected_formation_ids
+		button.set_meta("formation_id", formation_id)
 		button.pressed.connect(_toggle_formation.bind(formation_id))
 		_formation_list.add_child(button)
 		_formation_buttons.append(button)

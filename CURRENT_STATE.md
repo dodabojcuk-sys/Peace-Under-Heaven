@@ -2,6 +2,16 @@
 
 ## FIELD_TACTICS_R2 map and command UI checkpoint (2026-09-08)
 
+### R2 input-safety follow-up
+
+The return action now belongs to the same six-slot command stack as the other
+visible actions; at 648px high it no longer overlaps the engineer action.
+Formation controls are updated only when the roster/availability projection
+changes, preserving their node identity across view frames. Macro smoke now
+checks every pair of visible right-column controls for overlap at three widths
+and confirms a roster-stable button survives two frames. It passes 27
+automated assertions; this does not replace actual system-input media.
+
 The formal outer-city map now has one camera transform for drawing, hit testing
 and route drafting. Wheel zoom is anchored to the cursor, middle-drag pans,
 the minimap recenters the camera, and edge movement while drawing keeps the

@@ -13,6 +13,12 @@ transaction and persistence-checkpoint caller.
 
 ### Map camera and command UI follow-up
 
+The return action and engineer action now occupy separate managed slots even
+at 648px height. Formation buttons are retained while the roster projection is
+unchanged, so a press/release spanning frames cannot switch to a rebuilt node.
+The Macro runner additionally checks all visible control rectangles are
+pairwise disjoint and verifies node continuity; it now passes 27 assertions.
+
 The outer-city map uses a single screen/world camera transform for rendering,
 hit testing and drafting. Cursor-anchored wheel zoom, middle-drag panning,
 minimap recentering and edge-drawing pan all retain the same command world
