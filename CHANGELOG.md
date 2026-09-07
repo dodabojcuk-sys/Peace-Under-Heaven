@@ -21,8 +21,9 @@
   consult living specialists instead of historical records.
 - Replaced instantaneous remote road repair with persisted engineer travel and
   timed repair work.  Field-road validation now accepts a correctly reversed
-  polyline for return travel.  Focused field smoke is 27 assertions, Macro
-  March smoke is 17, and the three-process field persistence runner passes.
+  polyline for return travel.  Added automated damaged-road map hit and repair
+  action coverage. Focused field smoke is 27 assertions, Macro March smoke is
+ 18, and the three-process field persistence runner passes.
 - This remains an engineering checkpoint; it does not claim bridge terrain,
   patrol/ambush play, route-block auto-resume, normal-input media, or Founder
   acceptance.

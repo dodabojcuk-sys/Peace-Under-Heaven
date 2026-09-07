@@ -25,10 +25,11 @@ transaction and persistence-checkpoint caller.
   direction when the submitted polyline is directionally exact.
 
 Verification after this follow-up: `run_field_tactics_r2_smoke.gd` passes 27
-assertions, `run_macro_march_r0_smoke.gd` passes 17, and
+assertions, `run_macro_march_r0_smoke.gd` passes 18, and
 `run_field_tactics_r2_persistence_smoke.gd` passes its independent three-process
-construction/restore chain.  The repair path has focused state coverage, but
-not yet map-operable damaged-road selection or a dedicated repair disk chain.
+construction/restore chain. The Macro runner injects a damaged-road map click
+and repair-button callback; this is explicitly automated UI wiring rather than
+system-input media. A dedicated repair disk chain is still open.
 
 - Two macro armies can be issued from distinct garrison formations. The
   registry rejects a persisted formation identity in two non-closed macro

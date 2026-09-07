@@ -14,11 +14,13 @@ Damaged field roads now create a persisted repair project.  The assigned
 engineer travels to the road endpoint, the road remains blocked during the
 separate repair duration, and only completion restores the original road ID.
 Runtime roads validate in both directions, including their reversed polyline.
-Focused field smoke passes 27 assertions, Macro March passes 17, and the
-three-process field construction restore runner passes.  This is still not a
-complete R2 play flow: bridge classification, map-operable repair selection,
-patrol/ambush settlement, road-damage auto-resume, full normal-input playthrough
-and real media remain open.
+Focused field smoke passes 27 assertions, Macro March passes 18, and the
+three-process field construction restore runner passes.  A damaged road can
+now be selected by map hit testing and sent through the visible repair action;
+the macro test labels that injected mouse/button sequence as automation. This
+is still not a complete R2 play flow: bridge classification, patrol/ambush
+settlement, road-damage auto-resume, full normal-input playthrough and real
+media remain open.
 
 ### R2 concurrency and safe-projection follow-up
 

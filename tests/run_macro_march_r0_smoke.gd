@@ -247,6 +247,26 @@ func _run_mouse_selection_and_replacement_contract() -> void:
 	var scout: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_SCOUT)
 	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
 	var field: FieldTacticsState = city._war_loop_state.field_tactics
+	var repair_route := [Vector2i(150, 430), Vector2i(355, 470), Vector2i(500, 440)]
+	var built_for_repair: Dictionary = city.begin_field_road_project(
+		StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")),
+		&"blackstone_city", &"camp.site.repair", repair_route, FieldTacticsState.ROAD_NORMAL, true
+	)
+	city.advance_war_loop_time(int(Dictionary(built_for_repair.get("project", {})).get("required_milliseconds", 0)))
+	var repair_road_id := StringName(Dictionary(built_for_repair.get("project", {})).get("road_id", &""))
+	field.damage_road(repair_road_id, 999)
+	var repair_click := InputEventMouseButton.new()
+	repair_click.button_index = MOUSE_BUTTON_LEFT
+	repair_click.pressed = true
+	repair_click.position = macro_screen._world_to_screen(Vector2(355, 470))
+	macro_screen._on_gui_input(repair_click)
+	macro_screen._side_road_button.emit_signal("pressed")
+	var repair_project_id := StringName(Dictionary(field.specialists_by_id[StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &""))]).get("project_id", &""))
+	_check(
+		macro_screen._selected_damaged_road_id == &""
+			and repair_project_id != &"" and not field.is_route_open(repair_road_id),
+		"自动化鼠标命中受损道路并点击维修入口，会创建到场维修而不立即放行"
+	)
 	var scout_id := StringName(Dictionary(scout.get("specialist", {})).get("specialist_id", &""))
 	var engineer_id := StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &""))
 	var lost_scout := Dictionary(field.specialists_by_id[scout_id])

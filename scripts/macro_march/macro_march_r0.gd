@@ -16,6 +16,7 @@ var _is_drawing := false
 var _engineering_mode := false
 var _engineering_engineer_id: StringName = &""
 var _selected_army_id: StringName = &""
+var _selected_damaged_road_id: StringName = &""
 var _last_army_hit_position := Vector2.INF
 var _army_hit_cycle_index := 0
 var _formation_buttons: Array[Button] = []
@@ -155,10 +156,12 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	var specialists: Dictionary = field.get("specialists_by_id", {})
 	var projects: Dictionary = field.get("projects_by_id", {})
 	var visible_patrols: Dictionary = field.get("visible_patrols_by_id", {})
+	var has_selected_damage := _selected_damaged_road_id != &"" and StringName(Dictionary(field.get("roads_by_id", {})).get(_selected_damaged_road_id, {}).get("state", &"")) == FieldTacticsState.ROAD_DAMAGED
 	_scout_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_SCOUT) < 1
 	_engineer_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_ENGINEER) < 1
 	_side_road_button.visible = not specialists.is_empty()
 	_side_road_button.disabled = not _has_idle_engineer(specialists)
+	_side_road_button.text = "安排工程师维修受损道路（3 粮）" if has_selected_damage else "工程师拖线修路"
 	var source_id := _source_point_id(model, army)
 	var source := _point_from_model(model, source_id)
 	var draft_text := "未画路线"
@@ -258,11 +261,12 @@ func _has_idle_engineer(specialists: Dictionary) -> bool:
 
 func _on_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		if not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty():
+		if not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty() or _selected_damaged_road_id != &"":
 			_draft_route = {}
 			_engineering_draft = {}
 			_engineering_mode = false
 			_engineering_engineer_id = &""
+			_selected_damaged_road_id = &""
 			_draw_points.clear()
 			_status_label.text = "路线草稿已取消；没有资源、编队或军令写入。"
 			queue_redraw()
@@ -281,6 +285,13 @@ func _on_gui_input(event: InputEvent) -> void:
 			_selected_army_id = selected_id
 			_selected_formation_ids.clear()
 			_status_label.text = "已选中该军队；续令、撤逃与路线草稿只作用于它。"
+			refresh()
+			accept_event()
+			return
+		var damaged_road_id := _damaged_road_id_at_screen(_dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}, event.position)
+		if damaged_road_id != &"":
+			_selected_damaged_road_id = damaged_road_id
+			_status_label.text = "已选中受损道路；可安排空闲工程师前往维修。"
 			refresh()
 			accept_event()
 			return
@@ -434,6 +445,22 @@ func _build_side_road() -> void:
 	if _dispatch_adapter == null:
 		return
 	var field := _dispatch_adapter.get_field_tactics_read_model()
+	if _selected_damaged_road_id != &"":
+		for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
+			var repair_engineer: Dictionary = specialist_value
+			if (
+				StringName(repair_engineer.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER
+				and bool(repair_engineer.get("alive", false))
+				and StringName(repair_engineer.get("project_id", &"")) == &""
+			):
+				var repair_result := _dispatch_adapter.begin_field_road_repair(StringName(repair_engineer.get("specialist_id", &"")), _selected_damaged_road_id)
+				_status_label.text = "工程师已出发前往受损道路。" if bool(repair_result.get("success", false)) else str(repair_result.get("error", "道路维修无法安排"))
+				if bool(repair_result.get("success", false)):
+					_selected_damaged_road_id = &""
+				refresh()
+				return
+		_status_label.text = "需要一名空闲且存活的工程师前往维修。"
+		return
 	for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
 		var specialist: Dictionary = specialist_value
 		if (
@@ -450,6 +477,18 @@ func _build_side_road() -> void:
 		queue_redraw()
 		return
 	_status_label.text = "需要一名空闲且存活的工程师。"
+
+
+func _damaged_road_id_at_screen(field: Dictionary, screen_position: Vector2) -> StringName:
+	for route_value in Dictionary(field.get("roads_by_id", {})).values():
+		var route: Dictionary = route_value
+		if StringName(route.get("state", &"")) != FieldTacticsState.ROAD_DAMAGED:
+			continue
+		var points: Array = route.get("route_world_points", [])
+		for index in range(1, points.size()):
+			if _distance_to_segment(screen_position, _world_to_screen(Vector2(points[index - 1])), _world_to_screen(Vector2(points[index]))) <= 14.0:
+				return StringName(route.get("road_id", &""))
+	return &""
 
 
 func _can_draw_route() -> bool:
