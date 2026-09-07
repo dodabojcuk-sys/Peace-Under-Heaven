@@ -213,7 +213,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		return
 	if army.is_empty():
 		_status_label.text = ("工程绘线：从%s拖到可施工位置，确认后工程师前往施工。" if _engineering_mode else "从%s按住左键沿道路画到驻扎点或敌城；草稿可取消，确认后不可改道。") % str(source.get("display_name", source_id))
-		var draft_duration := THEATER.duration_milliseconds(StringName(_draft_route.get("route_id", &""))) if not _draft_route.is_empty() else 0
+		var draft_duration := _runtime_draft_duration() if not _draft_route.is_empty() else 0
 		var preview := _dispatch_adapter.get_macro_march_command_preview(_selected_formation_ids) if _dispatch_adapter != null else {}
 		var selected_members := int(preview.get("committed_total", _selected_formation_member_count(Array(model.get("formations", [])))))
 		var estimated_food := int(preview.get("food_cost", 0))
@@ -685,6 +685,11 @@ func _point_from_model(model: Dictionary, point_id: StringName) -> Dictionary:
 func _choose_runtime_route_from_draw(model: Dictionary, source_id: StringName, target_id: StringName, draw_world_points: Array) -> Dictionary:
 	if draw_world_points.size() < 2:
 		return {"valid": false, "error": "请沿道路画出到目标驻点的路线"}
+	var planned := _dispatch_adapter.plan_field_path(source_id, target_id) if _dispatch_adapter != null else {}
+	if bool(planned.get("valid", false)) and Array(planned.get("points", [])).size() >= 2:
+		var planned_score := _draw_route_score(draw_world_points, Array(planned.points))
+		if planned_score <= 105.0:
+			return {"valid": true, "route": {"road_id": StringName(planned.route_id), "target_point_id": target_id, "route_world_points": Array(planned.points), "segment_ids": Array(planned.segments)}}
 	var best_route: Dictionary = {}
 	var best_score := INF
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
@@ -728,6 +733,30 @@ func _ui_route_draft(route: Dictionary) -> Dictionary:
 		"target_point_id": StringName(route.get("target_point_id", &"")),
 		"points": Array(route.get("route_world_points", route.get("points", []))).duplicate(true),
 	}
+
+
+func _runtime_draft_duration() -> int:
+	if _dispatch_adapter == null:
+		return 0
+	var field := _dispatch_adapter.get_field_tactics_read_model()
+	var route_id := StringName(_draft_route.get("route_id", &""))
+	return FieldTacticsState.new().runtime_route_duration_milliseconds(route_id) if false else _runtime_duration_from_projection(field, route_id)
+
+
+func _runtime_duration_from_projection(field: Dictionary, route_id: StringName) -> int:
+	var roads := Dictionary(field.get("roads_by_id", {}))
+	if not String(route_id).begins_with(FieldTacticsState.PATH_PREFIX):
+		var points: Array = Array(Dictionary(roads.get(route_id, {})).get("route_world_points", []))
+		return _duration_for_points(points)
+	var points: Array = Array(_draft_route.get("points", []))
+	return _duration_for_points(points)
+
+
+func _duration_for_points(points: Array) -> int:
+	var length := 0.0
+	for index in range(1, points.size()):
+		length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
+	return maxi(6000, ceili(length * 20.0))
 
 
 func _draw_route_score(drawn: Array, route: Array) -> float:

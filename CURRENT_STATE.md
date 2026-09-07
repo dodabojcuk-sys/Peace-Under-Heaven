@@ -42,6 +42,12 @@ the map no longer owns a second hard-coded terrain layout. The runtime road
 model is still single-road-per-order at this checkpoint, so multi-segment graph
 orders remain the next implementation step.
 
+The field authority can now resolve connected open roads into an ordered
+runtime path. A multi-road path has a stable directional path handle, retains
+each physical road ID for open/damaged checks, and computes the minimum travel
+time once across the merged geometry. This has not yet added explicit segment
+execution fields to `ArmyRegistry` or the required cross-process path test.
+
 ## FIELD_TACTICS_R2 engineering checkpoint (2026-09-07)
 
 ### R2 formal-input and on-site-repair checkpoint

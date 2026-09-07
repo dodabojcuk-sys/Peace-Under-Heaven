@@ -57,6 +57,15 @@ func _run_field_tactics_contract() -> void:
 		"战区 Resource 水域命中的工程线自动成为桥梁项目，而非普通道路"
 	)
 	_check(state.is_route_open(&"road.blackstone.northwatch.ridge"), "主路进入运行时路网且默认可通行")
+	var multi_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison")
+	var multi_route_id := StringName(multi_path.get("route_id", &""))
+	_check(
+		bool(multi_path.get("valid", false))
+			and Array(multi_path.get("segments", [])).size() >= 2
+			and bool(state.validate_runtime_route(&"blackstone_city", &"reedbank_garrison", multi_route_id, Array(multi_path.get("points", []))).get("valid", false))
+			and int(multi_path.get("duration_milliseconds", 0)) == state.runtime_route_duration_milliseconds(multi_route_id),
+		"运行时路网将连续主路解析为有序路段路径，预览与权威时长使用同一条路径"
+	)
 	var patrol_partition_start: FieldTacticsState = FIELD_TACTICS_STATE.new()
 	patrol_partition_start.initialize_from_theater(THEATER.get_points(), THEATER.get_routes())
 	var patrol_one_step: FieldTacticsState = FIELD_TACTICS_STATE.new()

@@ -22,6 +22,9 @@
   Macro March smoke now has 27 automated assertions.
 - Moved tactical world bounds and forest regions from map presentation into the
   theatre Resource, preserving existing road coordinates and save semantics.
+- Added deterministic runtime-path planning over connected open roads. The
+  path validator and duration calculation reuse its ordered physical segments;
+  a multi-road path receives the minimum duration only once.
 
 - Replaced fixed 1000×650 screen compression with a shared tactical-map camera:
   cursor-anchored wheel zoom, middle-drag pan, minimap recentering and

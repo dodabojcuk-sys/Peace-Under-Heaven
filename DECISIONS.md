@@ -74,6 +74,9 @@
 	the food formula or reserves resources before the user confirms a command.
 - Tactical world bounds and terrain regions are theatre Resource data. The
 	map renders them but does not define tactical geography independently.
+- A runtime path is an ordered traversal of physical roads, not a newly merged
+	road record. Its handle encodes road identity and direction for validation;
+	damage and repairs still belong to the physical road records.
 
 ## Macro March R0 outer-city greybox
 

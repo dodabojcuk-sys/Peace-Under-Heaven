@@ -22,6 +22,7 @@ const SPECIALIST_LOST := &"LOST"
 const FOG_UNOBSERVED := &"UNOBSERVED"
 const FOG_OBSERVED := &"OBSERVED"
 const FOG_VISIBLE := &"VISIBLE"
+const PATH_PREFIX := "path."
 
 var roads_by_id: Dictionary = {}
 var camps_by_id: Dictionary = {}
@@ -306,11 +307,18 @@ static func _has_valid_references(roads: Dictionary, camps: Dictionary, speciali
 
 
 func is_route_open(route_id: StringName) -> bool:
+	if String(route_id).begins_with(PATH_PREFIX):
+		for segment in _path_segments(route_id):
+			if not is_route_open(StringName(segment.get("road_id", &""))):
+				return false
+		return not _path_segments(route_id).is_empty()
 	var road := Dictionary(roads_by_id.get(route_id, {}))
 	return not road.is_empty() and bool(road.get("built", false)) and StringName(road.get("state", &"")) == ROAD_OPEN
 
 
 func validate_runtime_route(source_point_id: StringName, target_point_id: StringName, route_id: StringName, route_world_points: Array) -> Dictionary:
+	if String(route_id).begins_with(PATH_PREFIX):
+		return _validate_runtime_path(source_point_id, target_point_id, route_id, route_world_points)
 	var road := Dictionary(roads_by_id.get(route_id, {}))
 	if road.is_empty():
 		return {"valid": false, "error_id": &"UNKNOWN_ROAD", "error": "该道路不存在"}
@@ -341,12 +349,109 @@ func validate_runtime_route(source_point_id: StringName, target_point_id: String
 
 
 func runtime_route_duration_milliseconds(route_id: StringName) -> int:
+	if String(route_id).begins_with(PATH_PREFIX):
+		return _path_duration_milliseconds(_path_world_points(route_id))
 	var road := Dictionary(roads_by_id.get(route_id, {}))
 	var points: Array = road.get("route_world_points", [])
 	var length := 0.0
 	for index in range(1, points.size()):
 		length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
 	return maxi(6000, ceili(length * 20.0))
+
+
+func plan_runtime_path(source_point_id: StringName, target_point_id: StringName) -> Dictionary:
+	if source_point_id == &"" or target_point_id == &"" or source_point_id == target_point_id:
+		return {"valid": false, "error": "起点和目标必须是不同的合法据点"}
+	var queue: Array[Dictionary] = [{"point_id": source_point_id, "segments": []}]
+	var visited: Dictionary = {source_point_id: true}
+	while not queue.is_empty():
+		var current: Dictionary = queue.pop_front()
+		var current_point := StringName(current.get("point_id", &""))
+		if current_point == target_point_id:
+			var segments: Array = current.get("segments", [])
+			var route_id := _path_id(segments)
+			var points := _path_world_points_from_segments(segments)
+			return {"valid": true, "route_id": route_id, "segments": segments, "points": points, "duration_milliseconds": _path_duration_milliseconds(points)}
+		for road_value in roads_by_id.values():
+			var road: Dictionary = road_value
+			if not bool(road.get("built", false)) or StringName(road.get("state", &"")) != ROAD_OPEN:
+				continue
+			var next_point := &""
+			var forward := true
+			if StringName(road.get("source_point_id", &"")) == current_point:
+				next_point = StringName(road.get("target_point_id", &""))
+			elif StringName(road.get("target_point_id", &"")) == current_point:
+				next_point = StringName(road.get("source_point_id", &""))
+				forward = false
+			if next_point == &"" or visited.has(next_point):
+				continue
+			visited[next_point] = true
+			var next_segments: Array = Array(current.get("segments", [])).duplicate(true)
+			next_segments.append({"road_id": StringName(road.get("road_id", &"")), "forward": forward})
+			queue.append({"point_id": next_point, "segments": next_segments})
+	return {"valid": false, "error": "没有连通的已完工道路路径"}
+
+
+func _path_id(segments: Array) -> StringName:
+	if segments.size() == 1:
+		return StringName(Dictionary(segments.front()).get("road_id", &""))
+	var tokens: Array[String] = []
+	for segment_value in segments:
+		var segment: Dictionary = segment_value
+		tokens.append("%s:%s" % [String(segment.get("road_id", &"")), "f" if bool(segment.get("forward", false)) else "r"])
+	return StringName(PATH_PREFIX + "|".join(tokens))
+
+
+func _path_segments(route_id: StringName) -> Array[Dictionary]:
+	if not String(route_id).begins_with(PATH_PREFIX):
+		return []
+	var result: Array[Dictionary] = []
+	for token in String(route_id).trim_prefix(PATH_PREFIX).split("|", false):
+		var parts := token.rsplit(":", true, 1)
+		if parts.size() != 2 or not roads_by_id.has(StringName(parts[0])) or parts[1] not in ["f", "r"]:
+			return []
+		result.append({"road_id": StringName(parts[0]), "forward": parts[1] == "f"})
+	return result
+
+
+func _path_world_points(route_id: StringName) -> Array:
+	return _path_world_points_from_segments(_path_segments(route_id))
+
+
+func _path_world_points_from_segments(segments: Array) -> Array:
+	var result: Array = []
+	for segment_value in segments:
+		var segment: Dictionary = segment_value
+		var points: Array = Array(Dictionary(roads_by_id.get(StringName(segment.get("road_id", &"")), {})).get("route_world_points", [])).duplicate(true)
+		if not bool(segment.get("forward", false)):
+			points.reverse()
+		if not result.is_empty() and not points.is_empty():
+			points.pop_front()
+		result.append_array(points)
+	return result
+
+
+func _path_duration_milliseconds(points: Array) -> int:
+	var length := 0.0
+	for index in range(1, points.size()):
+		length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
+	return maxi(6000, ceili(length * 20.0))
+
+
+func _validate_runtime_path(source_point_id: StringName, target_point_id: StringName, route_id: StringName, route_world_points: Array) -> Dictionary:
+	var segments := _path_segments(route_id)
+	var points := _path_world_points_from_segments(segments)
+	if segments.size() < 2 or points != route_world_points:
+		return {"valid": false, "error_id": &"PATH_MISMATCH", "error": "军令路径与已确认路段不一致"}
+	var first: Dictionary = Dictionary(segments.front())
+	var last: Dictionary = Dictionary(segments.back())
+	var first_road := Dictionary(roads_by_id.get(StringName(first.road_id), {}))
+	var last_road := Dictionary(roads_by_id.get(StringName(last.road_id), {}))
+	var actual_source := StringName(first_road.get("source_point_id", &"")) if bool(first.forward) else StringName(first_road.get("target_point_id", &""))
+	var actual_target := StringName(last_road.get("target_point_id", &"")) if bool(last.forward) else StringName(last_road.get("source_point_id", &""))
+	if actual_source != source_point_id or actual_target != target_point_id or not is_route_open(route_id):
+		return {"valid": false, "error_id": &"ROAD_DAMAGED", "error": "路径道路不再可通行"}
+	return {"valid": true, "error_id": &"", "error": "", "route": {"route_id": route_id, "route_world_points": points, "segment_ids": segments}}
 
 
 func get_runtime_points() -> Dictionary:
