@@ -69,6 +69,16 @@ projection refreshed. The map renders specialists at their actual current
 position. R2 smoke now has 23 assertions, including continuous movement and
 the never-observed fog boundary.
 
+### R2 formal draft-contract checkpoint
+
+The map now normalizes every authoritative runtime road into a stable UI draft
+with `route_id`, `target_point_id` and `points`; confirmation no longer reads
+missing legacy route fields. Engineering drag release creates a cancellable
+draft and only its explicit confirmation spends resources or creates a project.
+The macro runner has 16 assertions, including automated formal map-draft and
+engineering-draft-to-controller coverage. This is automated UI wiring, not
+system-input media.
+
 ### R2 continuation checkpoint
 
 Specialists now move over shared logical milliseconds rather than jumping to a

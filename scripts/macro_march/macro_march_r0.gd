@@ -9,6 +9,7 @@ const ARMY_REGISTRY = preload("res://scripts/army/army_registry.gd")
 
 var _dispatch_adapter: V5ArmyDispatchAdapter
 var _draft_route: Dictionary = {}
+var _engineering_draft: Dictionary = {}
 var _selected_formation_ids: Array[StringName] = []
 var _draw_points: Array[Vector2] = []
 var _is_drawing := false
@@ -152,18 +153,30 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	var specialists: Dictionary = field.get("specialists_by_id", {})
 	var projects: Dictionary = field.get("projects_by_id", {})
 	var visible_patrols: Dictionary = field.get("visible_patrols_by_id", {})
-	_scout_button.visible = specialists.size() < 2
-	_engineer_button.visible = specialists.size() < 2
+	_scout_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_SCOUT) < 1
+	_engineer_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_ENGINEER) < 1
 	_side_road_button.visible = not specialists.is_empty()
-	_side_road_button.disabled = projects.size() > 0
+	_side_road_button.disabled = not _has_idle_engineer(specialists)
 	var source_id := _source_point_id(model, army)
 	var source := _point_from_model(model, source_id)
 	var draft_text := "未画路线"
 	if not _draft_route.is_empty():
 		draft_text = "%s → %s" % [
 		str(source.get("display_name", source_id)),
-		str(_point_from_model(model, StringName(_draft_route.target_point_id)).get("display_name", _draft_route.target_point_id)),
+		str(_point_from_model(model, StringName(_draft_route.get("target_point_id", &""))).get("display_name", _draft_route.get("target_point_id", &""))),
 		]
+	if _engineering_mode or not _engineering_draft.is_empty():
+		_confirm_button.visible = true
+		_confirm_button.text = "确认施工"
+		_confirm_button.disabled = _engineering_draft.is_empty()
+		_block_button.visible = false
+		_recover_button.visible = false
+		_retreat_button.visible = false
+		_status_label.text = "工程草稿待确认；右键取消不会扣除资源。" if not _engineering_draft.is_empty() else "工程绘线：从工程师所在位置拖出道路。"
+		_detail_label.text = "工程师：%s\n路径点：%d\n路线类型：普通路\n确认后才会扣除施工资源。" % [
+			String(_engineering_engineer_id), Array(_engineering_draft.get("route_world_points", _draw_points)).size(),
+		]
+		return
 	if army.is_empty():
 		_status_label.text = ("工程绘线：从%s拖到可施工位置，确认后工程师前往施工。" if _engineering_mode else "从%s按住左键沿道路画到驻扎点或敌城；草稿可取消，确认后不可改道。") % str(source.get("display_name", source_id))
 		_detail_label.text = "驻点：%s\n路线草稿：%s\n选择编队：%d\n粮食：%d\n侦察情报：%d\n工程：%d" % [
@@ -206,7 +219,8 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_scout_button.visible = specialists.size() < 2
 	_engineer_button.visible = specialists.size() < 2
 	_side_road_button.visible = not specialists.is_empty()
-	_confirm_button.disabled = _draft_route.is_empty() or _selected_formation_ids.is_empty()
+	_confirm_button.text = "确认施工" if not _engineering_draft.is_empty() else "确认并锁定军令"
+	_confirm_button.disabled = (_engineering_draft.is_empty() and (_draft_route.is_empty() or _selected_formation_ids.is_empty()))
 
 
 func _toggle_formation(formation_id: StringName) -> void:
@@ -217,10 +231,34 @@ func _toggle_formation(formation_id: StringName) -> void:
 	refresh()
 
 
+func _count_available_specialists(specialists: Dictionary, role: StringName) -> int:
+	var count := 0
+	for specialist_value in specialists.values():
+		var specialist: Dictionary = specialist_value
+		if StringName(specialist.get("role", &"")) == role and bool(specialist.get("alive", false)):
+			count += 1
+	return count
+
+
+func _has_idle_engineer(specialists: Dictionary) -> bool:
+	for specialist_value in specialists.values():
+		var specialist: Dictionary = specialist_value
+		if (
+			StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER
+			and bool(specialist.get("alive", false))
+			and StringName(specialist.get("phase", &"")) != FieldTacticsState.SPECIALIST_BUILDING
+		):
+			return true
+	return false
+
+
 func _on_gui_input(event: InputEvent) -> void:
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		if not _draft_route.is_empty() or not _draw_points.is_empty():
+		if not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty():
 			_draft_route = {}
+			_engineering_draft = {}
+			_engineering_mode = false
+			_engineering_engineer_id = &""
 			_draw_points.clear()
 			_status_label.text = "路线草稿已取消；没有资源、编队或军令写入。"
 			queue_redraw()
@@ -288,8 +326,8 @@ func _finish_draw() -> void:
 		_status_label.text = str(decision.error)
 		queue_redraw()
 		return
-	_draft_route = Dictionary(decision.route).duplicate(true)
-	_status_label.text = "路线草稿已吸附到%s；确认后军令和粮食将锁定。" % str(_draft_route.display_name)
+	_draft_route = _ui_route_draft(Dictionary(decision.route))
+	_status_label.text = "路线草稿已吸附到%s；确认后军令和粮食将锁定。" % str(_point_from_model(model, StringName(_draft_route.get("target_point_id", &""))).get("display_name", _draft_route.get("target_point_id", &"")))
 	refresh()
 
 
@@ -298,37 +336,52 @@ func _finish_engineering_draw(model: Dictionary, source_id: StringName) -> void:
 		_status_label.text = "工程路线至少需要两个位置。"
 		return
 	var target_id := _nearest_target_at_draw_end(source_id)
-	if target_id == &"":
-		target_id = StringName("camp.site.%06d" % (Dictionary(model.get("runtime_points", {})).size() + 1))
-	var result := _dispatch_adapter.begin_field_road_project(
-		_engineering_engineer_id, source_id, target_id, _draw_points,
-		FieldTacticsState.ROAD_NORMAL, true
-	)
-	if not bool(result.get("success", false)):
-		_status_label.text = str(result.get("error", "工程施工失败"))
-		return
-	_engineering_mode = false
-	_engineering_engineer_id = &""
+	_engineering_draft = {
+		"engineer_id": _engineering_engineer_id,
+		"source_point_id": source_id,
+		"target_point_id": target_id,
+		"route_world_points": _draw_points.duplicate(true),
+		"road_kind": FieldTacticsState.ROAD_NORMAL,
+		"build_camp": true,
+	}
 	_draw_points.clear()
-	_status_label.text = "工程军令已锁定；道路和驻点将在施工完成后开放通军。"
+	_status_label.text = "工程草稿已生成；确认施工才会扣除资源并派工程师前往。"
 	refresh()
 
 
 func _confirm_draft() -> void:
-	if _dispatch_adapter == null or _draft_route.is_empty():
+	if _dispatch_adapter == null:
+		return
+	if not _engineering_draft.is_empty():
+		var engineering := _engineering_draft.duplicate(true)
+		var engineering_result := _dispatch_adapter.begin_field_road_project(
+			StringName(engineering.engineer_id), StringName(engineering.source_point_id),
+			StringName(engineering.target_point_id), Array(engineering.route_world_points),
+			StringName(engineering.road_kind), bool(engineering.build_camp)
+		)
+		if not bool(engineering_result.get("success", false)):
+			_status_label.text = str(engineering_result.get("error", "工程施工失败"))
+			return
+		_engineering_draft = {}
+		_engineering_mode = false
+		_engineering_engineer_id = &""
+		_status_label.text = "工程军令已锁定；道路和驻点将在施工完成后开放通军。"
+		refresh()
+		return
+	if _draft_route.is_empty():
 		return
 	var model := _model()
 	var army := _selected_army(model)
 	var result: Dictionary = {}
 	if not _selected_formation_ids.is_empty() or army.is_empty():
 		result = _dispatch_adapter.commit_macro_march_from_city(
-			_selected_formation_ids, StringName(_draft_route.target_point_id),
-			StringName(_draft_route.route_id), Array(_draft_route.points)
+			_selected_formation_ids, StringName(_draft_route.get("target_point_id", &"")),
+			StringName(_draft_route.get("route_id", &"")), Array(_draft_route.get("points", []))
 		)
 	else:
 		result = _dispatch_adapter.commit_macro_march_from_station(
-			StringName(army.army_id), StringName(_draft_route.target_point_id),
-			StringName(_draft_route.route_id), Array(_draft_route.points)
+			StringName(army.army_id), StringName(_draft_route.get("target_point_id", &"")),
+			StringName(_draft_route.get("route_id", &"")), Array(_draft_route.get("points", []))
 		)
 	if not bool(result.get("success", false)):
 		_status_label.text = str(result.get("error", "军令确认失败"))
@@ -487,6 +540,18 @@ func _choose_runtime_route_from_draw(model: Dictionary, source_id: StringName, t
 	if best_route.is_empty() or best_score > 105.0:
 		return {"valid": false, "error": "路线偏离可通行道路，或道路尚未完成。"}
 	return {"valid": true, "route": best_route}
+
+
+func _ui_route_draft(route: Dictionary) -> Dictionary:
+	# Map drafts deliberately use their own stable UI contract.  Runtime roads
+	# use road_id/route_world_points, while authored roads formerly used
+	# route_id/points; normalizing here prevents display code from silently
+	# depending on either persistence representation.
+	return {
+		"route_id": StringName(route.get("road_id", route.get("route_id", &""))),
+		"target_point_id": StringName(route.get("target_point_id", &"")),
+		"points": Array(route.get("route_world_points", route.get("points", []))).duplicate(true),
+	}
 
 
 func _draw_route_score(drawn: Array, route: Array) -> float:

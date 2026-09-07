@@ -35,6 +35,9 @@
 - Specialist movement and fog use persisted world coordinates. A historical
 	intel record exists only after actual visibility, never as a side effect of
 	reading the player projection.
+- Map drafts are a presentation contract distinct from persisted road records.
+	They normalize road identity and polyline before confirmation; engineering
+	drafts have no resource side effect until the explicit confirm action.
 
 ## Macro March R0 outer-city greybox
 

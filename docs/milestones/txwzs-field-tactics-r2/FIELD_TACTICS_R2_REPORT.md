@@ -75,6 +75,13 @@ coordinate radius, and an unobserved patrol remains unobserved through repeated
 projection refreshes. The focused R2 runner has 23 assertions. Patrol movement,
 army encounters and normal-input verification remain open.
 
+The formal map now normalizes runtime-road records before using them as UI
+drafts, eliminating the old `road_id/route_world_points` versus
+`route_id/points` mismatch. Engineering drag release creates a cancellable
+draft; only confirmation writes its resource transaction. The macro runner has
+16 assertions including automated map-to-controller checks. This is not a
+replacement for system-input evidence.
+
 This is not a complete R2 play-flow delivery. The formal map does not yet offer
 a full player-operated specialist drag-line workflow, nor does the formal
 controller yet settle patrol/ambush damage against armies or apply

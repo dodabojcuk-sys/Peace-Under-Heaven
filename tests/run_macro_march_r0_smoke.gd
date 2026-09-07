@@ -176,7 +176,53 @@ func _run() -> void:
 		"旧 V6/R1E 快照保持可验证，不能凭迁移凭空生成宏观军令"
 	)
 	await _drop_scene(restored_context.scene)
+	await _run_map_draft_contract()
 	_finish()
+
+
+func _run_map_draft_contract() -> void:
+	var context := await _new_city(80)
+	var scene: Node = context.scene
+	var city: Node = context.city
+	var macro_screen: MacroMarchR0 = scene.get_node("UI/MacroMarchR0")
+	scene.open_macro_march_r0()
+	var route: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	macro_screen._selected_formation_ids = [StringName(roster[0].formation_id)]
+	for point in Array(route.points):
+		macro_screen._draw_points.append(Vector2(point))
+	macro_screen._finish_draw()
+	var drafted := macro_screen._draft_route.duplicate(true)
+	var food_before: int = city.food
+	macro_screen._confirm_draft()
+	var armies: Array = city.get_macro_march_read_model().armies
+	_check(
+		StringName(drafted.get("route_id", &"")) == StringName(route.route_id)
+		and Array(drafted.get("points", [])) == Array(route.points)
+		and not armies.is_empty()
+		and city.food < food_before,
+		"自动化地图绘线草稿经确认进入正式军令，运行时字段不会破坏扣费或发令"
+	)
+	var engineer_dispatch: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var engineer_id := StringName(Dictionary(engineer_dispatch.get("specialist", {})).get("specialist_id", &""))
+	var construction_food_before: int = city.food
+	macro_screen._engineering_mode = true
+	macro_screen._engineering_engineer_id = engineer_id
+	macro_screen._draw_points = [Vector2(150, 430), Vector2(290, 410), Vector2(470, 355)]
+	macro_screen._finish_draw()
+	var engineering_draft := macro_screen._engineering_draft.duplicate(true)
+	var construction_food_after_draft: int = city.food
+	macro_screen._confirm_draft()
+	_check(
+		bool(engineer_dispatch.get("success", false))
+		and not engineering_draft.is_empty()
+		and String(engineering_draft.get("target_point_id", &"")) == ""
+		and construction_food_after_draft == construction_food_before
+		and city.food < construction_food_before
+		and not Dictionary(city.get_field_tactics_read_model().projects_by_id).is_empty(),
+		"自动化工程绘线松手只形成草稿，确认后才扣资源并创建施工项目"
+	)
+	await _drop_scene(scene)
 
 
 func _new_city(food_amount: int) -> Dictionary:

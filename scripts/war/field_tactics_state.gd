@@ -128,13 +128,16 @@ func begin_road_project(
 	build_camp: bool = false
 ) -> Dictionary:
 	var engineer := Dictionary(specialists_by_id.get(engineer_id, {}))
+	var resolved_target_point_id := target_point_id
+	if resolved_target_point_id == &"" and build_camp:
+		resolved_target_point_id = StringName("camp.site.%06d" % next_camp_sequence)
 	if (
 		engineer.is_empty() or not bool(engineer.get("alive", false))
 		or StringName(engineer.get("role", &"")) != SPECIALIST_ENGINEER
 		or StringName(engineer.get("phase", &"")) == SPECIALIST_BUILDING
 		or StringName(engineer.get("project_id", &"")) != &""
 		or StringName(engineer.get("current_point_id", &"")) != source_point_id
-		or target_point_id == &"" or target_point_id == source_point_id
+		or resolved_target_point_id == &"" or resolved_target_point_id == source_point_id
 		or route_world_points.size() < 2
 		or road_kind not in [ROAD_NORMAL, ROAD_REINFORCED, ROAD_BRIDGE]
 	):
@@ -153,7 +156,7 @@ func begin_road_project(
 		"engineer_id": engineer_id,
 		"road_id": road_id,
 		"source_point_id": source_point_id,
-		"target_point_id": target_point_id,
+		"target_point_id": resolved_target_point_id,
 		"route_world_points": route_world_points.duplicate(true),
 		"road_kind": road_kind,
 		"progress_milliseconds": 0,

@@ -47,6 +47,9 @@
 - Added persisted interpolated specialist coordinates and distance-limited
   visibility; fixed refreshes incorrectly turning never-seen patrols into
   historical intel, with R2 regression coverage.
+- Normalized runtime-road facts into explicit map drafts and made engineering
+  drag release cancellable; only confirmation commits construction resources.
+- Added automated formal map draft/confirmation regression coverage.
 
 ### WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate
 
