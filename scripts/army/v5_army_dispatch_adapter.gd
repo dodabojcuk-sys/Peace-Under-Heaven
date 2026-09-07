@@ -100,6 +100,14 @@ func get_macro_march_read_model() -> Dictionary:
 	return city.get_macro_march_read_model() if city != null else {}
 
 
+func get_macro_march_command_preview(
+	formation_ids: Array,
+	army_id: StringName = &""
+) -> Dictionary:
+	var city := _get_city()
+	return city.get_macro_march_command_preview(formation_ids, army_id) if city != null else {}
+
+
 func get_field_tactics_read_model() -> Dictionary:
 	var city := _get_city()
 	return city.get_field_tactics_read_model() if city != null else {}

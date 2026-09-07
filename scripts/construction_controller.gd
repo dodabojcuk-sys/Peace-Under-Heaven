@@ -5337,6 +5337,26 @@ func get_macro_march_food_cost(total_count: int) -> int:
 	return get_first_war_food_cost(total_count)
 
 
+# Presentation may request this immutable projection, but only the command
+# methods below may charge food or alter garrison and army records.
+func get_macro_march_command_preview(formation_ids: Array, army_id: StringName = &"") -> Dictionary:
+	var committed_total := 0
+	if army_id != &"":
+		var army := _army_registry.get_army(army_id)
+		for count in Dictionary(army.get("units_by_definition_id", {})).values():
+			committed_total += int(count)
+	else:
+		for formation in _garrison_state.get_selected_formations(formation_ids):
+			committed_total += int(formation.member_count)
+	var food_cost := get_macro_march_food_cost(committed_total)
+	return {
+		"committed_total": committed_total,
+		"food_cost": food_cost,
+		"food_available": food,
+		"food_shortage": maxi(0, food_cost - food),
+	}
+
+
 func _ensure_war_loop_initialized() -> void:
 	_war_loop_state.initialize_from_theater(
 		MACRO_MARCH_THEATER.get_points(), MACRO_MARCH_THEATER.get_routes(),

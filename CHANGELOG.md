@@ -14,6 +14,20 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 map and command UI checkpoint
+
+- Replaced fixed 1000×650 screen compression with a shared tactical-map camera:
+  cursor-anchored wheel zoom, middle-drag pan, minimap recentering and
+  cross-edge draft continuity all preserve world-coordinate command semantics.
+- Rebuilt the right command column as a scrollable formation list plus a
+  bottom-anchored action zone. At 1152, 1280 and 1920 widths, visible controls
+  remain inside the game window and do not overlap the map.
+- Added greybox terrain/shore, road-kind, bridge, camp, flag-army and specialist
+  readability markers, alongside controller-owned selected-force and food
+  preview copy. Macro March smoke now has 26 automated assertions.
+- This is not normal-input media, a complete R2 playable loop, Founder
+  acceptance, deployment or a balance sign-off.
+
 ### FIELD_TACTICS_R2 engineering checkpoint
 
 - Reserved dynamic camp IDs at engineering confirmation, added repeat-click

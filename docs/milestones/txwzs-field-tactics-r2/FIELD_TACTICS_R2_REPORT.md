@@ -11,6 +11,26 @@ transaction and persistence-checkpoint caller.
 
 ## Delivered engineering evidence
 
+### Map camera and command UI follow-up
+
+The outer-city map uses a single screen/world camera transform for rendering,
+hit testing and drafting. Cursor-anchored wheel zoom, middle-drag panning,
+minimap recentering and edge-drawing pan all retain the same command world
+coordinates. The camera has no resource, order or persistence authority.
+
+Formation controls now live in a scroll container and action controls are
+bottom-anchored outside that list. The focused macro test checks all visible
+controls at 1152×648, 1280×648 and 1920×648, injects zoom/pan/drag events into
+the formal map screen, and proves the controller's selected-force/food preview
+does not mutate the V5 snapshot. It currently passes 26 assertions under
+Godot 4.5.1. This is automated UI evidence only, not system-input screenshots
+or a video.
+
+The map also adds greybox forest, shore, bridge, road, camp, flag-army and
+specialist-role representation for readability. It does not implement a
+multi-segment graph, patrol-versus-army casualties, normal-input playthrough
+or Founder acceptance.
+
 ### Formal-input and repair follow-up
 
 - Confirming a camp-building project reserves its `camp_id` and its generated

@@ -7,6 +7,14 @@ signal return_to_city_requested
 const THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
 const ARMY_REGISTRY = preload("res://scripts/army/army_registry.gd")
 
+const CAMERA_MIN_ZOOM := 0.62
+const CAMERA_MAX_ZOOM := 2.4
+const CAMERA_ZOOM_STEP := 1.18
+# The tactical theatre deliberately extends beyond the current roads.  It
+# gives the camera room for scouting, future camps, and cross-screen drawing
+# without changing the persisted coordinates of existing R0/R1 roads.
+const TACTICAL_WORLD_BOUNDS := Rect2(Vector2(-260, -180), Vector2(1520, 1040))
+
 var _dispatch_adapter: V5ArmyDispatchAdapter
 var _draft_route: Dictionary = {}
 var _engineering_draft: Dictionary = {}
@@ -20,10 +28,16 @@ var _selected_damaged_road_id: StringName = &""
 var _last_army_hit_position := Vector2.INF
 var _army_hit_cycle_index := 0
 var _formation_buttons: Array[Button] = []
+var _camera_center := Vector2(500, 325)
+var _camera_zoom := 1.0
+var _is_panning := false
+var _last_pan_position := Vector2.ZERO
 
 var _title_label := Label.new()
 var _status_label := Label.new()
 var _detail_label := Label.new()
+var _formation_scroll := ScrollContainer.new()
+var _formation_list := VBoxContainer.new()
 var _confirm_button := Button.new()
 var _block_button := Button.new()
 var _recover_button := Button.new()
@@ -81,6 +95,12 @@ func _build_ui() -> void:
 	_status_label.add_theme_color_override("font_color", Color("f4f0df"))
 	_detail_label.add_theme_font_size_override("font_size", 14)
 	_detail_label.add_theme_color_override("font_color", Color("3e3428"))
+	_formation_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	_formation_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	_formation_scroll.mouse_filter = Control.MOUSE_FILTER_STOP
+	_formation_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_formation_scroll.add_child(_formation_list)
+	add_child(_formation_scroll)
 	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _return_button]:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
@@ -101,34 +121,33 @@ func _build_ui() -> void:
 
 
 func _layout_ui() -> void:
-	var panel_left := size.x - 306.0
+	var panel_rect := _side_panel_rect()
+	var action_height := 40.0
+	var action_gap := 6.0
+	var action_count := 5
+	var action_top := maxf(panel_rect.position.y + 302.0, size.y - 18.0 - (action_height + action_gap) * action_count)
+	var panel_inner := Rect2(panel_rect.position + Vector2(14, 12), panel_rect.size - Vector2(28, 24))
 	_title_label.position = Vector2(22, 12)
 	_title_label.size = Vector2(size.x - 44, 34)
 	_status_label.position = Vector2(22, 48)
 	_status_label.size = Vector2(size.x - 44, 36)
-	_detail_label.position = Vector2(panel_left + 18, 108)
-	_detail_label.size = Vector2(270, 180)
-	var y := 302.0
+	_detail_label.position = panel_inner.position
+	_detail_label.size = Vector2(panel_inner.size.x, 106)
+	_formation_scroll.position = panel_inner.position + Vector2(0, 114)
+	_formation_scroll.size = Vector2(panel_inner.size.x, maxf(68.0, action_top - _formation_scroll.position.y - 8.0))
 	for button in _formation_buttons:
-		button.position = Vector2(panel_left + 16, y)
-		button.size = Vector2(274, 42)
-		y += 48.0
-	_confirm_button.position = Vector2(panel_left + 16, y + 6)
-	_confirm_button.size = Vector2(274, 42)
-	_block_button.position = Vector2(panel_left + 16, y + 56)
-	_block_button.size = Vector2(274, 38)
-	_recover_button.position = Vector2(panel_left + 16, y + 100)
-	_recover_button.size = Vector2(274, 38)
-	_retreat_button.position = Vector2(panel_left + 16, y + 144)
-	_retreat_button.size = Vector2(274, 38)
-	_scout_button.position = Vector2(panel_left + 16, y + 188)
-	_scout_button.size = Vector2(274, 36)
-	_engineer_button.position = Vector2(panel_left + 16, y + 230)
-	_engineer_button.size = Vector2(274, 36)
-	_side_road_button.position = Vector2(panel_left + 16, y + 272)
-	_side_road_button.size = Vector2(274, 36)
-	_return_button.position = Vector2(panel_left + 16, size.y - 58)
-	_return_button.size = Vector2(274, 38)
+		button.custom_minimum_size = Vector2(panel_inner.size.x - 10.0, 38)
+	var action_buttons: Array[Button] = [_confirm_button, _retreat_button, _scout_button, _engineer_button, _side_road_button]
+	for index in action_buttons.size():
+		var button := action_buttons[index]
+		button.position = Vector2(panel_inner.position.x, action_top + index * (action_height + action_gap))
+		button.size = Vector2(panel_inner.size.x, action_height)
+	_block_button.position = Vector2(panel_inner.position.x, action_top)
+	_block_button.size = Vector2(panel_inner.size.x, action_height)
+	_recover_button.position = Vector2(panel_inner.position.x, action_top + action_height + action_gap)
+	_recover_button.size = Vector2(panel_inner.size.x, action_height)
+	_return_button.position = Vector2(panel_inner.position.x, size.y - 52)
+	_return_button.size = Vector2(panel_inner.size.x, 36)
 
 
 func _refresh_formation_controls(formations: Array, army: Dictionary) -> void:
@@ -146,7 +165,7 @@ func _refresh_formation_controls(formations: Array, army: Dictionary) -> void:
 		button.toggle_mode = true
 		button.button_pressed = formation_id in _selected_formation_ids
 		button.pressed.connect(_toggle_formation.bind(formation_id))
-		add_child(button)
+		_formation_list.add_child(button)
 		_formation_buttons.append(button)
 
 
@@ -187,9 +206,17 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		return
 	if army.is_empty():
 		_status_label.text = ("工程绘线：从%s拖到可施工位置，确认后工程师前往施工。" if _engineering_mode else "从%s按住左键沿道路画到驻扎点或敌城；草稿可取消，确认后不可改道。") % str(source.get("display_name", source_id))
-		_detail_label.text = "驻点：%s\n路线草稿：%s\n选择编队：%d\n粮食：%d\n侦察情报：%d\n工程：%d" % [
-			str(source.get("display_name", source_id)), draft_text, _selected_formation_ids.size(), int(model.food),
-			visible_patrols.size(), projects.size(),
+		var draft_duration := THEATER.duration_milliseconds(StringName(_draft_route.get("route_id", &""))) if not _draft_route.is_empty() else 0
+		var preview := _dispatch_adapter.get_macro_march_command_preview(_selected_formation_ids) if _dispatch_adapter != null else {}
+		var selected_members := int(preview.get("committed_total", _selected_formation_member_count(Array(model.get("formations", [])))))
+		var estimated_food := int(preview.get("food_cost", 0))
+		var food_line := "预计粮食：%d" % estimated_food
+		var food_shortage := int(preview.get("food_shortage", maxi(0, estimated_food - int(model.food))))
+		if food_shortage > 0:
+			food_line += "（缺少 %d）" % food_shortage
+		_detail_label.text = "出发点：%s\n路线：%s\n编队：%d / %d 人\n预计时长：%0.1f 秒\n%s\n已见敌情：%d · 施工：%d" % [
+			str(source.get("display_name", source_id)), draft_text, _selected_formation_ids.size(), selected_members,
+			float(draft_duration) / 1000.0, food_line, visible_patrols.size(), projects.size(),
 		]
 	else:
 		var macro: Dictionary = army.macro_march
@@ -241,6 +268,15 @@ func _toggle_formation(formation_id: StringName) -> void:
 	refresh()
 
 
+func _selected_formation_member_count(formations: Array) -> int:
+	var total := 0
+	for formation_value in formations:
+		var formation: Dictionary = formation_value
+		if StringName(formation.get("formation_id", &"")) in _selected_formation_ids:
+			total += int(formation.get("member_count", 0))
+	return total
+
+
 func _count_available_specialists(specialists: Dictionary, role: StringName) -> int:
 	var count := 0
 	for specialist_value in specialists.values():
@@ -263,6 +299,28 @@ func _has_idle_engineer(specialists: Dictionary) -> bool:
 
 
 func _on_gui_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_MIDDLE:
+		_is_panning = event.pressed
+		_last_pan_position = event.position
+		accept_event()
+		return
+	if event is InputEventMouseButton and event.button_index in [MOUSE_BUTTON_WHEEL_UP, MOUSE_BUTTON_WHEEL_DOWN]:
+		if _map_rect().has_point(event.position):
+			var zoom_factor := CAMERA_ZOOM_STEP if event.button_index == MOUSE_BUTTON_WHEEL_UP else 1.0 / CAMERA_ZOOM_STEP
+			_zoom_at_screen_position(event.position, _camera_zoom * zoom_factor)
+			accept_event()
+		return
+	if event is InputEventMouseMotion:
+		if _is_panning:
+			_pan_by_screen_delta(event.position - _last_pan_position)
+			_last_pan_position = event.position
+			accept_event()
+			return
+		if _is_drawing:
+			_append_draw_point(event.position)
+			_pan_while_drawing(event.position)
+			accept_event()
+			return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
 		if not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty() or _selected_damaged_road_id != &"":
 			_draft_route = {}
@@ -276,12 +334,14 @@ func _on_gui_input(event: InputEvent) -> void:
 			accept_event()
 		return
 	if not event is InputEventMouseButton or event.button_index != MOUSE_BUTTON_LEFT:
-		if event is InputEventMouseMotion and _is_drawing:
-			_append_draw_point(event.position)
 		return
 	var map_rect := _map_rect()
 	if event.pressed:
 		if not map_rect.has_point(event.position):
+			return
+		if _minimap_rect().has_point(event.position):
+			_center_camera_from_minimap(event.position)
+			accept_event()
 			return
 		var selected_id := _army_id_at_screen(_model(), event.position)
 		if selected_id != &"":
@@ -322,6 +382,38 @@ func _append_draw_point(screen_position: Vector2) -> void:
 	var world := _screen_to_world(screen_position)
 	if _draw_points.is_empty() or _draw_points.back().distance_to(world) >= 12.0:
 		_draw_points.append(world)
+		queue_redraw()
+
+
+func _zoom_at_screen_position(screen_position: Vector2, requested_zoom: float) -> void:
+	var anchor_world := _screen_to_world(screen_position)
+	_camera_zoom = clampf(requested_zoom, CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM)
+	_camera_center = anchor_world - (screen_position - _map_rect().get_center()) / _camera_zoom
+	_clamp_camera()
+	queue_redraw()
+
+
+func _pan_by_screen_delta(screen_delta: Vector2) -> void:
+	_camera_center -= screen_delta / _camera_zoom
+	_clamp_camera()
+	queue_redraw()
+
+
+func _pan_while_drawing(screen_position: Vector2) -> void:
+	var rect := _map_rect()
+	var edge := 24.0
+	var delta := Vector2.ZERO
+	if screen_position.x <= rect.position.x + edge:
+		delta.x = -12.0
+	elif screen_position.x >= rect.end.x - edge:
+		delta.x = 12.0
+	if screen_position.y <= rect.position.y + edge:
+		delta.y = -12.0
+	elif screen_position.y >= rect.end.y - edge:
+		delta.y = 12.0
+	if not delta.is_zero_approx():
+		_camera_center += delta / _camera_zoom
+		_clamp_camera()
 		queue_redraw()
 
 
@@ -677,34 +769,65 @@ func _model() -> Dictionary:
 
 
 func _map_rect() -> Rect2:
-	return Rect2(Vector2(22, 96), Vector2(maxf(size.x - 350.0, 400.0), maxf(size.y - 122.0, 360.0)))
+	var panel_width := clampf(size.x * 0.28, 272.0, 340.0)
+	return Rect2(Vector2(22, 96), Vector2(maxf(size.x - panel_width - 44.0, 400.0), maxf(size.y - 122.0, 360.0)))
+
+
+func _side_panel_rect() -> Rect2:
+	var panel_width := clampf(size.x * 0.28, 272.0, 340.0)
+	return Rect2(Vector2(size.x - panel_width - 14.0, 94), Vector2(panel_width, maxf(size.y - 108.0, 360.0)))
+
+
+func _minimap_rect() -> Rect2:
+	var map_rect := _map_rect()
+	var minimap_size := Vector2(minf(156.0, map_rect.size.x * 0.25), minf(104.0, map_rect.size.y * 0.22))
+	return Rect2(map_rect.end - minimap_size - Vector2(14, 14), minimap_size)
+
+
+func _visible_world_rect() -> Rect2:
+	return Rect2(_camera_center - _map_rect().size / _camera_zoom * 0.5, _map_rect().size / _camera_zoom)
+
+
+func _clamp_camera() -> void:
+	var visible_size := _visible_world_rect().size
+	var minimum_center := TACTICAL_WORLD_BOUNDS.position + visible_size * 0.5
+	var maximum_center := TACTICAL_WORLD_BOUNDS.end - visible_size * 0.5
+	if minimum_center.x > maximum_center.x:
+		_camera_center.x = TACTICAL_WORLD_BOUNDS.get_center().x
+	else:
+		_camera_center.x = clampf(_camera_center.x, minimum_center.x, maximum_center.x)
+	if minimum_center.y > maximum_center.y:
+		_camera_center.y = TACTICAL_WORLD_BOUNDS.get_center().y
+	else:
+		_camera_center.y = clampf(_camera_center.y, minimum_center.y, maximum_center.y)
+
+
+func _center_camera_from_minimap(screen_position: Vector2) -> void:
+	var minimap := _minimap_rect()
+	var normalized := (screen_position - minimap.position) / minimap.size
+	_camera_center = TACTICAL_WORLD_BOUNDS.position + TACTICAL_WORLD_BOUNDS.size * normalized
+	_clamp_camera()
+	queue_redraw()
 
 
 func _world_to_screen(world: Vector2) -> Vector2:
-	var rect := _map_rect()
-	return rect.position + Vector2(world.x / 1000.0 * rect.size.x, world.y / 650.0 * rect.size.y)
+	return _map_rect().get_center() + (world - _camera_center) * _camera_zoom
 
 
 func _screen_to_world(screen: Vector2) -> Vector2:
-	var rect := _map_rect()
-	return Vector2(
-		(screen.x - rect.position.x) / rect.size.x * 1000.0,
-		(screen.y - rect.position.y) / rect.size.y * 650.0
-	)
+	return _camera_center + (screen - _map_rect().get_center()) / _camera_zoom
 
 
 func _draw() -> void:
 	var rect := _map_rect()
 	draw_rect(Rect2(Vector2.ZERO, size), Color("19211e"))
 	draw_rect(rect, Color("728b67"))
+	_draw_terrain(rect)
 	for water_region in THEATER.get_water_regions():
 		var water_position := _world_to_screen(Vector2(water_region.position))
-		var water_size := Vector2(
-			float(water_region.size.x) / 1000.0 * rect.size.x,
-			float(water_region.size.y) / 650.0 * rect.size.y
-		)
+		var water_size := Vector2(water_region.size) * _camera_zoom
 		draw_rect(Rect2(water_position, water_size), Color("4c95b5"), true)
-	draw_rect(Rect2(Vector2(size.x - 306, 94), Vector2(292, size.y - 108)), Color("eee4cc"))
+	draw_rect(_side_panel_rect(), Color("eee4cc"))
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
 	for route_value in Dictionary(field.get("roads_by_id", {})).values():
 		var route: Dictionary = route_value
@@ -713,9 +836,11 @@ func _draw() -> void:
 			points.append(_world_to_screen(Vector2(point)))
 		if points.size() < 2:
 			continue
+		var kind := StringName(route.get("road_kind", &""))
 		var damaged := StringName(route.get("state", &"")) == FieldTacticsState.ROAD_DAMAGED
-		var color := Color("66535c") if damaged else (Color("68b8a7") if StringName(route.get("road_kind", &"")) != FieldTacticsState.ROAD_MAIN else Color("b89257"))
-		draw_polyline(points, color, 14.0, true)
+		var color := Color("66535c") if damaged else (Color("68b8a7") if kind == FieldTacticsState.ROAD_NORMAL else (Color("8f62b7") if kind == FieldTacticsState.ROAD_BRIDGE else Color("b89257")))
+		var width := 15.0 if kind == FieldTacticsState.ROAD_MAIN else (12.0 if kind == FieldTacticsState.ROAD_BRIDGE else 10.0)
+		draw_polyline(points, color, width, true)
 		draw_polyline(points, Color("4b3927"), 2.0, true)
 	if not _draft_route.is_empty():
 		var draft_points := PackedVector2Array()
@@ -738,7 +863,9 @@ func _draw() -> void:
 		if not bool(specialist.get("alive", false)):
 			continue
 		var specialist_color := Color("73d7ed") if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else Color("f2b86e")
-		draw_circle(_world_to_screen(Vector2(specialist.get("world_position", Vector2.ZERO))), 9.0, specialist_color)
+		var specialist_position := _world_to_screen(Vector2(specialist.get("world_position", Vector2.ZERO)))
+		draw_circle(specialist_position, 10.0, specialist_color)
+		draw_string(ThemeDB.fallback_font, specialist_position + Vector2(-5, 5), "侦" if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else "工", HORIZONTAL_ALIGNMENT_CENTER, 12, 12, Color("1d2a30"))
 	for point_value in _all_points(_model()).values():
 		var point: Dictionary = point_value
 		var center := _world_to_screen(Vector2(point.world_position))
@@ -746,7 +873,39 @@ func _draw() -> void:
 		draw_circle(center, 25.0, Color("5c2b25") if enemy else Color("273d3c"))
 		draw_circle(center, 18.0, Color("c65a42") if enemy else Color("d7b465"))
 		draw_string(ThemeDB.fallback_font, center + Vector2(-38, 47), str(point.display_name), HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.WHITE)
-	draw_string(ThemeDB.fallback_font, Vector2(30, size.y - 20), "金色：主道 · 青色：工程道路 · 灰色：受损道路 · 蓝：侦察 · 橙：工程", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("e3dcc5"))
+	_draw_minimap()
+	draw_string(ThemeDB.fallback_font, Vector2(30, size.y - 20), "滚轮缩放 · 中键拖动 · 小地图定位 · 金：主道 · 青：道路 · 紫：桥 · 灰：受损 · 蓝侦/橙工", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("e3dcc5"))
+
+
+func _draw_terrain(rect: Rect2) -> void:
+	# Greybox terrain is presentational only.  Routes and interactions continue
+	# to use world coordinates and FieldTacticsState as their sole authority.
+	for forest in [Rect2(250, 80, 170, 135), Rect2(690, 330, 160, 115), Rect2(50, 510, 190, 125)]:
+		var forest_rect := Rect2(_world_to_screen(forest.position), forest.size * _camera_zoom)
+		draw_rect(forest_rect, Color("466044"), true)
+		for offset in [Vector2(18, 24), Vector2(64, 58), Vector2(118, 30), Vector2(140, 92)]:
+			draw_circle(_world_to_screen(forest.position + offset), 9.0 * _camera_zoom, Color("315039"))
+	var shore := Rect2(_world_to_screen(Vector2(500, 330)), Vector2(155, 175) * _camera_zoom)
+	draw_rect(shore, Color("98a969"), false, 3.0)
+	draw_rect(rect, Color("d9cfaa"), false, 2.0)
+
+
+func _draw_minimap() -> void:
+	var minimap := _minimap_rect()
+	draw_rect(minimap, Color("25332f"), true)
+	for water_region in THEATER.get_water_regions():
+		var normalized_position := (Vector2(water_region.position) - TACTICAL_WORLD_BOUNDS.position) / TACTICAL_WORLD_BOUNDS.size
+		var normalized_size := Vector2(water_region.size) / TACTICAL_WORLD_BOUNDS.size
+		draw_rect(Rect2(minimap.position + minimap.size * normalized_position, minimap.size * normalized_size), Color("4c95b5"), true)
+	for point_value in _all_points(_model()).values():
+		var point: Dictionary = point_value
+		var normalized := (Vector2(point.get("world_position", Vector2.ZERO)) - TACTICAL_WORLD_BOUNDS.position) / TACTICAL_WORLD_BOUNDS.size
+		draw_circle(minimap.position + minimap.size * normalized, 3.0, Color("d94d3f") if StringName(point.get("point_kind", &"")) == &"ENEMY_CITY" else Color("f0c46b"))
+	var view := _visible_world_rect()
+	var viewport_position := minimap.position + minimap.size * ((view.position - TACTICAL_WORLD_BOUNDS.position) / TACTICAL_WORLD_BOUNDS.size)
+	var viewport_size := minimap.size * (view.size / TACTICAL_WORLD_BOUNDS.size)
+	draw_rect(Rect2(viewport_position, viewport_size), Color("f6e5ba"), false, 1.5)
+	draw_rect(minimap, Color("e3dcc5"), false, 1.0)
 
 
 func _draw_army_marker(army: Dictionary) -> void:
@@ -758,6 +917,10 @@ func _draw_army_marker(army: Dictionary) -> void:
 	draw_circle(screen, 18.0, Color("f8e3a6") if StringName(army.get("army_id", &"")) == _selected_army_id else Color("4b3927"))
 	draw_circle(screen, 15.0, Color("d94d3f"))
 	draw_circle(screen, 8.0, Color("fff0c5"))
+	draw_colored_polygon(PackedVector2Array([screen + Vector2(4, -22), screen + Vector2(4, -6), screen + Vector2(17, -12)]), Color("f7d46b"))
+	draw_line(screen + Vector2(4, -24), screen + Vector2(4, 6), Color("342b27"), 2.0)
+	for offset in [-7.0, 0.0, 7.0]:
+		draw_circle(screen + Vector2(offset, 12), 3.0, Color("f8e3a6"))
 	if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED:
 		draw_string(ThemeDB.fallback_font, screen + Vector2(18, -12), "受阻驻扎", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("ffe8a3"))
 

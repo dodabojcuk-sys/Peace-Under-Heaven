@@ -177,6 +177,7 @@ func _run() -> void:
 	)
 	await _drop_scene(restored_context.scene)
 	await _run_map_draft_contract()
+	await _run_camera_and_layout_contract()
 	_finish()
 
 
@@ -297,6 +298,100 @@ func _run_mouse_selection_and_replacement_contract() -> void:
 		"sieges": [{"army_id": &"army.first", "gate_hp": 99}, {"army_id": &"army.second", "gate_hp": 41}],
 	}, &"army.second")
 	_check(int(selected_siege.get("gate_hp", 0)) == 41, "攻城详情按选中 army_id 读取对应交战，而非兼容用第一场攻城")
+	await _drop_scene(scene)
+
+
+func _run_camera_and_layout_contract() -> void:
+	var context := await _new_city(100)
+	var scene: Node = context.scene
+	var city: Node = context.city
+	var macro_screen: MacroMarchR0 = scene.get_node("UI/MacroMarchR0")
+	scene.open_macro_march_r0()
+	for width in [1152, 1280, 1920]:
+		root.size = Vector2i(width, 648)
+		await process_frame
+		macro_screen.refresh()
+		var map_rect := macro_screen._map_rect()
+		var panel_rect := macro_screen._side_panel_rect()
+		var all_controls: Array[Control] = [
+			macro_screen._formation_scroll,
+			macro_screen._confirm_button,
+			macro_screen._scout_button,
+			macro_screen._engineer_button,
+			macro_screen._side_road_button,
+			macro_screen._return_button,
+		]
+		var controls_fit := map_rect.end.x < panel_rect.position.x
+		for control in all_controls:
+			if not control.visible:
+				continue
+			var control_rect := control.get_global_rect()
+			controls_fit = controls_fit and control_rect.position.x >= panel_rect.position.x and control_rect.end.x <= float(width) and control_rect.position.y >= panel_rect.position.y and control_rect.end.y <= 648.0
+		_check(
+			controls_fit and macro_screen._formation_scroll.get_parent() == macro_screen and macro_screen._formation_buttons.all(func(button: Button) -> bool: return button.get_parent() == macro_screen._formation_list),
+			"自动化 UI 布局在 %d×648 下保持地图、滚动编队和底部行动区互不覆盖" % width
+		)
+	root.size = Vector2i(1152, 648)
+	await process_frame
+	macro_screen.refresh()
+	var anchor := macro_screen._map_rect().get_center() + Vector2(80, -35)
+	var world_before_zoom := macro_screen._screen_to_world(anchor)
+	var wheel := InputEventMouseButton.new()
+	wheel.button_index = MOUSE_BUTTON_WHEEL_UP
+	wheel.pressed = true
+	wheel.position = anchor
+	macro_screen._on_gui_input(wheel)
+	var zoom_anchor_preserved := macro_screen._screen_to_world(anchor).distance_to(world_before_zoom) < 0.01
+	var camera_before_pan: Vector2 = macro_screen._camera_center
+	var pan_start := InputEventMouseButton.new()
+	pan_start.button_index = MOUSE_BUTTON_MIDDLE
+	pan_start.pressed = true
+	pan_start.position = macro_screen._map_rect().get_center()
+	macro_screen._on_gui_input(pan_start)
+	var pan_motion := InputEventMouseMotion.new()
+	pan_motion.position = pan_start.position + Vector2(80, 0)
+	macro_screen._on_gui_input(pan_motion)
+	var pan_end := InputEventMouseButton.new()
+	pan_end.button_index = MOUSE_BUTTON_MIDDLE
+	pan_end.pressed = false
+	pan_end.position = pan_motion.position
+	macro_screen._on_gui_input(pan_end)
+	_check(
+		zoom_anchor_preserved and macro_screen._camera_center.distance_to(camera_before_pan) > 1.0,
+		"自动化鼠标事件验证滚轮以光标为锚缩放，中键平移只改变地图相机"
+	)
+	macro_screen._camera_center = Vector2(500, 325)
+	macro_screen._camera_zoom = 1.0
+	macro_screen._selected_formation_ids = [StringName(Dictionary(city.get_formation_roster().front()).get("formation_id", &""))]
+	var snapshot_before_preview: Dictionary = city.export_v5_campaign_snapshot()
+	var command_preview := macro_screen._dispatch_adapter.get_macro_march_command_preview(macro_screen._selected_formation_ids)
+	var preview_count := int(command_preview.get("committed_total", 0))
+	_check(
+		preview_count > 0
+			and int(command_preview.get("food_cost", -1)) == city.get_macro_march_food_cost(preview_count)
+			and city.export_v5_campaign_snapshot() == snapshot_before_preview,
+		"地图显示的选队人数与粮食预估来自控制器只读预览，不创建第二套扣粮规则"
+	)
+	var route: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = macro_screen._world_to_screen(Vector2(Array(route.points).front()))
+	macro_screen._on_gui_input(press)
+	for point_value in Array(route.points).slice(1):
+		var motion := InputEventMouseMotion.new()
+		motion.position = macro_screen._world_to_screen(Vector2(point_value))
+		macro_screen._on_gui_input(motion)
+	var release := InputEventMouseButton.new()
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.pressed = false
+	release.position = macro_screen._world_to_screen(Vector2(Array(route.points).back()))
+	macro_screen._on_gui_input(release)
+	_check(
+		StringName(macro_screen._draft_route.get("route_id", &"")) == StringName(route.route_id)
+			and not macro_screen._map_rect().intersects(macro_screen._return_button.get_global_rect()),
+		"自动化鼠标拖线在正式地图入口生成可确认草稿，右侧控件不会向地图点击穿透"
+	)
 	await _drop_scene(scene)
 
 

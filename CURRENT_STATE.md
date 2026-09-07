@@ -1,5 +1,32 @@
 # 当前状态
 
+## FIELD_TACTICS_R2 map and command UI checkpoint (2026-09-08)
+
+The formal outer-city map now has one camera transform for drawing, hit testing
+and route drafting. Wheel zoom is anchored to the cursor, middle-drag pans,
+the minimap recenters the camera, and edge movement while drawing keeps the
+same world-coordinate draft. The theatre bounds intentionally reserve visual
+space for scouting and future camps without rewriting persisted R0/R1 road
+coordinates.
+
+The right column is no longer positioned inside the formation loop. Formation
+selection is a scroll area and the command controls are bottom-anchored, so
+the active controls stay inside 1152×648, 1280×648 and 1920×648 windows. Map
+detail now identifies source, selected force, draft destination, estimated
+duration and a controller-owned read-only food preview; the view never
+calculates a second food rule or writes a resource transaction.
+
+The greybox now distinguishes terrain, water/shore, main roads, constructed
+roads, bridges, damage, camps, cities, flag-bearing armies and specialist role
+markers. This is readability work only. It does not claim a completed
+multi-segment graph, patrol/army encounters, normal-input media, a complete
+R2 play flow or player acceptance.
+
+Godot 4.5.1 Macro March smoke passes 26 assertions, including injected formal
+mouse events for zoom/pan/dragging, UI bounds at three widths, click separation
+and the read-only command preview. Those are automated UI checks, not a
+recorded normal-input run.
+
 ## FIELD_TACTICS_R2 engineering checkpoint (2026-09-07)
 
 ### R2 formal-input and on-site-repair checkpoint

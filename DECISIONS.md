@@ -66,6 +66,12 @@
 - Patrol wait, route movement and arrival are one time-partition invariant:
 	any remainder of a shared world step continues into the next patrol state
 	instead of being discarded at arrival.
+- Macro map camera state is presentation-only. Every map render, hit test and
+	draft point uses the same reversible screen/world transform; camera position
+	and zoom are not part of a command, field record or save migration.
+- Command-cost copy uses a controller-owned immutable preview. The map may
+	display its selected force, food shortfall and duration, but it never copies
+	the food formula or reserves resources before the user confirms a command.
 
 ## Macro March R0 outer-city greybox
 
