@@ -42,6 +42,9 @@
   ends. This is not yet an army encounter or casualty implementation.
 - Resolved map siege details by selected `army_id` instead of the compatibility
   first-siege projection; Macro March smoke now has 20 assertions.
+- Fixed patrol arrival to preserve the remainder of a world step across its
+  next wait state. Field R2 smoke now has 32 assertions including patrol
+  wait/move/contact partition coverage.
 
 - Added a V5-persistent field-state record for runtime roads, camps,
   scouts/engineers, engineering projects, finite patrol intelligence, fog

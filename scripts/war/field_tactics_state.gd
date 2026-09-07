@@ -454,26 +454,42 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 		var patrol := Dictionary(patrols_by_id[patrol_id])
 		if int(patrol.get("strength", 0)) <= 0:
 			continue
-		var patrol_delta_milliseconds := delta_milliseconds
-		var patrol_wait := mini(int(patrol.get("wait_remaining_milliseconds", 0)), patrol_delta_milliseconds)
-		patrol.wait_remaining_milliseconds = int(patrol.get("wait_remaining_milliseconds", 0)) - patrol_wait
-		patrol_delta_milliseconds -= patrol_wait
-		if patrol_delta_milliseconds > 0:
+		# Consume all of this world step across wait→move→arrival transitions.
+		# Otherwise a large frame would discard its post-arrival remainder and
+		# patrol positions would depend on call partitioning.
+		var patrol_remaining_milliseconds := delta_milliseconds
+		var patrol_transitions := 0
+		while patrol_remaining_milliseconds > 0 and patrol_transitions < 16:
+			patrol_transitions += 1
+			var patrol_wait := mini(int(patrol.get("wait_remaining_milliseconds", 0)), patrol_remaining_milliseconds)
+			if patrol_wait > 0:
+				patrol.wait_remaining_milliseconds = int(patrol.get("wait_remaining_milliseconds", 0)) - patrol_wait
+				patrol_remaining_milliseconds -= patrol_wait
+				if patrol_remaining_milliseconds <= 0:
+					break
 			var patrol_route: Array = Array(patrol.get("route_point_ids", []))
-			if patrol_route.size() >= 2:
-				var target_index := clampi(int(patrol.get("target_route_index", 0)), 0, patrol_route.size() - 1)
-				var target_point_id := StringName(patrol_route[target_index])
-				var target_position := _point_position(target_point_id)
-				patrol.move_elapsed_milliseconds = mini(int(patrol.get("move_elapsed_milliseconds", 0)) + patrol_delta_milliseconds, int(patrol.get("move_total_milliseconds", 1)))
-				var patrol_progress := float(patrol.get("move_elapsed_milliseconds", 0)) / maxf(float(patrol.get("move_total_milliseconds", 1)), 1.0)
-				patrol.world_position = Vector2i(Vector2(patrol.get("move_start_position", _point_position(StringName(patrol.get("current_point_id", &""))))).lerp(Vector2(target_position), patrol_progress))
-				if int(patrol.get("move_elapsed_milliseconds", 0)) == int(patrol.get("move_total_milliseconds", 1)):
-					patrol.current_point_id = target_point_id
-					patrol.world_position = target_position
-					patrol.target_route_index = (target_index + 1) % patrol_route.size()
-					patrol.wait_remaining_milliseconds = 1200
-					patrol.move_elapsed_milliseconds = 0
-					patrol.move_start_position = target_position
+			if patrol_route.size() < 2:
+				break
+			var target_index := clampi(int(patrol.get("target_route_index", 0)), 0, patrol_route.size() - 1)
+			var target_point_id := StringName(patrol_route[target_index])
+			var target_position := _point_position(target_point_id)
+			var patrol_total_milliseconds := maxi(int(patrol.get("move_total_milliseconds", 1)), 1)
+			var to_arrival_milliseconds := maxi(patrol_total_milliseconds - int(patrol.get("move_elapsed_milliseconds", 0)), 0)
+			var patrol_move := mini(patrol_remaining_milliseconds, to_arrival_milliseconds)
+			if patrol_move <= 0:
+				break
+			patrol.move_elapsed_milliseconds = int(patrol.get("move_elapsed_milliseconds", 0)) + patrol_move
+			patrol_remaining_milliseconds -= patrol_move
+			var patrol_progress := float(patrol.get("move_elapsed_milliseconds", 0)) / float(patrol_total_milliseconds)
+			patrol.world_position = Vector2i(Vector2(patrol.get("move_start_position", _point_position(StringName(patrol.get("current_point_id", &""))))).lerp(Vector2(target_position), patrol_progress))
+			if int(patrol.get("move_elapsed_milliseconds", 0)) < patrol_total_milliseconds:
+				break
+			patrol.current_point_id = target_point_id
+			patrol.world_position = target_position
+			patrol.target_route_index = (target_index + 1) % patrol_route.size()
+			patrol.wait_remaining_milliseconds = 1200
+			patrol.move_elapsed_milliseconds = 0
+			patrol.move_start_position = target_position
 		patrols_by_id[patrol_id] = patrol
 		for specialist_id_value in specialists_by_id.keys():
 			var specialist_id := StringName(specialist_id_value)

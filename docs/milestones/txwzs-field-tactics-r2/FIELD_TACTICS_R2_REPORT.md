@@ -152,3 +152,8 @@ to the already-persisted field-road and specialist APIs. Keep
 The map now selects a concurrent siege record by the selected army ID; the
 20-assertion Macro smoke verifies the lookup against two synthetic records.
 This fixes detail cross-talk only and does not imply an encounter resolver.
+
+Patrol advancement now consumes the residual milliseconds after wait and route
+arrival instead of dropping them. The 32-assertion field runner compares a
+single advance with split wait/move/contact advances. This remains patrol
+motion evidence, not army casualty or ambush evidence.

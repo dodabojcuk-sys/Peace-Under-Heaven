@@ -63,6 +63,9 @@
 	it must not derive a new location from the current patrol record after
 	visibility has been lost. Army encounter and ambush resolution remain a
 	separate unfinished authority extension.
+- Patrol wait, route movement and arrival are one time-partition invariant:
+	any remainder of a shared world step continues into the next patrol state
+	instead of being discarded at arrival.
 
 ## Macro March R0 outer-city greybox
 

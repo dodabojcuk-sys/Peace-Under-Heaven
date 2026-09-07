@@ -31,6 +31,11 @@ proves both the movement and the non-tracking historical-intel boundary. This
 does not yet resolve a patrol-versus-army encounter, apply losses, or provide
 an ambush rule.
 
+Patrol advancement now consumes one whole world step across wait, movement,
+arrival and its next wait. The focused R2 runner compares one-step and split
+advances for patrol movement and a contact transition, preventing arrival-frame
+time from changing the tactical state.
+
 Siege details now resolve through the selected army's matching concurrent siege,
 instead of the legacy first-siege compatibility projection.
 
