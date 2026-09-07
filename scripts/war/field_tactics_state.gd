@@ -28,6 +28,7 @@ var specialists_by_id: Dictionary = {}
 var projects_by_id: Dictionary = {}
 var patrols_by_id: Dictionary = {}
 var intel_by_subject_id: Dictionary = {}
+var point_positions_by_id: Dictionary = {}
 var world_milliseconds := 0
 var next_specialist_sequence := 1
 var next_project_sequence := 1
@@ -35,6 +36,9 @@ var next_camp_sequence := 1
 
 
 func initialize_from_theater(points: Dictionary, routes: Dictionary) -> void:
+	for point_id_value in points:
+		var point: Dictionary = Dictionary(points[point_id_value])
+		point_positions_by_id[StringName(point_id_value)] = Vector2i(point.get("world_position", Vector2i.ZERO))
 	if not roads_by_id.is_empty():
 		return
 	for route_id_value in routes:
@@ -62,6 +66,7 @@ func initialize_from_theater(points: Dictionary, routes: Dictionary) -> void:
 			"phase": &"PATROL",
 			"last_known_target_id": &"",
 			"last_known_at_milliseconds": 0,
+			"world_position": _point_position(&"northwatch_garrison"),
 		}
 
 
@@ -77,6 +82,11 @@ func dispatch_specialist(role: StringName, source_point_id: StringName) -> Dicti
 		"target_point_id": source_point_id,
 		"phase": SPECIALIST_IDLE,
 		"move_remaining_milliseconds": 0,
+		"move_total_milliseconds": 0,
+		"move_elapsed_milliseconds": 0,
+		"move_start_position": _point_position(source_point_id),
+		"world_position": _point_position(source_point_id),
+		"target_world_position": _point_position(source_point_id),
 		"visibility_range": 2 if role == SPECIALIST_SCOUT else 1,
 		"project_id": &"",
 		"alive": true,
@@ -95,7 +105,15 @@ func order_specialist_move(specialist_id: StringName, target_point_id: StringNam
 	if StringName(specialist.get("current_point_id", &"")) == target_point_id:
 		return specialist.duplicate(true)
 	specialist.target_point_id = target_point_id
-	specialist.move_remaining_milliseconds = 1800
+	var start_position := Vector2(specialist.get("world_position", _point_position(StringName(specialist.get("current_point_id", &"")))))
+	var target_position := _point_position(target_point_id)
+	var duration := maxi(1800, ceili(start_position.distance_to(target_position) * 2.5))
+	specialist.move_start_position = Vector2i(start_position)
+	specialist.world_position = Vector2i(start_position)
+	specialist.target_world_position = target_position
+	specialist.move_total_milliseconds = duration
+	specialist.move_elapsed_milliseconds = 0
+	specialist.move_remaining_milliseconds = duration
 	specialist.phase = SPECIALIST_MOVING
 	specialists_by_id[specialist_id] = specialist
 	return specialist.duplicate(true)
@@ -263,9 +281,13 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 		var moving := Dictionary(specialists_by_id[moving_id])
 		if not bool(moving.get("alive", false)) or StringName(moving.get("phase", &"")) != SPECIALIST_MOVING:
 			continue
-		moving.move_remaining_milliseconds = maxi(int(moving.get("move_remaining_milliseconds", 0)) - delta_milliseconds, 0)
+		moving.move_elapsed_milliseconds = mini(int(moving.get("move_elapsed_milliseconds", 0)) + delta_milliseconds, int(moving.get("move_total_milliseconds", 0)))
+		moving.move_remaining_milliseconds = maxi(int(moving.get("move_total_milliseconds", 0)) - int(moving.get("move_elapsed_milliseconds", 0)), 0)
+		var move_progress := float(moving.get("move_elapsed_milliseconds", 0)) / maxf(float(moving.get("move_total_milliseconds", 1)), 1.0)
+		moving.world_position = Vector2i(Vector2(moving.get("move_start_position", Vector2i.ZERO)).lerp(Vector2(moving.get("target_world_position", Vector2i.ZERO)), move_progress))
 		if int(moving.move_remaining_milliseconds) == 0:
 			moving.current_point_id = StringName(moving.target_point_id)
+			moving.world_position = Vector2i(moving.get("target_world_position", Vector2i.ZERO))
 			moving.phase = SPECIALIST_IDLE
 		specialists_by_id[moving_id] = moving
 	for project_id_value in projects_by_id.keys():
@@ -413,22 +435,42 @@ func _road_endpoint_position(road_id: StringName) -> Vector2:
 	return Vector2(points.back()) if not points.is_empty() else Vector2.ZERO
 
 
+func _point_position(point_id: StringName) -> Vector2i:
+	if point_positions_by_id.has(point_id):
+		return Vector2i(point_positions_by_id[point_id])
+	for camp_value in camps_by_id.values():
+		var camp: Dictionary = camp_value
+		if StringName(camp.get("point_id", &"")) == point_id:
+			return Vector2i(camp.get("world_position", _road_endpoint_position(StringName(camp.get("road_id", &"")))))
+	return Vector2i.ZERO
+
+
 func _refresh_intel() -> void:
-	var observer_points: Dictionary = {}
+	var observers: Array[Dictionary] = []
 	for specialist_value in specialists_by_id.values():
 		var specialist: Dictionary = specialist_value
 		if bool(specialist.get("alive", false)):
-			observer_points[StringName(specialist.get("current_point_id", &""))] = true
+			observers.append({
+				"world_position": Vector2(specialist.get("world_position", _point_position(StringName(specialist.get("current_point_id", &""))))),
+				"range": int(specialist.get("visibility_range", 1)) * 180,
+			})
 	for camp_value in camps_by_id.values():
-		observer_points[StringName(Dictionary(camp_value).get("point_id", &""))] = true
+		observers.append({"world_position": Vector2(Dictionary(camp_value).get("world_position", Vector2.ZERO)), "range": 120})
 	for patrol_id_value in patrols_by_id:
 		var patrol: Dictionary = Dictionary(patrols_by_id[patrol_id_value])
 		var patrol_id := StringName(patrol_id_value)
-		var visible := observer_points.has(StringName(patrol.get("current_point_id", &"")))
+		var patrol_position := Vector2(patrol.get("world_position", _point_position(StringName(patrol.get("current_point_id", &"")))))
+		var visible := false
+		for observer_value in observers:
+			var observer: Dictionary = observer_value
+			if patrol_position.distance_to(Vector2(observer.world_position)) <= float(observer.range):
+				visible = true
+				break
 		var previous := Dictionary(intel_by_subject_id.get(patrol_id, {}))
+		var previously_seen := StringName(previous.get("fog_state", FOG_UNOBSERVED)) in [FOG_VISIBLE, FOG_OBSERVED]
 		intel_by_subject_id[patrol_id] = {
 			"subject_id": patrol_id,
-			"fog_state": FOG_VISIBLE if visible else (FOG_OBSERVED if not previous.is_empty() else FOG_UNOBSERVED),
+			"fog_state": FOG_VISIBLE if visible else (FOG_OBSERVED if previously_seen else FOG_UNOBSERVED),
 			"last_known_point_id": StringName(patrol.get("current_point_id", &"")) if visible else StringName(previous.get("last_known_point_id", &"")),
 			"last_observed_milliseconds": world_milliseconds if visible else int(previous.get("last_observed_milliseconds", 0)),
 			"known_strength": int(patrol.get("strength", 0)) if visible else int(previous.get("known_strength", 0)),

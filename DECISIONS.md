@@ -32,6 +32,9 @@
 - Field project completion and encounters are persistence boundaries. They use
 	the controller's existing checkpoint and rollback transaction rather than
 	depending on unrelated siege activity.
+- Specialist movement and fog use persisted world coordinates. A historical
+	intel record exists only after actual visibility, never as a side effect of
+	reading the player projection.
 
 ## Macro March R0 outer-city greybox
 

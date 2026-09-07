@@ -59,6 +59,16 @@ engagement changes specialist state, even with no siege tick. A failed publish
 restores both army and war snapshots. Existing R2 smoke and the independent
 three-process engineering restore runner pass after this change.
 
+### R2 specialist position and fog checkpoint
+
+Specialists now persist start, target and current world coordinates, with
+distance-based movement duration and interpolation under the shared clock.
+Scout vision uses the persisted coordinate plus a finite range. Fog no longer
+converts a never-seen patrol into historical knowledge merely because the
+projection refreshed. The map renders specialists at their actual current
+position. R2 smoke now has 23 assertions, including continuous movement and
+the never-observed fog boundary.
+
 ### R2 continuation checkpoint
 
 Specialists now move over shared logical milliseconds rather than jumping to a

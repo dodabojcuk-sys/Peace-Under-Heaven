@@ -69,6 +69,12 @@ checkpoint fails. The existing three-process engineering chain remains green;
 an immediate encounter-specific disk chain is still part of the unfinished
 encounter delivery.
 
+Specialists now carry persisted current/start/target coordinates and advance
+between positions under the same shared clock. Scout visibility is a finite
+coordinate radius, and an unobserved patrol remains unobserved through repeated
+projection refreshes. The focused R2 runner has 23 assertions. Patrol movement,
+army encounters and normal-input verification remain open.
+
 This is not a complete R2 play-flow delivery. The formal map does not yet offer
 a full player-operated specialist drag-line workflow, nor does the formal
 controller yet settle patrol/ambush damage against armies or apply

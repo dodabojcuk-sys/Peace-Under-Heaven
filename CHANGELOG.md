@@ -44,6 +44,9 @@
   army rather than the legacy first-army projection.
 - Publish critical field completion and engagement events through the existing
   V5 checkpoint without requiring a concurrent siege tick.
+- Added persisted interpolated specialist coordinates and distance-limited
+  visibility; fixed refreshes incorrectly turning never-seen patrols into
+  historical intel, with R2 regression coverage.
 
 ### WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate
 

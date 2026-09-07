@@ -588,11 +588,8 @@ func _draw() -> void:
 		var specialist: Dictionary = specialist_value
 		if not bool(specialist.get("alive", false)):
 			continue
-		var point := _point_from_model(_model(), StringName(specialist.get("current_point_id", &"")))
-		if point.is_empty():
-			continue
 		var specialist_color := Color("73d7ed") if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else Color("f2b86e")
-		draw_circle(_world_to_screen(Vector2(point.world_position)), 9.0, specialist_color)
+		draw_circle(_world_to_screen(Vector2(specialist.get("world_position", Vector2.ZERO))), 9.0, specialist_color)
 	for point_value in _all_points(_model()).values():
 		var point: Dictionary = point_value
 		var center := _world_to_screen(Vector2(point.world_position))
