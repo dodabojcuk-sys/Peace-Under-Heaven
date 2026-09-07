@@ -100,6 +100,30 @@ func get_macro_march_read_model() -> Dictionary:
 	return city.get_macro_march_read_model() if city != null else {}
 
 
+func get_field_tactics_read_model() -> Dictionary:
+	var city := _get_city()
+	return city.get_field_tactics_read_model() if city != null else {}
+
+
+func dispatch_field_specialist(role: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.dispatch_field_specialist(role) if city != null else {}
+
+
+func begin_field_road_project(
+	engineer_id: StringName,
+	source_point_id: StringName,
+	target_point_id: StringName,
+	route_world_points: Array,
+	road_kind: StringName,
+	build_camp := false
+) -> Dictionary:
+	var city := _get_city()
+	return city.begin_field_road_project(
+		engineer_id, source_point_id, target_point_id, route_world_points, road_kind, build_camp
+	) if city != null else {}
+
+
 func commit_macro_march_from_city(
 	formation_ids: Array,
 	target_point_id: StringName,

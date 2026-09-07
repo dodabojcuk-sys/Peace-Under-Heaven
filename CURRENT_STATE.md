@@ -2,6 +2,23 @@
 
 ## FIELD_TACTICS_R2 engineering checkpoint (2026-09-07)
 
+### R2 continuation checkpoint
+
+Specialists now move over shared logical milliseconds rather than jumping to a
+target in one simulation call. A scout only gains enemy knowledge at arrival;
+contact with the finite patrol records a last report and marks the specialist
+lost. An engineer killed while building leaves its project interrupted, not
+silently completed. The formal outer-city UI exposes food-backed scout and
+engineer dispatch plus a visible side-road/camp construction action through
+the existing narrow dispatch adapter.
+
+`run_field_tactics_r2_smoke.gd` now passes 20 assertions. New
+`run_field_tactics_r2_persistence_smoke.gd` runs three independent processes:
+construction is saved mid-progress, restored and completed, then cold-restored
+with its road and camp intact. The remaining R2 gap is army-versus-patrol
+encounter/ambush settlement and its player-operable route/repair presentation;
+this is not reported as a completed playable battle loop.
+
 R2 introduces a persistent `FieldTacticsState` nested under the existing
 `WarLoopState`: static roads enter a runtime graph, while field roads, camps,
 specialists, construction projects, patrol facts, and player-facing last-known

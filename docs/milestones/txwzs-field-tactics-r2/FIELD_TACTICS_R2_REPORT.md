@@ -30,8 +30,12 @@ transaction and persistence-checkpoint caller.
 
 Godot `4.5.1.stable.official.f62fdbde1` imported and parsed the project.
 
-- `tests/run_field_tactics_r2_smoke.gd`: 19 assertions passed, including two
+- `tests/run_field_tactics_r2_smoke.gd`: 20 assertions passed, including timed
+  scout arrival and patrol contact, plus two
   independent city-keyed siege records advancing and restoring together.
+- `tests/run_field_tactics_r2_persistence_smoke.gd`: three independent Godot
+  processes persisted construction-in-progress, completed it after restore,
+  and then cold-restored the completed road/camp.
 - `tests/run_macro_march_r0_smoke.gd`: 14 assertions passed.
 - `tests/run_war_loop_r1_smoke.gd`: 15 assertions passed.
 - `tests/run_v5_campaign_persistence_smoke.gd`: passed, including its isolated
@@ -41,8 +45,8 @@ Godot `4.5.1.stable.official.f62fdbde1` imported and parsed the project.
 
 This is not a complete R2 play-flow delivery. The formal map does not yet offer
 a full player-operated specialist drag-line workflow, nor does the formal
-controller yet settle patrol/ambush damage or apply parallel-siege losses back
-to separate armies. No
+controller yet settle patrol/ambush damage against armies or apply
+parallel-siege losses back to separate armies. No
 safe candidate game window was locked for normal system input during this
 checkpoint, so no real screenshots or recording are claimed. These gaps must
 be completed before describing the R2 tactical loop as playable or accepted.

@@ -76,6 +76,7 @@ func dispatch_specialist(role: StringName, source_point_id: StringName) -> Dicti
 		"current_point_id": source_point_id,
 		"target_point_id": source_point_id,
 		"phase": SPECIALIST_IDLE,
+		"move_remaining_milliseconds": 0,
 		"visibility_range": 2 if role == SPECIALIST_SCOUT else 1,
 		"project_id": &"",
 		"alive": true,
@@ -91,7 +92,10 @@ func order_specialist_move(specialist_id: StringName, target_point_id: StringNam
 		return {}
 	if StringName(specialist.get("phase", &"")) == SPECIALIST_BUILDING:
 		return {}
+	if StringName(specialist.get("current_point_id", &"")) == target_point_id:
+		return specialist.duplicate(true)
 	specialist.target_point_id = target_point_id
+	specialist.move_remaining_milliseconds = 1800
 	specialist.phase = SPECIALIST_MOVING
 	specialists_by_id[specialist_id] = specialist
 	return specialist.duplicate(true)
@@ -181,6 +185,17 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 		return {}
 	world_milliseconds += delta_milliseconds
 	var completed: Array[StringName] = []
+	var engagements: Array[Dictionary] = []
+	for specialist_id_value in specialists_by_id.keys():
+		var moving_id := StringName(specialist_id_value)
+		var moving := Dictionary(specialists_by_id[moving_id])
+		if not bool(moving.get("alive", false)) or StringName(moving.get("phase", &"")) != SPECIALIST_MOVING:
+			continue
+		moving.move_remaining_milliseconds = maxi(int(moving.get("move_remaining_milliseconds", 0)) - delta_milliseconds, 0)
+		if int(moving.move_remaining_milliseconds) == 0:
+			moving.current_point_id = StringName(moving.target_point_id)
+			moving.phase = SPECIALIST_IDLE
+		specialists_by_id[moving_id] = moving
 	for project_id_value in projects_by_id.keys():
 		var project_id := StringName(project_id_value)
 		var project := Dictionary(projects_by_id[project_id])
@@ -216,15 +231,34 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 				_create_completed_camp(StringName(project.target_point_id), StringName(project.road_id))
 			completed.append(project_id)
 		projects_by_id[project_id] = project
-	for specialist_id_value in specialists_by_id.keys():
-		var specialist_id := StringName(specialist_id_value)
-		var specialist := Dictionary(specialists_by_id[specialist_id])
-		if bool(specialist.get("alive", false)) and StringName(specialist.get("phase", &"")) == SPECIALIST_MOVING:
-			specialist.current_point_id = StringName(specialist.target_point_id)
-			specialist.phase = SPECIALIST_IDLE
-			specialists_by_id[specialist_id] = specialist
+	for patrol_id_value in patrols_by_id.keys():
+		var patrol_id := StringName(patrol_id_value)
+		var patrol := Dictionary(patrols_by_id[patrol_id])
+		if int(patrol.get("strength", 0)) <= 0:
+			continue
+		for specialist_id_value in specialists_by_id.keys():
+			var specialist_id := StringName(specialist_id_value)
+			var specialist := Dictionary(specialists_by_id[specialist_id])
+			if (
+				bool(specialist.get("alive", false))
+				and StringName(specialist.get("current_point_id", &"")) == StringName(patrol.get("current_point_id", &""))
+				and StringName(specialist.get("phase", &"")) != SPECIALIST_MOVING
+			):
+				# Contact grants one last report before the observer is removed;
+				# _refresh_intel then downgrades it to historical knowledge.
+				intel_by_subject_id[patrol_id] = {
+					"subject_id": patrol_id,
+					"fog_state": FOG_VISIBLE,
+					"last_known_point_id": StringName(patrol.current_point_id),
+					"last_observed_milliseconds": world_milliseconds,
+					"known_strength": int(patrol.strength),
+				}
+				specialist.alive = false
+				specialist.phase = SPECIALIST_LOST
+				specialists_by_id[specialist_id] = specialist
+				engagements.append({"patrol_id": patrol_id, "specialist_id": specialist_id, "point_id": patrol.current_point_id})
 	_refresh_intel()
-	return {"success": true, "completed_project_ids": completed, "world_milliseconds": world_milliseconds}
+	return {"success": true, "completed_project_ids": completed, "engagements": engagements, "world_milliseconds": world_milliseconds}
 
 
 func observe_subject(subject_id: StringName) -> Dictionary:

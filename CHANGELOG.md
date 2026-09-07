@@ -30,6 +30,12 @@
   patrol combat, full specialist drag UI, normal-input media, Founder
   acceptance, deployment, or release.
 
+- Continued the specialist path from the formal outer-city adapter: scout and
+  engineer dispatch buttons, a side-road/camp action, timed specialist arrival,
+  patrol contact loss, and interrupted engineering state are now represented.
+- Added a dedicated three-process field-tactics disk runner covering
+  construction-in-progress → restored completion → cold-restored road/camp.
+
 ### WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate
 
 - Kept the authoritative controller clock running while the outer-city view is

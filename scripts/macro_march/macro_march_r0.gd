@@ -22,6 +22,9 @@ var _confirm_button := Button.new()
 var _block_button := Button.new()
 var _recover_button := Button.new()
 var _retreat_button := Button.new()
+var _scout_button := Button.new()
+var _engineer_button := Button.new()
+var _side_road_button := Button.new()
 var _return_button := Button.new()
 
 
@@ -89,18 +92,24 @@ func _build_ui() -> void:
 	_status_label.add_theme_color_override("font_color", Color("f4f0df"))
 	_detail_label.add_theme_font_size_override("font_size", 14)
 	_detail_label.add_theme_color_override("font_color", Color("3e3428"))
-	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _return_button]:
+	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _return_button]:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
 	_confirm_button.text = "确认并锁定军令"
 	_block_button.text = "演示：中断南洼支路"
 	_recover_button.text = "恢复支路并继续原军令"
 	_retreat_button.text = "撤逃并沿原路返回"
+	_scout_button.text = "派遣侦察兵（4 粮）"
+	_engineer_button.text = "派遣工程师（8 粮）"
+	_side_road_button.text = "修建侧路与驻点（5 粮）"
 	_return_button.text = "返回黑石城"
 	_confirm_button.pressed.connect(_confirm_draft)
 	_block_button.pressed.connect(_block_branch)
 	_recover_button.pressed.connect(_recover_branch)
 	_retreat_button.pressed.connect(_request_retreat)
+	_scout_button.pressed.connect(_dispatch_scout)
+	_engineer_button.pressed.connect(_dispatch_engineer)
+	_side_road_button.pressed.connect(_build_side_road)
 	_return_button.pressed.connect(func(): return_to_city_requested.emit())
 
 
@@ -125,6 +134,12 @@ func _layout_ui() -> void:
 	_recover_button.size = Vector2(274, 38)
 	_retreat_button.position = Vector2(panel_left + 16, y + 144)
 	_retreat_button.size = Vector2(274, 38)
+	_scout_button.position = Vector2(panel_left + 16, y + 188)
+	_scout_button.size = Vector2(274, 36)
+	_engineer_button.position = Vector2(panel_left + 16, y + 230)
+	_engineer_button.size = Vector2(274, 36)
+	_side_road_button.position = Vector2(panel_left + 16, y + 272)
+	_side_road_button.size = Vector2(274, 36)
 	_return_button.position = Vector2(panel_left + 16, size.y - 58)
 	_return_button.size = Vector2(274, 38)
 
@@ -150,6 +165,14 @@ func _refresh_formation_controls(formations: Array, army: Dictionary) -> void:
 
 func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_title_label.text = "黑石外城战区 · 军令与攻城"
+	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+	var specialists: Dictionary = field.get("specialists_by_id", {})
+	var projects: Dictionary = field.get("projects_by_id", {})
+	var visible_patrols: Dictionary = field.get("visible_patrols_by_id", {})
+	_scout_button.visible = specialists.size() < 2
+	_engineer_button.visible = specialists.size() < 2
+	_side_road_button.visible = not specialists.is_empty()
+	_side_road_button.disabled = projects.size() > 0
 	var source_id := _source_point_id(model, army)
 	var source := THEATER.get_point(source_id)
 	var draft_text := "未画路线"
@@ -160,8 +183,9 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		]
 	if army.is_empty():
 		_status_label.text = "从%s按住左键沿道路画到驻扎点或敌城；草稿可取消，确认后不可改道。" % str(source.display_name)
-		_detail_label.text = "驻点：%s\n路线草稿：%s\n选择编队：%d\n粮食：%d\n当前公式：ceil(兵力 / %d)" % [
+		_detail_label.text = "驻点：%s\n路线草稿：%s\n选择编队：%d\n粮食：%d\n侦察情报：%d\n工程：%d\n当前公式：ceil(兵力 / %d)" % [
 			str(source.display_name), draft_text, _selected_formation_ids.size(), int(model.food),
+			visible_patrols.size(), projects.size(),
 			int(model.get("maintenance_units_per_food", 1)),
 		]
 	else:
@@ -197,6 +221,9 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_block_button.visible = false
 	_recover_button.visible = false
 	_retreat_button.visible = false
+	_scout_button.visible = specialists.size() < 2
+	_engineer_button.visible = specialists.size() < 2
+	_side_road_button.visible = not specialists.is_empty()
 	_confirm_button.disabled = _draft_route.is_empty() or _selected_formation_ids.is_empty()
 
 
@@ -328,6 +355,41 @@ func _request_retreat() -> void:
 	if not bool(result.get("success", false)):
 		_status_label.text = str(result.get("error", "撤逃军令失败"))
 	refresh()
+
+
+func _dispatch_scout() -> void:
+	if _dispatch_adapter == null:
+		return
+	var result := _dispatch_adapter.dispatch_field_specialist(FieldTacticsState.SPECIALIST_SCOUT)
+	_status_label.text = "侦察兵已从黑石城出发。" if bool(result.get("success", false)) else str(result.get("error", "侦察兵派遣失败"))
+	refresh()
+
+
+func _dispatch_engineer() -> void:
+	if _dispatch_adapter == null:
+		return
+	var result := _dispatch_adapter.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	_status_label.text = "工程师已从黑石城出发。" if bool(result.get("success", false)) else str(result.get("error", "工程师派遣失败"))
+	refresh()
+
+
+func _build_side_road() -> void:
+	if _dispatch_adapter == null:
+		return
+	var field := _dispatch_adapter.get_field_tactics_read_model()
+	for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
+		var specialist: Dictionary = specialist_value
+		if StringName(specialist.get("role", &"")) != FieldTacticsState.SPECIALIST_ENGINEER or not bool(specialist.get("alive", false)):
+			continue
+		var result := _dispatch_adapter.begin_field_road_project(
+			StringName(specialist.specialist_id), &"blackstone_city", &"reedbank_garrison",
+			[Vector2i(150, 430), Vector2i(440, 570), Vector2i(850, 505)],
+			FieldTacticsState.ROAD_NORMAL, true
+		)
+		_status_label.text = "工程侧路已锁定，完工后开放驻点。" if bool(result.get("success", false)) else str(result.get("error", "工程施工失败"))
+		refresh()
+		return
+	_status_label.text = "需要一名仍在黑石城的工程师。"
 
 
 func _can_draw_route() -> bool:

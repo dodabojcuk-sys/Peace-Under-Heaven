@@ -19,6 +19,9 @@
   greybox defaults, not user-approved final balance. Patrol combat, parallel
   siege completion, full drag-line specialist UI, and player media remain
   deliberately unaccepted follow-up work.
+- Specialists consume shared world time before changing location. Patrol contact
+  may remove a specialist only at the same recorded node and preserves the last
+  observed report; a building project with a lost engineer remains interrupted.
 
 ## Macro March R0 outer-city greybox
 
