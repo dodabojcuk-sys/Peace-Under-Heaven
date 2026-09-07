@@ -34,6 +34,9 @@
   a focused map-draft regression. Field smoke is 29 assertions, Macro March
   smoke is 19, and the persistence runner now includes three repair recovery
   processes.
+- Connected actual damaged field roads to durable macro `BLOCKED` orders and
+  automatic repair-driven resume. The focused controller regression verifies
+  identity retention and no duplicate march-food charge.
 
 - Added a V5-persistent field-state record for runtime roads, camps,
   scouts/engineers, engineering projects, finite patrol intelligence, fog

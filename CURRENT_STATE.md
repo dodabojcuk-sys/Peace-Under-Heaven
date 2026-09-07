@@ -17,6 +17,14 @@ and food cost; the map previews that classification and renders the water
 region. This is bridge recognition and a single bridge project, not yet the
 complete multi-segment bridge/road graph or a full blocked-army recovery loop.
 
+Completed field-road damage now drives the durable macro order directly:
+the shared march scheduler blocks an affected marching army at its current
+legal route position, records its temporary roadside station, and preserves
+the existing order. When the repair project opens that same road, the shared
+war advance resumes the blocked order without a second march-food transaction.
+The formal controller regression covers that sequence. Encounter damage,
+nearest-camp routing, and multi-segment graph routing remain open.
+
 The map now preserves a camp identity at engineering confirmation, so two
 engineers cannot reserve the same runtime camp while both projects are still
 in progress.  The visible-army hit target cycles on repeated mouse clicks at

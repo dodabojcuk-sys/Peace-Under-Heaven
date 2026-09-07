@@ -21,6 +21,7 @@ func _run() -> void:
 	_run_field_tactics_contract()
 	_run_r1_war_snapshot_migration()
 	await _run_formal_controller_contract()
+	await _run_damaged_road_resume_contract()
 	_finish()
 
 
@@ -188,6 +189,51 @@ func _run_formal_controller_contract() -> void:
 	_check(bool(restored_result.get("success", false)) and Array(restored.get_macro_march_read_model().armies).size() == 2 and not Dictionary(restored.get_field_tactics_read_model().camps_by_id).is_empty(), "两支军令与工程战区状态可在同一正式快照冷恢复")
 	scene.queue_free()
 	restored_scene.queue_free()
+	await process_frame
+
+
+func _run_damaged_road_resume_contract() -> void:
+	var scene := CITY_SCENE.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var city: Node = scene.get_node("ConstructionController")
+	city.set_process(false)
+	city.food = 140
+	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var route_points := [Vector2i(150, 430), Vector2i(340, 470), Vector2i(480, 440)]
+	var project: Dictionary = city.begin_field_road_project(
+		StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")),
+		&"blackstone_city", &"camp.site.resume", route_points, FieldTacticsState.ROAD_NORMAL, true
+	)
+	city.advance_war_loop_time(int(Dictionary(project.get("project", {})).get("required_milliseconds", 0)))
+	var road_id := StringName(Dictionary(project.get("project", {})).get("road_id", &""))
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var issued: Dictionary = city.commit_macro_march_from_city(
+		[StringName(roster[0].formation_id)], &"camp.site.resume", road_id, route_points
+	)
+	var army_before_damage: Dictionary = Dictionary(issued.get("army", {}))
+	var food_after_issue := int(city.food)
+	var field: FieldTacticsState = city._war_loop_state.field_tactics
+	field.damage_road(road_id, 999)
+	city._advance_all_macro_marches_seconds(1.0)
+	var blocked: Dictionary = city._army_registry.get_army(StringName(army_before_damage.get("army_id", &"")))
+	var repair: Dictionary = city.begin_field_road_repair(StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")), road_id)
+	var repair_engineer := Dictionary(field.specialists_by_id[StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &""))])
+	city.advance_war_loop_time(int(repair_engineer.get("move_remaining_milliseconds", 0)) + int(Dictionary(repair.get("project", {})).get("required_milliseconds", 0)))
+	var resumed: Dictionary = city._army_registry.get_army(StringName(army_before_damage.get("army_id", &"")))
+	city._advance_all_macro_marches_seconds(1.0)
+	var advancing: Dictionary = city._army_registry.get_army(StringName(army_before_damage.get("army_id", &"")))
+	_check(
+		bool(project.get("success", false)) and bool(issued.get("success", false)) and bool(repair.get("success", false))
+			and StringName(blocked.get("phase", &"")) == ArmyRegistry.PHASE_BLOCKED
+			and StringName(resumed.get("phase", &"")) == ArmyRegistry.PHASE_MARCHING
+			and StringName(Dictionary(resumed.get("macro_march", {})).get("order_id", &"")) == StringName(Dictionary(army_before_damage.get("macro_march", {})).get("order_id", &""))
+			and int(city.food) == food_after_issue - int(repair.get("food_cost", 0))
+			and int(Dictionary(advancing.get("macro_march", {})).get("progress_millis", 0)) > int(Dictionary(resumed.get("macro_march", {})).get("progress_millis", 0)),
+		"真实受损道路使军令就近受阻；到场维修后原 order 自动恢复且不重复扣行军粮"
+	)
+	scene.queue_free()
 	await process_frame
 
 

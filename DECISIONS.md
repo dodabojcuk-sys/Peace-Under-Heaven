@@ -54,6 +54,10 @@
 - World-step partitioning is a simulation invariant. If specialist travel
 	ends during a step, any remaining milliseconds are consumed by its repair
 	work in that same step; this prevents frame rate from changing completion.
+- A damaged runtime road blocks an affected macro order through `ArmyRegistry`
+	and preserves its original order identity. Repair completion is the only
+	path that automatically resumes it; no new food transaction, route rewrite,
+	or UI-owned recovery record is created.
 
 ## Macro March R0 outer-city greybox
 

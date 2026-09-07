@@ -5681,6 +5681,9 @@ func _advance_all_macro_marches_seconds(delta_seconds: float) -> void:
 		if StringName(army.get("phase", &"")) not in [ArmyRegistry.PHASE_MARCHING, ArmyRegistry.PHASE_RETREATING]:
 			continue
 		var macro: Dictionary = army.get("macro_march", {})
+		if not _war_loop_state.field_tactics.is_route_open(StringName(macro.get("route_id", &""))):
+			_block_macro_march_for_damaged_road(army)
+			continue
 		_advance_macro_march_elapsed_milliseconds(
 			StringName(army.get("army_id", &"")), StringName(macro.get("order_id", &"")),
 			int(macro.get("progress_millis", 0)), delta_seconds * 1000.0 * city_time_speed
@@ -5758,9 +5761,11 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 	var registry_before := _army_registry.get_snapshot()
 	var war_before := _war_loop_state.get_snapshot()
 	var field_advance := _war_loop_state.field_tactics.advance_world(whole_milliseconds)
+	var resumed_armies := _resume_macro_marches_on_repaired_roads()
 	var field_checkpoint_required := (
 		Array(field_advance.get("completed_project_ids", [])).size() > 0
 		or Array(field_advance.get("engagements", [])).size() > 0
+		or not resumed_armies.is_empty()
 	)
 	var result: Dictionary = {}
 	for siege_value in _war_loop_state.get_active_sieges():
@@ -5800,7 +5805,63 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 			_war_loop_state.restore_snapshot(war_before)
 			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 			return _macro_failure(&"SAVE_FAILED", "战区关键状态存档失败，事务已回滚")
+	if result.is_empty() and not resumed_armies.is_empty():
+		field_advance.resumed_army_ids = resumed_armies
 	return result.duplicate(true) if not result.is_empty() else field_advance
+
+
+func _block_macro_march_for_damaged_road(army: Dictionary) -> Dictionary:
+	var macro: Dictionary = army.get("macro_march", {})
+	var army_id := StringName(army.get("army_id", &""))
+	var order_id := StringName(macro.get("order_id", &""))
+	if army_id == &"" or order_id == &"":
+		return {}
+	var registry_before := _army_registry.get_snapshot()
+	var blocked := _army_registry.block_macro_march(
+		army_id, order_id, _macro_segment_at_progress(macro), int(macro.get("progress_millis", 0)),
+		&"受损道路前临时驻扎"
+	)
+	if blocked.is_empty():
+		return {}
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		return {}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return blocked
+
+
+func _resume_macro_marches_on_repaired_roads() -> Array[StringName]:
+	var resumed: Array[StringName] = []
+	for army_value in get_macro_march_armies():
+		var army: Dictionary = army_value
+		if StringName(army.get("phase", &"")) != ArmyRegistry.PHASE_BLOCKED:
+			continue
+		var macro: Dictionary = army.get("macro_march", {})
+		if not _war_loop_state.field_tactics.is_route_open(StringName(macro.get("route_id", &""))):
+			continue
+		var resumed_army := _army_registry.resume_blocked_macro_march(
+			StringName(army.get("army_id", &"")), StringName(macro.get("order_id", &""))
+		)
+		if not resumed_army.is_empty():
+			resumed.append(StringName(resumed_army.get("army_id", &"")))
+	return resumed
+
+
+func _macro_segment_at_progress(macro: Dictionary) -> int:
+	var points: Array = macro.get("route_world_points", [])
+	var total_millis := maxi(int(macro.get("total_millis", 0)), 1)
+	var progress_millis := clampi(int(macro.get("progress_millis", 0)), 0, total_millis)
+	var total_length := 0.0
+	for index in range(1, points.size()):
+		total_length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
+	var progressed_length := total_length * float(progress_millis) / float(total_millis)
+	var consumed_length := 0.0
+	for index in range(1, points.size()):
+		consumed_length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
+		if progressed_length <= consumed_length:
+			return index
+	return maxi(points.size() - 1, 1)
 
 
 func request_macro_siege_retreat(city_id: StringName = &"") -> Dictionary:

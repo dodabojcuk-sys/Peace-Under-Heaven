@@ -46,6 +46,17 @@ focused results are 29 field assertions, 19 Macro March assertions, and the
 construction-plus-repair persistence chain. This does not yet establish a
 multi-segment road/bridge graph, blocked-army automatic resume, or encounters.
 
+### Damaged-road macro recovery follow-up
+
+The shared macro scheduler now detects a damaged runtime road before it
+advances an affected order. It commits the existing order to `BLOCKED` at its
+current route segment and, when the repair project reopens that exact road,
+resumes the same `order_id` without charging march food again. The field
+controller smoke exercises road construction, issue, damage, durable block,
+on-site repair, automatic resume, and a subsequent advance. This is not yet
+nearest-reachable-camp routing, arbitrary multi-segment routing, or a patrol
+encounter system.
+
 - Two macro armies can be issued from distinct garrison formations. The
   registry rejects a persisted formation identity in two non-closed macro
   armies, and closed history no longer blocks a new departure.
