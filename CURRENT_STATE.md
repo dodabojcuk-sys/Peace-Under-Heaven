@@ -43,6 +43,14 @@ journey: selected-army command targeting, specialist continuous movement,
 bridge classification, repair arrival, patrol encounters and media remain
 open.
 
+### R2 selected-army command checkpoint
+
+The outer-city map now selects an army by its rendered marker and retains that
+`army_id` for route drafting, stationed follow-up and siege retreat. Selected
+markers are visibly highlighted. This removes the normal-map first-army
+default while retaining the compatibility projection used by older callers.
+The macro adapter now forwards an explicit siege city for retreat.
+
 ### R2 continuation checkpoint
 
 Specialists now move over shared logical milliseconds rather than jumping to a

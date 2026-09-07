@@ -26,6 +26,9 @@
 	overlays. Their endpoint coordinates become runtime camp points and the same
 	persisted route identity is validated before an army order can be issued.
 	Unfinished and damaged routes remain non-commandable.
+- Macro map interaction resolves a selected `army_id` from player-visible army
+	markers. Route continuation and retreat use that identity rather than the
+	legacy first-army read-model projection.
 
 ## Macro March R0 outer-city greybox
 

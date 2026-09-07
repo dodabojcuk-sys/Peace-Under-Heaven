@@ -14,6 +14,7 @@ var _draw_points: Array[Vector2] = []
 var _is_drawing := false
 var _engineering_mode := false
 var _engineering_engineer_id: StringName = &""
+var _selected_army_id: StringName = &""
 var _formation_buttons: Array[Button] = []
 
 var _title_label := Label.new()
@@ -51,7 +52,7 @@ func refresh() -> void:
 	if not is_node_ready():
 		return
 	var model := _model()
-	var army: Dictionary = model.get("army", {})
+	var army := _selected_army(model)
 	_refresh_formation_controls(Array(model.get("formations", [])), army)
 	_refresh_copy(model, army)
 	_layout_ui()
@@ -231,9 +232,20 @@ func _on_gui_input(event: InputEvent) -> void:
 		return
 	var map_rect := _map_rect()
 	if event.pressed:
-		if not map_rect.has_point(event.position) or not _can_draw_route():
+		if not map_rect.has_point(event.position):
 			return
-		var source := _point_from_model(_model(), _source_point_id(_model(), _model().get("army", {})))
+		var selected_id := _army_id_at_screen(_model(), event.position)
+		if selected_id != &"":
+			_selected_army_id = selected_id
+			_selected_formation_ids.clear()
+			_status_label.text = "已选中该军队；续令、撤逃与路线草稿只作用于它。"
+			refresh()
+			accept_event()
+			return
+		if not _can_draw_route():
+			return
+		var model := _model()
+		var source := _point_from_model(model, _source_point_id(model, _selected_army(model)))
 		var source_position := _world_to_screen(Vector2(source.get("world_position", Vector2.ZERO)))
 		if event.position.distance_to(source_position) > 52.0:
 			_status_label.text = "请从当前驻点开始画线。"
@@ -259,7 +271,7 @@ func _append_draw_point(screen_position: Vector2) -> void:
 
 func _finish_draw() -> void:
 	var model := _model()
-	var army: Dictionary = model.get("army", {})
+	var army := _selected_army(model)
 	var source_id := _source_point_id(model, army)
 	if _engineering_mode:
 		_finish_engineering_draw(model, source_id)
@@ -306,7 +318,7 @@ func _confirm_draft() -> void:
 	if _dispatch_adapter == null or _draft_route.is_empty():
 		return
 	var model := _model()
-	var army: Dictionary = model.get("army", {})
+	var army := _selected_army(model)
 	var result: Dictionary = {}
 	if not _selected_formation_ids.is_empty() or army.is_empty():
 		result = _dispatch_adapter.commit_macro_march_from_city(
@@ -338,7 +350,8 @@ func _recover_branch() -> void:
 func _request_retreat() -> void:
 	if _dispatch_adapter == null:
 		return
-	var result := _dispatch_adapter.request_macro_siege_retreat()
+	var army := _selected_army(_model())
+	var result := _dispatch_adapter.request_macro_siege_retreat(StringName(Dictionary(army.get("macro_march", {})).get("target_point_id", &"")))
 	if not bool(result.get("success", false)):
 		_status_label.text = str(result.get("error", "撤逃军令失败"))
 	refresh()
@@ -383,7 +396,7 @@ func _build_side_road() -> void:
 
 
 func _can_draw_route() -> bool:
-	var army: Dictionary = _model().get("army", {})
+	var army := _selected_army(_model())
 	return (
 		_engineering_mode
 		or
@@ -402,6 +415,32 @@ func _source_point_id(model: Dictionary, army: Dictionary) -> StringName:
 		if not _selected_formation_ids.is_empty() or army.is_empty()
 		else StringName(army.target_node_id)
 	)
+
+
+func _selected_army(model: Dictionary) -> Dictionary:
+	for army_value in Array(model.get("armies", [])):
+		var army: Dictionary = army_value
+		if StringName(army.get("army_id", &"")) == _selected_army_id:
+			return army.duplicate(true)
+	var armies: Array = model.get("armies", [])
+	if armies.is_empty():
+		_selected_army_id = &""
+		return {}
+	_selected_army_id = StringName(Dictionary(armies.front()).get("army_id", &""))
+	return Dictionary(armies.front()).duplicate(true)
+
+
+func _army_id_at_screen(model: Dictionary, screen_position: Vector2) -> StringName:
+	for army_value in Array(model.get("armies", [])):
+		var army: Dictionary = army_value
+		var macro: Dictionary = army.get("macro_march", {})
+		var points: Array = macro.get("route_world_points", [])
+		if points.is_empty():
+			continue
+		var progress := float(macro.get("progress_millis", 0)) / maxf(float(macro.get("total_millis", 1)), 1.0)
+		if _world_to_screen(_point_along_route(points, progress)).distance_to(screen_position) <= 24.0:
+			return StringName(army.get("army_id", &""))
+	return &""
 
 
 func _nearest_target_at_draw_end(source_id: StringName) -> StringName:
@@ -570,6 +609,7 @@ func _draw_army_marker(army: Dictionary) -> void:
 	var progress := float(macro.progress_millis) / maxf(float(macro.total_millis), 1.0)
 	var position := _point_along_route(points, progress)
 	var screen := _world_to_screen(position)
+	draw_circle(screen, 18.0, Color("f8e3a6") if StringName(army.get("army_id", &"")) == _selected_army_id else Color("4b3927"))
 	draw_circle(screen, 15.0, Color("d94d3f"))
 	draw_circle(screen, 8.0, Color("fff0c5"))
 	if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED:

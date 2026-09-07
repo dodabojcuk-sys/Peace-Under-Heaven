@@ -40,6 +40,8 @@
   a selected idle engineer's drawn route rather than the old fixed side-road.
 - Added R2 smoke coverage for completed dynamic-road command validation and a
   newly placed runtime camp endpoint.
+- Bound map army selection, follow-up drafting and retreat to the selected
+  army rather than the legacy first-army projection.
 
 ### WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate
 

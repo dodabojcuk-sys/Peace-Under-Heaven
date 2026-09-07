@@ -57,6 +57,11 @@ its persisted endpoint coordinate is returned to the safe map projection. The
 focused field runner now has 22 assertions. This confirms the state/command
 connection, not a completed normal-input journey or road encounter loop.
 
+The map now resolves a selected army from its visible marker. Subsequent
+drafting and retreat use its identity, instead of silently targeting the first
+army returned by the compatibility read model. This still needs normal-input
+evidence alongside the remaining specialist and encounter work.
+
 This is not a complete R2 play-flow delivery. The formal map does not yet offer
 a full player-operated specialist drag-line workflow, nor does the formal
 controller yet settle patrol/ambush damage against armies or apply

@@ -189,9 +189,9 @@ func advance_war_loop_time(delta_milliseconds: int) -> Dictionary:
 	return city.advance_war_loop_time(delta_milliseconds) if city != null else {}
 
 
-func request_macro_siege_retreat() -> Dictionary:
+func request_macro_siege_retreat(city_id: StringName = &"") -> Dictionary:
 	var city := _get_city()
-	return city.request_macro_siege_retreat() if city != null else {}
+	return city.request_macro_siege_retreat(city_id) if city != null else {}
 
 
 func block_macro_march_at_segment(
