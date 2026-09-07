@@ -4,6 +4,19 @@
 
 ### R2 formal-input and on-site-repair checkpoint
 
+Repair timing is now frame-partition invariant: when an engineer reaches a
+repair target part-way through a world advance, the remainder immediately
+counts toward the repair project. The focused runner compares whole snapshots
+from one long advance and split advances. The persistence runner separately
+cold-restores repair travel, an arrival step with work already accrued, and
+the restored open road.
+
+The outer-city theatre now owns a small greybox water region. A construction
+line crossing it is classified by authority as a bridge, with bridge duration
+and food cost; the map previews that classification and renders the water
+region. This is bridge recognition and a single bridge project, not yet the
+complete multi-segment bridge/road graph or a full blocked-army recovery loop.
+
 The map now preserves a camp identity at engineering confirmation, so two
 engineers cannot reserve the same runtime camp while both projects are still
 in progress.  The visible-army hit target cycles on repeated mouse clicks at
@@ -14,7 +27,7 @@ Damaged field roads now create a persisted repair project.  The assigned
 engineer travels to the road endpoint, the road remains blocked during the
 separate repair duration, and only completion restores the original road ID.
 Runtime roads validate in both directions, including their reversed polyline.
-Focused field smoke passes 27 assertions, Macro March passes 18, and the
+Focused field smoke passes 29 assertions, Macro March passes 19, and the
 three-process field construction restore runner passes.  A damaged road can
 now be selected by map hit testing and sent through the visible repair action;
 the macro test labels that injected mouse/button sequence as automation. This

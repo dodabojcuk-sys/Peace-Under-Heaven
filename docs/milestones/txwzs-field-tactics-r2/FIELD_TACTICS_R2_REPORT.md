@@ -31,6 +31,21 @@ construction/restore chain. The Macro runner injects a damaged-road map click
 and repair-button callback; this is explicitly automated UI wiring rather than
 system-input media. A dedicated repair disk chain is still open.
 
+### Repair-time and bridge follow-up
+
+Repair arrival no longer discards the remaining time in a shared world step:
+the post-arrival remainder is applied to repair work. A focused snapshot
+equivalence assertion covers a single long advance versus split advances.
+Three further isolated processes now restore repair travel, the arrival
+remainder after 500ms of work, and final opening of the original road.
+
+The theatre Resource supplies a small greybox water region. Engineering lines
+crossing it are classified by the field authority as bridge projects; the map
+uses the same classification for preview and paints the water region. Current
+focused results are 29 field assertions, 19 Macro March assertions, and the
+construction-plus-repair persistence chain. This does not yet establish a
+multi-segment road/bridge graph, blocked-army automatic resume, or encounters.
+
 - Two macro armies can be issued from distinct garrison formations. The
   registry rejects a persisted formation identity in two non-closed macro
   armies, and closed history no longer blocks a new departure.

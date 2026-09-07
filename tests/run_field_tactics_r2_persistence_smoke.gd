@@ -16,8 +16,13 @@ func _run() -> void:
 	var a := _run_worker("A", absolute_directory)
 	var b := _run_worker("B", absolute_directory)
 	var c := _run_worker("C", absolute_directory)
+	var d := _run_worker("D", absolute_directory)
+	var e := _run_worker("E", absolute_directory)
+	var f := _run_worker("F", absolute_directory)
 	_check(int(a.exit_code) == 0 and int(b.exit_code) == 0 and int(c.exit_code) == 0, "三个独立进程完成施工中、完工和道路驻点冷恢复")
 	_check(str(a.output).contains("FIELD_TACTICS_WORKER_A PASS") and str(b.output).contains("FIELD_TACTICS_WORKER_B PASS") and str(c.output).contains("FIELD_TACTICS_WORKER_C PASS"), "跨进程实盘保留工程进度、完成道路和连接驻点")
+	_check(int(d.exit_code) == 0 and int(e.exit_code) == 0 and int(f.exit_code) == 0, "三个独立进程完成受损道路、维修到场和完工冷恢复")
+	_check(str(d.output).contains("FIELD_TACTICS_WORKER_D PASS") and str(e.output).contains("FIELD_TACTICS_WORKER_E PASS") and str(f.output).contains("FIELD_TACTICS_WORKER_F PASS"), "跨进程实盘保留维修在途、到场余量与原道路恢复")
 	_remove_tree(absolute_directory)
 	if failures.is_empty():
 		print("FIELD_TACTICS_R2_PERSISTENCE_SMOKE PASS")

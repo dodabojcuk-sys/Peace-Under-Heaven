@@ -60,6 +60,13 @@ const SILVERFORD_CITY := &"silverford_city"
 }
 
 
+# Greybox tactical water is data owned by the theatre, not a screen-space
+# special case. A construction line crossing this strip becomes a bridge job.
+@export var water_regions: Array[Rect2i] = [
+	Rect2i(515, 350, 120, 145),
+]
+
+
 # The ridge road is the indestructible main road. The lowland road is a
 # demonstrable branch road: it may stop one order before its marked segment.
 @export var routes: Dictionary = {

@@ -171,6 +171,9 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		str(_point_from_model(model, StringName(_draft_route.get("target_point_id", &""))).get("display_name", _draft_route.get("target_point_id", &""))),
 		]
 	if _engineering_mode or not _engineering_draft.is_empty():
+		var draft_kind := StringName(_engineering_draft.get("road_kind", FieldTacticsState.ROAD_NORMAL))
+		var draft_kind_label := "桥梁" if draft_kind == FieldTacticsState.ROAD_BRIDGE else "普通路"
+		var draft_cost := 12 if draft_kind == FieldTacticsState.ROAD_BRIDGE else 5
 		_confirm_button.visible = true
 		_confirm_button.text = "确认施工"
 		_confirm_button.disabled = _engineering_draft.is_empty()
@@ -178,8 +181,8 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		_recover_button.visible = false
 		_retreat_button.visible = false
 		_status_label.text = "工程草稿待确认；右键取消不会扣除资源。" if not _engineering_draft.is_empty() else "工程绘线：从工程师所在位置拖出道路。"
-		_detail_label.text = "工程师：%s\n路径点：%d\n路线类型：普通路\n确认后才会扣除施工资源。" % [
-			String(_engineering_engineer_id), Array(_engineering_draft.get("route_world_points", _draw_points)).size(),
+		_detail_label.text = "工程师：%s\n路径点：%d\n路线类型：%s\n预计粮食：%d；确认后才会扣除。" % [
+			String(_engineering_engineer_id), Array(_engineering_draft.get("route_world_points", _draw_points)).size(), draft_kind_label, draft_cost,
 		]
 		return
 	if army.is_empty():
@@ -351,12 +354,13 @@ func _finish_engineering_draw(model: Dictionary, source_id: StringName) -> void:
 		_status_label.text = "工程路线至少需要两个位置。"
 		return
 	var target_id := _nearest_target_at_draw_end(source_id)
+	var road_kind := FieldTacticsState.ROAD_BRIDGE if THEATER.route_crosses_water(_draw_points) else FieldTacticsState.ROAD_NORMAL
 	_engineering_draft = {
 		"engineer_id": _engineering_engineer_id,
 		"source_point_id": source_id,
 		"target_point_id": target_id,
 		"route_world_points": _draw_points.duplicate(true),
-		"road_kind": FieldTacticsState.ROAD_NORMAL,
+		"road_kind": road_kind,
 		"build_camp": true,
 	}
 	_draw_points.clear()
@@ -685,6 +689,13 @@ func _draw() -> void:
 	var rect := _map_rect()
 	draw_rect(Rect2(Vector2.ZERO, size), Color("19211e"))
 	draw_rect(rect, Color("728b67"))
+	for water_region in THEATER.get_water_regions():
+		var water_position := _world_to_screen(Vector2(water_region.position))
+		var water_size := Vector2(
+			float(water_region.size.x) / 1000.0 * rect.size.x,
+			float(water_region.size.y) / 650.0 * rect.size.y
+		)
+		draw_rect(Rect2(water_position, water_size), Color("4c95b5"), true)
 	draw_rect(Rect2(Vector2(size.x - 306, 94), Vector2(292, size.y - 108)), Color("eee4cc"))
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
 	for route_value in Dictionary(field.get("roads_by_id", {})).values():

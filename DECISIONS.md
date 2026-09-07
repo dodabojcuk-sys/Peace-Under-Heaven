@@ -47,6 +47,13 @@
 	road remains closed until the completion transaction, and runtime road
 	validation accepts either direction only when the submitted polyline matches
 	the corresponding direction.
+- The theatre Resource owns the greybox water regions used for bridge
+	classification. A crossing construction line becomes a bridge in the field
+	authority even if a presentation caller requested a normal road; the map only
+	previews that authoritative choice.
+- World-step partitioning is a simulation invariant. If specialist travel
+	ends during a step, any remaining milliseconds are consumed by its repair
+	work in that same step; this prevents frame rate from changing completion.
 
 ## Macro March R0 outer-city greybox
 

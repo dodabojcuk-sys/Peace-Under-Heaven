@@ -15,6 +15,23 @@ static func get_routes() -> Dictionary:
 	return _definition.routes.duplicate(true)
 
 
+static func get_water_regions() -> Array[Rect2i]:
+	return _definition.water_regions.duplicate()
+
+
+static func route_crosses_water(route_world_points: Array) -> bool:
+	for index in range(1, route_world_points.size()):
+		var start := Vector2(route_world_points[index - 1])
+		var end := Vector2(route_world_points[index])
+		var samples := maxi(1, ceili(start.distance_to(end) / 16.0))
+		for sample_index in range(samples + 1):
+			var position := Vector2i(start.lerp(end, float(sample_index) / float(samples)))
+			for water_region in _definition.water_regions:
+				if water_region.has_point(position):
+					return true
+	return false
+
+
 static func get_point(point_id: StringName) -> Dictionary:
 	return Dictionary(_definition.points.get(point_id, {})).duplicate(true)
 

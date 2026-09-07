@@ -5339,7 +5339,8 @@ func get_macro_march_food_cost(total_count: int) -> int:
 
 func _ensure_war_loop_initialized() -> void:
 	_war_loop_state.initialize_from_theater(
-		MACRO_MARCH_THEATER.get_points(), MACRO_MARCH_THEATER.get_routes()
+		MACRO_MARCH_THEATER.get_points(), MACRO_MARCH_THEATER.get_routes(),
+		MACRO_MARCH_THEATER.get_water_regions()
 	)
 
 
@@ -5414,15 +5415,16 @@ func begin_field_road_project(
 	build_camp := false
 ) -> Dictionary:
 	_ensure_war_loop_initialized()
-	var food_cost := 5 if road_kind == FieldTacticsState.ROAD_NORMAL else 10
-	if road_kind == FieldTacticsState.ROAD_BRIDGE:
+	var resolved_road_kind := _war_loop_state.field_tactics.road_kind_for_route(route_world_points, road_kind)
+	var food_cost := 5 if resolved_road_kind == FieldTacticsState.ROAD_NORMAL else 10
+	if resolved_road_kind == FieldTacticsState.ROAD_BRIDGE:
 		food_cost = 12
 	if food < food_cost:
 		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足，无法安排工程施工")
 	var war_before := _war_loop_state.get_snapshot()
 	var local_commit := func() -> Dictionary:
 		var project := _war_loop_state.field_tactics.begin_road_project(
-			engineer_id, source_point_id, target_point_id, route_world_points, road_kind, build_camp
+			engineer_id, source_point_id, target_point_id, route_world_points, resolved_road_kind, build_camp
 		)
 		return {"success": not project.is_empty(), "project": project}
 	var transaction := _nation_state.commit_resource_transaction(

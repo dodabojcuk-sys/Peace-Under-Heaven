@@ -43,6 +43,18 @@ func _run_parallel_army_contract() -> void:
 func _run_field_tactics_contract() -> void:
 	var state: FieldTacticsState = FIELD_TACTICS_STATE.new()
 	state.initialize_from_theater(THEATER.get_points(), THEATER.get_routes())
+	var bridge_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	bridge_state.initialize_from_theater(THEATER.get_points(), THEATER.get_routes(), [Rect2i(515, 350, 120, 145)])
+	var bridge_engineer := bridge_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"blackstone_city")
+	var bridge_project := bridge_state.begin_road_project(
+		StringName(bridge_engineer.specialist_id), &"blackstone_city", &"camp.site.bridge",
+		[Vector2i(150, 430), Vector2i(475, 420), Vector2i(710, 410)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	_check(
+		StringName(bridge_project.get("road_kind", &"")) == FieldTacticsState.ROAD_BRIDGE
+			and int(bridge_project.get("required_milliseconds", 0)) == 11000,
+		"战区 Resource 水域命中的工程线自动成为桥梁项目，而非普通道路"
+	)
 	_check(state.is_route_open(&"road.blackstone.northwatch.ridge"), "主路进入运行时路网且默认可通行")
 	var hidden := state.observe_subject(&"patrol.ridge.001")
 	_check(StringName(hidden.get("fog_state", &"")) == FieldTacticsState.FOG_UNOBSERVED and int(hidden.get("known_strength", 0)) == 0, "未侦察巡逻不泄露实时兵力")
@@ -70,6 +82,19 @@ func _run_field_tactics_contract() -> void:
 	var repair := state.begin_road_repair(StringName(engineer.specialist_id), StringName(project.road_id))
 	var repair_travel := int(Dictionary(state.specialists_by_id[StringName(engineer.specialist_id)]).get("move_total_milliseconds", 0))
 	_check(not repair.is_empty() and not state.is_route_open(StringName(project.road_id)) and repair_travel > 0, "远处受损道路先建立工程师到场维修事务，不能隔空立即修好")
+	var repair_start_snapshot := state.get_snapshot()
+	var one_step_repair: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	var split_step_repair: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	one_step_repair.restore_snapshot(repair_start_snapshot)
+	split_step_repair.restore_snapshot(repair_start_snapshot)
+	one_step_repair.advance_world(repair_travel + int(repair.required_milliseconds))
+	split_step_repair.advance_world(repair_travel)
+	split_step_repair.advance_world(int(repair.required_milliseconds))
+	_check(
+		one_step_repair.get_snapshot() == split_step_repair.get_snapshot()
+			and one_step_repair.is_route_open(StringName(project.road_id)),
+		"维修到场帧余量计入施工：一次推进与拆分推进得到相同道路和项目状态"
+	)
 	state.advance_world(repair_travel)
 	_check(not state.is_route_open(StringName(project.road_id)), "工程师到达维修点的同一时间步不跳过维修工期")
 	state.advance_world(int(repair.required_milliseconds) - 1)

@@ -28,6 +28,13 @@
   patrol/ambush play, route-block auto-resume, normal-input media, or Founder
   acceptance.
 
+- Fixed repair travel to retain the remainder of an arrival frame for repair
+  work; one-shot and split world advances now produce the same saved state.
+- Added Resource-owned water-region bridge classification, bridge preview and
+  a focused map-draft regression. Field smoke is 29 assertions, Macro March
+  smoke is 19, and the persistence runner now includes three repair recovery
+  processes.
+
 - Added a V5-persistent field-state record for runtime roads, camps,
   scouts/engineers, engineering projects, finite patrol intelligence, fog
   knowledge, road damage, and repair. R1 WarLoop snapshots normalize through

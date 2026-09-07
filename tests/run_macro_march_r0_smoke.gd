@@ -205,6 +205,15 @@ func _run_map_draft_contract() -> void:
 	)
 	var engineer_dispatch: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
 	var engineer_id := StringName(Dictionary(engineer_dispatch.get("specialist", {})).get("specialist_id", &""))
+	macro_screen._engineering_mode = true
+	macro_screen._engineering_engineer_id = engineer_id
+	macro_screen._draw_points = [Vector2(150, 430), Vector2(475, 420), Vector2(710, 410)]
+	macro_screen._finish_draw()
+	_check(
+		StringName(macro_screen._engineering_draft.get("road_kind", &"")) == FieldTacticsState.ROAD_BRIDGE,
+		"自动化地图工程绘线穿过战区水域时预览为桥梁，而非普通道路"
+	)
+	macro_screen._engineering_draft = {}
 	var construction_food_before: int = city.food
 	macro_screen._engineering_mode = true
 	macro_screen._engineering_engineer_id = engineer_id

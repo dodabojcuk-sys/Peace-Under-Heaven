@@ -30,13 +30,15 @@ var projects_by_id: Dictionary = {}
 var patrols_by_id: Dictionary = {}
 var intel_by_subject_id: Dictionary = {}
 var point_positions_by_id: Dictionary = {}
+var water_regions: Array[Rect2i] = []
 var world_milliseconds := 0
 var next_specialist_sequence := 1
 var next_project_sequence := 1
 var next_camp_sequence := 1
 
 
-func initialize_from_theater(points: Dictionary, routes: Dictionary) -> void:
+func initialize_from_theater(points: Dictionary, routes: Dictionary, water_regions_value: Array[Rect2i] = []) -> void:
+	water_regions = water_regions_value.duplicate()
 	for point_id_value in points:
 		var point: Dictionary = Dictionary(points[point_id_value])
 		point_positions_by_id[StringName(point_id_value)] = Vector2i(point.get("world_position", Vector2i.ZERO))
@@ -129,6 +131,7 @@ func begin_road_project(
 	build_camp: bool = false
 ) -> Dictionary:
 	var engineer := Dictionary(specialists_by_id.get(engineer_id, {}))
+	var resolved_road_kind := road_kind_for_route(route_world_points, road_kind)
 	var resolved_target_point_id := target_point_id
 	# A camp identity is reserved when the command is confirmed, rather than
 	# when work finishes.  Two engineers can therefore build concurrently
@@ -155,11 +158,11 @@ func begin_road_project(
 	var project_id := StringName("project.%06d" % next_project_sequence)
 	next_project_sequence += 1
 	var road_id := StringName("road.built.%06d" % next_project_sequence)
-	var max_durability := 70 if road_kind == ROAD_NORMAL else 150
-	if road_kind == ROAD_BRIDGE:
+	var max_durability := 70 if resolved_road_kind == ROAD_NORMAL else 150
+	if resolved_road_kind == ROAD_BRIDGE:
 		max_durability = 100
-	var required_milliseconds := 5000 if road_kind == ROAD_NORMAL else 9000
-	if road_kind == ROAD_BRIDGE:
+	var required_milliseconds := 5000 if resolved_road_kind == ROAD_NORMAL else 9000
+	if resolved_road_kind == ROAD_BRIDGE:
 		required_milliseconds = 11000
 	var project := {
 		"project_id": project_id,
@@ -168,7 +171,7 @@ func begin_road_project(
 		"source_point_id": source_point_id,
 		"target_point_id": resolved_target_point_id,
 		"route_world_points": route_world_points.duplicate(true),
-		"road_kind": road_kind,
+		"road_kind": resolved_road_kind,
 		"progress_milliseconds": 0,
 		"required_milliseconds": required_milliseconds,
 		"max_durability": max_durability,
@@ -181,6 +184,25 @@ func begin_road_project(
 	engineer.phase = SPECIALIST_BUILDING
 	specialists_by_id[engineer_id] = engineer
 	return project.duplicate(true)
+
+
+func road_kind_for_route(route_world_points: Array, requested_road_kind: StringName) -> StringName:
+	if requested_road_kind == ROAD_BRIDGE or _route_crosses_water(route_world_points):
+		return ROAD_BRIDGE
+	return requested_road_kind
+
+
+func _route_crosses_water(route_world_points: Array) -> bool:
+	for index in range(1, route_world_points.size()):
+		var start := Vector2(route_world_points[index - 1])
+		var end := Vector2(route_world_points[index])
+		var samples := maxi(1, ceili(start.distance_to(end) / 16.0))
+		for sample_index in range(samples + 1):
+			var position := Vector2i(start.lerp(end, float(sample_index) / float(samples)))
+			for water_region in water_regions:
+				if water_region.has_point(position):
+					return true
+	return false
 
 
 func damage_road(road_id: StringName, amount: int) -> bool:
@@ -343,12 +365,16 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 	world_milliseconds += delta_milliseconds
 	var completed: Array[StringName] = []
 	var engagements: Array[Dictionary] = []
-	var repair_arrivals: Dictionary = {}
+	# A repair may begin in the middle of this world step. Keep the unused part
+	# of the step for its work progress so one long advance and split advances
+	# produce identical durable state.
+	var repair_arrival_work_milliseconds: Dictionary = {}
 	for specialist_id_value in specialists_by_id.keys():
 		var moving_id := StringName(specialist_id_value)
 		var moving := Dictionary(specialists_by_id[moving_id])
 		if not bool(moving.get("alive", false)) or StringName(moving.get("phase", &"")) != SPECIALIST_MOVING:
 			continue
+		var move_remaining_before := int(moving.get("move_remaining_milliseconds", 0))
 		moving.move_elapsed_milliseconds = mini(int(moving.get("move_elapsed_milliseconds", 0)) + delta_milliseconds, int(moving.get("move_total_milliseconds", 0)))
 		moving.move_remaining_milliseconds = maxi(int(moving.get("move_total_milliseconds", 0)) - int(moving.get("move_elapsed_milliseconds", 0)), 0)
 		var move_progress := float(moving.get("move_elapsed_milliseconds", 0)) / maxf(float(moving.get("move_total_milliseconds", 1)), 1.0)
@@ -361,7 +387,7 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 			if StringName(active_project.get("project_kind", &"")) == &"REPAIR" and StringName(active_project.get("phase", &"")) == &"TRAVELING":
 				active_project.phase = &"BUILDING"
 				projects_by_id[active_project_id] = active_project
-				repair_arrivals[active_project_id] = true
+				repair_arrival_work_milliseconds[active_project_id] = maxi(delta_milliseconds - move_remaining_before, 0)
 				moving.phase = SPECIALIST_REPAIRING
 			else:
 				moving.phase = SPECIALIST_IDLE
@@ -369,15 +395,18 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 	for project_id_value in projects_by_id.keys():
 		var project_id := StringName(project_id_value)
 		var project := Dictionary(projects_by_id[project_id])
-		if StringName(project.get("phase", &"")) != &"BUILDING" or repair_arrivals.has(project_id):
+		if StringName(project.get("phase", &"")) != &"BUILDING":
 			continue
 		var engineer := Dictionary(specialists_by_id.get(StringName(project.engineer_id), {}))
 		if engineer.is_empty() or not bool(engineer.get("alive", false)):
 			project.phase = &"INTERRUPTED"
 			projects_by_id[project_id] = project
 			continue
+		var project_delta_milliseconds := int(repair_arrival_work_milliseconds.get(project_id, delta_milliseconds))
+		if project_delta_milliseconds <= 0:
+			continue
 		project.progress_milliseconds = mini(
-			int(project.progress_milliseconds) + delta_milliseconds,
+			int(project.progress_milliseconds) + project_delta_milliseconds,
 			int(project.required_milliseconds)
 		)
 		if int(project.progress_milliseconds) == int(project.required_milliseconds):
