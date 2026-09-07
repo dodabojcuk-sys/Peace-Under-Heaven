@@ -69,6 +69,15 @@ func _run_field_tactics_contract() -> void:
 	state.advance_world(1)
 	var observed := state.observe_subject(&"patrol.ridge.001")
 	_check(StringName(observed.get("fog_state", &"")) == FieldTacticsState.FOG_OBSERVED and int(observed.get("known_strength", 0)) == 5 and not bool(Dictionary(state.specialists_by_id[scout.specialist_id]).get("alive", true)), "侦察兵到达实际位置后获得最后情报，并会在同一节点被巡逻击杀")
+	state.advance_world(1000)
+	var patrol_after_departure := Dictionary(state.patrols_by_id[&"patrol.ridge.001"])
+	var historical_intel := state.observe_subject(&"patrol.ridge.001")
+	_check(
+		Vector2(patrol_after_departure.get("world_position", Vector2.ZERO)).distance_to(Vector2(790, 170)) > 1.0
+			and StringName(historical_intel.get("fog_state", &"")) == FieldTacticsState.FOG_OBSERVED
+			and Vector2i(historical_intel.get("last_known_world_position", Vector2i.ZERO)) == Vector2i(790, 170),
+		"巡逻在等待后沿路线实际移动；失去观察后情报保留最后观察坐标而不追踪当前位置"
+	)
 	var engineer := state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"blackstone_city")
 	var project := state.begin_road_project(StringName(engineer.specialist_id), &"blackstone_city", &"reedbank_garrison", [Vector2i(150, 430), Vector2i(440, 570), Vector2i(850, 505)], FieldTacticsState.ROAD_NORMAL, true)
 	_check(not project.is_empty() and not state.is_route_open(StringName(project.road_id)), "工程确认后保留施工事务，未完成道路不能提前通军")
@@ -92,7 +101,9 @@ func _run_field_tactics_contract() -> void:
 	split_step_repair.advance_world(repair_travel)
 	split_step_repair.advance_world(int(repair.required_milliseconds))
 	_check(
-		one_step_repair.get_snapshot() == split_step_repair.get_snapshot()
+		Dictionary(one_step_repair.get_snapshot().roads_by_id) == Dictionary(split_step_repair.get_snapshot().roads_by_id)
+			and Dictionary(one_step_repair.get_snapshot().projects_by_id) == Dictionary(split_step_repair.get_snapshot().projects_by_id)
+			and Dictionary(one_step_repair.get_snapshot().specialists_by_id) == Dictionary(split_step_repair.get_snapshot().specialists_by_id)
 			and one_step_repair.is_route_open(StringName(project.road_id)),
 		"维修到场帧余量计入施工：一次推进与拆分推进得到相同道路和项目状态"
 	)

@@ -25,6 +25,12 @@ war advance resumes the blocked order without a second march-food transaction.
 The formal controller regression covers that sequence. Encounter damage,
 nearest-camp routing, and multi-segment graph routing remain open.
 
+The finite patrol now waits, moves between persisted route points, and exposes
+only a last observed coordinate after observers lose it. The R2 field runner
+proves both the movement and the non-tracking historical-intel boundary. This
+does not yet resolve a patrol-versus-army encounter, apply losses, or provide
+an ambush rule.
+
 The map now preserves a camp identity at engineering confirmation, so two
 engineers cannot reserve the same runtime camp while both projects are still
 in progress.  The visible-army hit target cycles on repeated mouse clicks at

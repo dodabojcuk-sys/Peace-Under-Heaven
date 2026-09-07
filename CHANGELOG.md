@@ -37,6 +37,9 @@
 - Connected actual damaged field roads to durable macro `BLOCKED` orders and
   automatic repair-driven resume. The focused controller regression verifies
   identity retention and no duplicate march-food charge.
+- Replaced the static patrol position with a persisted wait-and-route movement
+  record and retained a non-tracking last-observed coordinate after visibility
+  ends. This is not yet an army encounter or casualty implementation.
 
 - Added a V5-persistent field-state record for runtime roads, camps,
   scouts/engineers, engineering projects, finite patrol intelligence, fog

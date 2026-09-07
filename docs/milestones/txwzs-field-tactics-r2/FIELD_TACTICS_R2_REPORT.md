@@ -57,6 +57,14 @@ on-site repair, automatic resume, and a subsequent advance. This is not yet
 nearest-reachable-camp routing, arbitrary multi-segment routing, or a patrol
 encounter system.
 
+### Patrol movement and historical-intel follow-up
+
+The finite patrol now has a persisted route, wait state, move interpolation and
+world position. The field smoke observes it at Northwatch, confirms the scout's
+last report, then verifies the patrol departs while the player only retains the
+previously observed coordinate. No army collision, guard behavior, ambush,
+casualty transaction, or patrol-derived road damage is claimed by this change.
+
 - Two macro armies can be issued from distinct garrison formations. The
   registry rejects a persisted formation identity in two non-closed macro
   armies, and closed history no longer blocks a new departure.

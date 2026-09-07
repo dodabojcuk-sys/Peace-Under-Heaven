@@ -58,6 +58,11 @@
 	and preserves its original order identity. Repair completion is the only
 	path that automatically resumes it; no new food transaction, route rewrite,
 	or UI-owned recovery record is created.
+- Patrols are finite persistent field participants with a route, wait and
+	interpolated position. Historical intel stores the last observed coordinate;
+	it must not derive a new location from the current patrol record after
+	visibility has been lost. Army encounter and ambush resolution remain a
+	separate unfinished authority extension.
 
 ## Macro March R0 outer-city greybox
 

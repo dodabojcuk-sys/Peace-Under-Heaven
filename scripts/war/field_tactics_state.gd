@@ -67,6 +67,12 @@ func initialize_from_theater(points: Dictionary, routes: Dictionary, water_regio
 			"current_point_id": &"northwatch_garrison",
 			"strength": 5,
 			"phase": &"PATROL",
+			"route_point_ids": [&"northwatch_garrison", &"reedbank_garrison"],
+			"target_route_index": 1,
+			"wait_remaining_milliseconds": 2400,
+			"move_total_milliseconds": 4000,
+			"move_elapsed_milliseconds": 0,
+			"move_start_position": _point_position(&"northwatch_garrison"),
 			"last_known_target_id": &"",
 			"last_known_at_milliseconds": 0,
 			"world_position": _point_position(&"northwatch_garrison"),
@@ -448,12 +454,33 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 		var patrol := Dictionary(patrols_by_id[patrol_id])
 		if int(patrol.get("strength", 0)) <= 0:
 			continue
+		var patrol_delta_milliseconds := delta_milliseconds
+		var patrol_wait := mini(int(patrol.get("wait_remaining_milliseconds", 0)), patrol_delta_milliseconds)
+		patrol.wait_remaining_milliseconds = int(patrol.get("wait_remaining_milliseconds", 0)) - patrol_wait
+		patrol_delta_milliseconds -= patrol_wait
+		if patrol_delta_milliseconds > 0:
+			var patrol_route: Array = Array(patrol.get("route_point_ids", []))
+			if patrol_route.size() >= 2:
+				var target_index := clampi(int(patrol.get("target_route_index", 0)), 0, patrol_route.size() - 1)
+				var target_point_id := StringName(patrol_route[target_index])
+				var target_position := _point_position(target_point_id)
+				patrol.move_elapsed_milliseconds = mini(int(patrol.get("move_elapsed_milliseconds", 0)) + patrol_delta_milliseconds, int(patrol.get("move_total_milliseconds", 1)))
+				var patrol_progress := float(patrol.get("move_elapsed_milliseconds", 0)) / maxf(float(patrol.get("move_total_milliseconds", 1)), 1.0)
+				patrol.world_position = Vector2i(Vector2(patrol.get("move_start_position", _point_position(StringName(patrol.get("current_point_id", &""))))).lerp(Vector2(target_position), patrol_progress))
+				if int(patrol.get("move_elapsed_milliseconds", 0)) == int(patrol.get("move_total_milliseconds", 1)):
+					patrol.current_point_id = target_point_id
+					patrol.world_position = target_position
+					patrol.target_route_index = (target_index + 1) % patrol_route.size()
+					patrol.wait_remaining_milliseconds = 1200
+					patrol.move_elapsed_milliseconds = 0
+					patrol.move_start_position = target_position
+		patrols_by_id[patrol_id] = patrol
 		for specialist_id_value in specialists_by_id.keys():
 			var specialist_id := StringName(specialist_id_value)
 			var specialist := Dictionary(specialists_by_id[specialist_id])
 			if (
 				bool(specialist.get("alive", false))
-				and StringName(specialist.get("current_point_id", &"")) == StringName(patrol.get("current_point_id", &""))
+				and Vector2(specialist.get("world_position", Vector2.ZERO)).distance_to(Vector2(patrol.get("world_position", Vector2.ZERO))) <= 28.0
 				and StringName(specialist.get("phase", &"")) != SPECIALIST_MOVING
 			):
 				# Contact grants one last report before the observer is removed;
@@ -462,6 +489,7 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 					"subject_id": patrol_id,
 					"fog_state": FOG_VISIBLE,
 					"last_known_point_id": StringName(patrol.current_point_id),
+					"last_known_world_position": Vector2i(patrol.get("world_position", Vector2i.ZERO)),
 					"last_observed_milliseconds": world_milliseconds,
 					"known_strength": int(patrol.strength),
 				}
@@ -594,6 +622,7 @@ func _refresh_intel() -> void:
 			"subject_id": patrol_id,
 			"fog_state": FOG_VISIBLE if visible else (FOG_OBSERVED if previously_seen else FOG_UNOBSERVED),
 			"last_known_point_id": StringName(patrol.get("current_point_id", &"")) if visible else StringName(previous.get("last_known_point_id", &"")),
+			"last_known_world_position": Vector2i(patrol_position) if visible else Vector2i(previous.get("last_known_world_position", Vector2i.ZERO)),
 			"last_observed_milliseconds": world_milliseconds if visible else int(previous.get("last_observed_milliseconds", 0)),
 			"known_strength": int(patrol.get("strength", 0)) if visible else int(previous.get("known_strength", 0)),
 		}
