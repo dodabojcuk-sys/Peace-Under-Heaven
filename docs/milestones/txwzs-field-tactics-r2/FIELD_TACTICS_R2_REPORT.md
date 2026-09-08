@@ -39,6 +39,13 @@ blocked records that never retained this fact. The R1 war regression covers a
 retreat block and resume. It does not yet prove a blocked retreat through the
 full reachable-camp transfer or cold-recovery sequence.
 
+Repair confirmation selects an endpoint only after resolving it from the
+engineer's current point through open runtime roads. An unreachable far bridge
+bank is therefore not selected merely because it is the authored road target;
+when neither endpoint is reachable, no repair project or identifier is
+created. This is bridge-work reachability, not the still-open army transfer to
+a reachable friendly camp after a blocked order.
+
 ### Map camera and command UI follow-up
 
 The return action and engineer action now occupy separate managed slots even

@@ -24,6 +24,13 @@ did not retain the interrupted task type. The R1 retreat regression confirms
 the new path; reachable-camp transfer and cold recovery of a blocked retreat
 remain open.
 
+Repair creation now selects only an endpoint reachable from the engineer's
+current point through the open road graph; it no longer unconditionally picks
+the road's far endpoint. If neither endpoint is reachable, confirmation fails
+without allocating a project. This prevents the bridge-repair path from
+visually or authoritatively crossing an unfinished span, but it is not yet the
+separate army safe-camp transfer required after a blocked march.
+
 ### R2 input-safety follow-up
 
 The return action now belongs to the same six-slot command stack as the other

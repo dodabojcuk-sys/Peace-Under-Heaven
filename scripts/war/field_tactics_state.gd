@@ -320,10 +320,13 @@ func begin_road_repair(engineer_id: StringName, road_id: StringName) -> Dictiona
 		or StringName(engineer.get("project_id", &"")) != &""
 	):
 		return {}
+	var repair_target := _reachable_repair_endpoint(engineer, road)
+	if repair_target.is_empty():
+		return {}
 	var project_id := StringName("repair.%06d" % next_project_sequence)
 	next_project_sequence += 1
-	var target_point_id := StringName(road.get("target_point_id", &""))
-	var target_position := _road_endpoint_position(road_id)
+	var target_point_id := StringName(repair_target.get("point_id", &""))
+	var target_position := Vector2(repair_target.get("world_position", Vector2.ZERO))
 	var start_position := Vector2(engineer.get("world_position", _point_position(StringName(engineer.get("current_point_id", &"")))))
 	var travel_milliseconds := maxi(0, ceili(start_position.distance_to(target_position) * 2.5))
 	var project := {
@@ -357,6 +360,30 @@ func begin_road_repair(engineer_id: StringName, road_id: StringName) -> Dictiona
 		engineer.phase = SPECIALIST_REPAIRING
 	specialists_by_id[engineer_id] = engineer
 	return project.duplicate(true)
+
+
+func _reachable_repair_endpoint(engineer: Dictionary, road: Dictionary) -> Dictionary:
+	var source_point_id := StringName(engineer.get("current_point_id", &""))
+	if source_point_id == &"":
+		return {}
+	var best: Dictionary = {}
+	for endpoint_id_value in [road.get("source_point_id", &""), road.get("target_point_id", &"")]:
+		var endpoint_id := StringName(endpoint_id_value)
+		if endpoint_id == &"":
+			continue
+		var duration := 0
+		if endpoint_id != source_point_id:
+			var path := plan_runtime_path(source_point_id, endpoint_id)
+			if not bool(path.get("valid", false)):
+				continue
+			duration = int(path.get("duration_milliseconds", 0))
+		if best.is_empty() or duration < int(best.get("duration_milliseconds", 0)):
+			best = {
+				"point_id": endpoint_id,
+				"world_position": _point_position(endpoint_id),
+				"duration_milliseconds": duration,
+			}
+	return best
 
 
 static func _has_valid_references(roads: Dictionary, camps: Dictionary, specialists: Dictionary, projects: Dictionary, patrols: Dictionary, intel: Dictionary) -> bool:

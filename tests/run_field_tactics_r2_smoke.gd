@@ -262,8 +262,14 @@ func _run_field_tactics_contract() -> void:
 	_check(bool(runtime_route.get("valid", false)) and state.runtime_route_duration_milliseconds(StringName(project.road_id)) >= 6000, "完工工程道路进入正式军令校验与行军时长计算")
 	_check(state.damage_road(StringName(project.road_id), 999) and not state.is_route_open(StringName(project.road_id)), "敌方造成的真实路损会改变通行状态")
 	var repair := state.begin_road_repair(StringName(engineer.specialist_id), StringName(project.road_id))
+	var repair_project := Dictionary(repair)
 	var repair_travel := int(Dictionary(state.specialists_by_id[StringName(engineer.specialist_id)]).get("move_total_milliseconds", 0))
-	_check(not repair.is_empty() and not state.is_route_open(StringName(project.road_id)), "受损道路先建立实际维修事务，不能隔空立即修好")
+	_check(
+		not repair.is_empty()
+			and StringName(repair_project.get("target_point_id", &"")) == &"reedbank_garrison"
+			and not state.is_route_open(StringName(project.road_id)),
+		"受损道路只从工程师当前可达的桥头或道路端点建立维修事务，不能隔空立即修好"
+	)
 	var repair_start_snapshot := state.get_snapshot()
 	var one_step_repair: FieldTacticsState = FIELD_TACTICS_STATE.new()
 	var split_step_repair: FieldTacticsState = FIELD_TACTICS_STATE.new()

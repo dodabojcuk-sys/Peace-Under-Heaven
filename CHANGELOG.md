@@ -30,6 +30,9 @@
 - Persisted the pre-block task phase for macro orders. A damaged retreat now
   resumes as `RETREATING`; pre-schema-5 blocked records migrate to the prior
   conservative `MARCHING` behavior because that fact was not stored.
+- Repair confirmation now chooses an actually reachable road endpoint through
+  the open graph and refuses to create a project when neither endpoint can be
+  reached, instead of targeting the far end of a damaged bridge by default.
 
 ### FIELD_TACTICS_R2 map and command UI checkpoint
 

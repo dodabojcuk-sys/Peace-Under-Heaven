@@ -64,7 +64,7 @@ func _run() -> void:
 			# chain exercises a genuine persisted repair-arrival phase.
 			var return_move := state.order_specialist_move(
 				StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")),
-				&"blackstone_city"
+				&"northwatch_garrison"
 			)
 			city.advance_war_loop_time(int(return_move.get("move_remaining_milliseconds", 0)))
 			state.damage_road(road_id, 999)
