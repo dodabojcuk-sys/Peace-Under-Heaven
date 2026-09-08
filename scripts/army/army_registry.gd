@@ -2,7 +2,7 @@ class_name ArmyRegistry
 extends RefCounted
 
 
-const SCHEMA_VERSION := 4
+const SCHEMA_VERSION := 5
 const MAX_EXACT_PERSISTED_SEQUENCE := 9007199254740991
 const PHASE_RESERVED := &"RESERVED"
 const PHASE_MARCHING := &"MARCHING"
@@ -381,7 +381,7 @@ static func validate_snapshot(
 ) -> Dictionary:
 	var source_schema_version := int(snapshot.get("schema_version", 0))
 	if (
-		source_schema_version not in [1, 2, 3, SCHEMA_VERSION]
+		source_schema_version not in [1, 2, 3, 4, SCHEMA_VERSION]
 		or typeof(snapshot.get("next_army_sequence", null)) != TYPE_INT
 		or int(snapshot.get("next_army_sequence", 0)) <= 0
 		or int(snapshot.get("next_army_sequence", 0))
@@ -405,8 +405,14 @@ static func validate_snapshot(
 	for army_id_value in normalized.armies_by_id:
 		var normalized_army: Dictionary = Dictionary(normalized.armies_by_id[army_id_value]).duplicate(true)
 		var normalized_macro: Dictionary = Dictionary(normalized_army.get("macro_march", {})).duplicate(true)
-		if not normalized_macro.is_empty() and not normalized_macro.has("route_segments"):
-			normalized_macro["route_segments"] = _legacy_macro_route_segments(StringName(normalized_macro.get("route_id", &"")))
+		if not normalized_macro.is_empty():
+			if not normalized_macro.has("route_segments"):
+				normalized_macro["route_segments"] = _legacy_macro_route_segments(StringName(normalized_macro.get("route_id", &"")))
+			# Earlier blocked orders did not preserve the work type that was
+			# interrupted. They historically resumed as marching, which remains the
+			# conservative migration default. New blocks retain RETREATING exactly.
+			if not normalized_macro.has("blocked_resume_phase"):
+				normalized_macro["blocked_resume_phase"] = PHASE_MARCHING
 			normalized_army["macro_march"] = normalized_macro
 			normalized.armies_by_id[army_id_value] = normalized_army
 	if (
@@ -869,7 +875,7 @@ func block_macro_march(
 	if (
 		army.is_empty()
 		or macro.is_empty()
-		or StringName(army.phase) != PHASE_MARCHING
+		or StringName(army.phase) not in [PHASE_MARCHING, PHASE_RETREATING]
 		or StringName(macro.order_id) != order_id
 		or segment_index < 0
 		or temporary_station_point == &""
@@ -880,6 +886,7 @@ func block_macro_march(
 	macro.progress_millis = progress_before_segment_millis
 	macro.blocked_segment_index = segment_index
 	macro.temporary_station_point = temporary_station_point
+	macro.blocked_resume_phase = StringName(army.phase)
 	macro.phase = PHASE_BLOCKED
 	army.progress_milliseconds = progress_before_segment_millis
 	army.phase = PHASE_BLOCKED
@@ -903,8 +910,12 @@ func resume_blocked_macro_march(
 		return {}
 	macro.blocked_segment_index = -1
 	macro.temporary_station_point = &""
-	macro.phase = PHASE_MARCHING
-	army.phase = PHASE_MARCHING
+	var resume_phase := StringName(macro.get("blocked_resume_phase", PHASE_MARCHING))
+	if resume_phase not in [PHASE_MARCHING, PHASE_RETREATING]:
+		return {}
+	macro.blocked_resume_phase = PHASE_MARCHING
+	macro.phase = resume_phase
+	army.phase = resume_phase
 	army.macro_march = macro
 	_armies_by_id[army_id] = army
 	return army.duplicate(true)
@@ -940,6 +951,7 @@ func _build_macro_march(
 		"total_millis": duration_milliseconds,
 		"blocked_segment_index": -1,
 		"temporary_station_point": &"",
+		"blocked_resume_phase": PHASE_MARCHING,
 		"phase": PHASE_MARCHING,
 	}
 
@@ -988,7 +1000,7 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 		"order_id", "source_point_id", "target_point_id", "route_id",
 		"route_world_points", "formation_snapshots", "food_cost",
 		"progress_millis", "total_millis", "blocked_segment_index",
-		"temporary_station_point", "phase",
+		"temporary_station_point", "blocked_resume_phase", "phase",
 	]
 	if macro.has("route_segments"):
 		expected_keys.append("route_segments")
@@ -1016,6 +1028,7 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 		or int(army.duration_milliseconds) != int(macro.total_millis)
 		or typeof(macro.blocked_segment_index) != TYPE_INT
 		or typeof(macro.temporary_station_point) != TYPE_STRING_NAME
+		or StringName(macro.blocked_resume_phase) not in [PHASE_MARCHING, PHASE_RETREATING]
 		or StringName(macro.phase) not in [PHASE_MARCHING, PHASE_BLOCKED, PHASE_STATIONED, PHASE_SIEGING, PHASE_RETREATING, PHASE_CLOSED]
 		or StringName(army.phase) != StringName(macro.phase)
 		or not _has_valid_macro_formations(

@@ -27,6 +27,9 @@
 - Focused Field R2 smoke passes 42 assertions and all three cross-process
   field chains pass. This is not a complete R2 tactical loop or normal-input
   player evidence.
+- Persisted the pre-block task phase for macro orders. A damaged retreat now
+  resumes as `RETREATING`; pre-schema-5 blocked records migrate to the prior
+  conservative `MARCHING` behavior because that fact was not stored.
 
 ### FIELD_TACTICS_R2 map and command UI checkpoint
 

@@ -16,6 +16,14 @@ engineering checkpoint only: interruption/reassignment, reachable broken-
 bridge stationing, patrol guard/ambush casualties, full routes and normal-
 input media remain open.
 
+Blocked macro orders now preserve the task phase that must resume. In
+particular, a damaged return route resumes as `RETREATING` after repair rather
+than silently changing to ordinary marching. ArmyRegistry schema 5 migrates
+old blocked records to the historical `MARCHING` behavior because those saves
+did not retain the interrupted task type. The R1 retreat regression confirms
+the new path; reachable-camp transfer and cold recovery of a blocked retreat
+remain open.
+
 ### R2 input-safety follow-up
 
 The return action now belongs to the same six-slot command stack as the other

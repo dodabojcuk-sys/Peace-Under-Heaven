@@ -31,6 +31,14 @@ This proves engineering state continuity, not interruption/reassignment,
 nearest reachable stationing, patrol guard/ambush combat, a full play route,
 or normal system-input media.
 
+Blocked macro orders also now carry their intended resume phase. The damaged
+route handler can block either a normal march or a retreat; after repair it
+restores the original phase rather than changing a retreat into an unrelated
+march. ArmyRegistry schema 5 supplies `MARCHING` only when migrating old
+blocked records that never retained this fact. The R1 war regression covers a
+retreat block and resume. It does not yet prove a blocked retreat through the
+full reachable-camp transfer or cold-recovery sequence.
+
 ### Map camera and command UI follow-up
 
 The return action and engineer action now occupy separate managed slots even

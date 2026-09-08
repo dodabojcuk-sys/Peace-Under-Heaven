@@ -120,6 +120,12 @@ func _run_war_loop_regression_probes() -> void:
 	_check(int(Dictionary(survivor_formations[0]).member_count) == 7 and int(Dictionary(survivor_formations[1]).member_count) == 0, "两支各七人的编队伤亡写回保持原队列，不会回填为十四人与零人")
 	var retreat_macro: Dictionary = Dictionary(retreating.macro_march)
 	var retreat_segments: Array = Array(retreat_macro.get("route_segments", []))
+	var blocked_retreat := registry.block_macro_march(
+		StringName(retreating.army_id), StringName(retreat_macro.order_id), 0, 0, &"northwatch_garrison"
+	)
+	var resumed_retreat := registry.resume_blocked_macro_march(
+		StringName(retreating.army_id), StringName(retreat_macro.order_id)
+	)
 	_check(
 		StringName(retreat_macro.order_id) != StringName(macro_order.order_id)
 			and Array(retreating.macro_order_history).size() == 1
@@ -129,6 +135,9 @@ func _run_war_loop_regression_probes() -> void:
 			and StringName(Dictionary(retreat_segments[0]).get("road_id", &"")) == &"road.test.second"
 			and bool(Dictionary(retreat_segments[0]).get("forward", true))
 			and StringName(Dictionary(retreat_segments[1]).get("road_id", &"")) == &"road.test.first"
+			and StringName(blocked_retreat.get("phase", &"")) == ArmyRegistry.PHASE_BLOCKED
+			and StringName(resumed_retreat.get("phase", &"")) == ArmyRegistry.PHASE_RETREATING
+			and StringName(Dictionary(resumed_retreat.get("macro_march", {})).get("phase", &"")) == ArmyRegistry.PHASE_RETREATING
 			and not bool(Dictionary(retreat_segments[1]).get("forward", true)),
 		"撤逃创建独立返程军令，反转同一路网段和方向并保留原攻城军令"
 	)
