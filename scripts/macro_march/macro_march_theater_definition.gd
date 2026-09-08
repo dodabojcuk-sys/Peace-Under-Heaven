@@ -9,6 +9,17 @@ const REDCLIFF_CITY := &"redcliff_city"
 const SILVERFORD_CITY := &"silverford_city"
 
 
+@export var theater_name := "黑石战区"
+@export var presentation_profile: Dictionary = {
+	"ground_color": Color("7e966c"),
+	"ground_patch_color": Color("91a878"),
+	"water_color": Color("4e9bbd"),
+	"water_highlight_color": Color("8bcbd0"),
+	"friendly_color": Color("d9b96d"),
+	"enemy_color": Color("c85745"),
+}
+
+
 # Coordinates are tactical-world facts. The map camera may frame only part of
 # this area, but it must not invent land, forests or water in presentation.
 @export var world_bounds := Rect2i(-260, -180, 1520, 1040)

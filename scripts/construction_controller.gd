@@ -5447,6 +5447,27 @@ func order_field_specialist_move(specialist_id: StringName, target_point_id: Str
 	return {"success": true, "specialist": specialist}
 
 
+func preview_field_road_project(
+	engineer_id: StringName,
+	source_point_id: StringName,
+	target_point_id: StringName,
+	route_world_points: Array,
+	road_kind: StringName,
+	build_camp := false
+) -> Dictionary:
+	_ensure_war_loop_initialized()
+	var preview := _war_loop_state.field_tactics.preview_road_project(
+		engineer_id, source_point_id, target_point_id, route_world_points, road_kind, build_camp
+	)
+	if not bool(preview.get("valid", false)):
+		return preview
+	var food_cost := 12 if bool(preview.get("contains_bridge", false)) else (10 if StringName(preview.get("road_kind", &"")) == FieldTacticsState.ROAD_REINFORCED else 5)
+	preview.food_cost = food_cost
+	preview.food_shortage = maxi(food_cost - food, 0)
+	preview.affordable = food >= food_cost
+	return preview
+
+
 func begin_field_road_project(
 	engineer_id: StringName,
 	source_point_id: StringName,
@@ -5456,11 +5477,11 @@ func begin_field_road_project(
 	build_camp := false
 ) -> Dictionary:
 	_ensure_war_loop_initialized()
-	var resolved_road_kind := _war_loop_state.field_tactics.road_kind_for_route(route_world_points, road_kind)
-	var contains_bridge := _war_loop_state.field_tactics.construction_contains_bridge(route_world_points, resolved_road_kind)
-	var food_cost := 5 if resolved_road_kind == FieldTacticsState.ROAD_NORMAL else 10
-	if contains_bridge:
-		food_cost = 12
+	var preview := preview_field_road_project(engineer_id, source_point_id, target_point_id, route_world_points, road_kind, build_camp)
+	if not bool(preview.get("valid", false)):
+		return _macro_failure(&"PROJECT_INVALID", str(preview.get("error", "工程施工规划无效")))
+	var resolved_road_kind := StringName(preview.get("road_kind", FieldTacticsState.ROAD_NORMAL))
+	var food_cost := int(preview.get("food_cost", 0))
 	if food < food_cost:
 		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足，无法安排工程施工")
 	var war_before := _war_loop_state.get_snapshot()
@@ -5920,7 +5941,9 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		return {}
 	var registry_before := _army_registry.get_snapshot()
 	var war_before := _war_loop_state.get_snapshot()
-	var field_advance := _war_loop_state.field_tactics.advance_world(whole_milliseconds, _macro_army_world_positions())
+	var field_advance := _war_loop_state.field_tactics.advance_world(
+		whole_milliseconds, _macro_army_world_positions(), _macro_march_traces_for_war_step
+	)
 	var encounter_result := _resolve_field_patrol_encounters(field_advance)
 	if not bool(encounter_result.get("success", true)):
 		_war_loop_state.restore_snapshot(war_before)

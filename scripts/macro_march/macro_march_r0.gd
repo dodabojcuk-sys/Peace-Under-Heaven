@@ -20,8 +20,10 @@ var _draw_points: Array[Vector2] = []
 var _is_drawing := false
 var _engineering_mode := false
 var _engineering_engineer_id: StringName = &""
+var _engineering_source_point_id: StringName = &""
 var _scout_target_mode := false
 var _selected_scout_id: StringName = &""
+var _selected_specialist_id: StringName = &""
 var _selected_army_id: StringName = &""
 var _selected_damaged_road_id: StringName = &""
 var _selected_interrupted_project_id: StringName = &""
@@ -263,18 +265,19 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		]
 	if _engineering_mode or not _engineering_draft.is_empty():
 		var draft_kind := StringName(_engineering_draft.get("road_kind", FieldTacticsState.ROAD_NORMAL))
-		var draft_contains_bridge := THEATER.route_crosses_water(Array(_engineering_draft.get("route_world_points", _draw_points)))
+		var draft_contains_bridge := bool(_engineering_draft.get("contains_bridge", false))
 		var draft_kind_label := ("加固路" if draft_kind == FieldTacticsState.ROAD_REINFORCED else "普通路") + ("（含桥梁）" if draft_contains_bridge else "")
-		var draft_cost := 12 if draft_contains_bridge else (10 if draft_kind == FieldTacticsState.ROAD_REINFORCED else 5)
+		var draft_cost := int(_engineering_draft.get("food_cost", 0))
+		var draft_seconds := float(_engineering_draft.get("required_milliseconds", 0)) / 1000.0
 		_confirm_button.visible = true
 		_confirm_button.text = "确认施工"
 		_confirm_button.disabled = _engineering_draft.is_empty()
 		_block_button.visible = false
 		_recover_button.visible = false
 		_retreat_button.visible = false
-		_status_label.text = "工程草稿待确认；右键取消不会扣除资源。" if not _engineering_draft.is_empty() else "工程绘线：从工程师所在位置拖出道路。"
-		_detail_label.text = "工程师：%s\n路径点：%d\n路线类型：%s\n预计粮食：%d；确认后才会扣除。" % [
-			String(_engineering_engineer_id), Array(_engineering_draft.get("route_world_points", _draw_points)).size(), draft_kind_label, draft_cost,
+		_status_label.text = "工程草稿待确认；右键取消不会扣除资源。" if not _engineering_draft.is_empty() else ("工程绘线：从所选起点拖到已有驻点或新驻点位置。" if _engineering_source_point_id != &"" else "工程模式：先在地图上选择施工起点。")
+		_detail_label.text = "工程师：%s\n施工起点：%s · 路径点：%d\n路线类型：%s\n预计施工：%0.1f 秒 · 粮食：%d；确认后才会扣除。" % [
+			String(_engineering_engineer_id), String(_engineering_source_point_id), Array(_engineering_draft.get("route_world_points", _draw_points)).size(), draft_kind_label, draft_seconds, draft_cost,
 		]
 		return
 	if army.is_empty():
@@ -504,6 +507,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			_engineering_draft = {}
 			_engineering_mode = false
 			_engineering_engineer_id = &""
+			_engineering_source_point_id = &""
 			_selected_damaged_road_id = &""
 			_draw_points.clear()
 			_status_label.text = "路线草稿已取消；没有资源、编队或军令写入。"
@@ -534,14 +538,40 @@ func _on_gui_input(event: InputEvent) -> void:
 			refresh()
 			accept_event()
 			return
-		var selected_id := _army_id_at_screen(_model(), event.position)
-		if selected_id != &"":
-			_selected_army_id = selected_id
-			_selected_formation_ids.clear()
-			_status_label.text = "已选中该军队；续令、撤逃与路线草稿只作用于它。"
+		if _engineering_mode and _engineering_source_point_id == &"":
+			var engineering_source := _point_id_at_screen(event.position)
+			if engineering_source == &"" or StringName(_point_from_model(_model(), engineering_source).get("point_kind", &"")) == &"ENEMY_CITY":
+				_status_label.text = "请选择友方城池或已建驻点作为施工起点。"
+				return
+			_engineering_source_point_id = engineering_source
+			_status_label.text = "施工起点已确定；从该位置拖线到已有驻点，或在合法空地结束以新建驻点。"
 			refresh()
 			accept_event()
 			return
+		if _engineering_mode:
+			var engineering_source := _point_from_model(_model(), _engineering_source_point_id)
+			var engineering_source_position := _world_to_screen(Vector2(engineering_source.get("world_position", Vector2.ZERO)))
+			if event.position.distance_to(engineering_source_position) > 52.0:
+				_status_label.text = "请从已选施工起点开始拖线。"
+				return
+			_is_drawing = true
+			_draw_points = [Vector2(engineering_source.get("world_position", _screen_to_world(event.position)))]
+			accept_event()
+			return
+		var command_army := _selected_army(_model())
+		var has_explicit_command_subject := not _selected_formation_ids.is_empty() or (
+			not command_army.is_empty()
+			and StringName(command_army.get("army_id", &"")) == _selected_army_id
+			and StringName(command_army.get("phase", &"")) == ARMY_REGISTRY.PHASE_STATIONED
+		)
+		if has_explicit_command_subject:
+			var command_source := _point_from_model(_model(), _source_point_id(_model(), command_army))
+			var command_source_position := _world_to_screen(Vector2(command_source.get("world_position", Vector2.ZERO)))
+			if event.position.distance_to(command_source_position) <= 52.0:
+				_is_drawing = true
+				_draw_points = [Vector2(command_source.get("world_position", _screen_to_world(event.position)))]
+				accept_event()
+				return
 		var damaged_road_id := _damaged_road_id_at_screen(_dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}, event.position)
 		if damaged_road_id != &"":
 			_selected_damaged_road_id = damaged_road_id
@@ -550,11 +580,24 @@ func _on_gui_input(event: InputEvent) -> void:
 			accept_event()
 			return
 		var specialist_id := _specialist_id_at_screen(_dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}, event.position)
-		if specialist_id != &"":
+		var selected_id := _army_id_at_screen(_model(), event.position)
+		# Specialists and armies can share a station. The first click chooses the
+		# specialist; a repeated click cycles to the army without making either
+		# object unreachable through normal input.
+		if specialist_id != &"" and specialist_id != _selected_specialist_id:
 			var selected_specialist := Dictionary(_dispatch_adapter.get_field_tactics_read_model().get("specialists_by_id", {}).get(specialist_id, {}))
+			_selected_specialist_id = specialist_id
 			if StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT:
 				_selected_scout_id = specialist_id
-			_status_label.text = "已选中地图上的专家；右栏显示其实际任务状态。"
+			_status_label.text = "已选中%s；右栏操作将优先作用于该专家。" % ("侦察兵" if StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else "工程师")
+			refresh()
+			accept_event()
+			return
+		if selected_id != &"":
+			_selected_army_id = selected_id
+			_selected_specialist_id = &""
+			_selected_formation_ids.clear()
+			_status_label.text = "已选中该军队；续令、撤逃与路线草稿只作用于它。"
 			refresh()
 			accept_event()
 			return
@@ -567,7 +610,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			_status_label.text = "请从当前驻点开始画线。"
 			return
 		_is_drawing = true
-		_draw_points = [_screen_to_world(event.position)]
+		_draw_points = [Vector2(source.get("world_position", _screen_to_world(event.position)))]
 		accept_event()
 	else:
 		if not _is_drawing:
@@ -645,21 +688,29 @@ func _finish_engineering_draw(model: Dictionary, source_id: StringName) -> void:
 	if _engineering_engineer_id == &"" or _draw_points.size() < 2:
 		_status_label.text = "工程路线至少需要两个位置。"
 		return
-	var target_id := _nearest_target_at_draw_end(source_id)
+	var target_id := _nearest_engineering_target_at_draw_end(source_id)
 	# Water crossing is an attribute of the physical segment plan, not the
 	# player's selected land material. FieldTacticsState turns only the water
 	# spans into bridges when the confirmed project is built.
 	var road_kind := FieldTacticsState.ROAD_NORMAL
-	_engineering_draft = {
-		"engineer_id": _engineering_engineer_id,
-		"source_point_id": source_id,
-		"target_point_id": target_id,
-		"route_world_points": _draw_points.duplicate(true),
-		"road_kind": road_kind,
-		"build_camp": true,
-	}
+	var route_points := _draw_points.duplicate(true)
+	route_points[0] = Vector2(_point_from_model(model, source_id).get("world_position", route_points[0]))
+	if target_id != &"":
+		route_points[route_points.size() - 1] = Vector2(_point_from_model(model, target_id).get("world_position", route_points.back()))
+	var build_camp := target_id == &""
+	var preview := _dispatch_adapter.preview_field_road_project(
+		_engineering_engineer_id, source_id, target_id, route_points, road_kind, build_camp
+	)
+	if not bool(preview.get("valid", false)):
+		_engineering_draft = {}
+		_draw_points.clear()
+		_status_label.text = str(preview.get("error", "工程路线无法施工"))
+		refresh()
+		return
+	_engineering_draft = preview.duplicate(true)
+	_engineering_draft.requested_target_point_id = target_id
 	_draw_points.clear()
-	_status_label.text = "工程草稿已生成；确认施工才会扣除资源并派工程师前往。"
+	_status_label.text = "工程草稿已生成：%s；确认施工才会扣除资源并派工程师前往。" % ("连接已有驻点" if not build_camp else "新建工程驻点")
 	refresh()
 
 
@@ -670,7 +721,7 @@ func _confirm_draft() -> void:
 		var engineering := _engineering_draft.duplicate(true)
 		var engineering_result := _dispatch_adapter.begin_field_road_project(
 			StringName(engineering.engineer_id), StringName(engineering.source_point_id),
-			StringName(engineering.target_point_id), Array(engineering.route_world_points),
+			StringName(engineering.get("requested_target_point_id", engineering.target_point_id)), Array(engineering.route_world_points),
 			StringName(engineering.road_kind), bool(engineering.build_camp)
 		)
 		if not bool(engineering_result.get("success", false)):
@@ -679,6 +730,7 @@ func _confirm_draft() -> void:
 		_engineering_draft = {}
 		_engineering_mode = false
 		_engineering_engineer_id = &""
+		_engineering_source_point_id = &""
 		_status_label.text = "工程军令已锁定；道路和驻点将在施工完成后开放通军。"
 		refresh()
 		return
@@ -795,7 +847,14 @@ func _build_side_road() -> void:
 				return
 		_status_label.text = "需要一名空闲且存活的工程师前往维修。"
 		return
-	for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
+	var specialists: Dictionary = Dictionary(field.get("specialists_by_id", {}))
+	var ordered_specialist_ids: Array = specialists.keys()
+	ordered_specialist_ids.sort()
+	if _selected_specialist_id in ordered_specialist_ids:
+		ordered_specialist_ids.erase(_selected_specialist_id)
+		ordered_specialist_ids.push_front(_selected_specialist_id)
+	for specialist_id_value in ordered_specialist_ids:
+		var specialist_value = specialists[specialist_id_value]
 		var specialist: Dictionary = specialist_value
 		if (
 			StringName(specialist.get("role", &"")) != FieldTacticsState.SPECIALIST_ENGINEER
@@ -805,9 +864,10 @@ func _build_side_road() -> void:
 			continue
 		_engineering_mode = true
 		_engineering_engineer_id = StringName(specialist.get("specialist_id", &""))
+		_engineering_source_point_id = &""
 		_draw_points.clear()
 		_draft_route = {}
-		_status_label.text = "工程师已选中：从其所在位置按住左键拖出道路，终点可新建驻点。"
+		_status_label.text = "工程师已选中：先点友方城池或驻点作为施工起点，工程师会自行前往。"
 		queue_redraw()
 		return
 	_status_label.text = "需要一名空闲且存活的工程师。"
@@ -878,9 +938,8 @@ func _can_draw_route() -> bool:
 
 
 func _source_point_id(model: Dictionary, army: Dictionary) -> StringName:
-	if _engineering_mode and _dispatch_adapter != null:
-		var specialist := Dictionary(_dispatch_adapter.get_field_tactics_read_model().get("specialists_by_id", {}).get(_engineering_engineer_id, {}))
-		return StringName(specialist.get("current_point_id", &""))
+	if _engineering_mode:
+		return _engineering_source_point_id
 	return (
 		StringName(model.get("source_point_id", &"blackstone_city"))
 		if not _selected_formation_ids.is_empty() or army.is_empty()
@@ -942,6 +1001,24 @@ func _nearest_target_at_draw_end(source_id: StringName) -> StringName:
 		if StringName(point_id) != source_id and end.distance_to(Vector2(point.get("world_position", Vector2.ZERO))) <= 65.0:
 			return StringName(point_id)
 	return &""
+
+
+func _nearest_engineering_target_at_draw_end(source_id: StringName) -> StringName:
+	if _draw_points.is_empty():
+		return &""
+	var end := Vector2(_draw_points.back())
+	var nearest_id: StringName = &""
+	var nearest_distance := 65.0
+	for point_id_value in _all_points(_model()):
+		var point_id := StringName(point_id_value)
+		var point := _point_from_model(_model(), point_id)
+		if point_id == source_id or StringName(point.get("point_kind", &"")) == &"ENEMY_CITY":
+			continue
+		var distance := end.distance_to(Vector2(point.get("world_position", Vector2.ZERO)))
+		if distance <= nearest_distance:
+			nearest_id = point_id
+			nearest_distance = distance
+	return nearest_id
 
 
 func _point_id_at_screen(screen_position: Vector2) -> StringName:
@@ -1133,15 +1210,14 @@ func _draw() -> void:
 
 func _draw_map_canvas(canvas: Control) -> void:
 	var rect := _map_rect()
+	var palette := THEATER.get_presentation_profile()
 	# World drawing keeps the parent's screen-space transform, while the child
 	# canvas clips every primitive to the actual map viewport.
 	canvas.draw_set_transform(-rect.position)
-	canvas.draw_rect(rect, Color("728b67"))
+	canvas.draw_rect(rect, Color(palette.get("ground_color", Color("728b67"))))
 	_draw_terrain(canvas, rect)
 	for water_region in THEATER.get_water_regions():
-		var water_position := _world_to_screen(Vector2(water_region.position))
-		var water_size := Vector2(water_region.size) * _camera_zoom
-		canvas.draw_rect(Rect2(water_position, water_size), Color("4c95b5"), true)
+		_draw_water_region(canvas, water_region, palette)
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
 	for route_value in Dictionary(field.get("roads_by_id", {})).values():
 		var route: Dictionary = route_value
@@ -1156,6 +1232,10 @@ func _draw_map_canvas(canvas: Control) -> void:
 		var width := 15.0 if kind == FieldTacticsState.ROAD_MAIN else (12.0 if kind == FieldTacticsState.ROAD_BRIDGE else 10.0)
 		canvas.draw_polyline(points, color, width, true)
 		canvas.draw_polyline(points, Color("4b3927"), 2.0, true)
+		if kind == FieldTacticsState.ROAD_BRIDGE:
+			_draw_bridge_deck(canvas, points, damaged)
+		elif damaged:
+			_draw_road_damage(canvas, Array(points))
 	if not _draft_route.is_empty():
 		var draft_points := PackedVector2Array()
 		for point in _draft_route.points:
@@ -1171,7 +1251,7 @@ func _draw_map_canvas(canvas: Control) -> void:
 	for camp_value in Dictionary(field.get("camps_by_id", {})).values():
 		var camp: Dictionary = camp_value
 		var camp_center := _world_to_screen(Vector2(camp.get("world_position", Vector2.ZERO)))
-		canvas.draw_rect(Rect2(camp_center - Vector2(11, 11), Vector2(22, 22)), Color("f0c46b"), true)
+		_draw_camp_marker(canvas, camp_center)
 	for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
 		var specialist: Dictionary = specialist_value
 		if not bool(specialist.get("alive", false)):
@@ -1216,8 +1296,10 @@ func _draw_map_canvas(canvas: Control) -> void:
 		var point: Dictionary = point_value
 		var center := _world_to_screen(Vector2(point.world_position))
 		var enemy := StringName(point.get("point_kind", &"")) == &"ENEMY_CITY"
-		canvas.draw_circle(center, 25.0, Color("5c2b25") if enemy else Color("273d3c"))
-		canvas.draw_circle(center, 18.0, Color("c65a42") if enemy else Color("d7b465"))
+		if StringName(point.get("point_kind", &"")) in [&"ENEMY_CITY", &""] and StringName(point.get("point_id", &"")) in [&"blackstone_city", &"redcliff_city", &"silverford_city"]:
+			_draw_city_marker(canvas, center, enemy, palette)
+		else:
+			_draw_garrison_marker(canvas, center)
 		var label_position := Vector2(clampf(center.x - 38.0, rect.position.x + 2.0, rect.end.x - 82.0), clampf(center.y + 47.0, rect.position.y + 16.0, rect.end.y - 6.0))
 		canvas.draw_string(ThemeDB.fallback_font, label_position, str(point.display_name), HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.WHITE)
 	_draw_minimap(canvas)
@@ -1232,12 +1314,82 @@ func _draw_terrain(canvas: Control, rect: Rect2) -> void:
 			continue
 		var forest := Rect2(terrain.get("rect", Rect2i()))
 		var forest_rect := Rect2(_world_to_screen(forest.position), forest.size * _camera_zoom)
-		canvas.draw_rect(forest_rect, Color("466044"), true)
-		for offset in [Vector2(18, 24), Vector2(64, 58), Vector2(118, 30), Vector2(140, 92)]:
-			canvas.draw_circle(_world_to_screen(forest.position + offset), 9.0 * _camera_zoom, Color("315039"))
-	var shore := Rect2(_world_to_screen(Vector2(500, 330)), Vector2(155, 175) * _camera_zoom)
-	canvas.draw_rect(shore, Color("98a969"), false, 3.0)
+		canvas.draw_rect(forest_rect, Color("38533b", 0.24), true)
+		var tree_offsets := [
+			Vector2(18, 24), Vector2(48, 46), Vector2(77, 20), Vector2(108, 48),
+			Vector2(138, 25), Vector2(30, 88), Vector2(65, 105), Vector2(102, 82),
+			Vector2(145, 96),
+		]
+		for offset in tree_offsets:
+			if offset.x >= forest.size.x - 5 or offset.y >= forest.size.y - 5:
+				continue
+			var tree := _world_to_screen(forest.position + offset)
+			canvas.draw_line(tree + Vector2(0, 4), tree + Vector2(0, 12), Color("59442d"), maxf(2.0, 2.5 * _camera_zoom))
+			canvas.draw_circle(tree, maxf(5.0, 10.0 * _camera_zoom), Color("315a3b"))
+			canvas.draw_circle(tree + Vector2(-3, -3), maxf(3.0, 6.0 * _camera_zoom), Color("5f8249"))
 	canvas.draw_rect(rect, Color("d9cfaa"), false, 2.0)
+
+
+func _draw_water_region(canvas: Control, water_region: Rect2i, palette: Dictionary) -> void:
+	var top_left := _world_to_screen(Vector2(water_region.position))
+	var bottom_right := _world_to_screen(Vector2(water_region.end))
+	var width := bottom_right.x - top_left.x
+	var height := bottom_right.y - top_left.y
+	var bank := PackedVector2Array([
+		top_left + Vector2(0, 5), top_left + Vector2(width * 0.32, 0), top_left + Vector2(width * 0.68, 8), top_left + Vector2(width, 3),
+		bottom_right + Vector2(0, -5), top_left + Vector2(width * 0.68, height), top_left + Vector2(width * 0.30, height - 7), top_left + Vector2(0, height - 2),
+	])
+	canvas.draw_colored_polygon(bank, Color(palette.get("water_color", Color("4c95b5"))))
+	canvas.draw_polyline(PackedVector2Array([bank[0], bank[1], bank[2], bank[3]]), Color("c9c88d"), 4.0, true)
+	canvas.draw_polyline(PackedVector2Array([bank[4], bank[5], bank[6], bank[7]]), Color("c9c88d"), 4.0, true)
+	for ratio in [0.22, 0.52, 0.78]:
+		var y: float = top_left.y + height * float(ratio)
+		canvas.draw_line(Vector2(top_left.x + 9, y), Vector2(bottom_right.x - 9, y + 3), Color(palette.get("water_highlight_color", Color("8bcbd0")), 0.7), 2.0)
+
+
+func _draw_bridge_deck(canvas: Control, points: PackedVector2Array, damaged: bool) -> void:
+	for index in range(1, points.size()):
+		var start := points[index - 1]
+		var end := points[index]
+		var length := start.distance_to(end)
+		var normal := (end - start).normalized().orthogonal()
+		var plank_count := maxi(2, floori(length / 10.0))
+		for plank_index in range(plank_count + 1):
+			var center := start.lerp(end, float(plank_index) / float(plank_count))
+			canvas.draw_line(center - normal * 6.0, center + normal * 6.0, Color("d6b06b"), 2.0)
+	if damaged:
+		_draw_road_damage(canvas, Array(points))
+
+
+func _draw_road_damage(canvas: Control, screen_points: Array) -> void:
+	if screen_points.size() < 2:
+		return
+	var center := _point_along_route(screen_points, 0.5)
+	canvas.draw_line(center + Vector2(-9, -9), center + Vector2(9, 9), Color("ffdf9a"), 4.0)
+	canvas.draw_line(center + Vector2(-9, 9), center + Vector2(9, -9), Color("7c2525"), 4.0)
+
+
+func _draw_city_marker(canvas: Control, center: Vector2, enemy: bool, palette: Dictionary) -> void:
+	var wall_color := Color("633631") if enemy else Color("354845")
+	var banner_color := Color(palette.get("enemy_color" if enemy else "friendly_color", Color("c65a42") if enemy else Color("d7b465")))
+	canvas.draw_rect(Rect2(center - Vector2(23, 18), Vector2(46, 36)), wall_color, true)
+	for tower_offset in [Vector2(-22, -17), Vector2(22, -17), Vector2(-22, 17), Vector2(22, 17)]:
+		canvas.draw_circle(center + tower_offset, 7.0, Color("8b6750"))
+	canvas.draw_rect(Rect2(center - Vector2(15, 11), Vector2(30, 22)), banner_color, true)
+	canvas.draw_rect(Rect2(center + Vector2(-6, 8), Vector2(12, 13)), Color("241f1c"), true)
+	canvas.draw_line(center + Vector2(4, -29), center + Vector2(4, -8), Color("2d2924"), 2.0)
+	canvas.draw_colored_polygon(PackedVector2Array([center + Vector2(5, -28), center + Vector2(20, -23), center + Vector2(5, -17)]), banner_color)
+
+
+func _draw_garrison_marker(canvas: Control, center: Vector2) -> void:
+	canvas.draw_colored_polygon(PackedVector2Array([center + Vector2(-18, 13), center, center + Vector2(18, 13)]), Color("d6aa63"))
+	canvas.draw_colored_polygon(PackedVector2Array([center + Vector2(-12, 10), center + Vector2(-4, -12), center + Vector2(4, 10)]), Color("efe0b7"))
+	canvas.draw_line(center + Vector2(-21, 15), center + Vector2(21, 15), Color("4b3927"), 3.0)
+
+
+func _draw_camp_marker(canvas: Control, center: Vector2) -> void:
+	_draw_garrison_marker(canvas, center)
+	canvas.draw_circle(center + Vector2(16, 11), 4.0, Color("ecb959"))
 
 
 func _draw_minimap(canvas: Control) -> void:

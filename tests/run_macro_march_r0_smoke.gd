@@ -208,6 +208,7 @@ func _run_map_draft_contract() -> void:
 	var engineer_id := StringName(Dictionary(engineer_dispatch.get("specialist", {})).get("specialist_id", &""))
 	macro_screen._engineering_mode = true
 	macro_screen._engineering_engineer_id = engineer_id
+	macro_screen._engineering_source_point_id = &"blackstone_city"
 	macro_screen._draw_points = [Vector2(150, 430), Vector2(475, 420), Vector2(710, 410)]
 	macro_screen._finish_draw()
 	_check(
@@ -219,6 +220,7 @@ func _run_map_draft_contract() -> void:
 	var construction_food_before: int = city.food
 	macro_screen._engineering_mode = true
 	macro_screen._engineering_engineer_id = engineer_id
+	macro_screen._engineering_source_point_id = &"blackstone_city"
 	macro_screen._draw_points = [Vector2(150, 430), Vector2(290, 410), Vector2(470, 355)]
 	macro_screen._finish_draw()
 	var engineering_draft := macro_screen._engineering_draft.duplicate(true)
@@ -227,11 +229,46 @@ func _run_map_draft_contract() -> void:
 	_check(
 		bool(engineer_dispatch.get("success", false))
 		and not engineering_draft.is_empty()
-		and String(engineering_draft.get("target_point_id", &"")) == ""
+		and String(engineering_draft.get("requested_target_point_id", &"")) == ""
+		and int(engineering_draft.get("food_cost", 0)) == 5
 		and construction_food_after_draft == construction_food_before
 		and city.food < construction_food_before
 		and not Dictionary(city.get_field_tactics_read_model().projects_by_id).is_empty(),
 		"自动化工程绘线松手只形成草稿，确认后才扣资源并创建施工项目"
+	)
+	var remote_engineer_dispatch: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var remote_engineer_id := StringName(Dictionary(remote_engineer_dispatch.get("specialist", {})).get("specialist_id", &""))
+	macro_screen._selected_specialist_id = remote_engineer_id
+	macro_screen._side_road_button.emit_signal("pressed")
+	var remote_source_click := InputEventMouseButton.new()
+	remote_source_click.button_index = MOUSE_BUTTON_LEFT
+	remote_source_click.pressed = true
+	remote_source_click.position = macro_screen._world_to_screen(Vector2(THEATER.get_point(&"northwatch_garrison").world_position))
+	macro_screen._on_gui_input(remote_source_click)
+	var remote_route: Dictionary = THEATER.get_route(&"road.northwatch.reedbank")
+	var remote_press := InputEventMouseButton.new()
+	remote_press.button_index = MOUSE_BUTTON_LEFT
+	remote_press.pressed = true
+	remote_press.position = macro_screen._world_to_screen(Vector2(Array(remote_route.points).front()))
+	macro_screen._on_gui_input(remote_press)
+	for remote_point in Array(remote_route.points).slice(1):
+		var remote_motion := InputEventMouseMotion.new()
+		remote_motion.position = macro_screen._world_to_screen(Vector2(remote_point))
+		macro_screen._on_gui_input(remote_motion)
+	var remote_release := InputEventMouseButton.new()
+	remote_release.button_index = MOUSE_BUTTON_LEFT
+	remote_release.pressed = false
+	remote_release.position = macro_screen._world_to_screen(Vector2(Array(remote_route.points).back()))
+	macro_screen._on_gui_input(remote_release)
+	var remote_draft := macro_screen._engineering_draft.duplicate(true)
+	_check(
+		bool(remote_engineer_dispatch.get("success", false))
+			and StringName(remote_draft.get("source_point_id", &"")) == &"northwatch_garrison"
+			and StringName(remote_draft.get("requested_target_point_id", &"")) == &"reedbank_garrison"
+			and not bool(remote_draft.get("build_camp", true))
+			and int(remote_draft.get("travel_milliseconds", 0)) > 0
+			and int(remote_draft.get("food_cost", 0)) == 5,
+		"正式鼠标入口可选择工程师、远端施工起点并连接已有驻点，权威预览提供到场时间与费用"
 	)
 	await _drop_scene(scene)
 	await _run_mouse_selection_and_replacement_contract()

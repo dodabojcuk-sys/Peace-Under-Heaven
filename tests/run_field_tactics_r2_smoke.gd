@@ -997,8 +997,66 @@ func _run_patrol_encounter_contract() -> void:
 		[{"from": Vector2(100, 0), "to": Vector2(50, 0), "start_milliseconds": 0, "end_milliseconds": 700}], 8.0
 	)
 	_check(opposing and not separated_same_direction and not different_times and arrival_contact, "巡逻接敌同时比较空间与时间：相向交会和到站边界命中，同向间隔及先后经过不误判")
+	var field_geometry: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	var specialist_opposing := field_geometry._first_timed_contact_milliseconds(
+		[{"from": Vector2(0, 0), "to": Vector2(100, 0), "start_milliseconds": 0, "end_milliseconds": 1000}],
+		[{"from": Vector2(100, 0), "to": Vector2(0, 0), "start_milliseconds": 0, "end_milliseconds": 1000}], 8.0
+	)
+	var specialist_separated := field_geometry._first_timed_contact_milliseconds(
+		[{"from": Vector2(0, 0), "to": Vector2(100, 0), "start_milliseconds": 0, "end_milliseconds": 1000}],
+		[{"from": Vector2(-100, 0), "to": Vector2(0, 0), "start_milliseconds": 0, "end_milliseconds": 1000}], 8.0
+	)
+	var specialist_different_times := field_geometry._first_timed_contact_milliseconds(
+		[{"from": Vector2(0, 0), "to": Vector2(50, 0), "start_milliseconds": 0, "end_milliseconds": 400}],
+		[{"from": Vector2(50, 0), "to": Vector2(0, 0), "start_milliseconds": 600, "end_milliseconds": 1000}], 8.0
+	)
+	_check(specialist_opposing < INF and specialist_separated == INF and specialist_different_times == INF, "专家与巡逻也以同一时间区间判断接触，不把同向间隔或先后经过误算为遇袭")
 	geometry_scene.queue_free()
 	await process_frame
+
+	var timed_base: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	timed_base.initialize_from_theater({
+		&"test.west": {"world_position": Vector2i(0, 0)},
+		&"test.east": {"world_position": Vector2i(100, 0)},
+	}, {})
+	var timed_scout := timed_base.dispatch_specialist(FieldTacticsState.SPECIALIST_SCOUT, &"test.west")
+	var timed_scout_id := StringName(timed_scout.specialist_id)
+	var timed_scout_state := Dictionary(timed_base.specialists_by_id[timed_scout_id])
+	timed_scout_state.target_point_id = &"test.east"
+	timed_scout_state.target_world_position = Vector2i(100, 0)
+	timed_scout_state.move_route_world_points = [Vector2i(0, 0), Vector2i(100, 0)]
+	timed_scout_state.move_total_milliseconds = 1000
+	timed_scout_state.move_elapsed_milliseconds = 0
+	timed_scout_state.move_remaining_milliseconds = 1000
+	timed_scout_state.phase = FieldTacticsState.SPECIALIST_MOVING
+	timed_base.specialists_by_id[timed_scout_id] = timed_scout_state
+	timed_base.patrols_by_id = {&"patrol.timed": {
+		"patrol_id": &"patrol.timed", "current_point_id": &"test.east", "strength": 5,
+		"phase": &"PATROL", "route_point_ids": [&"test.east", &"test.west"], "target_route_index": 1,
+		"wait_remaining_milliseconds": 0, "move_total_milliseconds": 1000, "move_elapsed_milliseconds": 0,
+		"move_start_position": Vector2i(100, 0), "move_route_world_points": [Vector2i(100, 0), Vector2i(0, 0)],
+		"world_position": Vector2i(100, 0), "resolved_army_ids": [], "ambush_consumed_army_ids": [],
+		"exposed": false, "last_engagement": {},
+	}}
+	var guard_left: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	guard_left.restore_snapshot(timed_base.get_snapshot())
+	guard_left.initialize_from_theater({&"test.west": {"world_position": Vector2i(0, 0)}, &"test.east": {"world_position": Vector2i(100, 0)}}, {})
+	var guard_arrived: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	guard_arrived.restore_snapshot(timed_base.get_snapshot())
+	guard_arrived.initialize_from_theater({&"test.west": {"world_position": Vector2i(0, 0)}, &"test.east": {"world_position": Vector2i(100, 0)}}, {})
+	guard_left.advance_world(1000, {&"army.guard": Vector2i(200, 0)}, {&"army.guard": [
+		{"from": Vector2(50, 0), "to": Vector2(200, 0), "start_milliseconds": 0, "end_milliseconds": 300},
+		{"from": Vector2(200, 0), "to": Vector2(200, 0), "start_milliseconds": 300, "end_milliseconds": 1000},
+	]})
+	guard_arrived.advance_world(1000, {&"army.guard": Vector2i(50, 0)}, {&"army.guard": [
+		{"from": Vector2(200, 0), "to": Vector2(50, 0), "start_milliseconds": 0, "end_milliseconds": 360},
+		{"from": Vector2(50, 0), "to": Vector2(50, 0), "start_milliseconds": 360, "end_milliseconds": 1000},
+	]})
+	_check(
+		not bool(Dictionary(guard_left.specialists_by_id[timed_scout_id]).get("alive", true))
+			and bool(Dictionary(guard_arrived.specialists_by_id[timed_scout_id]).get("alive", false)),
+		"护卫是否生效取决于接敌时刻的位置：提前离开不保护，及时抵达才参与"
+	)
 
 	var unguarded: FieldTacticsState = FIELD_TACTICS_STATE.new()
 	unguarded.initialize_from_theater(THEATER.get_points(), THEATER.get_routes(), THEATER.get_water_regions(), Rect2i(THEATER.get_world_bounds()), THEATER.get_terrain_regions())

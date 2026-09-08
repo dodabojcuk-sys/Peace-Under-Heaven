@@ -160,36 +160,24 @@ func begin_road_project(
 	road_kind: StringName,
 	build_camp: bool = false
 ) -> Dictionary:
+	var preview := preview_road_project(
+		engineer_id, source_point_id, target_point_id, route_world_points, road_kind, build_camp
+	)
+	if not bool(preview.get("valid", false)):
+		return {}
 	var engineer := Dictionary(specialists_by_id.get(engineer_id, {}))
-	var resolved_road_kind := road_kind_for_route(route_world_points, road_kind)
-	var resolved_target_point_id := target_point_id
+	var resolved_road_kind := StringName(preview.get("road_kind", ROAD_NORMAL))
+	var resolved_target_point_id := StringName(preview.get("target_point_id", &""))
 	# A camp identity is reserved when the command is confirmed, rather than
 	# when work finishes.  Two engineers can therefore build concurrently
 	# without both targeting the next not-yet-created camp site.
-	var reserved_camp_id: StringName = &""
-	if build_camp:
-		var camp_sequence := next_camp_sequence
-		reserved_camp_id = StringName("camp.%06d" % camp_sequence)
-		if resolved_target_point_id == &"":
-			resolved_target_point_id = StringName("camp.site.%06d" % camp_sequence)
-	if (
-		engineer.is_empty() or not bool(engineer.get("alive", false))
-		or StringName(engineer.get("role", &"")) != SPECIALIST_ENGINEER
-		or StringName(engineer.get("phase", &"")) == SPECIALIST_BUILDING
-		or StringName(engineer.get("project_id", &"")) != &""
-		or resolved_target_point_id == &"" or resolved_target_point_id == source_point_id
-		or route_world_points.size() < 2
-		or road_kind not in [ROAD_NORMAL, ROAD_REINFORCED, ROAD_BRIDGE]
-	):
-		return {}
+	var reserved_camp_id := StringName(preview.get("camp_id", &""))
 	if build_camp:
 		next_camp_sequence += 1
 	var project_id := StringName("project.%06d" % next_project_sequence)
 	next_project_sequence += 1
 	var road_sequence := next_project_sequence
-	var segment_plans := _build_construction_segment_plans(
-		project_id, source_point_id, resolved_target_point_id, route_world_points, road_kind, road_sequence
-	)
+	var segment_plans: Array = Array(preview.get("segment_plans", [])).duplicate(true)
 	if segment_plans.is_empty():
 		return {}
 	var road_id := StringName(Dictionary(segment_plans.back()).get("road_id", &""))
@@ -198,13 +186,9 @@ func begin_road_project(
 	for segment_value in segment_plans:
 		required_milliseconds += int(Dictionary(segment_value).get("required_milliseconds", 0))
 	var start_position := Vector2(engineer.get("world_position", _point_position(StringName(engineer.get("current_point_id", &"")))))
-	var construction_start_position := _point_position(source_point_id)
-	if construction_start_position == INVALID_WORLD_POSITION:
-		return {}
-	var movement_plan := _plan_specialist_land_path(start_position, construction_start_position)
-	if movement_plan.is_empty():
-		return {}
-	var travel_milliseconds := int(movement_plan.get("duration_milliseconds", 0)) if start_position.distance_to(construction_start_position) > 0.01 else 0
+	var construction_start_position := Vector2i(preview.get("construction_start_position", INVALID_WORLD_POSITION))
+	var movement_plan: Dictionary = Dictionary(preview.get("engineer_movement_plan", {})).duplicate(true)
+	var travel_milliseconds := int(preview.get("travel_milliseconds", 0))
 	var project := {
 		"project_id": project_id,
 		"project_kind": &"CONSTRUCTION",
@@ -212,7 +196,7 @@ func begin_road_project(
 		"road_id": road_id,
 		"source_point_id": source_point_id,
 		"target_point_id": resolved_target_point_id,
-		"route_world_points": route_world_points.duplicate(true),
+		"route_world_points": Array(preview.get("route_world_points", [])).duplicate(true),
 		"road_kind": resolved_road_kind,
 		"progress_milliseconds": 0,
 		"travel_milliseconds": travel_milliseconds,
@@ -242,6 +226,84 @@ func begin_road_project(
 		engineer.phase = SPECIALIST_BUILDING
 	specialists_by_id[engineer_id] = engineer
 	return project.duplicate(true)
+
+
+func preview_road_project(
+	engineer_id: StringName,
+	source_point_id: StringName,
+	target_point_id: StringName,
+	route_world_points: Array,
+	road_kind: StringName,
+	build_camp: bool = false
+) -> Dictionary:
+	var canonical_route_world_points := _canonical_world_points(route_world_points)
+	var engineer := Dictionary(specialists_by_id.get(engineer_id, {}))
+	if (
+		engineer.is_empty() or not bool(engineer.get("alive", false))
+		or StringName(engineer.get("role", &"")) != SPECIALIST_ENGINEER
+		or StringName(engineer.get("phase", &"")) not in [SPECIALIST_IDLE, SPECIALIST_BLOCKED]
+		or StringName(engineer.get("project_id", &"")) != &""
+		or source_point_id == &"" or canonical_route_world_points.size() < 2
+		or road_kind not in [ROAD_NORMAL, ROAD_REINFORCED, ROAD_BRIDGE]
+	):
+		return {"valid": false, "error": "工程师或施工路线当前不可用"}
+	var construction_start_position := _point_position(source_point_id)
+	if construction_start_position == INVALID_WORLD_POSITION:
+		return {"valid": false, "error": "施工起点不是已知城池或驻扎点"}
+	if Vector2(canonical_route_world_points.front()).distance_to(Vector2(construction_start_position)) > 28.0:
+		return {"valid": false, "error": "施工路线必须从所选起点开始"}
+	var resolved_target_point_id := target_point_id
+	var reserved_camp_id: StringName = &""
+	if build_camp:
+		reserved_camp_id = StringName("camp.%06d" % next_camp_sequence)
+		if resolved_target_point_id == &"":
+			resolved_target_point_id = StringName("camp.site.%06d" % next_camp_sequence)
+	elif resolved_target_point_id == &"" or resolved_target_point_id == source_point_id:
+		return {"valid": false, "error": "请选择另一处已有驻点，或明确新建驻点"}
+	if not build_camp:
+		var target_position := _point_position(resolved_target_point_id)
+		if target_position == INVALID_WORLD_POSITION or Vector2(canonical_route_world_points.back()).distance_to(Vector2(target_position)) > 65.0:
+			return {"valid": false, "error": "施工终点没有连接所选驻点"}
+	var start_position := Vector2(engineer.get("world_position", _point_position(StringName(engineer.get("current_point_id", &"")))))
+	var movement_plan := _plan_specialist_land_path(start_position, construction_start_position)
+	if movement_plan.is_empty():
+		return {"valid": false, "error": "工程师无法到达施工起点"}
+	var project_id := StringName("project.%06d" % next_project_sequence)
+	var segment_plans := _build_construction_segment_plans(
+		project_id, source_point_id, resolved_target_point_id, canonical_route_world_points,
+		road_kind, next_project_sequence + 1
+	)
+	if segment_plans.is_empty():
+		return {"valid": false, "error": "施工路线无法生成连续路段"}
+	var required_milliseconds := 0
+	for segment_value in segment_plans:
+		required_milliseconds += int(Dictionary(segment_value).get("required_milliseconds", 0))
+	var resolved_road_kind := road_kind_for_route(canonical_route_world_points, road_kind)
+	var contains_bridge := construction_contains_bridge(canonical_route_world_points, resolved_road_kind)
+	return {
+		"valid": true,
+		"error": "",
+		"engineer_id": engineer_id,
+		"source_point_id": source_point_id,
+		"target_point_id": resolved_target_point_id,
+		"route_world_points": canonical_route_world_points,
+		"road_kind": resolved_road_kind,
+		"build_camp": build_camp,
+		"camp_id": reserved_camp_id,
+		"segment_plans": segment_plans,
+		"contains_bridge": contains_bridge,
+		"required_milliseconds": required_milliseconds,
+		"construction_start_position": construction_start_position,
+		"engineer_movement_plan": movement_plan.duplicate(true),
+		"travel_milliseconds": int(movement_plan.get("duration_milliseconds", 0)) if start_position.distance_to(construction_start_position) > 0.01 else 0,
+	}
+
+
+func _canonical_world_points(points: Array) -> Array:
+	var canonical: Array = []
+	for point in points:
+		canonical.append(Vector2i(point))
+	return canonical
 
 
 func road_kind_for_route(route_world_points: Array, requested_road_kind: StringName) -> StringName:
@@ -927,28 +989,61 @@ func _distance_to_segment(point: Vector2, start: Vector2, end: Vector2) -> float
 	return point.distance_to(start + segment * clampf((point - start).dot(segment) / squared, 0.0, 1.0))
 
 
-func _traces_within_distance(left_trace: Array, right_traces: Array, distance: float) -> bool:
-	if left_trace.size() < 2:
-		return false
-	for right_trace_value in right_traces:
-		var right_trace: Array = Array(right_trace_value)
-		if right_trace.size() < 2:
+func _first_timed_contact_milliseconds(first: Array, second: Array, distance: float) -> float:
+	var first_contact := INF
+	for first_value in first:
+		var first_segment: Dictionary = Dictionary(first_value)
+		var first_start_time := float(first_segment.get("start_milliseconds", first_segment.get("start_offset_milliseconds", 0.0)))
+		var first_end_time := float(first_segment.get("end_milliseconds", first_segment.get("end_offset_milliseconds", first_start_time)))
+		for second_value in second:
+			var second_segment: Dictionary = Dictionary(second_value)
+			var second_start_time := float(second_segment.get("start_milliseconds", second_segment.get("start_offset_milliseconds", 0.0)))
+			var second_end_time := float(second_segment.get("end_milliseconds", second_segment.get("end_offset_milliseconds", second_start_time)))
+			var overlap_start := maxf(first_start_time, second_start_time)
+			var overlap_end := minf(first_end_time, second_end_time)
+			if overlap_end < overlap_start - 0.0001:
+				continue
+			var first_duration := maxf(first_end_time - first_start_time, 0.0001)
+			var second_duration := maxf(second_end_time - second_start_time, 0.0001)
+			var first_from := Vector2(first_segment.get("from", Vector2.ZERO))
+			var first_to := Vector2(first_segment.get("to", first_from))
+			var second_from := Vector2(second_segment.get("from", Vector2.ZERO))
+			var second_to := Vector2(second_segment.get("to", second_from))
+			var first_at_start := first_from.lerp(first_to, clampf((overlap_start - first_start_time) / first_duration, 0.0, 1.0))
+			var first_at_end := first_from.lerp(first_to, clampf((overlap_end - first_start_time) / first_duration, 0.0, 1.0))
+			var second_at_start := second_from.lerp(second_to, clampf((overlap_start - second_start_time) / second_duration, 0.0, 1.0))
+			var second_at_end := second_from.lerp(second_to, clampf((overlap_end - second_start_time) / second_duration, 0.0, 1.0))
+			var relative_start := first_at_start - second_at_start
+			var relative_delta := (first_at_end - second_at_end) - relative_start
+			var radius_squared := distance * distance
+			var c := relative_start.length_squared() - radius_squared
+			if c <= 0.0:
+				first_contact = minf(first_contact, overlap_start)
+				continue
+			var a := relative_delta.length_squared()
+			if a <= 0.000001:
+				continue
+			var b := 2.0 * relative_start.dot(relative_delta)
+			var discriminant := b * b - 4.0 * a * c
+			if discriminant < 0.0:
+				continue
+			var entry_ratio := (-b - sqrt(discriminant)) / (2.0 * a)
+			if entry_ratio >= -0.0001 and entry_ratio <= 1.0001:
+				first_contact = minf(first_contact, lerpf(overlap_start, overlap_end, clampf(entry_ratio, 0.0, 1.0)))
+	return first_contact
+
+
+func _timed_trace_position_at(trace: Array, time_milliseconds: float) -> Vector2:
+	for segment_value in trace:
+		var segment: Dictionary = Dictionary(segment_value)
+		var start_time := float(segment.get("start_milliseconds", segment.get("start_offset_milliseconds", 0.0)))
+		var end_time := float(segment.get("end_milliseconds", segment.get("end_offset_milliseconds", start_time)))
+		if time_milliseconds < start_time - 0.0001 or time_milliseconds > end_time + 0.0001:
 			continue
-		for left_index in range(1, left_trace.size()):
-			var left_start := Vector2(left_trace[left_index - 1])
-			var left_end := Vector2(left_trace[left_index])
-			for right_index in range(1, right_trace.size()):
-				var right_start := Vector2(right_trace[right_index - 1])
-				var right_end := Vector2(right_trace[right_index])
-				if Geometry2D.segment_intersects_segment(left_start, left_end, right_start, right_end) != null:
-					return true
-				var nearest := minf(
-					minf(_distance_to_segment(left_start, right_start, right_end), _distance_to_segment(left_end, right_start, right_end)),
-					minf(_distance_to_segment(right_start, left_start, left_end), _distance_to_segment(right_end, left_start, left_end))
-				)
-				if nearest <= distance:
-					return true
-	return false
+		var from := Vector2(segment.get("from", Vector2.ZERO))
+		var to := Vector2(segment.get("to", from))
+		return from.lerp(to, clampf((time_milliseconds - start_time) / maxf(end_time - start_time, 0.0001), 0.0, 1.0))
+	return Vector2(Dictionary(trace.back()).get("to", Vector2.ZERO)) if not trace.is_empty() else Vector2.ZERO
 
 
 func position_has_terrain_kind(position: Vector2, terrain_kind: StringName) -> bool:
@@ -1027,7 +1122,7 @@ func get_runtime_points() -> Dictionary:
 	return points
 
 
-func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary = {}) -> Dictionary:
+func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary = {}, guard_traces_by_army: Dictionary = {}) -> Dictionary:
 	if delta_milliseconds <= 0:
 		return {}
 	world_milliseconds += delta_milliseconds
@@ -1046,6 +1141,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 		if not bool(moving.get("alive", false)) or StringName(moving.get("phase", &"")) != SPECIALIST_MOVING:
 			continue
 		var move_remaining_before := int(moving.get("move_remaining_milliseconds", 0))
+		var move_elapsed_before := int(moving.get("move_elapsed_milliseconds", 0))
 		var specialist_start_position := Vector2i(moving.get("world_position", Vector2i.ZERO))
 		moving.move_elapsed_milliseconds = mini(int(moving.get("move_elapsed_milliseconds", 0)) + delta_milliseconds, int(moving.get("move_total_milliseconds", 0)))
 		moving.move_remaining_milliseconds = maxi(int(moving.get("move_total_milliseconds", 0)) - int(moving.get("move_elapsed_milliseconds", 0)), 0)
@@ -1067,7 +1163,20 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 			else:
 				moving.phase = SPECIALIST_IDLE
 		specialists_by_id[moving_id] = moving
-		specialist_movements[moving_id] = [specialist_start_position, Vector2i(moving.get("world_position", specialist_start_position))]
+		var specialist_trace := _timed_route_movement_records(
+			moving_id, Array(moving.get("move_route_world_points", [specialist_start_position, moving.get("world_position", specialist_start_position)])),
+			move_elapsed_before, int(moving.get("move_elapsed_milliseconds", move_elapsed_before)),
+			maxi(int(moving.get("move_total_milliseconds", 1)), 1), 0
+		)
+		var specialist_move_milliseconds := mini(move_remaining_before, delta_milliseconds)
+		if specialist_trace.is_empty() or specialist_move_milliseconds < delta_milliseconds:
+			var final_position := Vector2(moving.get("world_position", specialist_start_position))
+			specialist_trace.append({
+				"from": final_position, "to": final_position,
+				"start_offset_milliseconds": specialist_move_milliseconds,
+				"end_offset_milliseconds": delta_milliseconds,
+			})
+		specialist_movements[moving_id] = specialist_trace
 	for project_id_value in projects_by_id.keys():
 		var project_id := StringName(project_id_value)
 		var project := Dictionary(projects_by_id[project_id])
@@ -1186,15 +1295,23 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 		for specialist_id_value in specialists_by_id.keys():
 			var specialist_id := StringName(specialist_id_value)
 			var specialist := Dictionary(specialists_by_id[specialist_id])
-			var specialist_trace: Array = Array(specialist_movements.get(specialist_id, [Vector2i(specialist.get("world_position", Vector2i.ZERO)), Vector2i(specialist.get("world_position", Vector2i.ZERO))]))
+			var specialist_position := Vector2(specialist.get("world_position", Vector2.ZERO))
+			var specialist_trace: Array = Array(specialist_movements.get(specialist_id, [{
+				"from": specialist_position, "to": specialist_position,
+				"start_offset_milliseconds": 0, "end_offset_milliseconds": delta_milliseconds,
+			}]))
 			var patrol_traces: Array = []
 			for movement_value in patrol_movements:
 				var movement: Dictionary = Dictionary(movement_value)
 				if StringName(movement.get("patrol_id", &"")) == patrol_id:
-					patrol_traces.append([movement.get("from", Vector2i.ZERO), movement.get("to", Vector2i.ZERO)])
+					patrol_traces.append(movement.duplicate(true))
 			if patrol_traces.is_empty():
-				patrol_traces.append([patrol.get("world_position", Vector2i.ZERO), patrol.get("world_position", Vector2i.ZERO)])
-			if bool(specialist.get("alive", false)) and _traces_within_distance(specialist_trace, patrol_traces, 28.0):
+				patrol_traces.append({
+					"from": patrol.get("world_position", Vector2i.ZERO), "to": patrol.get("world_position", Vector2i.ZERO),
+					"start_offset_milliseconds": 0, "end_offset_milliseconds": delta_milliseconds,
+				})
+			var contact_milliseconds := _first_timed_contact_milliseconds(specialist_trace, patrol_traces, 28.0)
+			if bool(specialist.get("alive", false)) and contact_milliseconds < INF:
 				# Contact grants one last report before the observer is removed;
 				# _refresh_intel then downgrades it to historical knowledge.
 				intel_by_subject_id[patrol_id] = {
@@ -1207,7 +1324,12 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 				}
 				var guard_army_ids: Array[StringName] = []
 				for army_id_value in guard_positions_by_army:
-					if Vector2(guard_positions_by_army[army_id_value]).distance_to(Vector2(specialist.get("world_position", Vector2.ZERO))) <= 72.0:
+					var guard_position := Vector2(guard_positions_by_army[army_id_value])
+					var guard_trace: Array = Array(guard_traces_by_army.get(army_id_value, [{
+						"from": guard_position, "to": guard_position,
+						"start_milliseconds": 0, "end_milliseconds": delta_milliseconds,
+					}]))
+					if _timed_trace_position_at(guard_trace, contact_milliseconds).distance_to(_timed_trace_position_at(specialist_trace, contact_milliseconds)) <= 72.0:
 						guard_army_ids.append(StringName(army_id_value))
 				if guard_army_ids.is_empty():
 					specialist.alive = false
@@ -1220,7 +1342,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 							interrupted_project.interruption_reason = &"ENGINEER_LOST"
 							projects_by_id[project_id] = interrupted_project
 					specialists_by_id[specialist_id] = specialist
-				engagements.append({"patrol_id": patrol_id, "specialist_id": specialist_id, "guard_army_ids": guard_army_ids, "point_id": patrol.current_point_id, "world_position": Vector2i(patrol.get("world_position", Vector2i.ZERO))})
+				engagements.append({"patrol_id": patrol_id, "specialist_id": specialist_id, "guard_army_ids": guard_army_ids, "point_id": patrol.current_point_id, "world_position": Vector2i(_timed_trace_position_at(patrol_traces, contact_milliseconds)), "contact_milliseconds": contact_milliseconds})
 	_refresh_intel()
 	return {"success": true, "completed_project_ids": completed, "opened_road_ids": opened_road_ids, "engagements": engagements, "patrol_movements": patrol_movements, "world_milliseconds": world_milliseconds, "delta_milliseconds": delta_milliseconds}
 

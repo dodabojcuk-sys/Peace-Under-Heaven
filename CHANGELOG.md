@@ -16,6 +16,18 @@
 
 ### FIELD_TACTICS_R2 formal operations, time, and map experience
 
+- Added time-aligned specialist/patrol contact and contact-time guard sampling,
+  eliminating false expert losses when participants visit the same geometry at
+  different times or a guard has already left the site.
+- Added authoritative field-project preview from `FieldTacticsState` through the
+  Controller adapter to the map. Players can choose a remote legal start and
+  connect an existing station or deliberately create a camp; preview and commit
+  now share route stages, duration, cost, and validation.
+- Canonicalized player-built road geometry at the field boundary so immediate
+  dynamic-road orders satisfy the strict Army/V5 integer-coordinate contract.
+- Added a dedicated Blackstone playable presentation Resource and upgraded the
+  clipped map with shaped water and banks, tree groups, walled cities, banners,
+  tent camps, bridge planks, and visible damaged-road breaks.
 - Added a real scout-target interaction to the Macro March screen. Dispatch now
   creates a waiting scout, map selection sends the movement order through the
   Controller adapter, cancellation is side-effect free, and the panel reports
@@ -31,15 +43,18 @@
 - Removed route-B army-only time advancement. Both full routes now use the formal
   shared world-clock entry and aggregate all army casualties, specialist losses,
   food transactions, and elapsed field time. Current results are 35.90 seconds,
-  12 food spent, and four casualties for route A; 180.60 seconds, 79 food spent,
-  five army casualties, and one specialist loss for route B.
-- Kept evidence boundaries explicit: route B resolves forest deployment and the
-  patrol but records zero ambush openings in this run; the separate integrated
-  Field contract verifies one-use ambush persistence. Exact remaining food is no
-  longer an acceptance assertion, and test-only road damage remains labelled.
-- Verified Field R2 66 assertions, both playthroughs, audited field persistence,
-  Macro March 28 assertions and disk persistence, War Loop R1/formal/arrival,
-  V5 army/campaign/encounter recovery, editor import, and three scene starts.
+  12 food spent, and four casualties for route A; 73.00 seconds, 61 food spent,
+  three army casualties, two specialist losses, and one ambush for route B.
+- Reworked route B around a useful bridge and two-stage side-road connection;
+  engineer loss and repair are recoverable consequences rather than scripted
+  prerequisites. Exact remaining food is not an acceptance assertion, and the
+  injected road-damage event remains explicitly labelled as test evidence.
+- Routed both campaigns' initial dispatch and every stationed-army continuation,
+  including both siege destinations, through the map draw-and-confirm event chain.
+- Verified Field R2 68 assertions, both playthroughs, audited field persistence,
+  Macro March 29 assertions and disk persistence, War Loop R1/formal/arrival/
+  disk recovery, V5 army/campaign/encounter recovery, R1E 50, C0 presentation,
+  editor import, and four scene starts.
 
 ### FIELD_TACTICS_R2 playable-loop candidate
 

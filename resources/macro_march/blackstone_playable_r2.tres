@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="MacroMarchTheaterDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/macro_march/macro_march_theater_definition.gd" id="1_definition"]
+
+[resource]
+script = ExtResource("1_definition")
+theater_name = "黑石战区·试玩"
+presentation_profile = {
+"enemy_color": Color(0.78, 0.29, 0.22, 1),
+"friendly_color": Color(0.91, 0.73, 0.32, 1),
+"ground_color": Color(0.42, 0.56, 0.35, 1),
+"ground_patch_color": Color(0.52, 0.64, 0.4, 1),
+"water_color": Color(0.25, 0.56, 0.72, 1),
+"water_highlight_color": Color(0.55, 0.8, 0.82, 1)
+}

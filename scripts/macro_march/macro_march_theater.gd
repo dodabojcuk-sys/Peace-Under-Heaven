@@ -3,7 +3,7 @@ extends RefCounted
 
 
 static var _definition: MacroMarchTheaterDefinition = preload(
-	"res://resources/macro_march/blackstone_outer_city_r0.tres"
+	"res://resources/macro_march/blackstone_playable_r2.tres"
 )
 
 
@@ -25,6 +25,14 @@ static func get_world_bounds() -> Rect2:
 
 static func get_terrain_regions() -> Array[Dictionary]:
 	return _definition.terrain_regions.duplicate(true)
+
+
+static func get_theater_name() -> String:
+	return _definition.theater_name
+
+
+static func get_presentation_profile() -> Dictionary:
+	return _definition.presentation_profile.duplicate(true)
 
 
 static func route_crosses_water(route_world_points: Array) -> bool:
