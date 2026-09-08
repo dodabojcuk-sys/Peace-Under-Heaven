@@ -4476,6 +4476,10 @@ func _apply_validated_v5_campaign_snapshot(
 			"error_id": &"WAR_LOOP_APPLY_FAILED",
 			"error": "WarLoop 状态恢复失败",
 		}
+	# Specialist path migration needs the Resource-owned water and bridge facts.
+	# Restore installs state first; this initializes that same authority before
+	# any migrated route can be queried or advanced.
+	_ensure_war_loop_initialized()
 	var ledger: Dictionary = snapshot.settlement_ledger
 	_committed_battle_result_ids = Dictionary(
 		ledger.committed_results_by_id

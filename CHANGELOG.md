@@ -14,6 +14,20 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 formal bridge-use and deferred-recovery checkpoint
+
+- Added a formal Controller-path regression that completes a player-shaped
+  bridge project and sends a second expert over the actual generated bridge.
+- Restricted specialist water access to open bridge geometry and shore
+  connections, while retaining physical-distance movement time.
+- Deferred old specialist-route migration until theatre Resource facts are
+  installed after V5/WarLoop restore; missing paths no longer replan before
+  water and bridge state is available.
+- Added a selectable interrupted-project list and retry across eligible
+  engineers, so an unreachable first candidate does not block another project.
+- Focused results: Field 50 assertions, Macro March 27, field persistence
+  PASS, and R1 war 16 assertions. This is not a full R2 playthrough.
+
 ### FIELD_TACTICS_R2 formal bridge-planning checkpoint
 
 - Kept the selected land-road material through the formal Macro March,

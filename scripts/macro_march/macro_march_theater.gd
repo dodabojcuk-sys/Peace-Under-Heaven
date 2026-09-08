@@ -31,7 +31,7 @@ static func route_crosses_water(route_world_points: Array) -> bool:
 	for index in range(1, route_world_points.size()):
 		var start := Vector2(route_world_points[index - 1])
 		var end := Vector2(route_world_points[index])
-		var samples := maxi(1, ceili(start.distance_to(end) / 16.0))
+		var samples := maxi(1, ceili(start.distance_to(end)))
 		for sample_index in range(samples + 1):
 			var position := Vector2i(start.lerp(end, float(sample_index) / float(samples)))
 			for water_region in _definition.water_regions:

@@ -2,6 +2,28 @@
 
 ## FIELD_TACTICS_R2 map and command UI checkpoint (2026-09-08)
 
+### Formal bridge-use and deferred-recovery checkpoint
+
+The formal city → map adapter → Controller construction path now has an
+end-to-end bridge-use regression: it completes a player-shaped road-bridge-
+road project, dispatches a later engineer, and confirms that the engineer's
+stored movement route contains the generated bridge endpoints before arriving
+at Reedbank. Specialist path search permits only an opened bridge's navigation
+points and shore connection; it does not make ordinary water traversable. A
+completed bridge is therefore preferred over a marginal shoreline detour while
+the stored movement duration remains based on real geometric distance.
+
+V5 restoration now installs the Resource-owned theatre facts before a missing
+specialist route is migrated. Field restoration defers that migration until
+`initialize_from_theater`, so water, bounds and open bridge state are the same
+facts used during normal play. The map also presents a selectable interrupted-
+project list and tries every eligible engineer for the chosen project rather
+than letting the first project or first unreachable engineer block all work.
+Focused results: Field 50 assertions, Macro March 27, three-process field
+persistence PASS, and R1 war 16 assertions. This has not completed army
+safe-camp transfer, encounter/guard/ambush casualties, complete routes, or
+normal system-input media.
+
 ### Formal bridge-planning and expert-route checkpoint
 
 The formal map, Controller, and field construction entry now preserve the

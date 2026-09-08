@@ -11,6 +11,27 @@ transaction and persistence-checkpoint caller.
 
 ## Delivered engineering evidence
 
+### Formal bridge-use and deferred-recovery checkpoint
+
+The bridge verification now enters through the formal city, map adapter and
+Controller path. It confirms a player-shaped construction project, advances
+the authoritative world clock to completion, dispatches a later engineer, and
+checks the resulting specialist route against the physical bridge points
+created by that project before the engineer reaches Reedbank. Specialist path
+search permits water only through an open bridge's navigation geometry and its
+shore connection; normal water remains blocked. Bridge preference affects
+route selection only, while saved geometry and duration retain actual distance.
+
+Missing-path specialist migration is deferred from raw `FieldTacticsState`
+restore until `initialize_from_theater` receives the Resource-owned water,
+boundary and bridge facts. The formal V5 restore therefore uses the same
+terrain authority as normal advance. The map additionally exposes interrupted
+projects through a selector and attempts every eligible engineer for the
+chosen project. Focused results: Field 50 assertions, Macro March 27,
+three-process field persistence PASS, and R1 war 16 assertions. This does not
+prove safe-camp transfer, encounters, full player routes, or normal-input
+media.
+
 ### Formal bridge-planning and expert-route checkpoint
 
 The formal map draft no longer converts a cross-water line into a global

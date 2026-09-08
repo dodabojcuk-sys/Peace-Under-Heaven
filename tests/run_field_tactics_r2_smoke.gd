@@ -182,6 +182,10 @@ func _run_field_tactics_contract() -> void:
 		{}, [Rect2i(300, 180, 190, 240)]
 	)
 	var restored_land_valid := restored_land_state.restore_snapshot(legacy_specialist_snapshot)
+	restored_land_state.initialize_from_theater(
+		{&"land.start": {"world_position": Vector2i(80, 300)}, &"land.target": {"world_position": Vector2i(720, 300)}},
+		{}, [Rect2i(300, 180, 190, 240)]
+	)
 	var restored_land_specialist := Dictionary(restored_land_state.specialists_by_id.get(StringName(land_engineer.specialist_id), {}))
 	_check(
 		restored_land_valid and StringName(restored_land_specialist.get("phase", &"")) == FieldTacticsState.SPECIALIST_MOVING
@@ -472,7 +476,7 @@ func _run_formal_controller_contract() -> void:
 	var scout: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_SCOUT)
 	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
 	_check(bool(scout.get("success", false)) and bool(engineer.get("success", false)), "侦察兵和工程师通过正式城市资源事务派遣")
-	var project: Dictionary = city.begin_field_road_project(StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")), &"blackstone_city", &"reedbank_garrison", [Vector2i(150, 430), Vector2i(850, 505)], FieldTacticsState.ROAD_NORMAL, true)
+	var project: Dictionary = city.begin_field_road_project(StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")), &"blackstone_city", &"reedbank_garrison", [Vector2i(150, 430), Vector2i(515, 425), Vector2i(635, 425), Vector2i(850, 505)], FieldTacticsState.ROAD_NORMAL, true)
 	var project_required_milliseconds := int(Dictionary(project.get("project", {})).get("required_milliseconds", 0))
 	city.advance_war_loop_time(project_required_milliseconds)
 	var field_model: Dictionary = city.get_field_tactics_read_model()
@@ -484,6 +488,19 @@ func _run_formal_controller_contract() -> void:
 			and StringName(Dictionary(formal_segments[1]).get("road_kind", &"")) == FieldTacticsState.ROAD_BRIDGE
 			and StringName(Dictionary(formal_segments.back()).get("road_kind", &"")) == FieldTacticsState.ROAD_NORMAL,
 		"正式 Controller 入口保留陆地材料，仅将跨水区段规划为桥梁"
+	)
+	var bridge_crossing_dispatch: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var bridge_crossing_specialist_id := StringName(Dictionary(bridge_crossing_dispatch.get("specialist", {})).get("specialist_id", &""))
+	var bridge_crossing_move: Dictionary = city.order_field_specialist_move(bridge_crossing_specialist_id, &"reedbank_garrison")
+	var generated_bridge_points: Array = Array(Dictionary(formal_segments[1]).get("route_world_points", []))
+	var bridge_crossing_route: Array = Array(Dictionary(bridge_crossing_move.get("specialist", {})).get("move_route_world_points", []))
+	city.advance_war_loop_time(int(Dictionary(bridge_crossing_move.get("specialist", {})).get("move_total_milliseconds", 0)))
+	var bridge_crossing_after: Dictionary = Dictionary(city.get_field_tactics_read_model().specialists_by_id.get(bridge_crossing_specialist_id, {}))
+	_check(
+		bool(bridge_crossing_dispatch.get("success", false)) and bool(bridge_crossing_move.get("success", false))
+			and bridge_crossing_route.has(generated_bridge_points.front()) and bridge_crossing_route.has(generated_bridge_points.back())
+			and Vector2i(bridge_crossing_after.get("world_position", Vector2i.ZERO)) == Vector2i(850, 505),
+		"正式工程生成的桥段、桥头和道路可被后续工程师实际跨越"
 	)
 	var snapshot: Dictionary = city.export_v5_campaign_snapshot()
 	var restored_scene := CITY_SCENE.instantiate()

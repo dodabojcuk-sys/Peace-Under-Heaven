@@ -39,6 +39,7 @@ var world_milliseconds := 0
 var next_specialist_sequence := 1
 var next_project_sequence := 1
 var next_camp_sequence := 1
+var _specialist_path_migration_pending := false
 
 
 func initialize_from_theater(points: Dictionary, routes: Dictionary, water_regions_value: Array[Rect2i] = [], world_bounds_value: Rect2i = Rect2i(-260, -180, 1520, 1040)) -> void:
@@ -47,6 +48,9 @@ func initialize_from_theater(points: Dictionary, routes: Dictionary, water_regio
 	for point_id_value in points:
 		var point: Dictionary = Dictionary(points[point_id_value])
 		point_positions_by_id[StringName(point_id_value)] = Vector2i(point.get("world_position", Vector2i.ZERO))
+	if _specialist_path_migration_pending:
+		_migrate_restored_specialist_paths()
+		_specialist_path_migration_pending = false
 	if not roads_by_id.is_empty():
 		return
 	for route_id_value in routes:
@@ -1035,7 +1039,7 @@ func _position_along_points(points: Array, progress: float) -> Vector2:
 
 
 func _plan_specialist_land_path(start_position: Vector2, target_position: Vector2) -> Dictionary:
-	if not world_bounds.has_point(Vector2i(start_position)) or not world_bounds.has_point(Vector2i(target_position)) or _point_is_in_water(Vector2i(start_position)) or _point_is_in_water(Vector2i(target_position)):
+	if not world_bounds.has_point(Vector2i(start_position)) or not world_bounds.has_point(Vector2i(target_position)) or not _specialist_position_is_legal(start_position) or not _specialist_position_is_legal(target_position):
 		return {}
 	var nodes: Array[Vector2] = [start_position, target_position]
 	# A visibility graph over water bounds is sufficient for the small greybox
@@ -1077,7 +1081,12 @@ func _plan_specialist_land_path(start_position: Vector2, target_position: Vector
 		for next_index in nodes.size():
 			if next_index == current or not _specialist_segment_traversable(nodes[current], nodes[next_index]):
 				continue
-			var candidate := costs[current] + nodes[current].distance_to(nodes[next_index])
+			var edge_distance := nodes[current].distance_to(nodes[next_index])
+			# A completed bridge is deliberate infrastructure. Prefer its exact
+			# physical edge over a near-shore detour, while preserving the real
+			# geometry for stored distance and movement duration below.
+			var traversal_cost := edge_distance * (0.55 if _is_open_bridge_edge(nodes[current], nodes[next_index]) else 1.0)
+			var candidate := costs[current] + traversal_cost
 			if candidate < costs[next_index]:
 				costs[next_index] = candidate
 				previous[next_index] = current
@@ -1085,21 +1094,39 @@ func _plan_specialist_land_path(start_position: Vector2, target_position: Vector
 		return {}
 	var reverse_points: Array = []
 	var cursor := 1
+	var physical_distance := 0.0
 	while cursor >= 0:
 		reverse_points.append(Vector2i(nodes[cursor]))
+		if previous[cursor] >= 0:
+			physical_distance += nodes[cursor].distance_to(nodes[previous[cursor]])
 		cursor = previous[cursor]
 	reverse_points.reverse()
 	return {
 		"points": reverse_points,
-		"distance_units": costs[1],
-		"duration_milliseconds": maxi(1800, ceili(costs[1] * 2.5)),
+		"distance_units": physical_distance,
+		"duration_milliseconds": maxi(1800, ceili(physical_distance * 2.5)),
 	}
 
 
 func _specialist_segment_traversable(start: Vector2, end: Vector2) -> bool:
 	if not _route_crosses_water([start, end]):
 		return world_bounds.has_point(Vector2i(start)) and world_bounds.has_point(Vector2i(end))
-	return _is_open_bridge_edge(start, end)
+	return _is_open_bridge_edge(start, end) or _is_open_bridge_shore_connection(start, end)
+
+
+func _specialist_position_is_legal(position: Vector2) -> bool:
+	return not _point_is_in_water(Vector2i(position)) or _is_open_bridge_navigation_point(position)
+
+
+func _is_open_bridge_navigation_point(position: Vector2) -> bool:
+	for road_value in roads_by_id.values():
+		var bridge: Dictionary = road_value
+		if StringName(bridge.get("road_kind", &"")) != ROAD_BRIDGE or not is_route_open(StringName(bridge.get("road_id", &""))):
+			continue
+		for bridge_point in _bridge_navigation_points(Array(bridge.get("route_world_points", []))):
+			if position.is_equal_approx(Vector2(bridge_point)):
+				return true
+	return false
 
 
 func _is_open_bridge_edge(start: Vector2, end: Vector2) -> bool:
@@ -1114,6 +1141,19 @@ func _is_open_bridge_edge(start: Vector2, end: Vector2) -> bool:
 			if (start.is_equal_approx(edge_start) and end.is_equal_approx(edge_end)) or (start.is_equal_approx(edge_end) and end.is_equal_approx(edge_start)):
 				return true
 	return false
+
+
+func _is_open_bridge_shore_connection(start: Vector2, end: Vector2) -> bool:
+	var bridge_position := end if _is_open_bridge_navigation_point(end) else (start if _is_open_bridge_navigation_point(start) else Vector2.INF)
+	var land_position := start if bridge_position == end else end
+	if bridge_position == Vector2.INF or _point_is_in_water(Vector2i(land_position)):
+		return false
+	var samples := maxi(1, ceili(start.distance_to(end)))
+	for sample_index in range(samples):
+		var sampled := start.lerp(end, float(sample_index) / float(samples))
+		if _point_is_in_water(Vector2i(sampled)):
+			return false
+	return world_bounds.has_point(Vector2i(start)) and world_bounds.has_point(Vector2i(end))
 
 
 func _bridge_navigation_points(route_world_points: Array) -> Array:
@@ -1190,7 +1230,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	next_specialist_sequence = int(snapshot.next_specialist_sequence)
 	next_project_sequence = int(snapshot.next_project_sequence)
 	next_camp_sequence = int(snapshot.next_camp_sequence)
-	_migrate_restored_specialist_paths()
+	_specialist_path_migration_pending = true
 	return true
 
 
