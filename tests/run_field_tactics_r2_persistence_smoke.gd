@@ -33,14 +33,19 @@ func _run() -> void:
 	var k := _run_worker("K", transfer_directory)
 	var l := _run_worker("L", transfer_directory)
 	var m := _run_worker("M", transfer_directory)
-	_check(int(a.exit_code) == 0 and int(b.exit_code) == 0 and int(c.exit_code) == 0, "三个独立进程完成施工中、完工和道路驻点冷恢复")
-	_check(int(a.exit_code) == 0 and int(b.exit_code) == 0 and int(c.exit_code) == 0, "跨进程实盘保留工程进度、完成道路和连接驻点")
-	_check(int(d.exit_code) == 0 and int(e.exit_code) == 0 and int(f.exit_code) == 0, "三个独立进程完成受损道路、维修到场和完工冷恢复")
-	_check(int(d.exit_code) == 0 and int(e.exit_code) == 0 and int(f.exit_code) == 0, "跨进程实盘保留维修在途、到场余量与原道路恢复")
-	_check(int(g.exit_code) == 0 and int(h.exit_code) == 0 and int(i.exit_code) == 0, "三个独立进程完成多段军令在途、跨段抵达和终态冷恢复")
-	_check(int(g.exit_code) == 0 and int(h.exit_code) == 0 and int(i.exit_code) == 0, "跨进程实盘保留多段军令的道路顺序、进度和一次性粮草事务")
-	_check(int(j.exit_code) == 0 and int(k.exit_code) == 0 and int(l.exit_code) == 0 and int(m.exit_code) == 0, "独立进程完成转移中、驻点等待、返回中及返回完成后的断路军令恢复")
-	_check(int(j.exit_code) == 0 and int(k.exit_code) == 0 and int(l.exit_code) == 0 and int(m.exit_code) == 0, "跨进程实盘保留临时路径、原军令、驻点等待、返回进度及原令续行")
+	var rebreak_directory := absolute_directory.path_join("transfer_rebreak")
+	var n := _run_worker("N", rebreak_directory)
+	var o := _run_worker("O", rebreak_directory)
+	var p := _run_worker("P", rebreak_directory)
+	_check(_workers_passed([a, b, c]), "三个独立进程完成施工中、完工和道路驻点冷恢复")
+	_check(_workers_passed([a, b, c]), "跨进程实盘保留工程进度、完成道路和连接驻点")
+	_check(_workers_passed([d, e, f]), "三个独立进程完成受损道路、维修到场和完工冷恢复")
+	_check(_workers_passed([d, e, f]), "跨进程实盘保留维修在途、到场余量与原道路恢复")
+	_check(_workers_passed([g, h, i]), "三个独立进程完成多段军令在途、跨段抵达和终态冷恢复")
+	_check(_workers_passed([g, h, i]), "跨进程实盘保留多段军令的道路顺序、进度和一次性粮草事务")
+	_check(_workers_passed([j, k, l, m]), "独立进程完成转移中、驻点等待、返回中及返回完成后的断路军令恢复")
+	_check(_workers_passed([j, k, l, m]), "跨进程实盘保留临时路径、原军令、驻点等待、返回进度及原令续行")
+	_check(_workers_passed([n, o, p]), "独立进程冷恢复临时路线再次断裂、维修解阻和继续驻扎转移")
 	_remove_tree(absolute_directory)
 	if failures.is_empty():
 		print("FIELD_TACTICS_R2_PERSISTENCE_SMOKE PASS")
@@ -53,8 +58,25 @@ func _run() -> void:
 
 func _run_worker(mode: String, save_directory: String) -> Dictionary:
 	var output: Array = []
+	var marker_path := save_directory.path_join("worker_%s.result" % mode.to_lower())
+	if FileAccess.file_exists(marker_path):
+		DirAccess.remove_absolute(marker_path)
 	var exit_code := OS.execute(OS.get_executable_path(), PackedStringArray(["--headless", "--path", ProjectSettings.globalize_path("res://"), "--script", WORKER_PATH, "--", "--mode=%s" % mode, "--txwzs-v5-save-dir=%s" % save_directory]), output, true)
-	return {"exit_code": exit_code, "output": "\n".join(output)}
+	var marker := ""
+	if FileAccess.file_exists(marker_path):
+		marker = FileAccess.get_file_as_string(marker_path).strip_edges()
+	var expected_marker := "FIELD_TACTICS_WORKER_%s PASS" % mode
+	var result := {"mode": mode, "exit_code": exit_code, "output": "\n".join(output), "marker": marker, "passed": exit_code == 0 and marker == expected_marker}
+	if not bool(result.passed):
+		push_error("FIELD_TACTICS_WORKER_%s failed: exit=%d marker=%s\n%s" % [mode, exit_code, marker, String(result.output)])
+	return result
+
+
+func _workers_passed(workers: Array) -> bool:
+	for worker_value in workers:
+		if not bool(Dictionary(worker_value).get("passed", false)):
+			return false
+	return true
 
 
 func _check(condition: bool, description: String) -> void:

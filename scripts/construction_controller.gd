@@ -5728,11 +5728,8 @@ func _advance_all_macro_marches_seconds(delta_seconds: float) -> void:
 		if StringName(army.get("phase", &"")) == ArmyRegistry.PHASE_BLOCKED:
 			var blocked_macro: Dictionary = army.get("macro_march", {})
 			var transfer: Dictionary = Dictionary(blocked_macro.get("blocked_transfer", {}))
-			if StringName(transfer.get("phase", &"")) in [&"TO_CAMP", &"TO_RESUME"]:
-				var registry_before := _army_registry.get_snapshot()
-				var transfer_result := _advance_blocked_transfer_elapsed_milliseconds(StringName(army.get("army_id", &"")), StringName(blocked_macro.get("order_id", &"")), int(transfer.get("progress_millis", 0)), delta_seconds * 1000.0 * city_time_speed)
-				if bool(transfer_result.get("arrived", false)) and not bool(_persist_macro_march_checkpoint().get("success", false)):
-					_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+			if StringName(transfer.get("phase", &"")) in [&"TO_CAMP", &"TO_CAMP_BLOCKED", &"TO_RESUME", &"TO_RESUME_BLOCKED"]:
+				_advance_blocked_transfer_with_elapsed(army, delta_seconds * 1000.0 * city_time_speed)
 			continue
 		if StringName(army.get("phase", &"")) not in [ArmyRegistry.PHASE_MARCHING, ArmyRegistry.PHASE_RETREATING]:
 			continue
@@ -5759,8 +5756,87 @@ func _advance_blocked_transfer_elapsed_milliseconds(army_id: StringName, order_i
 		return {}
 	var result := _army_registry.advance_blocked_transfer(army_id, order_id, expected_progress_milliseconds, whole_milliseconds)
 	if bool(result.get("arrived", false)):
+		result.remaining_elapsed_milliseconds = float(result.get("remaining_milliseconds", 0)) + float(_macro_march_frame_remainders_by_order.get(remainder_key, 0.0))
 		_macro_march_frame_remainders_by_order.erase(remainder_key)
 	return result
+
+
+func _advance_blocked_transfer_with_elapsed(army: Dictionary, elapsed_milliseconds: float) -> Dictionary:
+	var registry_before := _army_registry.get_snapshot()
+	var army_id := StringName(army.get("army_id", &""))
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	var order_id := StringName(macro.get("order_id", &""))
+	var remaining_milliseconds := elapsed_milliseconds
+	var checkpoint_required := false
+	var transitions := 0
+	var final_result: Dictionary = {}
+	while remaining_milliseconds > 0.000001 and transitions < 6:
+		transitions += 1
+		army = _army_registry.get_army(army_id)
+		macro = Dictionary(army.get("macro_march", {}))
+		var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
+		var transfer_phase := StringName(transfer.get("phase", &""))
+		if transfer_phase not in [&"TO_CAMP", &"TO_CAMP_BLOCKED", &"TO_RESUME", &"TO_RESUME_BLOCKED"]:
+			break
+		var unavailable_segment := _war_loop_state.field_tactics.first_unavailable_route_segment(
+			StringName(transfer.get("route_id", &"")), Array(transfer.get("route_segments", [])),
+			Array(transfer.get("route_world_points", [])), int(transfer.get("progress_millis", 0)), int(transfer.get("total_millis", 0))
+		)
+		if unavailable_segment >= 0:
+			if transfer_phase == &"TO_CAMP":
+				var rerouted := _plan_blocked_camp_transfer_from_temporary_route(army, transfer)
+				if not rerouted.is_empty():
+					var rerouted_army := _army_registry.replace_blocked_transfer(army_id, order_id, rerouted)
+					if not rerouted_army.is_empty():
+						checkpoint_required = true
+						continue
+			var blocked_phase := &"TO_CAMP_BLOCKED" if transfer_phase in [&"TO_CAMP", &"TO_CAMP_BLOCKED"] else &"TO_RESUME_BLOCKED"
+			if transfer_phase != blocked_phase:
+				transfer.phase = blocked_phase
+				if not _army_registry.replace_blocked_transfer(army_id, order_id, transfer).is_empty():
+					checkpoint_required = true
+			break
+		if transfer_phase in [&"TO_CAMP_BLOCKED", &"TO_RESUME_BLOCKED"]:
+			transfer.phase = &"TO_CAMP" if transfer_phase == &"TO_CAMP_BLOCKED" else &"TO_RESUME"
+			if _army_registry.replace_blocked_transfer(army_id, order_id, transfer).is_empty():
+				break
+			checkpoint_required = true
+			transfer_phase = StringName(transfer.phase)
+		var transfer_result := _advance_blocked_transfer_elapsed_milliseconds(
+			army_id, order_id, int(transfer.get("progress_millis", 0)), remaining_milliseconds
+		)
+		if transfer_result.is_empty():
+			break
+		final_result = transfer_result
+		if not bool(transfer_result.get("arrived", false)):
+			break
+		checkpoint_required = true
+		remaining_milliseconds = float(transfer_result.get("remaining_elapsed_milliseconds", 0.0))
+		if transfer_phase == &"TO_CAMP":
+			army = Dictionary(transfer_result.get("army", {}))
+			macro = Dictionary(army.get("macro_march", {}))
+			if _war_loop_state.field_tactics.first_unavailable_route_segment(
+				StringName(macro.get("route_id", &"")), Array(macro.get("route_segments", [])),
+				Array(macro.get("route_world_points", [])), int(macro.get("progress_millis", 0)), int(macro.get("total_millis", 0))
+			) >= 0:
+				break
+			if _begin_blocked_return(army).is_empty():
+				break
+			continue
+		# Returning to the frozen position atomically restored the original order.
+		# Any time beyond that boundary belongs to the original order, not to the
+		# now-cleared temporary transfer.
+		if remaining_milliseconds > 0.000001:
+			army = Dictionary(transfer_result.get("army", {}))
+			macro = Dictionary(army.get("macro_march", {}))
+			final_result = _advance_macro_march_elapsed_milliseconds(
+				army_id, order_id, int(macro.get("progress_millis", 0)), remaining_milliseconds
+			)
+		break
+	if checkpoint_required and not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		return {}
+	return final_result
 
 
 func _advance_macro_march_elapsed_milliseconds(
@@ -5910,7 +5986,42 @@ func _plan_blocked_camp_transfer(army: Dictionary, blocked_segment_index: int) -
 	var macro: Dictionary = army.get("macro_march", {})
 	var field: FieldTacticsState = _war_loop_state.field_tactics
 	var best: Dictionary = {}
+	for candidate_id in _friendly_station_candidate_ids(macro):
+		var plan := field.plan_runtime_path_from_progress(Array(macro.get("route_segments", [])), int(macro.get("total_millis", 0)), int(macro.get("progress_millis", 0)), candidate_id)
+		if not bool(plan.get("valid", false)):
+			continue
+		if best.is_empty() or int(plan.get("duration_milliseconds", 0)) < int(best.get("total_millis", 0)) or (int(plan.get("duration_milliseconds", 0)) == int(best.get("total_millis", 0)) and String(candidate_id) < String(best.get("target_point_id", &""))):
+			best = {"phase": &"TO_CAMP", "target_point_id": candidate_id, "route_id": StringName(plan.get("route_id", &"")), "route_segments": Array(plan.get("segments", [])).duplicate(true), "route_world_points": Array(plan.get("points", [])).duplicate(true), "progress_millis": 0, "total_millis": int(plan.get("duration_milliseconds", 0)), "resume_progress_millis": int(macro.get("progress_millis", 0))}
+	return best
+
+
+func _plan_blocked_camp_transfer_from_temporary_route(army: Dictionary, transfer: Dictionary) -> Dictionary:
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	var best: Dictionary = {}
+	for candidate_id in _friendly_station_candidate_ids(macro):
+		var plan := _war_loop_state.field_tactics.plan_runtime_path_from_progress(
+			Array(transfer.get("route_segments", [])), int(transfer.get("total_millis", 0)),
+			int(transfer.get("progress_millis", 0)), candidate_id
+		)
+		if not bool(plan.get("valid", false)):
+			continue
+		if best.is_empty() or int(plan.get("duration_milliseconds", 0)) < int(best.get("total_millis", 0)) or (int(plan.get("duration_milliseconds", 0)) == int(best.get("total_millis", 0)) and String(candidate_id) < String(best.get("target_point_id", &""))):
+			best = {
+				"phase": &"TO_CAMP",
+				"target_point_id": candidate_id,
+				"route_id": StringName(plan.get("route_id", &"")),
+				"route_segments": Array(plan.get("segments", [])).duplicate(true),
+				"route_world_points": Array(plan.get("points", [])).duplicate(true),
+				"progress_millis": 0,
+				"total_millis": int(plan.get("duration_milliseconds", 0)),
+				"resume_progress_millis": int(transfer.get("resume_progress_millis", macro.get("progress_millis", 0))),
+			}
+	return best
+
+
+func _friendly_station_candidate_ids(macro: Dictionary) -> Array[StringName]:
 	var candidate_ids: Array[StringName] = []
+	var field: FieldTacticsState = _war_loop_state.field_tactics
 	for point_id_value in MACRO_MARCH_THEATER.get_points():
 		var point_id := StringName(point_id_value)
 		var point: Dictionary = Dictionary(MACRO_MARCH_THEATER.get_points()[point_id_value])
@@ -5923,13 +6034,38 @@ func _plan_blocked_camp_transfer(army: Dictionary, blocked_segment_index: int) -
 		if StringName(point_id_value) not in candidate_ids:
 			candidate_ids.append(StringName(point_id_value))
 	candidate_ids.sort_custom(func(left: StringName, right: StringName) -> bool: return String(left) < String(right))
-	for candidate_id in candidate_ids:
-		var plan := field.plan_runtime_path_from_progress(Array(macro.get("route_segments", [])), int(macro.get("total_millis", 0)), int(macro.get("progress_millis", 0)), candidate_id)
-		if not bool(plan.get("valid", false)):
-			continue
-		if best.is_empty() or int(plan.get("duration_milliseconds", 0)) < int(best.get("total_millis", 0)) or (int(plan.get("duration_milliseconds", 0)) == int(best.get("total_millis", 0)) and String(candidate_id) < String(best.get("target_point_id", &""))):
-			best = {"phase": &"TO_CAMP", "target_point_id": candidate_id, "route_id": StringName(plan.get("route_id", &"")), "route_segments": Array(plan.get("segments", [])).duplicate(true), "route_world_points": Array(plan.get("points", [])).duplicate(true), "progress_millis": 0, "total_millis": int(plan.get("duration_milliseconds", 0)), "resume_progress_millis": int(macro.get("progress_millis", 0))}
-	return best
+	return candidate_ids
+
+
+func _begin_blocked_return(army: Dictionary) -> Dictionary:
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
+	if StringName(transfer.get("phase", &"")) != &"WAITING":
+		return {}
+	var return_points: Array = Array(transfer.get("route_world_points", [])).duplicate(true)
+	return_points.reverse()
+	if return_points.size() < 2:
+		return {}
+	var return_segments: Array = []
+	for segment_value in Array(transfer.get("route_segments", [])):
+		var segment: Dictionary = Dictionary(segment_value).duplicate(true)
+		segment.forward = not bool(segment.get("forward", false))
+		if segment.has("route_world_points"):
+			var segment_points: Array = Array(segment.get("route_world_points", [])).duplicate(true)
+			segment_points.reverse()
+			segment.route_world_points = segment_points
+		if segment.has("source_point_id") or segment.has("target_point_id"):
+			var previous_source := StringName(segment.get("source_point_id", &""))
+			segment.source_point_id = StringName(segment.get("target_point_id", &""))
+			segment.target_point_id = previous_source
+		return_segments.push_front(segment)
+	transfer.phase = &"TO_RESUME"
+	transfer.route_world_points = return_points
+	transfer.route_segments = return_segments
+	transfer.progress_millis = 0
+	return _army_registry.replace_blocked_transfer(
+		StringName(army.get("army_id", &"")), StringName(macro.get("order_id", &"")), transfer
+	)
 
 
 func _resume_macro_marches_on_repaired_roads() -> Array[StringName]:
@@ -5940,6 +6076,22 @@ func _resume_macro_marches_on_repaired_roads() -> Array[StringName]:
 			continue
 		var macro: Dictionary = army.get("macro_march", {})
 		var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
+		var transfer_phase := StringName(transfer.get("phase", &""))
+		if transfer_phase in [&"TO_CAMP", &"TO_CAMP_BLOCKED", &"TO_RESUME", &"TO_RESUME_BLOCKED"]:
+			var transfer_unavailable := _war_loop_state.field_tactics.first_unavailable_route_segment(
+				StringName(transfer.get("route_id", &"")), Array(transfer.get("route_segments", [])),
+				Array(transfer.get("route_world_points", [])), int(transfer.get("progress_millis", 0)), int(transfer.get("total_millis", 0))
+			)
+			if transfer_unavailable >= 0:
+				continue
+			if transfer_phase in [&"TO_CAMP_BLOCKED", &"TO_RESUME_BLOCKED"]:
+				transfer.phase = &"TO_CAMP" if transfer_phase == &"TO_CAMP_BLOCKED" else &"TO_RESUME"
+				var unblocked_army := _army_registry.replace_blocked_transfer(
+					StringName(army.get("army_id", &"")), StringName(macro.get("order_id", &"")), transfer
+				)
+				if not unblocked_army.is_empty():
+					resumed.append(StringName(unblocked_army.get("army_id", &"")))
+				continue
 		if _war_loop_state.field_tactics.first_unavailable_route_segment(
 			StringName(macro.get("route_id", &"")), Array(macro.get("route_segments", [])),
 			Array(macro.get("route_world_points", [])), int(macro.get("progress_millis", 0)), int(macro.get("total_millis", 0))
@@ -5949,27 +6101,13 @@ func _resume_macro_marches_on_repaired_roads() -> Array[StringName]:
 			# The temporary route is the authoritative record of how this army
 			# reached the camp. Reverse its exact clipped geometry to return to the
 			# frozen original-route position before resuming the original order.
-			var return_points: Array = Array(transfer.get("route_world_points", [])).duplicate(true)
-			return_points.reverse()
-			if return_points.size() >= 2:
-				var return_segments: Array = []
-				for segment_value in Array(transfer.get("route_segments", [])):
-					var segment: Dictionary = Dictionary(segment_value).duplicate(true)
-					segment.forward = not bool(segment.get("forward", false))
-					return_segments.push_front(segment)
-				transfer.phase = &"TO_RESUME"
-				transfer.route_world_points = return_points
-				transfer.route_segments = return_segments
-				transfer.progress_millis = 0
-				var returning_army := _army_registry.replace_blocked_transfer(
-					StringName(army.get("army_id", &"")), StringName(macro.get("order_id", &"")), transfer
-				)
-				if not returning_army.is_empty():
-					# Include a state transition in this checkpoint list: the caller
-					# persists it through the same formal event path as a resume.
-					resumed.append(StringName(returning_army.get("army_id", &"")))
-					continue
-		if StringName(transfer.get("phase", &"")) in [&"TO_CAMP", &"TO_RESUME"]:
+			var returning_army := _begin_blocked_return(army)
+			if not returning_army.is_empty():
+				# Include a state transition in this checkpoint list: the caller
+				# persists it through the same formal event path as a resume.
+				resumed.append(StringName(returning_army.get("army_id", &"")))
+				continue
+		if StringName(transfer.get("phase", &"")) in [&"TO_CAMP", &"TO_CAMP_BLOCKED", &"TO_RESUME", &"TO_RESUME_BLOCKED"]:
 			continue
 		var resumed_army := _army_registry.resume_blocked_macro_march(
 			StringName(army.get("army_id", &"")), StringName(macro.get("order_id", &""))

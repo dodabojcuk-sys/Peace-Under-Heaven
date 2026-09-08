@@ -253,10 +253,14 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			match StringName(transfer.get("phase", &"")):
 				&"TO_CAMP":
 					phase_text = "受阻，正转移至驻点"
+				&"TO_CAMP_BLOCKED":
+					phase_text = "转移路线再次受阻"
 				&"WAITING":
 					phase_text = "驻点待维修"
 				&"TO_RESUME":
 					phase_text = "道路已修复，正返回原路线"
+				&"TO_RESUME_BLOCKED":
+					phase_text = "返回路线再次受阻"
 				_:
 					phase_text = "受阻等待"
 		elif StringName(army.phase) == ARMY_REGISTRY.PHASE_STATIONED:
@@ -1080,17 +1084,21 @@ func _draw_army_marker(army: Dictionary) -> void:
 		var label := "受阻等待"
 		if StringName(transfer.get("phase", &"")) == &"TO_CAMP":
 			label = "转移驻点"
+		elif StringName(transfer.get("phase", &"")) == &"TO_CAMP_BLOCKED":
+			label = "转移再受阻"
 		elif StringName(transfer.get("phase", &"")) == &"WAITING":
 			label = "驻点待修"
 		elif StringName(transfer.get("phase", &"")) == &"TO_RESUME":
 			label = "返回原令"
+		elif StringName(transfer.get("phase", &"")) == &"TO_RESUME_BLOCKED":
+			label = "返回再受阻"
 		draw_string(ThemeDB.fallback_font, screen + Vector2(18, -12), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("ffe8a3"))
 
 
 func _display_route_for_army(army: Dictionary) -> Dictionary:
 	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
 	var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
-	if StringName(army.get("phase", &"")) == ARMY_REGISTRY.PHASE_BLOCKED and StringName(transfer.get("phase", &"")) in [&"TO_CAMP", &"WAITING", &"TO_RESUME"]:
+	if StringName(army.get("phase", &"")) == ARMY_REGISTRY.PHASE_BLOCKED and StringName(transfer.get("phase", &"")) in [&"TO_CAMP", &"TO_CAMP_BLOCKED", &"WAITING", &"TO_RESUME", &"TO_RESUME_BLOCKED"]:
 		return {
 			"points": Array(transfer.get("route_world_points", [])).duplicate(true),
 			"progress_millis": int(transfer.get("progress_millis", 0)),

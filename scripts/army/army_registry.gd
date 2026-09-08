@@ -934,7 +934,10 @@ func advance_blocked_transfer(army_id: StringName, order_id: StringName, expecte
 	var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
 	if army.is_empty() or StringName(army.phase) != PHASE_BLOCKED or StringName(macro.get("order_id", &"")) != order_id or StringName(transfer.get("phase", &"")) not in [&"TO_CAMP", &"TO_RESUME"] or int(transfer.get("progress_millis", 0)) != expected_progress_milliseconds or delta_milliseconds <= 0:
 		return {}
-	transfer.progress_millis = mini(int(transfer.progress_millis) + delta_milliseconds, int(transfer.total_millis))
+	var available_milliseconds := maxi(int(transfer.total_millis) - int(transfer.progress_millis), 0)
+	var consumed_milliseconds := mini(delta_milliseconds, available_milliseconds)
+	var remaining_milliseconds := maxi(delta_milliseconds - consumed_milliseconds, 0)
+	transfer.progress_millis = int(transfer.progress_millis) + consumed_milliseconds
 	var arrived := int(transfer.progress_millis) == int(transfer.total_millis)
 	if arrived and StringName(transfer.phase) == &"TO_CAMP":
 		transfer.phase = &"WAITING"
@@ -948,12 +951,12 @@ func advance_blocked_transfer(army_id: StringName, order_id: StringName, expecte
 		army.phase = resume_phase
 		army.macro_march = macro
 		_armies_by_id[army_id] = army
-		return {"success": true, "arrived": true, "army": army.duplicate(true)}
+		return {"success": true, "arrived": true, "consumed_milliseconds": consumed_milliseconds, "remaining_milliseconds": remaining_milliseconds, "army": army.duplicate(true)}
 	macro.temporary_station_point = StringName(transfer.target_point_id) if StringName(transfer.phase) == &"WAITING" else &""
 	macro.blocked_transfer = transfer
 	army.macro_march = macro
 	_armies_by_id[army_id] = army
-	return {"success": true, "arrived": arrived, "army": army.duplicate(true)}
+	return {"success": true, "arrived": arrived, "consumed_milliseconds": consumed_milliseconds, "remaining_milliseconds": remaining_milliseconds, "army": army.duplicate(true)}
 
 
 ## The temporary transfer belongs to the same immutable original order as the
@@ -1103,11 +1106,17 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 			var segment: Dictionary = segment_value
 			if StringName(segment.get("road_id", &"")) == &"" or typeof(segment.get("forward", null)) != TYPE_BOOL:
 				return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+			if segment.has("route_world_points"):
+				if not segment.route_world_points is Array or Array(segment.route_world_points).size() < 2:
+					return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+				for segment_point in Array(segment.route_world_points):
+					if typeof(segment_point) != TYPE_VECTOR2I:
+						return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
 	if StringName(macro.phase) == PHASE_BLOCKED:
 		var transfer_phase := StringName(Dictionary(macro.blocked_transfer).get("phase", &"NONE"))
 		if int(macro.blocked_segment_index) < 0:
 			return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
-		if transfer_phase in [&"TO_CAMP", &"TO_RESUME"] and StringName(macro.temporary_station_point) != &"":
+		if transfer_phase in [&"TO_CAMP", &"TO_CAMP_BLOCKED", &"TO_RESUME", &"TO_RESUME_BLOCKED"] and StringName(macro.temporary_station_point) != &"":
 			return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
 		if transfer_phase in [&"NONE", &"WAITING"] and StringName(macro.temporary_station_point) == &"":
 			return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
@@ -1122,7 +1131,7 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 static func _valid_blocked_transfer(value: Dictionary) -> bool:
 	if value.size() != 8:
 		return false
-	if StringName(value.get("phase", &"")) not in [&"NONE", &"TO_CAMP", &"WAITING", &"TO_RESUME"]:
+	if StringName(value.get("phase", &"")) not in [&"NONE", &"TO_CAMP", &"TO_CAMP_BLOCKED", &"WAITING", &"TO_RESUME", &"TO_RESUME_BLOCKED"]:
 		return false
 	if typeof(value.get("target_point_id", null)) != TYPE_STRING_NAME or typeof(value.get("route_id", null)) != TYPE_STRING_NAME or not value.get("route_segments", null) is Array or not value.get("route_world_points", null) is Array or typeof(value.get("progress_millis", null)) != TYPE_INT or typeof(value.get("total_millis", null)) != TYPE_INT or typeof(value.get("resume_progress_millis", null)) != TYPE_INT:
 		return false

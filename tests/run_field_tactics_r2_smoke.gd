@@ -23,6 +23,7 @@ func _run() -> void:
 	await _run_formal_controller_contract()
 	await _run_damaged_road_resume_contract()
 	await _run_mid_segment_camp_transfer_contract()
+	await _run_temporary_rebreak_and_time_contract()
 	_finish()
 
 
@@ -762,6 +763,134 @@ func _run_mid_segment_camp_transfer_contract() -> void:
 	)
 	scene.queue_free()
 	await process_frame
+
+
+func _run_temporary_rebreak_and_time_contract() -> void:
+	var scene := CITY_SCENE.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var city: Node = scene.get_node("ConstructionController")
+	city.set_process(false)
+	city.food = 240
+	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var engineer_id := StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &""))
+	var safe: Dictionary = city.begin_field_road_project(
+		engineer_id, &"blackstone_city", &"camp.site.rebreak_safe",
+		[Vector2i(150, 430), Vector2i(150, 555)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	city.advance_war_loop_time(int(Dictionary(safe.get("project", {})).get("required_milliseconds", 0)))
+	var safe_road_id := StringName(Dictionary(safe.get("project", {})).get("road_id", &""))
+	var target: Dictionary = city.begin_field_road_project(
+		engineer_id, &"northwatch_garrison", &"camp.site.rebreak_target",
+		[Vector2i(790, 170), Vector2i(895, 245)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var target_project := Dictionary(target.get("project", {}))
+	city.advance_war_loop_time(int(target_project.get("travel_milliseconds", 0)) + int(target_project.get("required_milliseconds", 0)))
+	var target_road_id := StringName(target_project.get("road_id", &""))
+	var lowland: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.lowland")
+	var drawn := Array(lowland.points).duplicate(true)
+	drawn.pop_back()
+	drawn.append_array([Vector2i(790, 170), Vector2i(895, 245)])
+	var plan: Dictionary = city.plan_field_path(&"blackstone_city", &"camp.site.rebreak_target", drawn)
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var issued: Dictionary = city.commit_macro_march_from_city(
+		[StringName(roster[0].formation_id)], &"camp.site.rebreak_target",
+		StringName(plan.get("route_id", &"")), Array(plan.get("points", []))
+	)
+	var army_id := StringName(Dictionary(issued.get("army", {})).get("army_id", &""))
+	city._advance_all_macro_marches_seconds(4.5)
+	var field: FieldTacticsState = city._war_loop_state.field_tactics
+	field.damage_road(target_road_id, 999)
+	city._advance_all_macro_marches_seconds(0.1)
+	var army: Dictionary = city._army_registry.get_army(army_id)
+	var transfer := Dictionary(Dictionary(army.get("macro_march", {})).get("blocked_transfer", {}))
+	var transfer_segments: Array = Array(transfer.get("route_segments", []))
+	var first_segment_points: Array = Array(Dictionary(transfer_segments.front()).get("route_world_points", []))
+	var transfer_points: Array = Array(transfer.get("route_world_points", []))
+	var first_segment_ratio := _test_points_length(first_segment_points) / maxf(_test_points_length(transfer_points), 1.0)
+	var enter_second_milliseconds := mini(int(transfer.get("total_millis", 0)) - 1, ceili(float(int(transfer.get("total_millis", 0))) * first_segment_ratio) + 100)
+	city._advance_all_macro_marches_seconds(float(enter_second_milliseconds) / 1000.0)
+	var before_rebreak: Dictionary = city._army_registry.get_army(army_id)
+	var before_rebreak_transfer := Dictionary(Dictionary(before_rebreak.get("macro_march", {})).get("blocked_transfer", {}))
+	field.damage_road(safe_road_id, 999)
+	city._advance_all_macro_marches_seconds(0.25)
+	var reblocked: Dictionary = city._army_registry.get_army(army_id)
+	var reblocked_transfer := Dictionary(Dictionary(reblocked.get("macro_march", {})).get("blocked_transfer", {}))
+	_check(
+		StringName(reblocked_transfer.get("phase", &"")) == &"TO_CAMP_BLOCKED"
+			and int(reblocked_transfer.get("progress_millis", -1)) == int(before_rebreak_transfer.get("progress_millis", -2))
+			and StringName(Dictionary(reblocked.get("macro_march", {})).get("order_id", &"")) == StringName(Dictionary(before_rebreak.get("macro_march", {})).get("order_id", &"")),
+		"临时转移路线再次断裂时军队停在实际进度，不穿越损坏路段也不替换原军令"
+	)
+	var repair_safe: Dictionary = city.begin_field_road_repair(engineer_id, safe_road_id)
+	var repair_safe_project := Dictionary(repair_safe.get("project", {}))
+	var repairing_safe_engineer := Dictionary(field.specialists_by_id.get(engineer_id, {}))
+	city.advance_war_loop_time(int(repairing_safe_engineer.get("move_remaining_milliseconds", 0)) + int(repair_safe_project.get("required_milliseconds", 0)))
+	army = city._army_registry.get_army(army_id)
+	transfer = Dictionary(Dictionary(army.get("macro_march", {})).get("blocked_transfer", {}))
+	city._advance_all_macro_marches_seconds(float(int(transfer.get("total_millis", 0)) - int(transfer.get("progress_millis", 0))) / 1000.0)
+	var waiting: Dictionary = city._army_registry.get_army(army_id)
+	var waiting_transfer := Dictionary(Dictionary(waiting.get("macro_march", {})).get("blocked_transfer", {}))
+	_check(
+		bool(repair_safe.get("success", false)) and StringName(waiting_transfer.get("phase", &"")) == &"WAITING",
+		"临时路线修复后从冻结位置继续转移并抵达原选定驻点"
+	)
+	var repair_target: Dictionary = city.begin_field_road_repair(engineer_id, target_road_id)
+	var repair_target_project := Dictionary(repair_target.get("project", {}))
+	var repairing_target_engineer := Dictionary(field.specialists_by_id.get(engineer_id, {}))
+	city.advance_war_loop_time(int(repairing_target_engineer.get("move_remaining_milliseconds", 0)) + int(repair_target_project.get("required_milliseconds", 0)))
+	var return_start: Dictionary = city._army_registry.get_army(army_id)
+	var return_transfer := Dictionary(Dictionary(return_start.get("macro_march", {})).get("blocked_transfer", {}))
+	var comparison_snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	var comparison_duration := float(int(return_transfer.get("total_millis", 0)) + 1500) / 1000.0
+	var comparison_scenes: Array[Node] = []
+	var comparison_cities: Array[Node] = []
+	for unused in 3:
+		var comparison_scene := CITY_SCENE.instantiate()
+		root.add_child(comparison_scene)
+		await process_frame
+		await process_frame
+		var comparison_city: Node = comparison_scene.get_node("ConstructionController")
+		comparison_city.set_process(false)
+		var restored: Dictionary = comparison_city.restore_v5_campaign_snapshot(comparison_snapshot)
+		if not bool(restored.get("success", false)):
+			failures.append("时间等价场景无法从正式 V5 快照恢复")
+		comparison_scenes.append(comparison_scene)
+		comparison_cities.append(comparison_city)
+	_advance_controller_frames(comparison_cities[0], comparison_duration, [1.0 / 30.0])
+	_advance_controller_frames(comparison_cities[1], comparison_duration, [1.0 / 60.0])
+	_advance_controller_frames(comparison_cities[2], comparison_duration, [0.017, 0.041, 0.113, 0.007])
+	var result_30: Dictionary = comparison_cities[0]._army_registry.get_army(army_id)
+	var result_60: Dictionary = comparison_cities[1]._army_registry.get_army(army_id)
+	var result_irregular: Dictionary = comparison_cities[2]._army_registry.get_army(army_id)
+	_check(
+		result_30 == result_60 and result_30 == result_irregular
+			and StringName(result_30.get("phase", &"")) == ArmyRegistry.PHASE_MARCHING
+			and int(Dictionary(result_30.get("macro_march", {})).get("progress_millis", 0)) >= int(Dictionary(return_start.get("macro_march", {})).get("progress_millis", 0)) + 1499,
+		"正式 _process 在返回边界消费剩余时间，30/60 FPS 与不规则帧步得到相同军令状态"
+	)
+	for comparison_scene in comparison_scenes:
+		comparison_scene.queue_free()
+	scene.queue_free()
+	await process_frame
+
+
+func _advance_controller_frames(city: Node, total_seconds: float, pattern: Array[float]) -> void:
+	var remaining := total_seconds
+	var index := 0
+	while remaining > 0.0000001:
+		var delta := minf(pattern[index % pattern.size()], remaining)
+		city._process(delta)
+		remaining -= delta
+		index += 1
+
+
+func _test_points_length(points: Array) -> float:
+	var length := 0.0
+	for index in range(1, points.size()):
+		length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
+	return length
 
 
 func _check(condition: bool, description: String) -> void:

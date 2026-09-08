@@ -1,5 +1,33 @@
 # 当前状态
 
+## FIELD_TACTICS_R2 temporary-route rebreak and clock checkpoint (2026-09-08)
+
+A blocked army now rechecks the physical segments of its temporary camp or
+resume route before every movement advance. A newly broken future segment is
+replanned from the army's exact temporary-route position when a reachable camp
+alternative exists; if the segment beneath the army is broken, the transfer
+enters an explicit persisted blocked phase and keeps its position, original
+order, formation ownership, and paid food transaction. Repair restores the
+same temporary task rather than teleporting or reissuing the army.
+
+Temporary physical segments persist their clipped geometry and endpoint facts,
+so availability, interpolation, replanning, reverse return, and cold recovery
+all use the same path. Crossing the camp-arrival or frozen-position boundary
+now returns unused milliseconds to the next legal phase. A formal `_process`
+comparison produces the same registry state at 30 FPS, 60 FPS, and irregular
+frame partitions after crossing the return boundary.
+
+The persistence runner no longer treats child exit code zero as sufficient.
+Every worker writes a mode-specific success marker; the parent requires both
+that marker and a zero exit code and prints captured child output on failure.
+This exposed and repaired five pre-existing worker parse errors which the old
+runner had misreported as PASS. A new N/O/P chain cold-restores a temporary
+route rebreak, repairs it, and continues to camp. Current focused results are
+Field R2 **58 assertions**, audited field persistence PASS, Macro March R0
+**27 assertions**, War Loop R1 **16 assertions**, editor import, and
+`git diff --check` PASS. Patrol/guard/ambush casualties and both complete R2
+routes remain open; this checkpoint is not player acceptance.
+
 ## FIELD_TACTICS_R2 safe-camp transfer checkpoint (2026-09-08)
 
 Follow-up integrity repair: schema-5 registry migration now preserves an

@@ -14,6 +14,23 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 temporary-route rebreak and clock checkpoint
+
+- Rechecked blocked-transfer physical segments before movement, persisted
+  explicit reblocked camp/return phases, and resumed the same temporary task
+  after repair without replacing the original order or food transaction.
+- Persisted clipped segment geometry so temporary replanning, reverse travel,
+  rendering, validation, and cold recovery share one physical route.
+- Carried unused milliseconds across camp arrival and return-to-order
+  boundaries; formal `_process` checks now match at 30 FPS, 60 FPS, and
+  irregular frame partitions.
+- Hardened the disk runner to require per-worker success markers in addition to
+  exit code zero. This exposed and fixed previously masked worker parse errors,
+  and an N/O/P chain now cold-restores temporary-route rebreak and recovery.
+- Verified Field R2 58 assertions, audited field persistence, Macro March 27,
+  War Loop R1 16, editor import, and `git diff --check`. Encounters and the two
+  complete routes remain follow-up work, so this is not player acceptance.
+
 ### FIELD_TACTICS_R2 safe-camp transfer checkpoint
 
 - Corrected the follow-up state contract: moving blocked transfers no longer

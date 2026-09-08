@@ -563,9 +563,7 @@ func first_unavailable_route_segment(
 	var consumed_length := 0.0
 	for segment_index in range(resolved_segments.size()):
 		var segment: Dictionary = Dictionary(resolved_segments[segment_index])
-		var segment_points: Array = Array(Dictionary(roads_by_id.get(StringName(segment.get("road_id", &"")), {})).get("route_world_points", [])).duplicate(true)
-		if not bool(segment.get("forward", false)):
-			segment_points.reverse()
+		var segment_points: Array = _route_segment_world_points(segment)
 		var segment_length := 0.0
 		for point_index in range(1, segment_points.size()):
 			segment_length += Vector2(segment_points[point_index - 1]).distance_to(Vector2(segment_points[point_index]))
@@ -685,13 +683,17 @@ func plan_runtime_path_from_progress(route_segments: Array, total_milliseconds: 
 		# physical segment under the army may serve as the temporary connector.
 		if road.is_empty():
 			return {"valid": false, "error": "军令引用的道路不存在"}
-		var points: Array = Array(road.get("route_world_points", [])).duplicate(true)
-		if not bool(segment.get("forward", false)):
-			points.reverse()
+		var points: Array = _route_segment_world_points(segment)
 		var length := _points_length(points)
 		if points.size() < 2 or length <= 0.001:
 			return {"valid": false, "error": "军令路段几何无效"}
-		ordered_segments.append({"road_id": StringName(segment.get("road_id", &"")), "forward": bool(segment.get("forward", false)), "points": points, "source_point_id": StringName(road.get("source_point_id", &"")) if bool(segment.get("forward", false)) else StringName(road.get("target_point_id", &"")), "target_point_id": StringName(road.get("target_point_id", &"")) if bool(segment.get("forward", false)) else StringName(road.get("source_point_id", &""))})
+		ordered_segments.append({
+			"road_id": StringName(segment.get("road_id", &"")),
+			"forward": bool(segment.get("forward", false)),
+			"points": points,
+			"source_point_id": StringName(segment.get("source_point_id", StringName(road.get("source_point_id", &"")) if bool(segment.get("forward", false)) else StringName(road.get("target_point_id", &"")))),
+			"target_point_id": StringName(segment.get("target_point_id", StringName(road.get("target_point_id", &"")) if bool(segment.get("forward", false)) else StringName(road.get("source_point_id", &"")))),
+		})
 		lengths.append(length)
 		total_length += length
 	var travelled := total_length * clampf(float(progress_milliseconds) / float(total_milliseconds), 0.0, 1.0)
@@ -727,14 +729,41 @@ func plan_runtime_path_from_progress(route_segments: Array, total_milliseconds: 
 			# Persist the physical road that the clipped connector belongs to.  Its
 			# geometry is deliberately carried in `points`; the `partial` marker
 			# prevents a later reader from mistaking it for a newly-created road.
-			var transfer_segments: Array = [{"road_id": StringName(segment.get("road_id", &"")), "forward": bool(segment.get("forward", false)) if endpoint_key == "target_point_id" else not bool(segment.get("forward", false)), "partial": true}]
-			transfer_segments.append_array(Array(onward.get("segments", [])).duplicate(true))
+			var transfer_segments: Array = [{
+				"road_id": StringName(segment.get("road_id", &"")),
+				"forward": bool(segment.get("forward", false)) if endpoint_key == "target_point_id" else not bool(segment.get("forward", false)),
+				"partial": true,
+				"route_world_points": connector.duplicate(true),
+				"source_point_id": &"",
+				"target_point_id": endpoint_id,
+			}]
+			for onward_segment_value in Array(onward.get("segments", [])):
+				var onward_segment := Dictionary(onward_segment_value).duplicate(true)
+				onward_segment.route_world_points = _route_segment_world_points(onward_segment)
+				var onward_road := Dictionary(roads_by_id.get(StringName(onward_segment.get("road_id", &"")), {}))
+				onward_segment.source_point_id = StringName(onward_road.get("source_point_id", &"")) if bool(onward_segment.get("forward", false)) else StringName(onward_road.get("target_point_id", &""))
+				onward_segment.target_point_id = StringName(onward_road.get("target_point_id", &"")) if bool(onward_segment.get("forward", false)) else StringName(onward_road.get("source_point_id", &""))
+				transfer_segments.append(onward_segment)
 			candidates.append({"valid": true, "route_id": StringName(onward.get("route_id", &"")), "segments": transfer_segments, "points": points, "duration_milliseconds": duration, "current_position": Vector2i(current_position), "origin_segment_index": segment_index})
 		if candidates.is_empty():
 			return {"valid": false, "error": "没有从当前位置可达的友方驻点", "current_position": Vector2i(current_position), "origin_segment_index": segment_index}
 		candidates.sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return int(left.duration_milliseconds) < int(right.duration_milliseconds) or (int(left.duration_milliseconds) == int(right.duration_milliseconds) and String(left.route_id) < String(right.route_id)))
 		return candidates.front()
 	return {"valid": false, "error": "军令进度不在有效路段内"}
+
+
+## Temporary safe-camp paths may begin in the middle of a physical road.  In
+## that case the clipped geometry is persisted on the segment so availability,
+## movement and cold recovery all measure the same path instead of expanding it
+## back to the full road.
+func _route_segment_world_points(segment: Dictionary) -> Array:
+	var embedded = segment.get("route_world_points", null)
+	if embedded is Array and Array(embedded).size() >= 2:
+		return Array(embedded).duplicate(true)
+	var points: Array = Array(Dictionary(roads_by_id.get(StringName(segment.get("road_id", &"")), {})).get("route_world_points", [])).duplicate(true)
+	if not bool(segment.get("forward", false)):
+		points.reverse()
+	return points
 
 
 func _points_length(points: Array) -> float:

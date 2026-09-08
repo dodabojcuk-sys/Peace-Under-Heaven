@@ -11,6 +11,31 @@ transaction and persistence-checkpoint caller.
 
 ## Delivered engineering evidence
 
+### Temporary-route rebreak, time remainder, and audited recovery
+
+Temporary camp and return movement now revalidates the actual remaining
+physical segments before every advance. A new break either replans a camp path
+from the army's exact temporary position or enters a persisted reblocked phase
+without moving through the failed road. Repair returns that same temporary task
+to motion. The immutable original order, frozen progress, formations, resume
+phase, and already-paid march cost are unchanged.
+
+Clipped physical segments carry their own ordered geometry and endpoint facts.
+The same data therefore drives availability, movement, reverse return, map
+projection, snapshot validation, and cold recovery. Arrival returns unused
+milliseconds to the next legal phase, and a formal Controller `_process`
+scenario reaches an identical army snapshot at 30 FPS, 60 FPS, and irregular
+partitions while crossing the return boundary.
+
+The disk harness now requires a child-written success marker as well as exit
+code zero. That change found five worker parse errors that the previous
+exit-code-only harness had falsely accepted. After repair, the existing chains
+and a new three-process rebreak/repair/continue chain all pass. Focused results
+are Field R2 58 assertions, audited field persistence PASS, Macro March 27,
+War Loop R1 16, editor import, and `git diff --check`. This checkpoint does not
+claim patrol/guard/ambush casualties, either complete R2 route, normal-input
+media, or player acceptance.
+
 ### Formal bridge-return and recovery canonicalization repair
 
 The map now attaches its interrupted-project selector to the actual control
