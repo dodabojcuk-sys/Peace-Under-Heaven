@@ -78,6 +78,14 @@ only at full completion. The current resource charge is still the existing
 single project transaction; per-segment material accounting, bridge damage
 recovery and a normal-input construction journey remain open.
 
+Retreat orders now reverse the original validated physical road sequence and
+each direction while preserving the original route identity. This keeps the
+normal scheduler and damage checks on real roads instead of a synthetic
+`.return` ID. Each newly opened construction segment now emits an authoritative
+field event, so the controller publishes an immediate checkpoint even before
+the overall project completes. Automated Field/R1/Macro results are 40/16/27;
+these remain engineering checks rather than the two complete player routes.
+
 ## FIELD_TACTICS_R2 engineering checkpoint (2026-09-07)
 
 ### R2 formal-input and on-site-repair checkpoint

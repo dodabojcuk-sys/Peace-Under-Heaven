@@ -39,6 +39,10 @@
 - Split cross-water engineering lines into persisted road-bridge-road segment
   plans. Segments open in construction order, so an unfinished bridge or final
   road remains unavailable to runtime route planning.
+- Fixed retreat orders to reverse and retain the original physical road
+  sequence instead of inventing a non-existent `.return` route ID. Added a
+  formal siege-retreat return regression and made each newly opened construction
+  segment an immediate persistence-checkpoint event.
 
 - Replaced fixed 1000×650 screen compression with a shared tactical-map camera:
   cursor-anchored wheel zoom, middle-drag pan, minimap recentering and

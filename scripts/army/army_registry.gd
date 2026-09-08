@@ -794,6 +794,16 @@ func begin_macro_retreat(army_id: StringName, order_id: StringName) -> Dictionar
 		return {}
 	var points: Array = Array(macro.route_world_points).duplicate()
 	points.reverse()
+	var return_segments: Array = Array(macro.get("route_segments", [])).duplicate(true)
+	if return_segments.is_empty():
+		return_segments = _legacy_macro_route_segments(StringName(macro.get("route_id", &"")))
+	return_segments.reverse()
+	for segment_index in range(return_segments.size()):
+		var segment: Dictionary = Dictionary(return_segments[segment_index]).duplicate(true)
+		segment["forward"] = not bool(segment.get("forward", false))
+		return_segments[segment_index] = segment
+	if return_segments.is_empty():
+		return {}
 	var return_order_id := _allocate_macro_order_id()
 	var original_order := macro.duplicate(true)
 	var original_history: Array = Array(army.get("macro_order_history", [])).duplicate(true)
@@ -802,11 +812,12 @@ func begin_macro_retreat(army_id: StringName, order_id: StringName) -> Dictionar
 		return_order_id,
 		StringName(original_order.target_point_id),
 		StringName(original_order.source_point_id),
-		StringName("%s.return" % String(original_order.route_id)),
+		StringName(original_order.route_id),
 		points,
 		Array(original_order.formation_snapshots),
 		int(original_order.food_cost),
-		int(original_order.total_millis)
+		int(original_order.total_millis),
+		return_segments
 	)
 	macro.phase = PHASE_RETREATING
 	army.source_node_id = StringName(macro.source_point_id)

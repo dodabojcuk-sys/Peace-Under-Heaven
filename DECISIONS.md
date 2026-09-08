@@ -92,6 +92,10 @@ Road-damage checks start at
 	road-network connections only, never player-commandable camps; the final
 	camp remains the sole deployed endpoint. A finished early segment may enter
 	the graph while later construction remains closed.
+- Retreat is a new order over the same immutable physical roads: it reverses
+	the ordered segments and their directions but never invents a derivative
+	route ID. A construction segment becoming traversable is a durable world
+	event, so it uses the controller's existing checkpoint/rollback boundary.
 
 ## Macro March R0 outer-city greybox
 

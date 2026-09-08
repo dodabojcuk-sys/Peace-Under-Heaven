@@ -219,3 +219,17 @@ proves the three planned kinds and the staged opening order (39 assertions).
 The existing single project resource transaction is retained for now; detailed
 per-segment materials, bridge damage recovery, and normal-input evidence are
 still open work.
+
+### Retreat and segment-publication follow-up
+
+Retreat now creates a new order by reversing the original validated physical
+segments and their directions. Its route identity remains the same real road
+path, so return scheduling and damage checks cannot resolve a fabricated
+`.return` road. The R1 runner exercises a formal city attack, retreat, and
+physical return to Northwatch.
+
+Each construction segment opening now appears in the field advance result and
+therefore triggers the controller's ordinary checkpoint/rollback flow even
+before the whole project completes. Focused automated checks currently pass:
+Field R2 40 assertions, War Loop R1 16, and Macro March 27. No normal-input
+media or two-route tactical acceptance is claimed.

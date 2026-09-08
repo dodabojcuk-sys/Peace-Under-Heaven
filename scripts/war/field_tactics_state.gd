@@ -632,6 +632,7 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 		return {}
 	world_milliseconds += delta_milliseconds
 	var completed: Array[StringName] = []
+	var opened_road_ids: Array[StringName] = []
 	var engagements: Array[Dictionary] = []
 	# A repair may begin in the middle of this world step. Keep the unused part
 	# of the step for its work progress so one long advance and split advances
@@ -678,7 +679,7 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 			int(project.required_milliseconds)
 		)
 		if StringName(project.get("project_kind", &"")) != &"REPAIR":
-			_open_completed_construction_segments(project_id, project)
+			opened_road_ids.append_array(_open_completed_construction_segments(project_id, project))
 		if int(project.progress_milliseconds) == int(project.required_milliseconds):
 			project.phase = &"COMPLETE"
 			if StringName(project.get("project_kind", &"")) == &"REPAIR":
@@ -691,7 +692,7 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 				repaired_road.state = ROAD_OPEN
 				roads_by_id[StringName(project.road_id)] = repaired_road
 			else:
-				_open_completed_construction_segments(project_id, project)
+				opened_road_ids.append_array(_open_completed_construction_segments(project_id, project))
 			engineer.phase = SPECIALIST_IDLE
 			engineer.project_id = &""
 			specialists_by_id[StringName(project.engineer_id)] = engineer
@@ -767,10 +768,11 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 				specialists_by_id[specialist_id] = specialist
 				engagements.append({"patrol_id": patrol_id, "specialist_id": specialist_id, "point_id": patrol.current_point_id})
 	_refresh_intel()
-	return {"success": true, "completed_project_ids": completed, "engagements": engagements, "world_milliseconds": world_milliseconds}
+	return {"success": true, "completed_project_ids": completed, "opened_road_ids": opened_road_ids, "engagements": engagements, "world_milliseconds": world_milliseconds}
 
 
-func _open_completed_construction_segments(project_id: StringName, project: Dictionary) -> void:
+func _open_completed_construction_segments(project_id: StringName, project: Dictionary) -> Array[StringName]:
+	var opened: Array[StringName] = []
 	var elapsed := int(project.get("progress_milliseconds", 0))
 	var accumulated := 0
 	var segment_plans: Array = Array(project.get("segment_plans", []))
@@ -802,6 +804,8 @@ func _open_completed_construction_segments(project_id: StringName, project: Dict
 			"built": true,
 			"project_id": project_id,
 		}
+		opened.append(road_id)
+	return opened
 
 
 func observe_subject(subject_id: StringName) -> Dictionary:

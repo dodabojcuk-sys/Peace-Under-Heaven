@@ -70,6 +70,7 @@ func _run() -> void:
 	var silverford_state: Dictionary = Dictionary(Dictionary(restored.get_macro_march_read_model().war_loop).get("cities_by_id", {})).get(&"silverford_city", {})
 	_check(bool(silverford_arrival.success) and StringName(restored.get_macro_march_army().phase) == ArmyRegistry.PHASE_STATIONED and StringName(silverford_state.military_controller_faction_id) == &"player" and bool(restored.get_macro_march_read_model().level_cleared), "第二座必占敌城自动招降后，双城军事控制权共同完成胜利")
 	await _drop(restored_context.scene)
+	await _run_formal_retreat_route_contract()
 	_finish()
 
 
@@ -105,7 +106,11 @@ func _run_war_loop_regression_probes() -> void:
 		{"formation_id": &"left", "definition_id": &"infantry", "display_name": "左队", "member_count": 7, "max_members": 7},
 		{"formation_id": &"right", "definition_id": &"infantry", "display_name": "右队", "member_count": 7, "max_members": 7},
 	]
-	var macro_army := registry.create_macro_march(&"player", &"blackstone_city", &"northwatch_garrison", &"redcliff_city", &"road.test", [Vector2i.ZERO, Vector2i.ONE], {&"infantry": 14}, formations, 1, 100)
+	var outbound_segments: Array = [
+		{"road_id": &"road.test.first", "forward": true},
+		{"road_id": &"road.test.second", "forward": false},
+	]
+	var macro_army := registry.create_macro_march(&"player", &"blackstone_city", &"northwatch_garrison", &"redcliff_city", &"path.road.test.first:f|road.test.second:r", [Vector2i.ZERO, Vector2i.ONE], {&"infantry": 14}, formations, 1, 100, outbound_segments)
 	var macro_order: Dictionary = macro_army.macro_march
 	registry.advance_macro_march(StringName(macro_army.army_id), StringName(macro_order.order_id), 0, 100)
 	registry.begin_macro_siege(StringName(macro_army.army_id), StringName(macro_order.order_id))
@@ -113,7 +118,52 @@ func _run_war_loop_regression_probes() -> void:
 	var survivor_formations: Array = Array(Dictionary(survivors.macro_march).formation_snapshots)
 	var retreating := registry.begin_macro_retreat(StringName(macro_army.army_id), StringName(macro_order.order_id))
 	_check(int(Dictionary(survivor_formations[0]).member_count) == 7 and int(Dictionary(survivor_formations[1]).member_count) == 0, "两支各七人的编队伤亡写回保持原队列，不会回填为十四人与零人")
-	_check(StringName(Dictionary(retreating.macro_march).order_id) != StringName(macro_order.order_id) and Array(retreating.macro_order_history).size() == 1 and StringName(Dictionary(Array(retreating.macro_order_history)[0]).order_id) == StringName(macro_order.order_id), "撤逃创建独立返程军令，并保留不可变的原攻城军令")
+	var retreat_macro: Dictionary = Dictionary(retreating.macro_march)
+	var retreat_segments: Array = Array(retreat_macro.get("route_segments", []))
+	_check(
+		StringName(retreat_macro.order_id) != StringName(macro_order.order_id)
+			and Array(retreating.macro_order_history).size() == 1
+			and StringName(Dictionary(Array(retreating.macro_order_history)[0]).order_id) == StringName(macro_order.order_id)
+			and StringName(retreat_macro.route_id) == StringName(macro_order.route_id)
+			and retreat_segments.size() == 2
+			and StringName(Dictionary(retreat_segments[0]).get("road_id", &"")) == &"road.test.second"
+			and bool(Dictionary(retreat_segments[0]).get("forward", true))
+			and StringName(Dictionary(retreat_segments[1]).get("road_id", &"")) == &"road.test.first"
+			and not bool(Dictionary(retreat_segments[1]).get("forward", true)),
+		"撤逃创建独立返程军令，反转同一路网段和方向并保留原攻城军令"
+	)
+
+
+func _run_formal_retreat_route_contract() -> void:
+	var context := await _new_city()
+	var city: Node = context.city
+	city.set_process(false)
+	city.food = 160
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var to_north: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
+	var first_leg: Dictionary = city.commit_macro_march_from_city([StringName(roster[0].formation_id)], &"northwatch_garrison", StringName(to_north.route_id), Array(to_north.points))
+	var first_army: Dictionary = Dictionary(first_leg.get("army", {}))
+	var first_macro: Dictionary = Dictionary(first_army.get("macro_march", {}))
+	city.advance_macro_march_time(StringName(first_army.get("army_id", &"")), StringName(first_macro.get("order_id", &"")), 0, int(first_macro.get("total_millis", 0)))
+	var to_redcliff: Dictionary = THEATER.get_route(&"road.northwatch.redcliff")
+	var attack_leg: Dictionary = city.commit_macro_march_from_station(StringName(first_army.get("army_id", &"")), &"redcliff_city", StringName(to_redcliff.route_id), Array(to_redcliff.points))
+	var attack_army: Dictionary = Dictionary(attack_leg.get("army", {}))
+	var attack_macro: Dictionary = Dictionary(attack_army.get("macro_march", {}))
+	city.advance_macro_march_time(StringName(attack_army.get("army_id", &"")), StringName(attack_macro.get("order_id", &"")), 0, int(attack_macro.get("total_millis", 0)))
+	city.advance_war_loop_time(250)
+	var retreat: Dictionary = city.request_macro_siege_retreat(&"redcliff_city")
+	var retreat_army: Dictionary = Dictionary(retreat.get("army", {}))
+	var retreat_macro: Dictionary = Dictionary(retreat_army.get("macro_march", {}))
+	city._advance_all_macro_marches_seconds(float(int(retreat_macro.get("total_millis", 0))) / 1000.0)
+	var returned: Dictionary = city._army_registry.get_army(StringName(retreat_army.get("army_id", &"")))
+	_check(
+		bool(first_leg.get("success", false)) and bool(attack_leg.get("success", false)) and bool(retreat.get("success", false))
+			and StringName(retreat_macro.get("route_id", &"")) == StringName(attack_macro.get("route_id", &""))
+			and StringName(returned.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED
+			and StringName(returned.get("target_node_id", &"")) == &"northwatch_garrison",
+		"正式攻城撤逃复用物理道路返回驻点，不会因伪造路线 ID 受阻"
+	)
+	await _drop(context.scene)
 
 
 func _run_controller_time_probe() -> void:

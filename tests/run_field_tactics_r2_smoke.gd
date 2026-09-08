@@ -74,7 +74,7 @@ func _run_field_tactics_contract() -> void:
 		"战区 Resource 水域命中的工程线拆为道路、桥梁、道路的连续施工计划"
 	)
 	var bridge_segments: Array = Array(bridge_project.get("segment_plans", []))
-	bridge_state.advance_world(5000)
+	var bridge_first_advance := bridge_state.advance_world(5000)
 	var bridge_first_open := bridge_state.is_route_open(StringName(Dictionary(bridge_segments[0]).get("road_id", &"")))
 	var bridge_middle_closed := not bridge_state.is_route_open(StringName(Dictionary(bridge_segments[1]).get("road_id", &"")))
 	bridge_state.advance_world(11000)
@@ -85,6 +85,11 @@ func _run_field_tactics_contract() -> void:
 		bridge_first_open and bridge_middle_closed and bridge_middle_open and bridge_last_closed
 			and bridge_state.is_route_open(StringName(Dictionary(bridge_segments[2]).get("road_id", &""))),
 		"连续施工按道路、桥梁、道路顺序开放，未完成后段不会提前通军"
+	)
+	_check(
+		Array(bridge_first_advance.get("opened_road_ids", [])).size() == 1
+			and StringName(Array(bridge_first_advance.get("opened_road_ids", []))[0]) == StringName(Dictionary(bridge_segments[0]).get("road_id", &"")),
+		"每个施工路段首次开放都会产生可发布的权威道路事件"
 	)
 	_check(state.is_route_open(&"road.blackstone.northwatch.ridge"), "主路进入运行时路网且默认可通行")
 	var multi_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison")

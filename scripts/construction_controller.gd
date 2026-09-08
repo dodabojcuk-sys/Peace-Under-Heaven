@@ -5797,6 +5797,7 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 	var resumed_armies := _resume_macro_marches_on_repaired_roads()
 	var field_checkpoint_required := (
 		Array(field_advance.get("completed_project_ids", [])).size() > 0
+		or Array(field_advance.get("opened_road_ids", [])).size() > 0
 		or Array(field_advance.get("engagements", [])).size() > 0
 		or not resumed_armies.is_empty()
 	)
