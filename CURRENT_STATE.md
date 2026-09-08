@@ -71,6 +71,13 @@ third time. It verifies the same stored road sequence and no second food
 transaction. This disk test does not cover a damaged multi-road bridge plan
 or real player input.
 
+Cross-water construction now derives a persisted sequential plan of physical
+road, bridge and road segments. Completed earlier segments enter the road graph
+while the later bridge or road remains absent, and the final camp is created
+only at full completion. The current resource charge is still the existing
+single project transaction; per-segment material accounting, bridge damage
+recovery and a normal-input construction journey remain open.
+
 ## FIELD_TACTICS_R2 engineering checkpoint (2026-09-07)
 
 ### R2 formal-input and on-site-repair checkpoint

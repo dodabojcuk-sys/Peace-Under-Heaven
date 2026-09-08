@@ -36,6 +36,9 @@
 - Added a three-process disk regression for a multi-road macro order: issue
   and advance in process G, restore and cross the remaining route in H, then
   cold-restore the stationed result in I without a duplicate food transaction.
+- Split cross-water engineering lines into persisted road-bridge-road segment
+  plans. Segments open in construction order, so an unfinished bridge or final
+  road remains unavailable to runtime route planning.
 
 - Replaced fixed 1000×650 screen compression with a shared tactical-map camera:
   cursor-anchored wheel zoom, middle-drag pan, minimap recentering and

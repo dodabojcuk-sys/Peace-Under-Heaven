@@ -164,13 +164,17 @@ func begin_road_project(
 		next_camp_sequence += 1
 	var project_id := StringName("project.%06d" % next_project_sequence)
 	next_project_sequence += 1
-	var road_id := StringName("road.built.%06d" % next_project_sequence)
-	var max_durability := 70 if resolved_road_kind == ROAD_NORMAL else 150
-	if resolved_road_kind == ROAD_BRIDGE:
-		max_durability = 100
-	var required_milliseconds := 5000 if resolved_road_kind == ROAD_NORMAL else 9000
-	if resolved_road_kind == ROAD_BRIDGE:
-		required_milliseconds = 11000
+	var road_sequence := next_project_sequence
+	var segment_plans := _build_construction_segment_plans(
+		project_id, source_point_id, resolved_target_point_id, route_world_points, road_kind, road_sequence
+	)
+	if segment_plans.is_empty():
+		return {}
+	var road_id := StringName(Dictionary(segment_plans.back()).get("road_id", &""))
+	var max_durability := int(Dictionary(segment_plans.back()).get("max_durability", 0))
+	var required_milliseconds := 0
+	for segment_value in segment_plans:
+		required_milliseconds += int(Dictionary(segment_value).get("required_milliseconds", 0))
 	var project := {
 		"project_id": project_id,
 		"engineer_id": engineer_id,
@@ -182,6 +186,7 @@ func begin_road_project(
 		"progress_milliseconds": 0,
 		"required_milliseconds": required_milliseconds,
 		"max_durability": max_durability,
+		"segment_plans": segment_plans,
 		"build_camp": build_camp,
 		"camp_id": reserved_camp_id,
 		"phase": &"BUILDING",
@@ -197,6 +202,66 @@ func road_kind_for_route(route_world_points: Array, requested_road_kind: StringN
 	if requested_road_kind == ROAD_BRIDGE or _route_crosses_water(route_world_points):
 		return ROAD_BRIDGE
 	return requested_road_kind
+
+
+func _build_construction_segment_plans(
+	project_id: StringName,
+	source_point_id: StringName,
+	target_point_id: StringName,
+	route_world_points: Array,
+	requested_road_kind: StringName,
+	road_sequence: int
+) -> Array:
+	if requested_road_kind != ROAD_BRIDGE and not _route_crosses_water(route_world_points):
+		var max_durability := 150 if requested_road_kind == ROAD_REINFORCED else 70
+		return [{
+			"road_id": StringName("road.built.%06d" % road_sequence),
+			"source_point_id": source_point_id,
+			"target_point_id": target_point_id,
+			"route_world_points": route_world_points.duplicate(true),
+			"road_kind": requested_road_kind,
+			"required_milliseconds": 9000 if requested_road_kind == ROAD_REINFORCED else 5000,
+			"max_durability": max_durability,
+		}]
+	var sections: Array = []
+	for point_index in range(1, route_world_points.size()):
+		var start := Vector2(route_world_points[point_index - 1])
+		var end := Vector2(route_world_points[point_index])
+		var samples := maxi(1, ceili(start.distance_to(end) / 16.0))
+		for sample_index in range(1, samples + 1):
+			var part_start := start.lerp(end, float(sample_index - 1) / float(samples))
+			var part_end := start.lerp(end, float(sample_index) / float(samples))
+			var part_kind := requested_road_kind
+			if requested_road_kind != ROAD_BRIDGE and _point_is_in_water(Vector2i((part_start + part_end) * 0.5)):
+				part_kind = ROAD_BRIDGE
+			if sections.is_empty() or StringName(Dictionary(sections.back()).get("road_kind", &"")) != part_kind:
+				sections.append({"road_kind": part_kind, "route_world_points": [Vector2i(part_start), Vector2i(part_end)]})
+			else:
+				Array(Dictionary(sections.back()).route_world_points).append(Vector2i(part_end))
+	var plans: Array = []
+	for section_index in range(sections.size()):
+		var section: Dictionary = Dictionary(sections[section_index])
+		var is_first := section_index == 0
+		var is_last := section_index == sections.size() - 1
+		var section_kind := StringName(section.get("road_kind", ROAD_NORMAL))
+		var section_id := StringName("road.built.%06d" % road_sequence) if sections.size() == 1 else StringName("road.built.%06d.%02d" % [road_sequence, section_index + 1])
+		plans.append({
+			"road_id": section_id,
+			"source_point_id": source_point_id if is_first else StringName("junction.%s.%02d" % [String(project_id), section_index]),
+			"target_point_id": target_point_id if is_last else StringName("junction.%s.%02d" % [String(project_id), section_index + 1]),
+			"route_world_points": Array(section.get("route_world_points", [])).duplicate(true),
+			"road_kind": section_kind,
+			"required_milliseconds": 11000 if section_kind == ROAD_BRIDGE else (9000 if section_kind == ROAD_REINFORCED else 5000),
+			"max_durability": 100 if section_kind == ROAD_BRIDGE else (150 if section_kind == ROAD_REINFORCED else 70),
+		})
+	return plans
+
+
+func _point_is_in_water(position: Vector2i) -> bool:
+	for water_region in water_regions:
+		if water_region.has_point(position):
+			return true
+	return false
 
 
 func _route_crosses_water(route_world_points: Array) -> bool:
@@ -612,6 +677,8 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 			int(project.progress_milliseconds) + project_delta_milliseconds,
 			int(project.required_milliseconds)
 		)
+		if StringName(project.get("project_kind", &"")) != &"REPAIR":
+			_open_completed_construction_segments(project_id, project)
 		if int(project.progress_milliseconds) == int(project.required_milliseconds):
 			project.phase = &"COMPLETE"
 			if StringName(project.get("project_kind", &"")) == &"REPAIR":
@@ -624,18 +691,7 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 				repaired_road.state = ROAD_OPEN
 				roads_by_id[StringName(project.road_id)] = repaired_road
 			else:
-				roads_by_id[StringName(project.road_id)] = {
-					"road_id": StringName(project.road_id),
-					"source_point_id": StringName(project.source_point_id),
-					"target_point_id": StringName(project.target_point_id),
-					"route_world_points": Array(project.route_world_points).duplicate(true),
-					"road_kind": StringName(project.road_kind),
-					"state": ROAD_OPEN,
-					"durability": int(project.max_durability),
-					"max_durability": int(project.max_durability),
-					"built": true,
-					"project_id": project_id,
-				}
+				_open_completed_construction_segments(project_id, project)
 			engineer.phase = SPECIALIST_IDLE
 			engineer.project_id = &""
 			specialists_by_id[StringName(project.engineer_id)] = engineer
@@ -712,6 +768,40 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 				engagements.append({"patrol_id": patrol_id, "specialist_id": specialist_id, "point_id": patrol.current_point_id})
 	_refresh_intel()
 	return {"success": true, "completed_project_ids": completed, "engagements": engagements, "world_milliseconds": world_milliseconds}
+
+
+func _open_completed_construction_segments(project_id: StringName, project: Dictionary) -> void:
+	var elapsed := int(project.get("progress_milliseconds", 0))
+	var accumulated := 0
+	var segment_plans: Array = Array(project.get("segment_plans", []))
+	if segment_plans.is_empty():
+		segment_plans = [{
+			"road_id": StringName(project.get("road_id", &"")),
+			"source_point_id": StringName(project.get("source_point_id", &"")),
+			"target_point_id": StringName(project.get("target_point_id", &"")),
+			"route_world_points": Array(project.get("route_world_points", [])).duplicate(true),
+			"road_kind": StringName(project.get("road_kind", ROAD_NORMAL)),
+			"required_milliseconds": int(project.get("required_milliseconds", 0)),
+			"max_durability": int(project.get("max_durability", 0)),
+		}]
+	for segment_value in segment_plans:
+		var segment: Dictionary = Dictionary(segment_value)
+		accumulated += int(segment.get("required_milliseconds", 0))
+		var road_id := StringName(segment.get("road_id", &""))
+		if elapsed < accumulated or road_id == &"" or roads_by_id.has(road_id):
+			continue
+		roads_by_id[road_id] = {
+			"road_id": road_id,
+			"source_point_id": StringName(segment.get("source_point_id", &"")),
+			"target_point_id": StringName(segment.get("target_point_id", &"")),
+			"route_world_points": Array(segment.get("route_world_points", [])).duplicate(true),
+			"road_kind": StringName(segment.get("road_kind", ROAD_NORMAL)),
+			"state": ROAD_OPEN,
+			"durability": int(segment.get("max_durability", 0)),
+			"max_durability": int(segment.get("max_durability", 0)),
+			"built": true,
+			"project_id": project_id,
+		}
 
 
 func observe_subject(subject_id: StringName) -> Dictionary:

@@ -87,6 +87,11 @@ migrates older single-road orders and composite route handles into this field.
 Road-damage checks start at
 	the segment containing current progress, so completed segments cannot freeze
 	the remainder of the same order.
+- A cross-water field project owns a sequential physical-segment plan instead
+	of one misleading bridge polyline. Intermediate generated junction IDs are
+	road-network connections only, never player-commandable camps; the final
+	camp remains the sole deployed endpoint. A finished early segment may enter
+	the graph while later construction remains closed.
 
 ## Macro March R0 outer-city greybox
 

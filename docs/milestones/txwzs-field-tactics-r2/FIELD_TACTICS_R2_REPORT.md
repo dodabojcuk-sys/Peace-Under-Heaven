@@ -207,3 +207,15 @@ in flight, complete the remaining route, and cold-reload the stationed result.
 It verifies the stored directional sequence and one-time food transaction.
 It does not yet include a multi-segment damaged bridge, safe-camp transfer,
 or normal-input playthrough.
+
+### Sequential bridge construction checkpoint
+
+When a construction line crosses the theatre water region, field authority now
+samples it into a persisted road-bridge-road plan rather than marking the
+whole drawn polyline as one bridge. The project opens each completed physical
+segment into the runtime graph in order; later segments remain non-existent and
+cannot be traversed until their own work completes. The focused field runner
+proves the three planned kinds and the staged opening order (39 assertions).
+The existing single project resource transaction is retained for now; detailed
+per-segment materials, bridge damage recovery, and normal-input evidence are
+still open work.
