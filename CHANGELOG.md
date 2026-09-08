@@ -55,6 +55,8 @@
   Macro March 29 assertions and disk persistence, War Loop R1/formal/arrival/
   disk recovery, V5 army/campaign/encounter recovery, R1E 50, C0 presentation,
   editor import, and four scene starts.
+- Captured the clean identified `404e4f8` candidate by exact PID/window ID: a
+  current outer-map still and a 4.98-second system-input city-to-theatre clip.
 
 ### FIELD_TACTICS_R2 playable-loop candidate
 

@@ -64,12 +64,13 @@ towers and faction banners, tent-shaped camps, bridge planks, damaged-road
 breaks, and the existing army/specialist markers without changing traversal
 facts.
 
-Existing evidence under `docs/milestones/txwzs-field-tactics-r2/evidence/` is
-historical process media from an earlier dirty checkpoint. In this pass a
-uniquely titled candidate window could be captured by window ID, but the system-
-input controller still attached to a separate `UNKNOWN · UNIDENTIFIED` Godot
-window. No ambiguous click was sent. A clean-SHA render capture may document the
-new clipped layout, but normal-input video and player acceptance remain open.
+Historical media remains separated from the current candidate. The current
+evidence directory contains a clean-title capture, a 1152x648 playable-theatre
+capture, and a 4.98-second system-input recording that enters the outer-city map.
+The process was locked by PID and window ID and displays
+`codex/txwzs-field-tactics-r2@404e4f8` in the title. This proves the captured
+build identity and visible transition; it is not a recording of either complete
+route, and player acceptance remains open.
 
 Focused verification currently covers Field R2 68 assertions, both formal
 playthrough routes, audited field persistence, Macro March 29 assertions and
@@ -81,8 +82,8 @@ R1E 50 assertions, C0 presentation, editor import, four scene starts, and
 `run_blackstone_playable_mvp_smoke.gd` is a pre-existing obsolete runner which
 still requests removed `BlackstoneExpeditionMvp` nodes and hangs after script
 errors; it is not counted as a passing full-repository sweep. User playtesting,
-normal system-input media, user playtesting, and final balance acceptance remain
-open.
+full-route normal-input media, user playtesting, and final balance acceptance
+remain open.
 
 The sections below are chronological engineering checkpoints. Their open-item
 lists describe what was missing at that checkpoint and do not override the

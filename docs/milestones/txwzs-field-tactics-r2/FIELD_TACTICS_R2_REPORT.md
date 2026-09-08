@@ -110,10 +110,18 @@ Historical process media is stored in
 - `r2-field-map-live-8s.mov`
 
 Those captures belong to the earlier dirty checkpoint. In the current pass the
-new candidate could be captured by exact window ID, but the system-input
-controller still attached to a different `UNKNOWN · UNIDENTIFIED` Godot window.
-No ambiguous click was sent. A clean-SHA still may document the new map render;
-normal-input video and Founder/player acceptance remain open.
+clean candidate was launched with an isolated user-data directory and the
+identified title `codex/txwzs-field-tactics-r2@404e4f8`, then locked by PID and
+window ID before system input. Current evidence is stored under
+`evidence/20260909-playable-theater/`:
+
+- `title.png`: clean candidate identity before entering the city;
+- `outer-map.png`: the current 1152x648 playable-theatre render;
+- `open-outer-map.mov`: 4.98-second system-input city-to-theatre transition.
+
+The clip proves input reached the intended clean candidate and opened the map.
+It is not a recording of either complete route, and Founder/player acceptance
+remains open.
 
 Focused verification uses
 `/Users/m4-zhi/Documents/codex-tools/godot/4.5.1-stable-standard/Godot.app/Contents/MacOS/Godot`
