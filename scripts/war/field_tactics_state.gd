@@ -34,6 +34,7 @@ var patrols_by_id: Dictionary = {}
 var intel_by_subject_id: Dictionary = {}
 var point_positions_by_id: Dictionary = {}
 var water_regions: Array[Rect2i] = []
+var terrain_regions: Array[Dictionary] = []
 var world_bounds := Rect2i(-260, -180, 1520, 1040)
 var world_milliseconds := 0
 var next_specialist_sequence := 1
@@ -42,9 +43,10 @@ var next_camp_sequence := 1
 var _specialist_path_migration_pending := false
 
 
-func initialize_from_theater(points: Dictionary, routes: Dictionary, water_regions_value: Array[Rect2i] = [], world_bounds_value: Rect2i = Rect2i(-260, -180, 1520, 1040)) -> void:
+func initialize_from_theater(points: Dictionary, routes: Dictionary, water_regions_value: Array[Rect2i] = [], world_bounds_value: Rect2i = Rect2i(-260, -180, 1520, 1040), terrain_regions_value: Array[Dictionary] = []) -> void:
 	water_regions = water_regions_value.duplicate()
 	world_bounds = world_bounds_value
+	terrain_regions = terrain_regions_value.duplicate(true)
 	for point_id_value in points:
 		var point: Dictionary = Dictionary(points[point_id_value])
 		point_positions_by_id[StringName(point_id_value)] = Vector2i(point.get("world_position", Vector2i.ZERO))
@@ -71,6 +73,7 @@ func initialize_from_theater(points: Dictionary, routes: Dictionary, water_regio
 	# A finite patrol is a real persistent participant, not a UI warning.  It
 	# begins hidden until a player observer sees its node or current road.
 	if patrols_by_id.is_empty() and points.has(&"northwatch_garrison"):
+		var patrol_plan: Dictionary = plan_runtime_path(&"northwatch_garrison", &"reedbank_garrison")
 		patrols_by_id[&"patrol.ridge.001"] = {
 			"patrol_id": &"patrol.ridge.001",
 			"current_point_id": &"northwatch_garrison",
@@ -79,12 +82,17 @@ func initialize_from_theater(points: Dictionary, routes: Dictionary, water_regio
 			"route_point_ids": [&"northwatch_garrison", &"reedbank_garrison"],
 			"target_route_index": 1,
 			"wait_remaining_milliseconds": 2400,
-			"move_total_milliseconds": 4000,
+			"move_total_milliseconds": int(patrol_plan.get("duration_milliseconds", 4000)),
 			"move_elapsed_milliseconds": 0,
 			"move_start_position": _point_position(&"northwatch_garrison"),
+			"move_route_world_points": Array(patrol_plan.get("points", [_point_position(&"northwatch_garrison"), _point_position(&"reedbank_garrison")])).duplicate(true),
 			"last_known_target_id": &"",
 			"last_known_at_milliseconds": 0,
 			"world_position": _point_position(&"northwatch_garrison"),
+			"resolved_army_ids": [],
+			"ambush_consumed_army_ids": [],
+			"exposed": false,
+			"last_engagement": {},
 		}
 
 
@@ -919,6 +927,90 @@ func _distance_to_segment(point: Vector2, start: Vector2, end: Vector2) -> float
 	return point.distance_to(start + segment * clampf((point - start).dot(segment) / squared, 0.0, 1.0))
 
 
+func _traces_within_distance(left_trace: Array, right_traces: Array, distance: float) -> bool:
+	if left_trace.size() < 2:
+		return false
+	for right_trace_value in right_traces:
+		var right_trace: Array = Array(right_trace_value)
+		if right_trace.size() < 2:
+			continue
+		for left_index in range(1, left_trace.size()):
+			var left_start := Vector2(left_trace[left_index - 1])
+			var left_end := Vector2(left_trace[left_index])
+			for right_index in range(1, right_trace.size()):
+				var right_start := Vector2(right_trace[right_index - 1])
+				var right_end := Vector2(right_trace[right_index])
+				if Geometry2D.segment_intersects_segment(left_start, left_end, right_start, right_end) != null:
+					return true
+				var nearest := minf(
+					minf(_distance_to_segment(left_start, right_start, right_end), _distance_to_segment(left_end, right_start, right_end)),
+					minf(_distance_to_segment(right_start, left_start, left_end), _distance_to_segment(right_end, left_start, left_end))
+				)
+				if nearest <= distance:
+					return true
+	return false
+
+
+func position_has_terrain_kind(position: Vector2, terrain_kind: StringName) -> bool:
+	for region_value in terrain_regions:
+		var region: Dictionary = Dictionary(region_value)
+		if StringName(region.get("kind", &"")) == terrain_kind and Rect2i(region.get("rect", Rect2i())).has_point(Vector2i(position)):
+			return true
+	return false
+
+
+func apply_patrol_encounter(patrol_id: StringName, army_ids: Array[StringName], patrol_losses: int, ambush_army_ids: Array[StringName], summary: Dictionary) -> Dictionary:
+	var patrol: Dictionary = Dictionary(patrols_by_id.get(patrol_id, {}))
+	if patrol.is_empty() or army_ids.is_empty() or patrol_losses < 0 or patrol_losses > int(patrol.get("strength", 0)):
+		return {}
+	var resolved_ids: Array = Array(patrol.get("resolved_army_ids", [])).duplicate()
+	for army_id in army_ids:
+		if army_id == &"" or army_id in resolved_ids:
+			return {}
+		resolved_ids.append(army_id)
+	var consumed_ambush_ids: Array = Array(patrol.get("ambush_consumed_army_ids", [])).duplicate()
+	for army_id in ambush_army_ids:
+		if army_id not in army_ids or army_id in consumed_ambush_ids:
+			return {}
+		consumed_ambush_ids.append(army_id)
+	patrol.strength = int(patrol.get("strength", 0)) - patrol_losses
+	patrol.resolved_army_ids = resolved_ids
+	patrol.ambush_consumed_army_ids = consumed_ambush_ids
+	patrol.exposed = true
+	patrol.last_engagement = summary.duplicate(true)
+	patrols_by_id[patrol_id] = patrol
+	intel_by_subject_id[patrol_id] = {
+		"subject_id": patrol_id,
+		"fog_state": FOG_VISIBLE,
+		"last_known_point_id": StringName(patrol.get("current_point_id", &"")),
+		"last_known_world_position": Vector2i(summary.get("world_position", patrol.get("world_position", Vector2i.ZERO))),
+		"last_observed_milliseconds": world_milliseconds,
+		"known_strength": int(patrol.strength),
+	}
+	return patrol.duplicate(true)
+
+
+func damage_nearest_engineered_road(position: Vector2, radius: float, amount: int) -> StringName:
+	var best_road_id := &""
+	var best_distance := INF
+	var road_ids := roads_by_id.keys()
+	road_ids.sort()
+	for road_id_value in road_ids:
+		var road_id := StringName(road_id_value)
+		var road: Dictionary = Dictionary(roads_by_id[road_id])
+		if StringName(road.get("road_kind", &"")) == ROAD_MAIN or not bool(road.get("built", false)) or StringName(road.get("state", &"")) != ROAD_OPEN:
+			continue
+		var points: Array = Array(road.get("route_world_points", []))
+		for index in range(1, points.size()):
+			var distance := _distance_to_segment(position, Vector2(points[index - 1]), Vector2(points[index]))
+			if distance < best_distance:
+				best_distance = distance
+				best_road_id = road_id
+	if best_road_id != &"" and best_distance <= radius and damage_road(best_road_id, amount):
+		return best_road_id
+	return &""
+
+
 func get_runtime_points() -> Dictionary:
 	var points: Dictionary = {}
 	for camp_value in camps_by_id.values():
@@ -935,13 +1027,15 @@ func get_runtime_points() -> Dictionary:
 	return points
 
 
-func advance_world(delta_milliseconds: int) -> Dictionary:
+func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary = {}) -> Dictionary:
 	if delta_milliseconds <= 0:
 		return {}
 	world_milliseconds += delta_milliseconds
 	var completed: Array[StringName] = []
 	var opened_road_ids: Array[StringName] = []
 	var engagements: Array[Dictionary] = []
+	var patrol_movements: Array[Dictionary] = []
+	var specialist_movements: Dictionary = {}
 	# A repair may begin in the middle of this world step. Keep the unused part
 	# of the step for its work progress so one long advance and split advances
 	# produce identical durable state.
@@ -952,6 +1046,7 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 		if not bool(moving.get("alive", false)) or StringName(moving.get("phase", &"")) != SPECIALIST_MOVING:
 			continue
 		var move_remaining_before := int(moving.get("move_remaining_milliseconds", 0))
+		var specialist_start_position := Vector2i(moving.get("world_position", Vector2i.ZERO))
 		moving.move_elapsed_milliseconds = mini(int(moving.get("move_elapsed_milliseconds", 0)) + delta_milliseconds, int(moving.get("move_total_milliseconds", 0)))
 		moving.move_remaining_milliseconds = maxi(int(moving.get("move_total_milliseconds", 0)) - int(moving.get("move_elapsed_milliseconds", 0)), 0)
 		var move_progress := float(moving.get("move_elapsed_milliseconds", 0)) / maxf(float(moving.get("move_total_milliseconds", 1)), 1.0)
@@ -972,6 +1067,7 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 			else:
 				moving.phase = SPECIALIST_IDLE
 		specialists_by_id[moving_id] = moving
+		specialist_movements[moving_id] = [specialist_start_position, Vector2i(moving.get("world_position", specialist_start_position))]
 	for project_id_value in projects_by_id.keys():
 		var project_id := StringName(project_id_value)
 		var project := Dictionary(projects_by_id[project_id])
@@ -1054,10 +1150,13 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 			var patrol_move := mini(patrol_remaining_milliseconds, to_arrival_milliseconds)
 			if patrol_move <= 0:
 				break
+			var patrol_start_position := Vector2i(patrol.get("world_position", patrol.get("move_start_position", Vector2i.ZERO)))
 			patrol.move_elapsed_milliseconds = int(patrol.get("move_elapsed_milliseconds", 0)) + patrol_move
 			patrol_remaining_milliseconds -= patrol_move
 			var patrol_progress := float(patrol.get("move_elapsed_milliseconds", 0)) / float(patrol_total_milliseconds)
-			patrol.world_position = Vector2i(Vector2(patrol.get("move_start_position", _point_position(StringName(patrol.get("current_point_id", &""))))).lerp(Vector2(target_position), patrol_progress))
+			var patrol_route_points: Array = Array(patrol.get("move_route_world_points", [patrol.get("move_start_position", Vector2i.ZERO), target_position]))
+			patrol.world_position = Vector2i(_position_along_points(patrol_route_points, patrol_progress))
+			patrol_movements.append({"patrol_id": patrol_id, "from": patrol_start_position, "to": Vector2i(patrol.world_position)})
 			if int(patrol.get("move_elapsed_milliseconds", 0)) < patrol_total_milliseconds:
 				break
 			patrol.current_point_id = target_point_id
@@ -1066,15 +1165,23 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 			patrol.wait_remaining_milliseconds = 1200
 			patrol.move_elapsed_milliseconds = 0
 			patrol.move_start_position = target_position
+			var next_target_id := StringName(patrol_route[int(patrol.target_route_index)])
+			var next_plan: Dictionary = plan_runtime_path(target_point_id, next_target_id)
+			patrol.move_route_world_points = Array(next_plan.get("points", [target_position, _point_position(next_target_id)])).duplicate(true)
+			patrol.move_total_milliseconds = int(next_plan.get("duration_milliseconds", patrol_total_milliseconds))
 		patrols_by_id[patrol_id] = patrol
 		for specialist_id_value in specialists_by_id.keys():
 			var specialist_id := StringName(specialist_id_value)
 			var specialist := Dictionary(specialists_by_id[specialist_id])
-			if (
-				bool(specialist.get("alive", false))
-				and Vector2(specialist.get("world_position", Vector2.ZERO)).distance_to(Vector2(patrol.get("world_position", Vector2.ZERO))) <= 28.0
-				and StringName(specialist.get("phase", &"")) != SPECIALIST_MOVING
-			):
+			var specialist_trace: Array = Array(specialist_movements.get(specialist_id, [Vector2i(specialist.get("world_position", Vector2i.ZERO)), Vector2i(specialist.get("world_position", Vector2i.ZERO))]))
+			var patrol_traces: Array = []
+			for movement_value in patrol_movements:
+				var movement: Dictionary = Dictionary(movement_value)
+				if StringName(movement.get("patrol_id", &"")) == patrol_id:
+					patrol_traces.append([movement.get("from", Vector2i.ZERO), movement.get("to", Vector2i.ZERO)])
+			if patrol_traces.is_empty():
+				patrol_traces.append([patrol.get("world_position", Vector2i.ZERO), patrol.get("world_position", Vector2i.ZERO)])
+			if bool(specialist.get("alive", false)) and _traces_within_distance(specialist_trace, patrol_traces, 28.0):
 				# Contact grants one last report before the observer is removed;
 				# _refresh_intel then downgrades it to historical knowledge.
 				intel_by_subject_id[patrol_id] = {
@@ -1085,12 +1192,17 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 					"last_observed_milliseconds": world_milliseconds,
 					"known_strength": int(patrol.strength),
 				}
-				specialist.alive = false
-				specialist.phase = SPECIALIST_LOST
-				specialists_by_id[specialist_id] = specialist
-				engagements.append({"patrol_id": patrol_id, "specialist_id": specialist_id, "point_id": patrol.current_point_id})
+				var guard_army_ids: Array[StringName] = []
+				for army_id_value in guard_positions_by_army:
+					if Vector2(guard_positions_by_army[army_id_value]).distance_to(Vector2(specialist.get("world_position", Vector2.ZERO))) <= 72.0:
+						guard_army_ids.append(StringName(army_id_value))
+				if guard_army_ids.is_empty():
+					specialist.alive = false
+					specialist.phase = SPECIALIST_LOST
+					specialists_by_id[specialist_id] = specialist
+				engagements.append({"patrol_id": patrol_id, "specialist_id": specialist_id, "guard_army_ids": guard_army_ids, "point_id": patrol.current_point_id, "world_position": Vector2i(patrol.get("world_position", Vector2i.ZERO))})
 	_refresh_intel()
-	return {"success": true, "completed_project_ids": completed, "opened_road_ids": opened_road_ids, "engagements": engagements, "world_milliseconds": world_milliseconds}
+	return {"success": true, "completed_project_ids": completed, "opened_road_ids": opened_road_ids, "engagements": engagements, "patrol_movements": patrol_movements, "world_milliseconds": world_milliseconds}
 
 
 func _open_completed_construction_segments(project_id: StringName, project: Dictionary) -> Array[StringName]:

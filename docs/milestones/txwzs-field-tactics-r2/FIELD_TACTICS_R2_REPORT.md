@@ -11,6 +11,33 @@ transaction and persistence-checkpoint caller.
 
 ## Delivered engineering evidence
 
+### Patrol encounter, guard, ambush, and casualty checkpoint
+
+The shared field clock now moves the authored patrol on its resolved
+runtime-road polyline and reports its swept movement. The Controller compares
+that trace with the actual road trace traversed by each army during the same
+formal `_process` step. An army and patrol therefore still meet when a large
+step places them on opposite ends of the road, rather than relying only on
+their final coordinates. Several armies touching the same patrol join one
+settlement against one finite enemy strength.
+
+The tactical resolver calculates deterministic minimal greybox losses, while
+`ArmyRegistry` remains the only owner that applies them to stable formation
+IDs or closes a fully lost army. An unrelated army can continue a separate
+siege in the same world step. A local army within the guard radius prevents a
+moving specialist from being removed immediately; a deployed, unexposed army
+in configured forest terrain can receive a single ambush opening against a
+previously observed patrol. That opening is consumed and the army exposed.
+The contact may damage the nearest built field road, but never a main road.
+
+Formal V5 restore preserves the patrol's remaining strength, resolved army
+IDs, consumed ambush IDs, exposure, road damage, and exact per-formation army
+snapshots. Focused results are Field R2 65 assertions, audited field
+persistence PASS, Macro March 27, War Loop R1 16, formal scene 10, and arrival
+persistence 3. This remains an engineering checkpoint: both complete
+normal-resource routes, normal-input media, balance review, and player
+acceptance are still open.
+
 ### Temporary-route rebreak, time remainder, and audited recovery
 
 Temporary camp and return movement now revalidates the actual remaining

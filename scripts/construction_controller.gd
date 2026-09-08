@@ -486,6 +486,7 @@ var _expedition_commit_blocked := false
 var _war_loop_state: WarLoopState = WAR_LOOP_STATE.new()
 var _war_loop_frame_remainder_milliseconds := 0.0
 var _macro_march_frame_remainders_by_order: Dictionary = {}
+var _macro_march_traces_for_war_step: Dictionary = {}
 
 
 func _ready() -> void:
@@ -871,8 +872,11 @@ func _commit_national_resource_targets(
 
 func _process(delta: float) -> void:
 	advance_city_time(delta * city_time_speed)
+	var macro_before := get_macro_march_armies()
 	_advance_all_macro_marches_seconds(delta)
+	_macro_march_traces_for_war_step = _macro_army_movement_traces(macro_before, get_macro_march_armies())
 	advance_war_loop_time_seconds(delta)
+	_macro_march_traces_for_war_step.clear()
 	_refresh_constructing_building_visuals()
 
 
@@ -5365,7 +5369,8 @@ func _ensure_war_loop_initialized() -> void:
 	_war_loop_state.initialize_from_theater(
 		MACRO_MARCH_THEATER.get_points(), MACRO_MARCH_THEATER.get_routes(),
 		MACRO_MARCH_THEATER.get_water_regions(),
-		Rect2i(MACRO_MARCH_THEATER.get_world_bounds())
+		Rect2i(MACRO_MARCH_THEATER.get_world_bounds()),
+		MACRO_MARCH_THEATER.get_terrain_regions()
 	)
 
 
@@ -5909,12 +5914,20 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		return {}
 	var registry_before := _army_registry.get_snapshot()
 	var war_before := _war_loop_state.get_snapshot()
-	var field_advance := _war_loop_state.field_tactics.advance_world(whole_milliseconds)
+	var field_advance := _war_loop_state.field_tactics.advance_world(whole_milliseconds, _macro_army_world_positions())
+	var encounter_result := _resolve_field_patrol_encounters(field_advance)
+	if not bool(encounter_result.get("success", true)):
+		_war_loop_state.restore_snapshot(war_before)
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		return encounter_result
+	if not Array(encounter_result.get("encounters", [])).is_empty():
+		field_advance.patrol_encounters = Array(encounter_result.encounters).duplicate(true)
 	var resumed_armies := _resume_macro_marches_on_repaired_roads()
 	var field_checkpoint_required := (
 		Array(field_advance.get("completed_project_ids", [])).size() > 0
 		or Array(field_advance.get("opened_road_ids", [])).size() > 0
 		or Array(field_advance.get("engagements", [])).size() > 0
+		or Array(field_advance.get("patrol_encounters", [])).size() > 0
 		or not resumed_armies.is_empty()
 	)
 	var result: Dictionary = {}
@@ -5957,7 +5970,283 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 			return _macro_failure(&"SAVE_FAILED", "战区关键状态存档失败，事务已回滚")
 	if result.is_empty() and not resumed_armies.is_empty():
 		field_advance.resumed_army_ids = resumed_armies
+	if not result.is_empty():
+		if not Array(field_advance.get("patrol_encounters", [])).is_empty():
+			result.patrol_encounters = Array(field_advance.patrol_encounters).duplicate(true)
+		if not Array(field_advance.get("engagements", [])).is_empty():
+			result.field_engagements = Array(field_advance.engagements).duplicate(true)
 	return result.duplicate(true) if not result.is_empty() else field_advance
+
+
+func _resolve_field_patrol_encounters(field_advance: Dictionary) -> Dictionary:
+	var encounters: Array[Dictionary] = []
+	var movements_by_patrol: Dictionary = {}
+	for movement_value in Array(field_advance.get("patrol_movements", [])):
+		var movement: Dictionary = Dictionary(movement_value)
+		var patrol_id := StringName(movement.get("patrol_id", &""))
+		if patrol_id == &"":
+			continue
+		if not movements_by_patrol.has(patrol_id):
+			movements_by_patrol[patrol_id] = []
+		movements_by_patrol[patrol_id].append(movement.duplicate(true))
+	var guard_ids_by_patrol: Dictionary = {}
+	for specialist_contact_value in Array(field_advance.get("engagements", [])):
+		var specialist_contact: Dictionary = Dictionary(specialist_contact_value)
+		var patrol_id := StringName(specialist_contact.get("patrol_id", &""))
+		if not guard_ids_by_patrol.has(patrol_id):
+			guard_ids_by_patrol[patrol_id] = []
+		for army_id_value in Array(specialist_contact.get("guard_army_ids", [])):
+			var army_id := StringName(army_id_value)
+			if army_id != &"" and army_id not in guard_ids_by_patrol[patrol_id]:
+				guard_ids_by_patrol[patrol_id].append(army_id)
+	var field: FieldTacticsState = _war_loop_state.field_tactics
+	for patrol_id_value in field.patrols_by_id.keys():
+		var patrol_id := StringName(patrol_id_value)
+		var patrol: Dictionary = Dictionary(field.patrols_by_id[patrol_id])
+		if int(patrol.get("strength", 0)) <= 0:
+			continue
+		var resolved_ids: Array = Array(patrol.get("resolved_army_ids", []))
+		var participant_ids: Array[StringName] = []
+		var army_positions := _macro_army_world_positions()
+		for army_id_value in army_positions.keys():
+			var army_id := StringName(army_id_value)
+			if army_id in resolved_ids:
+				continue
+			var army := _army_registry.get_army(army_id)
+			if army.is_empty() or StringName(army.get("phase", &"")) not in [ArmyRegistry.PHASE_MARCHING, ArmyRegistry.PHASE_BLOCKED, ArmyRegistry.PHASE_STATIONED, ArmyRegistry.PHASE_RETREATING]:
+				continue
+			var army_trace: Array = Array(_macro_march_traces_for_war_step.get(army_id, [army_positions[army_id], army_positions[army_id]]))
+			var contacted := Vector2(army_positions[army_id]).distance_to(Vector2(patrol.get("world_position", Vector2.ZERO))) <= 32.0
+			for movement_value in Array(movements_by_patrol.get(patrol_id, [])):
+				var movement: Dictionary = Dictionary(movement_value)
+				if _world_traces_within_distance(army_trace, [movement.get("from", Vector2.ZERO), movement.get("to", Vector2.ZERO)], 32.0):
+					contacted = true
+					break
+			if contacted:
+				participant_ids.append(army_id)
+		for guard_id_value in Array(guard_ids_by_patrol.get(patrol_id, [])):
+			var guard_id := StringName(guard_id_value)
+			if guard_id not in resolved_ids and guard_id not in participant_ids:
+				participant_ids.append(guard_id)
+		participant_ids.sort_custom(func(left: StringName, right: StringName) -> bool: return String(left) < String(right))
+		if participant_ids.is_empty():
+			continue
+		var total_army_strength := 0
+		for army_id in participant_ids:
+			total_army_strength += _macro_army_member_count(_army_registry.get_army(army_id))
+		if total_army_strength <= 0:
+			continue
+		var ambush_army_ids: Array[StringName] = []
+		var consumed_ambush_ids: Array = Array(patrol.get("ambush_consumed_army_ids", []))
+		var intel := field.observe_subject(patrol_id)
+		for army_id in participant_ids:
+			var army := _army_registry.get_army(army_id)
+			var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+			var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
+			var is_deployed := StringName(army.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED or (StringName(army.get("phase", &"")) == ArmyRegistry.PHASE_BLOCKED and StringName(transfer.get("phase", &"")) == &"WAITING")
+			if is_deployed and army_id not in consumed_ambush_ids and StringName(intel.get("fog_state", FieldTacticsState.FOG_UNOBSERVED)) != FieldTacticsState.FOG_UNOBSERVED and field.position_has_terrain_kind(Vector2(army_positions[army_id]), &"FOREST"):
+				ambush_army_ids.append(army_id)
+		var patrol_strength_before := int(patrol.get("strength", 0))
+		var patrol_losses := mini(patrol_strength_before, maxi(1, ceili(float(total_army_strength) / 3.0)) + ambush_army_ids.size() * 2)
+		var army_losses_remaining := mini(total_army_strength, maxi(1, ceili(float(patrol_strength_before) / 2.0) - ambush_army_ids.size()))
+		var losses_by_army: Dictionary = {}
+		while army_losses_remaining > 0:
+			var allocated := false
+			for army_id in participant_ids:
+				var capacity := _macro_army_member_count(_army_registry.get_army(army_id))
+				var assigned := int(losses_by_army.get(army_id, 0))
+				if assigned >= capacity:
+					continue
+				losses_by_army[army_id] = assigned + 1
+				army_losses_remaining -= 1
+				allocated = true
+				if army_losses_remaining == 0:
+					break
+			if not allocated:
+				break
+		var formation_losses_by_army: Dictionary = {}
+		for army_id in participant_ids:
+			var army := _army_registry.get_army(army_id)
+			var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+			var remaining_loss := int(losses_by_army.get(army_id, 0))
+			var formation_losses: Dictionary = {}
+			var formations: Array = Array(macro.get("formation_snapshots", []))
+			for formation_index in range(formations.size() - 1, -1, -1):
+				var formation: Dictionary = Dictionary(formations[formation_index])
+				var loss := mini(remaining_loss, int(formation.get("member_count", 0)))
+				if loss > 0:
+					formation_losses[StringName(formation.get("formation_id", &""))] = loss
+					remaining_loss -= loss
+			if not formation_losses.is_empty():
+				var updated_army := _army_registry.apply_macro_formation_losses(army_id, StringName(macro.get("order_id", &"")), formation_losses)
+				if updated_army.is_empty():
+					return _macro_failure(&"FIELD_CASUALTY_SYNC_FAILED", "野外交战伤亡无法同步到军队")
+				if _macro_army_member_count(updated_army) == 0:
+					updated_army = _army_registry.close_macro_field_lost(army_id, StringName(macro.get("order_id", &"")), StringName("field.%s.%d.%s" % [String(patrol_id), int(field_advance.get("world_milliseconds", 0)), String(army_id)]))
+					if updated_army.is_empty():
+						return _macro_failure(&"FIELD_ARMY_CLOSE_FAILED", "野外交战全灭军队无法关闭")
+			formation_losses_by_army[army_id] = formation_losses
+		var encounter := {
+			"patrol_id": patrol_id,
+			"army_ids": participant_ids.duplicate(),
+			"ambush_army_ids": ambush_army_ids.duplicate(),
+			"patrol_strength_before": patrol_strength_before,
+			"patrol_losses": patrol_losses,
+			"formation_losses_by_army": formation_losses_by_army,
+			"world_position": Vector2i(patrol.get("world_position", Vector2i.ZERO)),
+			"world_milliseconds": int(field_advance.get("world_milliseconds", 0)),
+		}
+		# A patrol that has reached an army guarding a nearby field work can damage
+		# that work without requiring its sampled position to land on the road's
+		# centreline. This matches the same local protection/contact scale used for
+		# engineers and remains far below map-wide influence.
+		var damaged_road_id := field.damage_nearest_engineered_road(Vector2(encounter.world_position), 72.0, 999999)
+		encounter.damaged_road_id = damaged_road_id
+		if field.apply_patrol_encounter(patrol_id, participant_ids, patrol_losses, ambush_army_ids, encounter).is_empty():
+			return _macro_failure(&"PATROL_SETTLEMENT_FAILED", "巡逻交战状态无法提交")
+		encounters.append(encounter)
+	return {"success": true, "encounters": encounters}
+
+
+func _macro_army_world_positions() -> Dictionary:
+	var result: Dictionary = {}
+	for army_value in get_macro_march_armies():
+		var army: Dictionary = Dictionary(army_value)
+		if StringName(army.get("phase", &"")) == ArmyRegistry.PHASE_CLOSED:
+			continue
+		var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+		var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
+		var points: Array = Array(macro.get("route_world_points", []))
+		var progress := int(macro.get("progress_millis", 0))
+		var total := int(macro.get("total_millis", 1))
+		if StringName(army.get("phase", &"")) == ArmyRegistry.PHASE_BLOCKED and StringName(transfer.get("phase", &"")) in [&"TO_CAMP", &"TO_CAMP_BLOCKED", &"WAITING", &"TO_RESUME", &"TO_RESUME_BLOCKED"]:
+			points = Array(transfer.get("route_world_points", []))
+			progress = int(transfer.get("progress_millis", 0))
+			total = int(transfer.get("total_millis", 1))
+		result[StringName(army.get("army_id", &""))] = Vector2i(_world_position_along_points(points, float(progress) / maxf(float(total), 1.0)))
+	return result
+
+
+func _macro_army_movement_traces(before_armies: Array[Dictionary], after_armies: Array[Dictionary]) -> Dictionary:
+	var before_by_id: Dictionary = {}
+	for army in before_armies:
+		before_by_id[StringName(army.get("army_id", &""))] = army
+	var traces: Dictionary = {}
+	for after_army in after_armies:
+		var army_id := StringName(after_army.get("army_id", &""))
+		var before_army: Dictionary = Dictionary(before_by_id.get(army_id, {}))
+		if before_army.is_empty():
+			continue
+		var before_motion := _macro_army_motion_state(before_army)
+		var after_motion := _macro_army_motion_state(after_army)
+		if before_motion.is_empty() or after_motion.is_empty():
+			continue
+		var before_points: Array = Array(before_motion.points)
+		var after_points: Array = Array(after_motion.points)
+		if before_points == after_points and int(after_motion.progress) >= int(before_motion.progress):
+			traces[army_id] = _world_points_between_progress(
+				before_points,
+				float(before_motion.progress) / maxf(float(before_motion.total), 1.0),
+				float(after_motion.progress) / maxf(float(after_motion.total), 1.0)
+			)
+		else:
+			traces[army_id] = [before_motion.position, after_motion.position]
+	return traces
+
+
+func _macro_army_motion_state(army: Dictionary) -> Dictionary:
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	if macro.is_empty():
+		return {}
+	var points: Array = Array(macro.get("route_world_points", []))
+	var progress := int(macro.get("progress_millis", 0))
+	var total := maxi(int(macro.get("total_millis", 0)), 1)
+	var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
+	if StringName(army.get("phase", &"")) == ArmyRegistry.PHASE_BLOCKED and StringName(transfer.get("phase", &"")) in [&"TO_CAMP", &"TO_CAMP_BLOCKED", &"WAITING", &"TO_RESUME", &"TO_RESUME_BLOCKED"]:
+		points = Array(transfer.get("route_world_points", []))
+		progress = int(transfer.get("progress_millis", 0))
+		total = maxi(int(transfer.get("total_millis", 0)), 1)
+	if points.is_empty():
+		return {}
+	return {
+		"points": points.duplicate(true), "progress": progress, "total": total,
+		"position": _world_position_along_points(points, float(progress) / float(total)),
+	}
+
+
+func _world_points_between_progress(points: Array, start_progress: float, end_progress: float) -> Array:
+	if points.size() < 2:
+		return points.duplicate(true)
+	var total_length := 0.0
+	var cumulative: Array[float] = [0.0]
+	for index in range(1, points.size()):
+		total_length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
+		cumulative.append(total_length)
+	if total_length <= 0.0001:
+		return [Vector2(points.front()), Vector2(points.back())]
+	var start_distance := total_length * clampf(start_progress, 0.0, 1.0)
+	var end_distance := total_length * clampf(end_progress, 0.0, 1.0)
+	var result: Array = [_world_position_along_points(points, start_progress)]
+	for index in range(1, points.size() - 1):
+		if cumulative[index] > start_distance + 0.0001 and cumulative[index] < end_distance - 0.0001:
+			result.append(Vector2(points[index]))
+	result.append(_world_position_along_points(points, end_progress))
+	return result
+
+
+func _macro_army_member_count(army: Dictionary) -> int:
+	var total := 0
+	for count in Dictionary(army.get("units_by_definition_id", {})).values():
+		total += int(count)
+	return total
+
+
+func _world_position_along_points(points: Array, progress: float) -> Vector2:
+	if points.is_empty():
+		return Vector2.ZERO
+	var total_length := 0.0
+	for index in range(1, points.size()):
+		total_length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
+	var remaining_length := total_length * clampf(progress, 0.0, 1.0)
+	for index in range(1, points.size()):
+		var start := Vector2(points[index - 1])
+		var end := Vector2(points[index])
+		var length := start.distance_to(end)
+		if remaining_length <= length:
+			return start.lerp(end, remaining_length / maxf(length, 1.0))
+		remaining_length -= length
+	return Vector2(points.back())
+
+
+func _distance_to_world_segment(point: Vector2, start: Vector2, end: Vector2) -> float:
+	var segment := end - start
+	var squared := segment.length_squared()
+	if squared <= 0.0001:
+		return point.distance_to(start)
+	return point.distance_to(start + segment * clampf((point - start).dot(segment) / squared, 0.0, 1.0))
+
+
+func _world_traces_within_distance(first: Array, second: Array, distance: float) -> bool:
+	if first.is_empty() or second.is_empty():
+		return false
+	if first.size() == 1:
+		first = [first.front(), first.front()]
+	if second.size() == 1:
+		second = [second.front(), second.front()]
+	for first_index in range(1, first.size()):
+		var first_start := Vector2(first[first_index - 1])
+		var first_end := Vector2(first[first_index])
+		for second_index in range(1, second.size()):
+			var second_start := Vector2(second[second_index - 1])
+			var second_end := Vector2(second[second_index])
+			if Geometry2D.segment_intersects_segment(first_start, first_end, second_start, second_end) != null:
+				return true
+			if minf(
+				minf(_distance_to_world_segment(first_start, second_start, second_end), _distance_to_world_segment(first_end, second_start, second_end)),
+				minf(_distance_to_world_segment(second_start, first_start, first_end), _distance_to_world_segment(second_end, first_start, first_end))
+			) <= distance:
+				return true
+	return false
 
 
 func _block_macro_march_for_damaged_road(army: Dictionary, blocked_road_segment_index: int) -> Dictionary:

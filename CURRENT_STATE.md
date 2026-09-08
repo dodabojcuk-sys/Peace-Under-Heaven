@@ -1,5 +1,31 @@
 # 当前状态
 
+## FIELD_TACTICS_R2 patrol encounter checkpoint (2026-09-08)
+
+The outer-city clock now advances a finite patrol on its resolved runtime-road
+polyline and resolves contact against the swept paths of specialists and
+armies. Army traces retain intermediate authored road vertices, so one large
+frame cannot let opposing movers pass through each other merely because their
+end positions are separated. Patrol strength is one shared fact: multiple
+armies joining the same contact settle it once rather than receiving cloned
+enemies or duplicated rewards.
+
+Casualties are written through `ArmyRegistry` to stable formation identities.
+One army can encounter the patrol while another siege continues, without
+mixing participants or stopping the unrelated battle. A nearby deployed army
+can guard a working specialist; a previously observed patrol entering an
+unexposed forest deployment grants one finite ambush opening, consumes that
+opening, exposes the force, and can damage only a nearby built road rather than
+a main road. Patrol strength, resolved participants, ambush consumption,
+exposure, damaged road, and exact formation losses survive formal V5 restore.
+
+Focused evidence is Field R2 **65 assertions**, audited field persistence PASS,
+Macro March R0 **27 assertions**, War Loop R1 **16 assertions**, War Loop formal
+scene **10 assertions**, and arrival persistence **3 assertions**. This is a
+recoverable engineering checkpoint. The two complete normal-resource routes,
+normal system-input media, final balance review, and player acceptance remain
+open.
+
 ## FIELD_TACTICS_R2 temporary-route rebreak and clock checkpoint (2026-09-08)
 
 A blocked army now rechecks the physical segments of its temporary camp or

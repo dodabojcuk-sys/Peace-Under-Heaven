@@ -14,6 +14,21 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 patrol, guard, ambush, and casualty checkpoint
+
+- Advanced patrols on resolved runtime-road geometry and compared swept patrol
+  and army movement traces, preventing large-step pass-through misses.
+- Settled one finite patrol record across all contacting armies and wrote exact
+  losses to their stable formation identities through `ArmyRegistry`, while
+  unrelated siege state continued independently.
+- Added local specialist guard, one-use forest ambush and exposure state, plus
+  nearby engineered-road damage without making main roads destructible.
+- Persisted patrol strength, resolved participants, ambush consumption,
+  exposure, road damage, and exact army casualties through formal V5 restore.
+- Verified Field R2 65 assertions, audited field persistence, Macro March 27,
+  War Loop R1 16, formal scene 10, and arrival persistence 3. Complete routes,
+  normal-input media, balance review, and player acceptance remain open.
+
 ### FIELD_TACTICS_R2 temporary-route rebreak and clock checkpoint
 
 - Rechecked blocked-transfer physical segments before movement, persisted

@@ -24,6 +24,7 @@ func _run() -> void:
 	await _run_damaged_road_resume_contract()
 	await _run_mid_segment_camp_transfer_contract()
 	await _run_temporary_rebreak_and_time_contract()
+	await _run_patrol_encounter_contract()
 	_finish()
 
 
@@ -574,6 +575,79 @@ func _run_formal_controller_contract() -> void:
 	scene.queue_free()
 	restored_scene.queue_free()
 	await process_frame
+
+	var ambush_scene := CITY_SCENE.instantiate()
+	root.add_child(ambush_scene)
+	await process_frame
+	await process_frame
+	var ambush_city: Node = ambush_scene.get_node("ConstructionController")
+	ambush_city.set_process(false)
+	ambush_city.food = 200
+	var ambush_field: FieldTacticsState = ambush_city._war_loop_state.field_tactics
+	var patrol_fixture: Dictionary = Dictionary(ambush_field.patrols_by_id[&"patrol.ridge.001"]).duplicate(true)
+	ambush_field.patrols_by_id.clear()
+	var ambush_engineer: Dictionary = ambush_city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var ambush_engineer_id := StringName(Dictionary(ambush_engineer.get("specialist", {})).get("specialist_id", &""))
+	var ambush_project: Dictionary = ambush_city.begin_field_road_project(
+		ambush_engineer_id, &"northwatch_garrison", &"camp.site.forest_ambush",
+		[Vector2i(790, 170), Vector2i(750, 300), Vector2i(710, 400)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var ambush_project_record := Dictionary(ambush_project.get("project", {}))
+	ambush_city.advance_war_loop_time(int(ambush_project_record.get("travel_milliseconds", 0)) + int(ambush_project_record.get("required_milliseconds", 0)))
+	var ridge_to_forest := Array(ridge.points).duplicate(true)
+	ridge_to_forest.pop_back()
+	ridge_to_forest.append_array(Array(ambush_project_record.get("route_world_points", [])))
+	var forest_plan: Dictionary = ambush_city.plan_field_path(&"blackstone_city", &"camp.site.forest_ambush", ridge_to_forest)
+	var ambush_roster: Array[Dictionary] = ambush_city.get_formation_roster()
+	var ambush_issue: Dictionary = ambush_city.commit_macro_march_from_city(
+		[StringName(ambush_roster[0].formation_id)], &"camp.site.forest_ambush",
+		StringName(forest_plan.get("route_id", &"")), Array(forest_plan.get("points", []))
+	)
+	var ambush_army_id := StringName(Dictionary(ambush_issue.get("army", {})).get("army_id", &""))
+	ambush_city._advance_all_macro_marches_seconds(float(int(forest_plan.get("duration_milliseconds", 0))) / 1000.0)
+	ambush_field.patrols_by_id[&"patrol.ridge.001"] = patrol_fixture
+	ambush_field.intel_by_subject_id[&"patrol.ridge.001"] = {
+		"subject_id": &"patrol.ridge.001", "fog_state": FieldTacticsState.FOG_OBSERVED,
+		"last_known_point_id": &"northwatch_garrison", "last_known_world_position": Vector2i(790, 170),
+		"last_observed_milliseconds": ambush_field.world_milliseconds, "known_strength": 5,
+	}
+	var ambush_advance: Dictionary = ambush_city.advance_war_loop_time(9500)
+	var ambush_encounters: Array = Array(ambush_advance.get("patrol_encounters", []))
+	var ambush_after: Dictionary = ambush_city._army_registry.get_army(ambush_army_id)
+	var ambush_patrol_after: Dictionary = Dictionary(ambush_field.patrols_by_id[&"patrol.ridge.001"])
+	var ambush_encounter: Dictionary = Dictionary(ambush_encounters.front()) if not ambush_encounters.is_empty() else {}
+	var ambush_road_id := StringName(ambush_project_record.get("road_id", &""))
+	_check(
+		bool(ambush_project.get("success", false)) and bool(ambush_issue.get("success", false))
+			and StringName(ambush_after.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED
+			and bool(Dictionary(ambush_field.specialists_by_id.get(ambush_engineer_id, {})).get("alive", false))
+			and Array(ambush_encounter.get("ambush_army_ids", [])).has(ambush_army_id)
+			and int(ambush_encounter.get("patrol_losses", 0)) == 5
+			and ambush_city._macro_army_member_count(ambush_after) == 5
+			and Array(ambush_patrol_after.get("ambush_consumed_army_ids", [])).has(ambush_army_id)
+			and StringName(ambush_encounter.get("damaged_road_id", &"")) == ambush_road_id
+			and not ambush_field.is_route_open(ambush_road_id),
+		"已侦察巡逻进入林地驻军伏击时只获得一次先手并暴露，护卫保住工程师且巡逻会实际损坏附近工程道路"
+	)
+	var ambush_snapshot: Dictionary = ambush_city.export_v5_campaign_snapshot()
+	var ambush_restored_scene := CITY_SCENE.instantiate()
+	root.add_child(ambush_restored_scene)
+	await process_frame
+	await process_frame
+	var ambush_restored_city: Node = ambush_restored_scene.get_node("ConstructionController")
+	ambush_restored_city.set_process(false)
+	var ambush_restore: Dictionary = ambush_restored_city.restore_v5_campaign_snapshot(ambush_snapshot)
+	var restored_ambush_patrol: Dictionary = Dictionary(ambush_restored_city._war_loop_state.field_tactics.patrols_by_id[&"patrol.ridge.001"])
+	_check(
+		bool(ambush_restore.get("success", false))
+			and Array(restored_ambush_patrol.get("ambush_consumed_army_ids", [])).has(ambush_army_id)
+			and int(restored_ambush_patrol.get("strength", -1)) == 0
+			and ambush_restored_city._army_registry.get_army(ambush_army_id) == ambush_after,
+		"伏击首击消耗、暴露后的巡逻兵力、道路损坏和真实编队伤亡冷恢复后不会刷新"
+	)
+	ambush_scene.queue_free()
+	ambush_restored_scene.queue_free()
+	await process_frame
 	await _run_formal_multisegment_march_contract()
 
 
@@ -891,6 +965,145 @@ func _test_points_length(points: Array) -> float:
 	for index in range(1, points.size()):
 		length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
 	return length
+
+
+func _run_patrol_encounter_contract() -> void:
+	var unguarded: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	unguarded.initialize_from_theater(THEATER.get_points(), THEATER.get_routes(), THEATER.get_water_regions(), Rect2i(THEATER.get_world_bounds()), THEATER.get_terrain_regions())
+	var moving_scout: Dictionary = unguarded.dispatch_specialist(FieldTacticsState.SPECIALIST_SCOUT, &"northwatch_garrison")
+	unguarded.order_specialist_move(StringName(moving_scout.specialist_id), &"reedbank_garrison")
+	var guarded: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	guarded.restore_snapshot(unguarded.get_snapshot())
+	guarded.initialize_from_theater(THEATER.get_points(), THEATER.get_routes(), THEATER.get_water_regions(), Rect2i(THEATER.get_world_bounds()), THEATER.get_terrain_regions())
+	var unguarded_contact: Dictionary = unguarded.advance_world(100)
+	var guarded_contact: Dictionary = guarded.advance_world(100, {&"army.guard": Vector2i(790, 170)})
+	_check(
+		not bool(Dictionary(unguarded.specialists_by_id[StringName(moving_scout.specialist_id)]).get("alive", true))
+			and bool(Dictionary(guarded.specialists_by_id[StringName(moving_scout.specialist_id)]).get("alive", false))
+			and Array(Dictionary(Array(guarded_contact.get("engagements", [])).front()).get("guard_army_ids", [])).has(&"army.guard")
+			and not Array(unguarded_contact.get("engagements", [])).is_empty(),
+		"移动中的专家会被巡逻实际接触；有效距离内的军队护卫会阻止专家被直接击杀"
+	)
+
+	var scene := CITY_SCENE.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var city: Node = scene.get_node("ConstructionController")
+	city.set_process(false)
+	city.food = 240
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var ridge: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
+	var lowland: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.lowland")
+	var northwatch_redcliff: Dictionary = THEATER.get_route(&"road.northwatch.redcliff")
+	var redcliff_drawn := Array(ridge.points).duplicate(true)
+	redcliff_drawn.pop_back()
+	redcliff_drawn.append_array(Array(northwatch_redcliff.points))
+	var ridge_plan: Dictionary = city.plan_field_path(&"blackstone_city", &"northwatch_garrison", Array(ridge.points))
+	var lowland_plan: Dictionary = city.plan_field_path(&"blackstone_city", &"northwatch_garrison", Array(lowland.points))
+	var redcliff_plan: Dictionary = city.plan_field_path(&"blackstone_city", &"redcliff_city", redcliff_drawn)
+	var first_issue: Dictionary = city.commit_macro_march_from_city([StringName(roster[0].formation_id)], &"northwatch_garrison", StringName(ridge_plan.get("route_id", &"")), Array(ridge_plan.get("points", [])))
+	var second_issue: Dictionary = city.commit_macro_march_from_city([StringName(roster[1].formation_id)], &"northwatch_garrison", StringName(lowland_plan.get("route_id", &"")), Array(lowland_plan.get("points", [])))
+	var siege_issue: Dictionary = city.commit_macro_march_from_city([StringName(roster[2].formation_id)], &"redcliff_city", StringName(redcliff_plan.get("route_id", &"")), Array(redcliff_plan.get("points", [])))
+	var maximum_duration := maxi(int(ridge_plan.get("duration_milliseconds", 0)), maxi(int(lowland_plan.get("duration_milliseconds", 0)), int(redcliff_plan.get("duration_milliseconds", 0))))
+	city._advance_all_macro_marches_seconds(float(maximum_duration) / 1000.0)
+	var first_id := StringName(Dictionary(first_issue.get("army", {})).get("army_id", &""))
+	var second_id := StringName(Dictionary(second_issue.get("army", {})).get("army_id", &""))
+	var siege_id := StringName(Dictionary(siege_issue.get("army", {})).get("army_id", &""))
+	var encounter_advance: Dictionary = city.advance_war_loop_time(2600)
+	var encounters: Array = Array(encounter_advance.get("patrol_encounters", []))
+	var first_after: Dictionary = city._army_registry.get_army(first_id)
+	var second_after: Dictionary = city._army_registry.get_army(second_id)
+	var siege_after: Dictionary = city._army_registry.get_army(siege_id)
+	var patrol_after := Dictionary(city._war_loop_state.field_tactics.patrols_by_id.get(&"patrol.ridge.001", {}))
+	var first_count: int = city._macro_army_member_count(first_after)
+	var second_count: int = city._macro_army_member_count(second_after)
+	var before_repeat_first := first_after.duplicate(true)
+	var before_repeat_second := second_after.duplicate(true)
+	var repeat_advance: Dictionary = city.advance_war_loop_time(2600)
+	var first_formations: Array = Array(Dictionary(first_after.get("macro_march", {})).get("formation_snapshots", []))
+	var second_formations: Array = Array(Dictionary(second_after.get("macro_march", {})).get("formation_snapshots", []))
+	_check(
+		bool(first_issue.get("success", false)) and bool(second_issue.get("success", false)) and bool(siege_issue.get("success", false))
+			and encounters.size() == 1
+			and Array(Dictionary(encounters.front()).get("army_ids", [])).size() == 2
+			and int(patrol_after.get("strength", -1)) == 0
+			and first_count == 5 and second_count == 6
+			and int(Dictionary(first_formations[0]).get("member_count", -1)) == 5
+			and int(Dictionary(second_formations[0]).get("member_count", -1)) == 6,
+		"两支军队接触同一巡逻时共享有限敌军并各自回写真实编队伤亡，敌军只结算一次"
+	)
+	_check(
+		StringName(siege_after.get("phase", &"")) == ArmyRegistry.PHASE_SIEGING
+			and before_repeat_first == city._army_registry.get_army(first_id)
+			and before_repeat_second == city._army_registry.get_army(second_id)
+			and Array(repeat_advance.get("patrol_encounters", [])).is_empty(),
+		"一处巡逻遭遇与另一支军队攻城并行推进，已结算巡逻不会按帧重复扣兵"
+	)
+	var encounter_snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	var restored_scene := CITY_SCENE.instantiate()
+	root.add_child(restored_scene)
+	await process_frame
+	await process_frame
+	var restored_city: Node = restored_scene.get_node("ConstructionController")
+	restored_city.set_process(false)
+	var restored_result: Dictionary = restored_city.restore_v5_campaign_snapshot(encounter_snapshot)
+	var restored_patrol: Dictionary = Dictionary(restored_city._war_loop_state.field_tactics.patrols_by_id.get(&"patrol.ridge.001", {}))
+	_check(
+		bool(restored_result.get("success", false))
+			and int(restored_patrol.get("strength", -1)) == 0
+			and Array(restored_patrol.get("resolved_army_ids", [])).size() == 2
+			and restored_city._army_registry.get_army(first_id) == city._army_registry.get_army(first_id)
+			and restored_city._army_registry.get_army(second_id) == city._army_registry.get_army(second_id),
+		"巡逻唯一兵力、已结算军队身份和逐编队伤亡随正式 V5 快照冷恢复"
+	)
+	scene.queue_free()
+	restored_scene.queue_free()
+	await process_frame
+
+	var crossing_scene := CITY_SCENE.instantiate()
+	root.add_child(crossing_scene)
+	await process_frame
+	await process_frame
+	var crossing_city: Node = crossing_scene.get_node("ConstructionController")
+	crossing_city.set_process(false)
+	crossing_city.food = 120
+	var crossing_roster: Array[Dictionary] = crossing_city.get_formation_roster()
+	var crossing_plan: Dictionary = crossing_city.plan_field_path(&"blackstone_city", &"northwatch_garrison", Array(ridge.points))
+	var crossing_issue: Dictionary = crossing_city.commit_macro_march_from_city(
+		[StringName(crossing_roster[0].formation_id)], &"northwatch_garrison",
+		StringName(crossing_plan.get("route_id", &"")), Array(crossing_plan.get("points", []))
+	)
+	var crossing_army_id := StringName(Dictionary(crossing_issue.get("army", {})).get("army_id", &""))
+	var crossing_field: FieldTacticsState = crossing_city._war_loop_state.field_tactics
+	var crossing_patrol: Dictionary = Dictionary(crossing_field.patrols_by_id[&"patrol.ridge.001"])
+	var reverse_ridge := Array(ridge.points).duplicate(true)
+	reverse_ridge.reverse()
+	crossing_patrol.current_point_id = &"northwatch_garrison"
+	crossing_patrol.route_point_ids = [&"northwatch_garrison", &"blackstone_city"]
+	crossing_patrol.target_route_index = 1
+	crossing_patrol.wait_remaining_milliseconds = 0
+	crossing_patrol.move_total_milliseconds = int(crossing_plan.get("duration_milliseconds", 0))
+	crossing_patrol.move_elapsed_milliseconds = 0
+	crossing_patrol.move_start_position = Vector2i(reverse_ridge.front())
+	crossing_patrol.move_route_world_points = reverse_ridge
+	crossing_patrol.world_position = Vector2i(reverse_ridge.front())
+	crossing_patrol.strength = 5
+	crossing_patrol.resolved_army_ids = []
+	crossing_patrol.ambush_consumed_army_ids = []
+	crossing_field.patrols_by_id[&"patrol.ridge.001"] = crossing_patrol
+	crossing_city._process(float(int(crossing_plan.get("duration_milliseconds", 0))) / 1000.0)
+	var crossing_after: Dictionary = crossing_city._army_registry.get_army(crossing_army_id)
+	var crossing_patrol_after: Dictionary = Dictionary(crossing_field.patrols_by_id[&"patrol.ridge.001"])
+	_check(
+		bool(crossing_issue.get("success", false))
+			and StringName(crossing_after.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED
+			and int(crossing_patrol_after.get("strength", 5)) < 5
+			and Array(crossing_patrol_after.get("resolved_army_ids", [])).has(crossing_army_id),
+		"军队与巡逻在一个大时间步内沿同一道路相向穿越时仍会结算遭遇，不能因帧末错开而漏战"
+	)
+	crossing_scene.queue_free()
+	await process_frame
 
 
 func _check(condition: bool, description: String) -> void:

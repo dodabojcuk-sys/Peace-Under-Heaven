@@ -796,6 +796,65 @@ func replace_macro_composition(army_id: StringName, order_id: StringName, surviv
 	return army.duplicate(true)
 
 
+## Field encounters report losses by stable formation identity. Keeping the
+## write here prevents the tactical resolver from becoming a second roster
+## owner and preserves exact per-formation attribution across recovery.
+func apply_macro_formation_losses(army_id: StringName, order_id: StringName, losses_by_formation_id: Dictionary) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	if army.is_empty() or macro.is_empty() or StringName(macro.get("order_id", &"")) != order_id or losses_by_formation_id.is_empty():
+		return {}
+	var formations: Array = Array(macro.get("formation_snapshots", [])).duplicate(true)
+	var known_ids: Dictionary = {}
+	for formation_value in formations:
+		known_ids[StringName(Dictionary(formation_value).get("formation_id", &""))] = true
+	for formation_id_value in losses_by_formation_id:
+		var formation_id := StringName(formation_id_value)
+		if not known_ids.has(formation_id) or typeof(losses_by_formation_id[formation_id_value]) != TYPE_INT or int(losses_by_formation_id[formation_id_value]) < 0:
+			return {}
+	var surviving_total := 0
+	for index in formations.size():
+		var formation: Dictionary = Dictionary(formations[index]).duplicate(true)
+		var loss := int(losses_by_formation_id.get(StringName(formation.get("formation_id", &"")), 0))
+		if loss > int(formation.get("member_count", 0)):
+			return {}
+		formation.member_count = int(formation.get("member_count", 0)) - loss
+		surviving_total += int(formation.member_count)
+		formations[index] = formation
+	var units: Dictionary = Dictionary(army.get("units_by_definition_id", {})).duplicate(true)
+	if units.size() != 1:
+		return {}
+	units[units.keys()[0]] = surviving_total
+	macro.formation_snapshots = formations
+	army.units_by_definition_id = units
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func close_macro_field_lost(army_id: StringName, order_id: StringName, result_id: StringName) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	if army.is_empty() or macro.is_empty() or result_id == &"" or StringName(macro.get("order_id", &"")) != order_id or StringName(army.get("phase", &"")) not in [PHASE_MARCHING, PHASE_BLOCKED, PHASE_STATIONED, PHASE_RETREATING]:
+		return {}
+	var formations: Array = Array(macro.get("formation_snapshots", [])).duplicate(true)
+	for index in formations.size():
+		var formation: Dictionary = Dictionary(formations[index]).duplicate(true)
+		formation.member_count = 0
+		formations[index] = formation
+	macro.formation_snapshots = formations
+	macro.phase = PHASE_CLOSED
+	macro.blocked_segment_index = -1
+	macro.temporary_station_point = &""
+	macro.blocked_transfer = _empty_blocked_transfer()
+	army.units_by_definition_id = {}
+	army.last_applied_result_id = result_id
+	army.phase = PHASE_CLOSED
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
 func begin_macro_retreat(army_id: StringName, order_id: StringName) -> Dictionary:
 	var army: Dictionary = _armies_by_id.get(army_id, {})
 	var macro: Dictionary = army.get("macro_march", {})
