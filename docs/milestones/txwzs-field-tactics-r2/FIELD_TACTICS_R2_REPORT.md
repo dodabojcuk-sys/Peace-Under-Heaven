@@ -11,6 +11,26 @@ transaction and persistence-checkpoint caller.
 
 ## Delivered engineering evidence
 
+### Formal bridge-return and recovery canonicalization repair
+
+The map now attaches its interrupted-project selector to the actual control
+tree and preserves the selector's options while its projection is unchanged.
+It exposes new construction, selected-road repair, and selected-project resume
+as distinct actions, so an interrupted project cannot silently capture the
+normal road tool. The expanded seven-action rail remains inside the automated
+648px layout contract.
+
+V5 validation now initializes the temporary restored war loop with the same
+Resource-owned theatre facts used by `ConstructionController` before
+canonicalizing legacy specialist routes. The strict export-after-restore check
+therefore compares two migrated snapshots, retaining rollback on any real
+difference. Formal Controller regression covers a player-generated bridge
+forward and backward, confirms a damaged bridge is no longer an open bridge
+edge, and restores a V5 snapshot whose in-flight expert lacks a route. Focused
+Godot 4.5.1 results are Field R2 52 assertions and Macro March 27 assertions.
+This remains engineering evidence only: safe-camp transfer, encounters,
+complete routes, normal system-input media, and player acceptance are open.
+
 ### Formal bridge-use and deferred-recovery checkpoint
 
 The bridge verification now enters through the formal city and Controller

@@ -14,6 +14,24 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 formal bridge-return and restore canonicalization repair
+
+- Added the interrupted-project selector to the Macro March scene tree and
+  retained its option nodes when the projection is unchanged. New construction,
+  repair, and resume of the selected interrupted project are now separate
+  actions; the seven-action rail remains within the 648px layout contract.
+- Canonicalized legacy specialist-route migration during V5 structural
+  validation with the same `MacroMarchTheater` Resource facts used by formal
+  restore, preserving strict postcondition comparison and rollback instead of
+  weakening either check.
+- Made bridge-shore validation symmetric by sampling land-to-bridge regardless
+  of travel direction. The formal Controller regression now covers an
+  automatically generated bridge forward, reverse, damaged unavailability,
+  and legacy missing-path V5 recovery.
+- Focused Godot 4.5.1 results: Field R2 52 assertions and Macro March 27
+  assertions. This is not a full R2 playthrough, normal-input evidence, or
+  player acceptance.
+
 ### FIELD_TACTICS_R2 formal bridge-use and deferred-recovery checkpoint
 
 - Added a formal city/Controller regression that completes a player-shaped

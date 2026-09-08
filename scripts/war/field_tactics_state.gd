@@ -1148,9 +1148,12 @@ func _is_open_bridge_shore_connection(start: Vector2, end: Vector2) -> bool:
 	var land_position := start if bridge_position == end else end
 	if bridge_position == Vector2.INF or _point_is_in_water(Vector2i(land_position)):
 		return false
-	var samples := maxi(1, ceili(start.distance_to(end)))
+	var samples := maxi(1, ceili(land_position.distance_to(bridge_position)))
 	for sample_index in range(samples):
-		var sampled := start.lerp(end, float(sample_index) / float(samples))
+		# Sample away from the land edge and deliberately exclude the bridge
+		# navigation point.  The latter can lie on water by construction, but the
+		# same shore connection must be valid in either travel direction.
+		var sampled := land_position.lerp(bridge_position, float(sample_index) / float(samples))
 		if _point_is_in_water(Vector2i(sampled)):
 			return false
 	return world_bounds.has_point(Vector2i(start)) and world_bounds.has_point(Vector2i(end))

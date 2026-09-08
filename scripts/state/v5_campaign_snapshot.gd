@@ -2,6 +2,7 @@ class_name V5CampaignSnapshot
 extends RefCounted
 
 
+const MACRO_MARCH_THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
 const SCHEMA_VERSION := 7
 const SNAPSHOT_KIND := &"campaign_authoritative"
 const CITY_ID := "blackstone_city"
@@ -229,6 +230,16 @@ static func validate_structure(
 	var normalized_war_loop := WarLoopState.new()
 	if not normalized_war_loop.restore_snapshot(Dictionary(normalized.war_loop)):
 		return _failure(&"INVALID_WAR_LOOP", "WarLoop 快照字段非法")
+	# Route migration for specialists needs the same Resource-owned terrain facts
+	# as the real restore.  Canonicalizing with those facts keeps the controller's
+	# exact postcondition check strict without comparing pre- and post-migration
+	# representations of a legacy save.
+	normalized_war_loop.initialize_from_theater(
+		MACRO_MARCH_THEATER.get_points(),
+		MACRO_MARCH_THEATER.get_routes(),
+		MACRO_MARCH_THEATER.get_water_regions(),
+		Rect2i(MACRO_MARCH_THEATER.get_world_bounds())
+	)
 	normalized.war_loop = normalized_war_loop.get_snapshot()
 	var city_result := _validate_city(normalized.city)
 	if not bool(city_result.valid):

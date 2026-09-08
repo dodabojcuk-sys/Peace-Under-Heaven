@@ -502,6 +502,50 @@ func _run_formal_controller_contract() -> void:
 			and Vector2i(bridge_crossing_after.get("world_position", Vector2i.ZERO)) == Vector2i(850, 505),
 		"正式工程生成的桥段、桥头和道路可被后续工程师实际跨越"
 	)
+	var bridge_return_move: Dictionary = city.order_field_specialist_move(bridge_crossing_specialist_id, &"blackstone_city")
+	var bridge_return_route: Array = Array(Dictionary(bridge_return_move.get("specialist", {})).get("move_route_world_points", []))
+	var legacy_specialist_snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	var legacy_war_loop: Dictionary = Dictionary(legacy_specialist_snapshot.war_loop)
+	var legacy_field: Dictionary = Dictionary(legacy_war_loop.field_tactics)
+	var legacy_specialists: Dictionary = Dictionary(legacy_field.specialists_by_id)
+	var legacy_specialist: Dictionary = Dictionary(legacy_specialists[bridge_crossing_specialist_id])
+	legacy_specialist.erase("move_route_world_points")
+	legacy_specialists[bridge_crossing_specialist_id] = legacy_specialist
+	legacy_field.specialists_by_id = legacy_specialists
+	legacy_war_loop.field_tactics = legacy_field
+	legacy_specialist_snapshot.war_loop = legacy_war_loop
+	var canonical_legacy_validation: Dictionary = city.validate_v5_campaign_snapshot(legacy_specialist_snapshot)
+	var legacy_restored_scene := CITY_SCENE.instantiate()
+	root.add_child(legacy_restored_scene)
+	await process_frame
+	var legacy_restored: Node = legacy_restored_scene.get_node("ConstructionController")
+	legacy_restored.set_process(false)
+	var legacy_restore_result: Dictionary = legacy_restored.restore_v5_campaign_snapshot(legacy_specialist_snapshot)
+	var legacy_restored_specialist: Dictionary = Dictionary(legacy_restored.get_field_tactics_read_model().specialists_by_id.get(bridge_crossing_specialist_id, {}))
+	_check(
+		bool(bridge_return_move.get("success", false))
+			and bridge_return_route.has(generated_bridge_points.front()) and bridge_return_route.has(generated_bridge_points.back())
+			and bool(canonical_legacy_validation.get("valid", false))
+			and bool(legacy_restore_result.get("success", false))
+			and Array(legacy_restored_specialist.get("move_route_world_points", [])).size() >= 2
+			and legacy_restored.export_v5_campaign_snapshot() == Dictionary(canonical_legacy_validation.get("snapshot", {})),
+		"正式 V5 恢复会以战区水域标准化旧专家路径，并保持严格快照核对"
+	)
+	legacy_restored_scene.queue_free()
+	await process_frame
+	city.advance_war_loop_time(int(Dictionary(bridge_return_move.get("specialist", {})).get("move_total_milliseconds", 0)))
+	var bridge_return_after: Dictionary = Dictionary(city.get_field_tactics_read_model().specialists_by_id.get(bridge_crossing_specialist_id, {}))
+	var generated_bridge_id := StringName(Dictionary(formal_segments[1]).get("road_id", &""))
+	var field_state: FieldTacticsState = city._war_loop_state.field_tactics
+	field_state.damage_road(generated_bridge_id, 999)
+	var damaged_bridge_move: Dictionary = city.order_field_specialist_move(bridge_crossing_specialist_id, &"reedbank_garrison")
+	var damaged_bridge_route: Array = Array(Dictionary(damaged_bridge_move.get("specialist", {})).get("move_route_world_points", []))
+	_check(
+		StringName(bridge_return_after.get("current_point_id", &"")) == &"blackstone_city"
+			and not field_state._is_open_bridge_edge(Vector2(generated_bridge_points[0]), Vector2(generated_bridge_points[1]))
+			and not damaged_bridge_route.has(generated_bridge_points.front()) and not damaged_bridge_route.has(generated_bridge_points.back()),
+		"同一座正式生成桥可双向通行；损坏后不再作为任一方向的可通行桥面"
+	)
 	var snapshot: Dictionary = city.export_v5_campaign_snapshot()
 	var restored_scene := CITY_SCENE.instantiate()
 	root.add_child(restored_scene)

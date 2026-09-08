@@ -321,6 +321,8 @@ func _run_camera_and_layout_contract() -> void:
 			macro_screen._scout_button,
 			macro_screen._engineer_button,
 			macro_screen._side_road_button,
+			macro_screen._resume_project_button,
+			macro_screen._interrupted_project_selector,
 			macro_screen._return_button,
 		]
 		var controls_fit := map_rect.end.x < panel_rect.position.x
@@ -335,7 +337,7 @@ func _run_camera_and_layout_contract() -> void:
 					continue
 				controls_do_not_overlap = controls_do_not_overlap and not control_rect.intersects(other.get_global_rect())
 		_check(
-			controls_fit and controls_do_not_overlap and macro_screen._formation_scroll.get_parent() == macro_screen and macro_screen._formation_buttons.all(func(button: Button) -> bool: return button.get_parent() == macro_screen._formation_list),
+			controls_fit and controls_do_not_overlap and macro_screen._formation_scroll.get_parent() == macro_screen and macro_screen._interrupted_project_selector.get_parent() == macro_screen and macro_screen._formation_buttons.all(func(button: Button) -> bool: return button.get_parent() == macro_screen._formation_list),
 			"自动化 UI 布局在 %d×648 下保持地图、滚动编队和每个可见行动区互不覆盖" % width
 		)
 	root.size = Vector2i(1152, 648)

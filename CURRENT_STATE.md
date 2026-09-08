@@ -2,6 +2,29 @@
 
 ## FIELD_TACTICS_R2 map and command UI checkpoint (2026-09-08)
 
+### Formal bridge-return, V5 canonicalization, and project-action repair
+
+The interrupted-project selector is now a real child of the Macro March view
+and no longer clears/recreates its options while the interrupted-project
+projection is unchanged. Construction, repair, and resume are explicit
+actions: the road tool always begins a new draft (or the selected repair), and
+a separate action resumes the specifically selected interrupted project.
+The seven-action rail remains inside the tested 648px viewport without
+overlap.
+
+V5 structural validation now initializes its temporary `WarLoopState` with the
+same Resource-owned theatre points, roads, water and bounds used by formal
+restore. Legacy moving specialists missing a stored route are therefore
+canonicalized before the strict postcondition comparison, rather than causing
+a successful application to roll back because its exported migrated path is
+newer than validation's expectation. Bridge shore checks also sample from the
+land side in both directions, so one formal generated bridge supports return
+travel without making normal water legal. Focused Godot 4.5.1 results: Field
+R2 52 assertions and Macro March 27 assertions. These are automated
+engineering checks; safe-camp transfer, patrol/guard/ambush casualties, both
+complete R2 routes, normal system-input media, and player acceptance remain
+open.
+
 ### Formal bridge-use and deferred-recovery checkpoint
 
 The formal city → Controller construction path now has an

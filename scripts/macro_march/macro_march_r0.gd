@@ -43,8 +43,10 @@ var _retreat_button := Button.new()
 var _scout_button := Button.new()
 var _engineer_button := Button.new()
 var _side_road_button := Button.new()
+var _resume_project_button := Button.new()
 var _interrupted_project_selector := OptionButton.new()
 var _return_button := Button.new()
+var _interrupted_project_selector_signature := ""
 
 
 func _ready() -> void:
@@ -100,9 +102,11 @@ func _build_ui() -> void:
 	_formation_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_formation_scroll.add_child(_formation_list)
 	add_child(_formation_scroll)
-	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _return_button]:
+	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _return_button]:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
+	_interrupted_project_selector.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_interrupted_project_selector)
 	_confirm_button.text = "确认并锁定军令"
 	_block_button.visible = false
 	_recover_button.visible = false
@@ -110,6 +114,8 @@ func _build_ui() -> void:
 	_scout_button.text = "派遣侦察兵（4 粮）"
 	_engineer_button.text = "派遣工程师（8 粮）"
 	_side_road_button.text = "工程师拖线修路"
+	_resume_project_button.text = "补派工程师接续所选工程"
+	_resume_project_button.visible = false
 	_interrupted_project_selector.visible = false
 	_return_button.text = "返回黑石城"
 	_confirm_button.pressed.connect(_confirm_draft)
@@ -117,6 +123,7 @@ func _build_ui() -> void:
 	_scout_button.pressed.connect(_dispatch_scout)
 	_engineer_button.pressed.connect(_dispatch_engineer)
 	_side_road_button.pressed.connect(_build_side_road)
+	_resume_project_button.pressed.connect(_resume_selected_interrupted_project)
 	_interrupted_project_selector.item_selected.connect(_select_interrupted_project)
 	_return_button.pressed.connect(func(): return_to_city_requested.emit())
 
@@ -125,8 +132,10 @@ func _layout_ui() -> void:
 	var panel_rect := _side_panel_rect()
 	var action_height := 34.0
 	var action_gap := 4.0
-	var action_count := 6
-	var action_top := maxf(panel_rect.position.y + 302.0, size.y - 16.0 - action_height * action_count - action_gap * (action_count - 1))
+	var action_count := 7
+	# Seven explicit actions (new construction, repair, and resume are separate)
+	# must remain inside the 648 px review window without covering the selector.
+	var action_top := maxf(panel_rect.position.y + 276.0, size.y - 16.0 - action_height * action_count - action_gap * (action_count - 1))
 	var panel_inner := Rect2(panel_rect.position + Vector2(14, 12), panel_rect.size - Vector2(28, 24))
 	_title_label.position = Vector2(22, 12)
 	_title_label.size = Vector2(size.x - 44, 34)
@@ -140,7 +149,7 @@ func _layout_ui() -> void:
 	_interrupted_project_selector.size = Vector2(panel_inner.size.x, 30.0)
 	for button in _formation_buttons:
 		button.custom_minimum_size = Vector2(panel_inner.size.x - 10.0, 38)
-	var action_buttons: Array[Button] = [_confirm_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _return_button]
+	var action_buttons: Array[Button] = [_confirm_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _return_button]
 	for index in action_buttons.size():
 		var button := action_buttons[index]
 		button.position = Vector2(panel_inner.position.x, action_top + index * (action_height + action_gap))
@@ -189,13 +198,14 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	var projects: Dictionary = field.get("projects_by_id", {})
 	var visible_patrols: Dictionary = field.get("visible_patrols_by_id", {})
 	var has_selected_damage := _selected_damaged_road_id != &"" and StringName(Dictionary(field.get("roads_by_id", {})).get(_selected_damaged_road_id, {}).get("state", &"")) == FieldTacticsState.ROAD_DAMAGED
-	var interrupted_project := _first_interrupted_project(projects)
-	_refresh_interrupted_project_selector(projects)
+	_refresh_interrupted_project_selector(model, projects)
 	_scout_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_SCOUT) < 1
 	_engineer_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_ENGINEER) < 1
 	_side_road_button.visible = not specialists.is_empty()
 	_side_road_button.disabled = not _has_idle_engineer(specialists)
-	_side_road_button.text = "安排工程师维修受损道路（3 粮）" if has_selected_damage else ("补派工程师接续中断工程" if not interrupted_project.is_empty() else "工程师拖线修路")
+	_side_road_button.text = "安排工程师维修受损道路（3 粮）" if has_selected_damage else "工程师拖线修路"
+	_resume_project_button.visible = not _first_interrupted_project(projects).is_empty()
+	_resume_project_button.disabled = not _has_idle_engineer(specialists)
 	var source_id := _source_point_id(model, army)
 	var source := _point_from_model(model, source_id)
 	var draft_text := "未画路线"
@@ -326,29 +336,48 @@ func _first_interrupted_project(projects: Dictionary) -> Dictionary:
 	return Dictionary(projects.get(selected_id, {}))
 
 
-func _refresh_interrupted_project_selector(projects: Dictionary) -> void:
+func _refresh_interrupted_project_selector(model: Dictionary, projects: Dictionary) -> void:
 	var project_ids: Array[StringName] = []
 	for project_id_value in projects:
 		var project: Dictionary = Dictionary(projects[project_id_value])
 		if StringName(project.get("phase", &"")) == &"INTERRUPTED":
 			project_ids.append(StringName(project_id_value))
 	project_ids.sort_custom(func(left: StringName, right: StringName) -> bool: return String(left) < String(right))
-	_interrupted_project_selector.clear()
 	_interrupted_project_selector.visible = not project_ids.is_empty()
 	if project_ids.is_empty():
 		_selected_interrupted_project_id = &""
+		_interrupted_project_selector_signature = ""
+		_interrupted_project_selector.clear()
 		return
 	if _selected_interrupted_project_id not in project_ids:
 		_selected_interrupted_project_id = project_ids.front()
+	var items: Array[Dictionary] = []
+	var signature_parts: Array[String] = []
 	for project_id in project_ids:
 		var project: Dictionary = Dictionary(projects[project_id])
 		var progress := int(project.get("progress_milliseconds", 0))
 		var required := maxi(int(project.get("required_milliseconds", 1)), 1)
-		_interrupted_project_selector.add_item("中断工程 · %d%%" % roundi(float(progress) * 100.0 / float(required)))
-		var item_index := _interrupted_project_selector.item_count - 1
-		_interrupted_project_selector.set_item_metadata(item_index, project_id)
-		if project_id == _selected_interrupted_project_id:
-			_interrupted_project_selector.select(item_index)
+		var source := _point_from_model(model, StringName(project.get("source_point_id", &"")))
+		var target := _point_from_model(model, StringName(project.get("target_point_id", &"")))
+		var label := "%s → %s · 中断 · %d%%" % [
+			str(source.get("display_name", "施工现场")),
+			str(target.get("display_name", "施工前沿")),
+			roundi(float(progress) * 100.0 / float(required)),
+		]
+		items.append({"project_id": project_id, "label": label})
+		signature_parts.append("%s:%s" % [String(project_id), label])
+	var signature := "|".join(signature_parts)
+	if signature != _interrupted_project_selector_signature:
+		_interrupted_project_selector.clear()
+		for item in items:
+			_interrupted_project_selector.add_item(str(item.label))
+			_interrupted_project_selector.set_item_metadata(_interrupted_project_selector.item_count - 1, item.project_id)
+		_interrupted_project_selector_signature = signature
+	for item_index in _interrupted_project_selector.item_count:
+		if StringName(_interrupted_project_selector.get_item_metadata(item_index)) == _selected_interrupted_project_id:
+			if _interrupted_project_selector.selected != item_index:
+				_interrupted_project_selector.select(item_index)
+			break
 
 
 func _select_interrupted_project(index: int) -> void:
@@ -618,34 +647,12 @@ func _build_side_road() -> void:
 				return
 		_status_label.text = "需要一名空闲且存活的工程师前往维修。"
 		return
-	var interrupted_project := Dictionary(Dictionary(field.get("projects_by_id", {})).get(_selected_interrupted_project_id, {}))
-	if interrupted_project.is_empty():
-		interrupted_project = _first_interrupted_project(Dictionary(field.get("projects_by_id", {})))
-	if not interrupted_project.is_empty():
-		var resume_failure := ""
-		for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
-			var replacement_engineer: Dictionary = specialist_value
-			if (
-				StringName(replacement_engineer.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER
-				and bool(replacement_engineer.get("alive", false))
-				and StringName(replacement_engineer.get("project_id", &"")) == &""
-			):
-				var resume_result := _dispatch_adapter.resume_interrupted_field_project(
-					StringName(replacement_engineer.get("specialist_id", &"")), StringName(interrupted_project.get("project_id", &""))
-				)
-				if bool(resume_result.get("success", false)):
-					_status_label.text = "工程师已出发接续中断工程。"
-					refresh()
-					return
-				resume_failure = str(resume_result.get("error", "该工程师无法到达现场"))
-		_status_label.text = resume_failure if not resume_failure.is_empty() else "需要一名空闲且存活的工程师接续中断工程。"
-		return
 	for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
 		var specialist: Dictionary = specialist_value
 		if (
 			StringName(specialist.get("role", &"")) != FieldTacticsState.SPECIALIST_ENGINEER
 			or not bool(specialist.get("alive", false))
-			or StringName(specialist.get("phase", &"")) == FieldTacticsState.SPECIALIST_BUILDING
+			or StringName(specialist.get("project_id", &"")) != &""
 		):
 			continue
 		_engineering_mode = true
@@ -656,6 +663,35 @@ func _build_side_road() -> void:
 		queue_redraw()
 		return
 	_status_label.text = "需要一名空闲且存活的工程师。"
+
+
+func _resume_selected_interrupted_project() -> void:
+	if _dispatch_adapter == null:
+		return
+	var field := _dispatch_adapter.get_field_tactics_read_model()
+	var interrupted_project := Dictionary(Dictionary(field.get("projects_by_id", {})).get(_selected_interrupted_project_id, {}))
+	if interrupted_project.is_empty():
+		_status_label.text = "请选择一项中断工程后再补派。"
+		return
+	var resume_failure := ""
+	for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
+		var replacement_engineer: Dictionary = specialist_value
+		if (
+			StringName(replacement_engineer.get("role", &"")) != FieldTacticsState.SPECIALIST_ENGINEER
+			or not bool(replacement_engineer.get("alive", false))
+			or StringName(replacement_engineer.get("project_id", &"")) != &""
+		):
+			continue
+		var resume_result := _dispatch_adapter.resume_interrupted_field_project(
+			StringName(replacement_engineer.get("specialist_id", &"")), StringName(interrupted_project.get("project_id", &""))
+		)
+		if bool(resume_result.get("success", false)):
+			_status_label.text = "工程师已出发接续所选中断工程。"
+			refresh()
+			return
+		resume_failure = str(resume_result.get("error", "该工程师无法到达现场"))
+	_status_label.text = resume_failure if not resume_failure.is_empty() else "需要一名空闲且存活的工程师接续所选工程。"
+	refresh()
 
 
 func _damaged_road_id_at_screen(field: Dictionary, screen_position: Vector2) -> StringName:
