@@ -133,6 +133,30 @@ func _run_field_tactics_contract() -> void:
 			and Vector2i(working_engineer.get("world_position", Vector2i.ZERO)) != Vector2i(790, 170),
 		"工程师先到达施工起点，再沿当前陆地作业段推进实际位置"
 	)
+	var interrupted_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	interrupted_state.initialize_from_theater(
+		{&"resume.start": {"world_position": Vector2i(100, 100)}, &"resume.target": {"world_position": Vector2i(420, 100)}}, {}
+	)
+	var lost_engineer := interrupted_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"resume.start")
+	var interrupted_project := interrupted_state.begin_road_project(
+		StringName(lost_engineer.specialist_id), &"resume.start", &"resume.target",
+		[Vector2i(100, 100), Vector2i(420, 100)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var lost_engineer_state := Dictionary(interrupted_state.specialists_by_id[StringName(lost_engineer.specialist_id)])
+	lost_engineer_state.alive = false
+	lost_engineer_state.phase = FieldTacticsState.SPECIALIST_LOST
+	interrupted_state.specialists_by_id[StringName(lost_engineer.specialist_id)] = lost_engineer_state
+	interrupted_state.advance_world(1)
+	var replacement_engineer := interrupted_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"resume.start")
+	var resumed_project := interrupted_state.resume_interrupted_project(StringName(replacement_engineer.specialist_id), StringName(interrupted_project.project_id))
+	interrupted_state.advance_world(int(interrupted_project.required_milliseconds))
+	_check(
+		StringName(Dictionary(interrupted_state.projects_by_id[StringName(interrupted_project.project_id)]).get("engineer_id", &"")) == StringName(replacement_engineer.specialist_id)
+			and StringName(resumed_project.get("project_id", &"")) == StringName(interrupted_project.project_id)
+			and interrupted_state.is_route_open(StringName(interrupted_project.road_id))
+			and not interrupted_state.camps_by_id.is_empty(),
+		"工程师损失后可由新工程师接续原工程，不重建道路、营地或工程身份"
+	)
 	var land_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
 	land_state.initialize_from_theater(
 		{&"land.start": {"world_position": Vector2i(80, 300)}, &"land.target": {"world_position": Vector2i(720, 300)}},
@@ -149,6 +173,20 @@ func _run_field_tactics_contract() -> void:
 	_check(
 		land_route_clear and not land_state._point_is_in_water(land_midpoint),
 		"专家移动保存并执行绕水陆地路径，位置不会沿直线穿过水域"
+	)
+	var legacy_specialist_snapshot := land_state.get_snapshot()
+	Dictionary(legacy_specialist_snapshot.specialists_by_id[StringName(land_engineer.specialist_id)]).erase("move_route_world_points")
+	var restored_land_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	restored_land_state.initialize_from_theater(
+		{&"land.start": {"world_position": Vector2i(80, 300)}, &"land.target": {"world_position": Vector2i(720, 300)}},
+		{}, [Rect2i(300, 180, 190, 240)]
+	)
+	var restored_land_valid := restored_land_state.restore_snapshot(legacy_specialist_snapshot)
+	var restored_land_specialist := Dictionary(restored_land_state.specialists_by_id.get(StringName(land_engineer.specialist_id), {}))
+	_check(
+		restored_land_valid and StringName(restored_land_specialist.get("phase", &"")) == FieldTacticsState.SPECIALIST_MOVING
+			and Array(restored_land_specialist.get("move_route_world_points", [])).size() > 2,
+		"旧在途专家存档缺少路径时从保存位置重规划，避免回退为穿水直线"
 	)
 	var bridge_crossing_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
 	bridge_crossing_state.initialize_from_theater(

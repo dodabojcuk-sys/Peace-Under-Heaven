@@ -5495,6 +5495,18 @@ func begin_field_road_repair(engineer_id: StringName, road_id: StringName) -> Di
 	return {"success": true, "project": Dictionary(transaction.local_commit_result.project).duplicate(true), "food_cost": REPAIR_FOOD_COST}
 
 
+func resume_interrupted_field_project(engineer_id: StringName, project_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	var war_before := _war_loop_state.get_snapshot()
+	var project := _war_loop_state.field_tactics.resume_interrupted_project(engineer_id, project_id)
+	if project.is_empty():
+		return _macro_failure(&"PROJECT_RESUME", "工程无法由该工程师接续")
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		return _macro_failure(&"SAVE_FAILED", "工程接续存档失败，状态已回滚")
+	return {"success": true, "project": project}
+
+
 func _macro_attacker_count(army: Dictionary) -> int:
 	var total := 0
 	for count in Dictionary(army.get("units_by_definition_id", {})).values():

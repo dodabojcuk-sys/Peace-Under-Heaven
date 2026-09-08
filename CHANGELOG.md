@@ -25,10 +25,16 @@
 - Made specialist bridge traversal follow the open bridge polyline (including
   bends) and choose repair endpoints using the same specialist path and actual
   distance rather than the army road graph or minimum-duration tie.
-- Added formal Controller, bent-bridge, and roadless-land repair regressions.
-  Godot 4.5.1 focused results: Field 47 assertions, Macro March 27,
+- Added formal Controller, bent-bridge, roadless-land repair, interrupted
+  project reassignment, and old specialist-route migration regressions.
+  Godot 4.5.1 focused results: Field 49 assertions, Macro March 27,
   three-process field persistence PASS, and R1 war 16 assertions. This is not
   normal-input evidence or a completed R2 player route.
+- Preserved interrupted project identity, completed segments, and reserved
+  camp IDs when a replacement engineer resumes work through the existing
+  Controller persistence transaction. Old in-flight specialist saves without
+  a route now replan from their saved position or enter an explicit blocked
+  state rather than moving through water.
 
 ### FIELD_TACTICS_R2 on-site construction checkpoint
 

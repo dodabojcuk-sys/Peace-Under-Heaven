@@ -18,6 +18,7 @@ const SPECIALIST_IDLE := &"IDLE"
 const SPECIALIST_MOVING := &"MOVING"
 const SPECIALIST_BUILDING := &"BUILDING"
 const SPECIALIST_REPAIRING := &"REPAIRING"
+const SPECIALIST_BLOCKED := &"BLOCKED"
 const SPECIALIST_LOST := &"LOST"
 const FOG_UNOBSERVED := &"UNOBSERVED"
 const FOG_OBSERVED := &"OBSERVED"
@@ -398,6 +399,77 @@ func begin_road_repair(engineer_id: StringName, road_id: StringName) -> Dictiona
 	return project.duplicate(true)
 
 
+func resume_interrupted_project(engineer_id: StringName, project_id: StringName) -> Dictionary:
+	var engineer := Dictionary(specialists_by_id.get(engineer_id, {}))
+	var project := Dictionary(projects_by_id.get(project_id, {}))
+	if (
+		engineer.is_empty() or project.is_empty()
+		or StringName(engineer.get("role", &"")) != SPECIALIST_ENGINEER
+		or not bool(engineer.get("alive", false))
+		or StringName(engineer.get("project_id", &"")) != &""
+		or StringName(project.get("phase", &"")) != &"INTERRUPTED"
+	):
+		return {}
+	var target_position := _interrupted_project_work_position(project)
+	if target_position == INVALID_WORLD_POSITION:
+		return {}
+	if StringName(project.get("project_kind", &"")) == &"REPAIR":
+		var road := Dictionary(roads_by_id.get(StringName(project.get("road_id", &"")), {}))
+		if road.is_empty() or StringName(road.get("state", &"")) != ROAD_DAMAGED:
+			return {}
+		var repair_target := _reachable_repair_endpoint(engineer, road)
+		if repair_target.is_empty():
+			return {}
+		target_position = Vector2i(repair_target.get("world_position", INVALID_WORLD_POSITION))
+		project.target_point_id = StringName(repair_target.get("point_id", &""))
+	var start_position := Vector2(engineer.get("world_position", _point_position(StringName(engineer.get("current_point_id", &"")))))
+	var movement_plan := _plan_specialist_land_path(start_position, Vector2(target_position))
+	if movement_plan.is_empty():
+		return {}
+	var travel_milliseconds := int(movement_plan.get("duration_milliseconds", 0)) if start_position.distance_to(Vector2(target_position)) > 0.01 else 0
+	var previous_engineer_id := StringName(project.get("engineer_id", &""))
+	if specialists_by_id.has(previous_engineer_id):
+		var previous_engineer := Dictionary(specialists_by_id[previous_engineer_id])
+		previous_engineer.project_id = &""
+		specialists_by_id[previous_engineer_id] = previous_engineer
+	project.engineer_id = engineer_id
+	project.phase = &"TRAVELING" if travel_milliseconds > 0 else &"BUILDING"
+	project.interruption_reason = &""
+	projects_by_id[project_id] = project
+	engineer.project_id = project_id
+	engineer.target_world_position = target_position
+	engineer.move_start_position = Vector2i(start_position)
+	engineer.move_route_world_points = Array(movement_plan.get("points", [])).duplicate(true)
+	engineer.move_total_milliseconds = travel_milliseconds
+	engineer.move_elapsed_milliseconds = 0
+	engineer.move_remaining_milliseconds = travel_milliseconds
+	engineer.phase = SPECIALIST_MOVING if travel_milliseconds > 0 else (SPECIALIST_REPAIRING if StringName(project.get("project_kind", &"")) == &"REPAIR" else SPECIALIST_BUILDING)
+	if travel_milliseconds <= 0:
+		engineer.world_position = target_position
+	specialists_by_id[engineer_id] = engineer
+	return project.duplicate(true)
+
+
+func _interrupted_project_work_position(project: Dictionary) -> Vector2i:
+	if StringName(project.get("project_kind", &"")) == &"REPAIR":
+		return _point_position(StringName(project.get("target_point_id", &"")))
+	var elapsed := int(project.get("progress_milliseconds", 0))
+	var accumulated := 0
+	for segment_value in Array(project.get("segment_plans", [])):
+		var segment: Dictionary = Dictionary(segment_value)
+		var duration := maxi(int(segment.get("required_milliseconds", 0)), 1)
+		if elapsed >= accumulated + duration:
+			accumulated += duration
+			continue
+		var points: Array = Array(segment.get("route_world_points", []))
+		if points.is_empty():
+			return INVALID_WORLD_POSITION
+		if StringName(segment.get("road_kind", &"")) == ROAD_BRIDGE:
+			return Vector2i(points.front())
+		return Vector2i(_position_along_points(points, clampf(float(elapsed - accumulated) / float(duration), 0.0, 1.0)))
+	return INVALID_WORLD_POSITION
+
+
 func _reachable_repair_endpoint(engineer: Dictionary, road: Dictionary) -> Dictionary:
 	var start_position := Vector2(engineer.get("world_position", _point_position(StringName(engineer.get("current_point_id", &"")))))
 	if Vector2i(start_position) == INVALID_WORLD_POSITION:
@@ -771,6 +843,7 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 		var engineer := Dictionary(specialists_by_id.get(StringName(project.engineer_id), {}))
 		if engineer.is_empty() or not bool(engineer.get("alive", false)):
 			project.phase = &"INTERRUPTED"
+			project.interruption_reason = &"ENGINEER_LOST"
 			projects_by_id[project_id] = project
 			continue
 		var project_delta_milliseconds := int(project_arrival_work_milliseconds.get(project_id, delta_milliseconds))
@@ -1117,7 +1190,42 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	next_specialist_sequence = int(snapshot.next_specialist_sequence)
 	next_project_sequence = int(snapshot.next_project_sequence)
 	next_camp_sequence = int(snapshot.next_camp_sequence)
+	_migrate_restored_specialist_paths()
 	return true
+
+
+func _migrate_restored_specialist_paths() -> void:
+	for specialist_id_value in specialists_by_id.keys():
+		var specialist_id := StringName(specialist_id_value)
+		var specialist := Dictionary(specialists_by_id[specialist_id])
+		if StringName(specialist.get("phase", &"")) != SPECIALIST_MOVING:
+			continue
+		if Array(specialist.get("move_route_world_points", [])).size() >= 2:
+			continue
+		var start_position := Vector2(specialist.get("world_position", _point_position(StringName(specialist.get("current_point_id", &"")))))
+		var target_position := Vector2(specialist.get("target_world_position", INVALID_WORLD_POSITION))
+		var movement_plan := _plan_specialist_land_path(start_position, target_position)
+		if movement_plan.is_empty():
+			var project_id := StringName(specialist.get("project_id", &""))
+			if projects_by_id.has(project_id):
+				var project := Dictionary(projects_by_id[project_id])
+				project.phase = &"INTERRUPTED"
+				project.interruption_reason = &"SPECIALIST_PATH_BLOCKED"
+				projects_by_id[project_id] = project
+			specialist.project_id = &""
+			specialist.phase = SPECIALIST_BLOCKED
+			specialist.move_remaining_milliseconds = 0
+			specialist.move_elapsed_milliseconds = 0
+			specialist.move_total_milliseconds = 0
+			specialist.movement_block_reason = &"PATH_UNAVAILABLE"
+			specialists_by_id[specialist_id] = specialist
+			continue
+		specialist.move_start_position = Vector2i(start_position)
+		specialist.move_route_world_points = Array(movement_plan.get("points", [])).duplicate(true)
+		specialist.move_total_milliseconds = int(movement_plan.get("duration_milliseconds", 0))
+		specialist.move_elapsed_milliseconds = 0
+		specialist.move_remaining_milliseconds = int(movement_plan.get("duration_milliseconds", 0))
+		specialists_by_id[specialist_id] = specialist
 
 
 func _create_completed_camp(point_id: StringName, road_id: StringName, reserved_camp_id: StringName = &"") -> void:

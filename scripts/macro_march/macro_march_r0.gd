@@ -183,11 +183,12 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	var projects: Dictionary = field.get("projects_by_id", {})
 	var visible_patrols: Dictionary = field.get("visible_patrols_by_id", {})
 	var has_selected_damage := _selected_damaged_road_id != &"" and StringName(Dictionary(field.get("roads_by_id", {})).get(_selected_damaged_road_id, {}).get("state", &"")) == FieldTacticsState.ROAD_DAMAGED
+	var interrupted_project := _first_interrupted_project(projects)
 	_scout_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_SCOUT) < 1
 	_engineer_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_ENGINEER) < 1
 	_side_road_button.visible = not specialists.is_empty()
 	_side_road_button.disabled = not _has_idle_engineer(specialists)
-	_side_road_button.text = "安排工程师维修受损道路（3 粮）" if has_selected_damage else "工程师拖线修路"
+	_side_road_button.text = "安排工程师维修受损道路（3 粮）" if has_selected_damage else ("补派工程师接续中断工程" if not interrupted_project.is_empty() else "工程师拖线修路")
 	var source_id := _source_point_id(model, army)
 	var source := _point_from_model(model, source_id)
 	var draft_text := "未画路线"
@@ -300,10 +301,22 @@ func _has_idle_engineer(specialists: Dictionary) -> bool:
 		if (
 			StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER
 			and bool(specialist.get("alive", false))
-			and StringName(specialist.get("phase", &"")) != FieldTacticsState.SPECIALIST_BUILDING
+			and StringName(specialist.get("project_id", &"")) == &""
 		):
 			return true
 	return false
+
+
+func _first_interrupted_project(projects: Dictionary) -> Dictionary:
+	var selected_id := &""
+	for project_id_value in projects:
+		var project: Dictionary = Dictionary(projects[project_id_value])
+		if StringName(project.get("phase", &"")) != &"INTERRUPTED":
+			continue
+		var project_id := StringName(project_id_value)
+		if selected_id == &"" or String(project_id) < String(selected_id):
+			selected_id = project_id
+	return Dictionary(projects.get(selected_id, {}))
 
 
 func _on_gui_input(event: InputEvent) -> void:
@@ -567,6 +580,23 @@ func _build_side_road() -> void:
 				refresh()
 				return
 		_status_label.text = "需要一名空闲且存活的工程师前往维修。"
+		return
+	var interrupted_project := _first_interrupted_project(Dictionary(field.get("projects_by_id", {})))
+	if not interrupted_project.is_empty():
+		for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
+			var replacement_engineer: Dictionary = specialist_value
+			if (
+				StringName(replacement_engineer.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER
+				and bool(replacement_engineer.get("alive", false))
+				and StringName(replacement_engineer.get("project_id", &"")) == &""
+			):
+				var resume_result := _dispatch_adapter.resume_interrupted_field_project(
+					StringName(replacement_engineer.get("specialist_id", &"")), StringName(interrupted_project.get("project_id", &""))
+				)
+				_status_label.text = "工程师已出发接续中断工程。" if bool(resume_result.get("success", false)) else str(resume_result.get("error", "工程无法接续"))
+				refresh()
+				return
+		_status_label.text = "需要一名空闲且存活的工程师接续中断工程。"
 		return
 	for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
 		var specialist: Dictionary = specialist_value

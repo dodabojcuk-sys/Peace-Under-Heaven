@@ -27,10 +27,15 @@ turn-preserving polyline. An expert crossing a bent bridge stores those bridge
 turns and does not travel directly between bridgeheads. Repair endpoint choice
 uses that same specialist path and its geometric distance, permitting a
 roadless-land approach while continuing to reject incomplete or damaged bridge
-crossings. Focused Godot 4.5.1 results: Field 47 assertions, Macro March 27,
-three isolated field persistence chains PASS, and R1 war 16 assertions. This
-does not prove normal system-input play, interrupted-project reassignment,
-safe-camp transfer, patrol guard/ambush casualties, or either full R2 route.
+crossings. An interrupted project retains its ID, opened work, and camp
+reservation while a new engineer resumes it through the Controller's normal
+checkpoint/rollback path. Older moving-specialist saves which lack a route now
+replan from their saved position or enter an explicit blocked state, rather
+than silently using a direct line across water. Focused Godot 4.5.1 results:
+Field 49 assertions, Macro March 27, three isolated field persistence chains
+PASS, and R1 war 16 assertions. This does not prove normal system-input play,
+combined interruption recovery, safe-camp transfer, patrol guard/ambush
+casualties, or either full R2 route.
 
 ### On-site construction checkpoint
 

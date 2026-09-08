@@ -17,11 +17,16 @@ not an endpoint-to-endpoint shortcut. Repair endpoint choice now uses that
 same specialist land/bridge path and actual geometric distance, rather than
 requiring an unrelated army-road route or comparing the clamped minimum travel
 time. A completed bridge can be used by an expert; an incomplete or damaged
-bridge remains unavailable. The focused Field suite passes 47 assertions,
+bridge remains unavailable. The focused Field suite passes 49 assertions,
 the Macro March suite 27, the isolated three-process persistence suite, and
-the R1 war suite 16. These are automated engineering checks only: formal
-normal-input media, interruption/reassignment, safe-camp transfer, patrol
-guard/ambush casualties, and both complete R2 player routes remain open.
+the R1 war suite 16. An interrupted project now retains its identity and
+completed work for a replacement engineer, and the formal map action routes
+that resume request through the Controller checkpoint/rollback path. Old
+in-flight specialist saves missing a path are replanned from their saved
+position or become explicitly blocked rather than crossing water in a line.
+These are automated engineering checks only: normal-input media, combined
+interruption recovery, safe-camp transfer, patrol guard/ambush casualties, and
+both complete R2 player routes remain open.
 
 ### R2 on-site construction checkpoint
 
