@@ -31,6 +31,14 @@ without allocating a project. This prevents the bridge-repair path from
 visually or authoritatively crossing an unfinished span, but it is not yet the
 separate army safe-camp transfer required after a blocked march.
 
+Specialist travel now persists its actual land path and interpolates position
+along that path. A small visibility graph routes around greybox water while
+still allowing experts to cross roadless land; soldiers retain the separate
+road-only order model. Generated `junction.*` connection points resolve from
+their adjoining road endpoints, while unknown point IDs use an explicit
+invalid coordinate and are rejected at command entry. Field smoke passes 44
+assertions; interruption/reassignment and safe-camp transfer remain open.
+
 ### R2 input-safety follow-up
 
 The return action now belongs to the same six-slot command stack as the other

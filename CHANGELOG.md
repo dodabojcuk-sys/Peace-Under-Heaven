@@ -33,6 +33,10 @@
 - Repair confirmation now chooses an actually reachable road endpoint through
   the open graph and refuses to create a project when neither endpoint can be
   reached, instead of targeting the far end of a damaged bridge by default.
+- Unified specialist movement around persisted land-path points, duration and
+  position interpolation. Generated construction junctions now resolve their
+  physical coordinates; invalid point IDs are rejected rather than becoming
+  world-origin movement targets. Field R2 smoke passes 44 assertions.
 
 ### FIELD_TACTICS_R2 map and command UI checkpoint
 

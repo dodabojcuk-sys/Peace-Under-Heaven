@@ -23,6 +23,7 @@ const FOG_UNOBSERVED := &"UNOBSERVED"
 const FOG_OBSERVED := &"OBSERVED"
 const FOG_VISIBLE := &"VISIBLE"
 const PATH_PREFIX := "path."
+const INVALID_WORLD_POSITION := Vector2i(-999999, -999999)
 
 var roads_by_id: Dictionary = {}
 var camps_by_id: Dictionary = {}
@@ -95,6 +96,7 @@ func dispatch_specialist(role: StringName, source_point_id: StringName) -> Dicti
 		"move_total_milliseconds": 0,
 		"move_elapsed_milliseconds": 0,
 		"move_start_position": _point_position(source_point_id),
+		"move_route_world_points": [_point_position(source_point_id)],
 		"world_position": _point_position(source_point_id),
 		"target_world_position": _point_position(source_point_id),
 		"visibility_range": 2 if role == SPECIALIST_SCOUT else 1,
@@ -117,10 +119,16 @@ func order_specialist_move(specialist_id: StringName, target_point_id: StringNam
 	specialist.target_point_id = target_point_id
 	var start_position := Vector2(specialist.get("world_position", _point_position(StringName(specialist.get("current_point_id", &"")))))
 	var target_position := _point_position(target_point_id)
-	var duration := maxi(1800, ceili(start_position.distance_to(target_position) * 2.5))
+	if target_position == INVALID_WORLD_POSITION:
+		return {}
+	var movement_plan := _plan_specialist_land_path(start_position, target_position)
+	if movement_plan.is_empty():
+		return {}
+	var duration := maxi(1800, int(movement_plan.get("duration_milliseconds", 0)))
 	specialist.move_start_position = Vector2i(start_position)
 	specialist.world_position = Vector2i(start_position)
 	specialist.target_world_position = target_position
+	specialist.move_route_world_points = Array(movement_plan.get("points", [])).duplicate(true)
 	specialist.move_total_milliseconds = duration
 	specialist.move_elapsed_milliseconds = 0
 	specialist.move_remaining_milliseconds = duration
@@ -176,7 +184,12 @@ func begin_road_project(
 		required_milliseconds += int(Dictionary(segment_value).get("required_milliseconds", 0))
 	var start_position := Vector2(engineer.get("world_position", _point_position(StringName(engineer.get("current_point_id", &"")))))
 	var construction_start_position := _point_position(source_point_id)
-	var travel_milliseconds := maxi(0, ceili(start_position.distance_to(construction_start_position) * 2.5))
+	if construction_start_position == INVALID_WORLD_POSITION:
+		return {}
+	var movement_plan := _plan_specialist_land_path(start_position, construction_start_position)
+	if movement_plan.is_empty():
+		return {}
+	var travel_milliseconds := int(movement_plan.get("duration_milliseconds", 0)) if start_position.distance_to(construction_start_position) > 0.01 else 0
 	var project := {
 		"project_id": project_id,
 		"project_kind": &"CONSTRUCTION",
@@ -201,6 +214,7 @@ func begin_road_project(
 		engineer.target_point_id = source_point_id
 		engineer.move_start_position = Vector2i(start_position)
 		engineer.target_world_position = construction_start_position
+		engineer.move_route_world_points = Array(movement_plan.get("points", [])).duplicate(true)
 		engineer.world_position = Vector2i(start_position)
 		engineer.move_total_milliseconds = travel_milliseconds
 		engineer.move_elapsed_milliseconds = 0
@@ -327,8 +341,13 @@ func begin_road_repair(engineer_id: StringName, road_id: StringName) -> Dictiona
 	next_project_sequence += 1
 	var target_point_id := StringName(repair_target.get("point_id", &""))
 	var target_position := Vector2(repair_target.get("world_position", Vector2.ZERO))
+	if Vector2i(target_position) == INVALID_WORLD_POSITION:
+		return {}
 	var start_position := Vector2(engineer.get("world_position", _point_position(StringName(engineer.get("current_point_id", &"")))))
-	var travel_milliseconds := maxi(0, ceili(start_position.distance_to(target_position) * 2.5))
+	var movement_plan := _plan_specialist_land_path(start_position, target_position)
+	if movement_plan.is_empty():
+		return {}
+	var travel_milliseconds := int(movement_plan.get("duration_milliseconds", 0)) if start_position.distance_to(target_position) > 0.01 else 0
 	var project := {
 		"project_id": project_id,
 		"project_kind": &"REPAIR",
@@ -351,6 +370,7 @@ func begin_road_repair(engineer_id: StringName, road_id: StringName) -> Dictiona
 		engineer.target_point_id = target_point_id
 		engineer.move_start_position = Vector2i(start_position)
 		engineer.target_world_position = Vector2i(target_position)
+		engineer.move_route_world_points = Array(movement_plan.get("points", [])).duplicate(true)
 		engineer.world_position = Vector2i(start_position)
 		engineer.move_total_milliseconds = travel_milliseconds
 		engineer.move_elapsed_milliseconds = 0
@@ -708,7 +728,10 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 		moving.move_elapsed_milliseconds = mini(int(moving.get("move_elapsed_milliseconds", 0)) + delta_milliseconds, int(moving.get("move_total_milliseconds", 0)))
 		moving.move_remaining_milliseconds = maxi(int(moving.get("move_total_milliseconds", 0)) - int(moving.get("move_elapsed_milliseconds", 0)), 0)
 		var move_progress := float(moving.get("move_elapsed_milliseconds", 0)) / maxf(float(moving.get("move_total_milliseconds", 1)), 1.0)
-		moving.world_position = Vector2i(Vector2(moving.get("move_start_position", Vector2i.ZERO)).lerp(Vector2(moving.get("target_world_position", Vector2i.ZERO)), move_progress))
+		moving.world_position = Vector2i(_position_along_points(
+			Array(moving.get("move_route_world_points", [moving.get("move_start_position", Vector2i.ZERO), moving.get("target_world_position", Vector2i.ZERO)])),
+			move_progress
+		))
 		if int(moving.move_remaining_milliseconds) == 0:
 			moving.current_point_id = StringName(moving.target_point_id)
 			moving.world_position = Vector2i(moving.get("target_world_position", Vector2i.ZERO))
@@ -920,6 +943,60 @@ func _position_along_points(points: Array, progress: float) -> Vector2:
 	return Vector2(points.back())
 
 
+func _plan_specialist_land_path(start_position: Vector2, target_position: Vector2) -> Dictionary:
+	if _point_is_in_water(Vector2i(start_position)) or _point_is_in_water(Vector2i(target_position)):
+		return {}
+	var nodes: Array[Vector2] = [start_position, target_position]
+	# A visibility graph over water bounds is sufficient for the small greybox
+	# theatre: specialists may cross open land, but never cut across a water
+	# region. Roads remain optional shortcuts rather than a movement requirement.
+	for water in water_regions:
+		var margin := 2.0
+		for corner in [
+			Vector2(water.position.x - margin, water.position.y - margin),
+			Vector2(water.end.x + margin, water.position.y - margin),
+			Vector2(water.position.x - margin, water.end.y + margin),
+			Vector2(water.end.x + margin, water.end.y + margin),
+		]:
+			nodes.append(corner)
+	var costs: Array[float] = []
+	var previous: Array[int] = []
+	var visited: Array[bool] = []
+	for index in nodes.size():
+		costs.append(0.0 if index == 0 else INF)
+		previous.append(-1)
+		visited.append(false)
+	for _step in nodes.size():
+		var current := -1
+		for index in nodes.size():
+			if not visited[index] and (current < 0 or costs[index] < costs[current]):
+				current = index
+		if current < 0 or is_inf(costs[current]):
+			break
+		if current == 1:
+			break
+		visited[current] = true
+		for next_index in nodes.size():
+			if next_index == current or _route_crosses_water([nodes[current], nodes[next_index]]):
+				continue
+			var candidate := costs[current] + nodes[current].distance_to(nodes[next_index])
+			if candidate < costs[next_index]:
+				costs[next_index] = candidate
+				previous[next_index] = current
+	if is_inf(costs[1]):
+		return {}
+	var reverse_points: Array = []
+	var cursor := 1
+	while cursor >= 0:
+		reverse_points.append(Vector2i(nodes[cursor]))
+		cursor = previous[cursor]
+	reverse_points.reverse()
+	return {
+		"points": reverse_points,
+		"duration_milliseconds": maxi(1800, ceili(costs[1] * 2.5)),
+	}
+
+
 func observe_subject(subject_id: StringName) -> Dictionary:
 	return Dictionary(intel_by_subject_id.get(subject_id, {
 		"subject_id": subject_id,
@@ -1011,7 +1088,16 @@ func _point_position(point_id: StringName) -> Vector2i:
 		var camp: Dictionary = camp_value
 		if StringName(camp.get("point_id", &"")) == point_id:
 			return Vector2i(camp.get("world_position", _road_endpoint_position(StringName(camp.get("road_id", &"")))))
-	return Vector2i.ZERO
+	for road_value in roads_by_id.values():
+		var road: Dictionary = road_value
+		var points: Array = Array(road.get("route_world_points", []))
+		if points.is_empty():
+			continue
+		if StringName(road.get("source_point_id", &"")) == point_id:
+			return Vector2i(points.front())
+		if StringName(road.get("target_point_id", &"")) == point_id:
+			return Vector2i(points.back())
+	return INVALID_WORLD_POSITION
 
 
 func _refresh_intel() -> void:

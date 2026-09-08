@@ -89,6 +89,11 @@ func _run_field_tactics_contract() -> void:
 			and bridge_state.is_route_open(StringName(Dictionary(bridge_segments[2]).get("road_id", &""))),
 		"连续施工按道路、桥梁、道路顺序开放，未完成后段不会提前通军"
 	)
+	var first_bridge_plan: Dictionary = Dictionary(bridge_segments[0])
+	_check(
+		bridge_state._point_position(StringName(first_bridge_plan.get("target_point_id", &""))) == Vector2i(Array(first_bridge_plan.get("route_world_points", [])).back()),
+		"自动生成的桥头连接点解析为实际路段端点，而非世界原点"
+	)
 	_check(
 		Array(bridge_first_advance.get("opened_road_ids", [])).size() == 1
 			and StringName(Array(bridge_first_advance.get("opened_road_ids", []))[0]) == StringName(Dictionary(bridge_segments[0]).get("road_id", &"")),
@@ -114,6 +119,23 @@ func _run_field_tactics_contract() -> void:
 			and Vector2i(arrived_for_work.get("world_position", Vector2i.ZERO)) == Vector2i(790, 170)
 			and Vector2i(working_engineer.get("world_position", Vector2i.ZERO)) != Vector2i(790, 170),
 		"工程师先到达施工起点，再沿当前陆地作业段推进实际位置"
+	)
+	var land_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	land_state.initialize_from_theater(
+		{&"land.start": {"world_position": Vector2i(80, 300)}, &"land.target": {"world_position": Vector2i(720, 300)}},
+		{}, [Rect2i(300, 180, 190, 240)]
+	)
+	var land_engineer := land_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"land.start")
+	var land_move := land_state.order_specialist_move(StringName(land_engineer.specialist_id), &"land.target")
+	var land_route := Array(land_move.get("move_route_world_points", []))
+	land_state.advance_world(int(land_move.get("move_total_milliseconds", 0)) / 2)
+	var land_midpoint := Vector2i(Dictionary(land_state.specialists_by_id[StringName(land_engineer.specialist_id)]).get("world_position", Vector2i.ZERO))
+	var land_route_clear := land_route.size() > 2
+	for point_index in range(1, land_route.size()):
+		land_route_clear = land_route_clear and not land_state._route_crosses_water([land_route[point_index - 1], land_route[point_index]])
+	_check(
+		land_route_clear and not land_state._point_is_in_water(land_midpoint),
+		"专家移动保存并执行绕水陆地路径，位置不会沿直线穿过水域"
 	)
 	_check(state.is_route_open(&"road.blackstone.northwatch.ridge"), "主路进入运行时路网且默认可通行")
 	var multi_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison")

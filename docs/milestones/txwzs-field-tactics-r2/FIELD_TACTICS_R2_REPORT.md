@@ -46,6 +46,14 @@ when neither endpoint is reachable, no repair project or identifier is
 created. This is bridge-work reachability, not the still-open army transfer to
 a reachable friendly camp after a blocked order.
 
+Specialist movement now stores a land-route polyline and uses it for duration,
+world interpolation and recovery. The greybox visibility graph detours around
+water but permits experts to cross ordinary roadless land, retaining the
+separate road-only restriction for armies. Generated construction junctions
+resolve from the adjoining physical road endpoint; unknown positions are
+explicitly rejected instead of silently becoming `(0, 0)`. Field smoke adds
+water-detour and junction-coordinate assertions and passes 44 assertions.
+
 ### Map camera and command UI follow-up
 
 The return action and engineer action now occupy separate managed slots even
