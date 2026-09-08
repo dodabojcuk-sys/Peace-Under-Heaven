@@ -1086,7 +1086,9 @@ func _side_panel_rect() -> Rect2:
 func _minimap_rect() -> Rect2:
 	var map_rect := _map_rect()
 	var minimap_size := Vector2(minf(156.0, map_rect.size.x * 0.25), minf(104.0, map_rect.size.y * 0.22))
-	return Rect2(map_rect.end - minimap_size - Vector2(14, 14), minimap_size)
+	# Keep the overview away from Silverford and its approach at the lower-right
+	# edge of the default camera. This upper corner has no command destination.
+	return Rect2(Vector2(map_rect.end.x - minimap_size.x - 14.0, map_rect.position.y + 14.0), minimap_size)
 
 
 func _visible_world_rect() -> Rect2:
