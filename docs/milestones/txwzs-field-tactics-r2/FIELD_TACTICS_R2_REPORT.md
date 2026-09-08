@@ -11,6 +11,26 @@ transaction and persistence-checkpoint caller.
 
 ## Delivered engineering evidence
 
+### On-site construction checkpoint
+
+Road construction now reuses the persistent engineer specialist as its only
+on-map worker. A confirmed project starts with that engineer travelling from
+its current world coordinate to the chosen construction start; the existing
+world clock then advances the same specialist across land work. For an
+unfinished bridge the worker remains at the reachable bank rather than
+crossing water in presentation or authority state. On completion, the worker
+uses the physical final road endpoint until the new camp is created, avoiding
+a transient floating-point coordinate that V5 correctly rejects.
+
+The focused R2 suite adds an arrival-to-work position assertion and passes 42
+assertions. The cross-process runner now isolates construction, repair and
+multi-road march chains, and each chain passes through three independent
+Godot processes. The repair chain deliberately returns the engineer over the
+actual specialist movement entry before persisting travel and arrival work.
+This proves engineering state continuity, not interruption/reassignment,
+nearest reachable stationing, patrol guard/ambush combat, a full play route,
+or normal system-input media.
+
 ### Map camera and command UI follow-up
 
 The return action and engineer action now occupy separate managed slots even

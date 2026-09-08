@@ -59,11 +59,19 @@ func _run() -> void:
 			city.advance_war_loop_time(int(Dictionary(project.get("project", {})).get("required_milliseconds", 0)))
 			var road_id := StringName(Dictionary(project.get("project", {})).get("road_id", &""))
 			var state: FieldTacticsState = city._war_loop_state.field_tactics
+			# Construction leaves its engineer at the far endpoint.  Return through
+			# the actual specialist movement entry before creating the repair so this
+			# chain exercises a genuine persisted repair-arrival phase.
+			var return_move := state.order_specialist_move(
+				StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")),
+				&"blackstone_city"
+			)
+			city.advance_war_loop_time(int(return_move.get("move_remaining_milliseconds", 0)))
 			state.damage_road(road_id, 999)
 			var repair: Dictionary = city.begin_field_road_repair(StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")), road_id)
 			var moving := Dictionary(state.specialists_by_id[StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &""))])
 			city.advance_war_loop_time(maxi(1, int(moving.get("move_remaining_milliseconds", 0)) / 2))
-			passed = bool(repair.get("success", false)) and not state.is_route_open(road_id) and scene.flush_runtime_persistence(&"field_worker_d")
+			passed = bool(repair.get("success", false)) and not return_move.is_empty() and int(moving.get("move_remaining_milliseconds", 0)) > 0 and not state.is_route_open(road_id) and scene.flush_runtime_persistence(&"field_worker_d")
 		"E":
 			var state: FieldTacticsState = city._war_loop_state.field_tactics
 			var repair_project: Dictionary = _first_repair_project(state)

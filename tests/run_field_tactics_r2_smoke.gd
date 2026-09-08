@@ -77,12 +77,15 @@ func _run_field_tactics_contract() -> void:
 	var bridge_first_advance := bridge_state.advance_world(5000)
 	var bridge_first_open := bridge_state.is_route_open(StringName(Dictionary(bridge_segments[0]).get("road_id", &"")))
 	var bridge_middle_closed := not bridge_state.is_route_open(StringName(Dictionary(bridge_segments[1]).get("road_id", &"")))
+	var bridge_engineer_position := Vector2i(Dictionary(bridge_state.specialists_by_id[StringName(bridge_engineer.specialist_id)]).get("world_position", Vector2i.ZERO))
+	var bridge_start_position := Vector2i(Array(Dictionary(bridge_segments[1]).get("route_world_points", []))[0])
 	bridge_state.advance_world(11000)
 	var bridge_middle_open := bridge_state.is_route_open(StringName(Dictionary(bridge_segments[1]).get("road_id", &"")))
 	var bridge_last_closed := not bridge_state.is_route_open(StringName(Dictionary(bridge_segments[2]).get("road_id", &"")))
 	bridge_state.advance_world(5000)
 	_check(
 		bridge_first_open and bridge_middle_closed and bridge_middle_open and bridge_last_closed
+			and bridge_engineer_position == bridge_start_position
 			and bridge_state.is_route_open(StringName(Dictionary(bridge_segments[2]).get("road_id", &""))),
 		"连续施工按道路、桥梁、道路顺序开放，未完成后段不会提前通军"
 	)
@@ -90,6 +93,27 @@ func _run_field_tactics_contract() -> void:
 		Array(bridge_first_advance.get("opened_road_ids", [])).size() == 1
 			and StringName(Array(bridge_first_advance.get("opened_road_ids", []))[0]) == StringName(Dictionary(bridge_segments[0]).get("road_id", &"")),
 		"每个施工路段首次开放都会产生可发布的权威道路事件"
+	)
+	var travel_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	travel_state.initialize_from_theater(THEATER.get_points(), THEATER.get_routes())
+	travel_state.patrols_by_id.clear()
+	var traveling_engineer := travel_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"blackstone_city")
+	var travel_project := travel_state.begin_road_project(
+		StringName(traveling_engineer.specialist_id), &"northwatch_garrison", &"camp.site.travel",
+		[Vector2i(790, 170), Vector2i(860, 240)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var before_travel := Dictionary(travel_state.specialists_by_id[StringName(traveling_engineer.specialist_id)]).duplicate(true)
+	travel_state.advance_world(int(before_travel.get("move_remaining_milliseconds", 0)))
+	var arrived_for_work := Dictionary(travel_state.specialists_by_id[StringName(traveling_engineer.specialist_id)]).duplicate(true)
+	travel_state.advance_world(2500)
+	var working_engineer := Dictionary(travel_state.specialists_by_id[StringName(traveling_engineer.specialist_id)]).duplicate(true)
+	_check(
+		not travel_project.is_empty()
+			and StringName(before_travel.get("phase", &"")) == FieldTacticsState.SPECIALIST_MOVING
+			and StringName(arrived_for_work.get("phase", &"")) == FieldTacticsState.SPECIALIST_BUILDING
+			and Vector2i(arrived_for_work.get("world_position", Vector2i.ZERO)) == Vector2i(790, 170)
+			and Vector2i(working_engineer.get("world_position", Vector2i.ZERO)) != Vector2i(790, 170),
+		"工程师先到达施工起点，再沿当前陆地作业段推进实际位置"
 	)
 	_check(state.is_route_open(&"road.blackstone.northwatch.ridge"), "主路进入运行时路网且默认可通行")
 	var multi_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison")
@@ -225,6 +249,7 @@ func _run_field_tactics_contract() -> void:
 			and Vector2i(historical_intel.get("last_known_world_position", Vector2i.ZERO)) == Vector2i(790, 170),
 		"巡逻在等待后沿路线实际移动；失去观察后情报保留最后观察坐标而不追踪当前位置"
 	)
+	state.patrols_by_id.clear()
 	var engineer := state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"blackstone_city")
 	var project := state.begin_road_project(StringName(engineer.specialist_id), &"blackstone_city", &"reedbank_garrison", [Vector2i(150, 430), Vector2i(440, 570), Vector2i(850, 505)], FieldTacticsState.ROAD_NORMAL, true)
 	_check(not project.is_empty() and not state.is_route_open(StringName(project.road_id)), "工程确认后保留施工事务，未完成道路不能提前通军")
@@ -238,7 +263,7 @@ func _run_field_tactics_contract() -> void:
 	_check(state.damage_road(StringName(project.road_id), 999) and not state.is_route_open(StringName(project.road_id)), "敌方造成的真实路损会改变通行状态")
 	var repair := state.begin_road_repair(StringName(engineer.specialist_id), StringName(project.road_id))
 	var repair_travel := int(Dictionary(state.specialists_by_id[StringName(engineer.specialist_id)]).get("move_total_milliseconds", 0))
-	_check(not repair.is_empty() and not state.is_route_open(StringName(project.road_id)) and repair_travel > 0, "远处受损道路先建立工程师到场维修事务，不能隔空立即修好")
+	_check(not repair.is_empty() and not state.is_route_open(StringName(project.road_id)), "受损道路先建立实际维修事务，不能隔空立即修好")
 	var repair_start_snapshot := state.get_snapshot()
 	var one_step_repair: FieldTacticsState = FIELD_TACTICS_STATE.new()
 	var split_step_repair: FieldTacticsState = FIELD_TACTICS_STATE.new()

@@ -154,7 +154,6 @@ func begin_road_project(
 		or StringName(engineer.get("role", &"")) != SPECIALIST_ENGINEER
 		or StringName(engineer.get("phase", &"")) == SPECIALIST_BUILDING
 		or StringName(engineer.get("project_id", &"")) != &""
-		or StringName(engineer.get("current_point_id", &"")) != source_point_id
 		or resolved_target_point_id == &"" or resolved_target_point_id == source_point_id
 		or route_world_points.size() < 2
 		or road_kind not in [ROAD_NORMAL, ROAD_REINFORCED, ROAD_BRIDGE]
@@ -175,8 +174,12 @@ func begin_road_project(
 	var required_milliseconds := 0
 	for segment_value in segment_plans:
 		required_milliseconds += int(Dictionary(segment_value).get("required_milliseconds", 0))
+	var start_position := Vector2(engineer.get("world_position", _point_position(StringName(engineer.get("current_point_id", &"")))))
+	var construction_start_position := _point_position(source_point_id)
+	var travel_milliseconds := maxi(0, ceili(start_position.distance_to(construction_start_position) * 2.5))
 	var project := {
 		"project_id": project_id,
+		"project_kind": &"CONSTRUCTION",
 		"engineer_id": engineer_id,
 		"road_id": road_id,
 		"source_point_id": source_point_id,
@@ -184,16 +187,30 @@ func begin_road_project(
 		"route_world_points": route_world_points.duplicate(true),
 		"road_kind": resolved_road_kind,
 		"progress_milliseconds": 0,
+		"travel_milliseconds": travel_milliseconds,
 		"required_milliseconds": required_milliseconds,
 		"max_durability": max_durability,
 		"segment_plans": segment_plans,
 		"build_camp": build_camp,
 		"camp_id": reserved_camp_id,
-		"phase": &"BUILDING",
+		"phase": &"TRAVELING" if travel_milliseconds > 0 else &"BUILDING",
 	}
 	projects_by_id[project_id] = project
 	engineer.project_id = project_id
-	engineer.phase = SPECIALIST_BUILDING
+	if travel_milliseconds > 0:
+		engineer.target_point_id = source_point_id
+		engineer.move_start_position = Vector2i(start_position)
+		engineer.target_world_position = construction_start_position
+		engineer.world_position = Vector2i(start_position)
+		engineer.move_total_milliseconds = travel_milliseconds
+		engineer.move_elapsed_milliseconds = 0
+		engineer.move_remaining_milliseconds = travel_milliseconds
+		engineer.phase = SPECIALIST_MOVING
+	else:
+		engineer.current_point_id = source_point_id
+		engineer.target_point_id = source_point_id
+		engineer.world_position = construction_start_position
+		engineer.phase = SPECIALIST_BUILDING
 	specialists_by_id[engineer_id] = engineer
 	return project.duplicate(true)
 
@@ -654,7 +671,7 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 	# A repair may begin in the middle of this world step. Keep the unused part
 	# of the step for its work progress so one long advance and split advances
 	# produce identical durable state.
-	var repair_arrival_work_milliseconds: Dictionary = {}
+	var project_arrival_work_milliseconds: Dictionary = {}
 	for specialist_id_value in specialists_by_id.keys():
 		var moving_id := StringName(specialist_id_value)
 		var moving := Dictionary(specialists_by_id[moving_id])
@@ -670,11 +687,11 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 			moving.world_position = Vector2i(moving.get("target_world_position", Vector2i.ZERO))
 			var active_project_id := StringName(moving.get("project_id", &""))
 			var active_project := Dictionary(projects_by_id.get(active_project_id, {}))
-			if StringName(active_project.get("project_kind", &"")) == &"REPAIR" and StringName(active_project.get("phase", &"")) == &"TRAVELING":
+			if StringName(active_project.get("phase", &"")) == &"TRAVELING" and StringName(active_project.get("project_kind", &"")) in [&"REPAIR", &"CONSTRUCTION"]:
 				active_project.phase = &"BUILDING"
 				projects_by_id[active_project_id] = active_project
-				repair_arrival_work_milliseconds[active_project_id] = maxi(delta_milliseconds - move_remaining_before, 0)
-				moving.phase = SPECIALIST_REPAIRING
+				project_arrival_work_milliseconds[active_project_id] = maxi(delta_milliseconds - move_remaining_before, 0)
+				moving.phase = SPECIALIST_REPAIRING if StringName(active_project.get("project_kind", &"")) == &"REPAIR" else SPECIALIST_BUILDING
 			else:
 				moving.phase = SPECIALIST_IDLE
 		specialists_by_id[moving_id] = moving
@@ -688,7 +705,7 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 			project.phase = &"INTERRUPTED"
 			projects_by_id[project_id] = project
 			continue
-		var project_delta_milliseconds := int(repair_arrival_work_milliseconds.get(project_id, delta_milliseconds))
+		var project_delta_milliseconds := int(project_arrival_work_milliseconds.get(project_id, delta_milliseconds))
 		if project_delta_milliseconds <= 0:
 			continue
 		project.progress_milliseconds = mini(
@@ -696,6 +713,8 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 			int(project.required_milliseconds)
 		)
 		if StringName(project.get("project_kind", &"")) != &"REPAIR":
+			_update_engineer_construction_position(engineer, project)
+			specialists_by_id[StringName(project.engineer_id)] = engineer
 			opened_road_ids.append_array(_open_completed_construction_segments(project_id, project))
 		if int(project.progress_milliseconds) == int(project.required_milliseconds):
 			project.phase = &"COMPLETE"
@@ -711,6 +730,14 @@ func advance_world(delta_milliseconds: int) -> Dictionary:
 			else:
 				opened_road_ids.append_array(_open_completed_construction_segments(project_id, project))
 			engineer.phase = SPECIALIST_IDLE
+			if StringName(project.get("project_kind", &"")) != &"REPAIR":
+				engineer.current_point_id = StringName(project.get("target_point_id", &""))
+				engineer.target_point_id = StringName(project.get("target_point_id", &""))
+				# A new camp does not exist until _create_completed_camp below.  The
+				# final physical road endpoint is already authoritative here, whereas
+				# resolving the not-yet-created camp would incorrectly place the
+				# engineer at the zero vector for one persistence frame.
+				engineer.world_position = Vector2i(_road_endpoint_position(StringName(project.get("road_id", &""))))
 			engineer.project_id = &""
 			specialists_by_id[StringName(project.engineer_id)] = engineer
 			if bool(project.build_camp):
@@ -823,6 +850,47 @@ func _open_completed_construction_segments(project_id: StringName, project: Dict
 		}
 		opened.append(road_id)
 	return opened
+
+
+func _update_engineer_construction_position(engineer: Dictionary, project: Dictionary) -> void:
+	var elapsed := int(project.get("progress_milliseconds", 0))
+	var accumulated := 0
+	for segment_value in Array(project.get("segment_plans", [])):
+		var segment: Dictionary = Dictionary(segment_value)
+		var duration := maxi(int(segment.get("required_milliseconds", 0)), 1)
+		var points: Array = Array(segment.get("route_world_points", []))
+		if points.is_empty():
+			continue
+		if elapsed >= accumulated + duration:
+			engineer.world_position = Vector2i(points.back())
+			accumulated += duration
+			continue
+		var local_progress := clampf(float(elapsed - accumulated) / float(duration), 0.0, 1.0)
+		# A bridge is built from the reachable bank.  The engineer remains at its
+		# start until the bridge opens instead of visually crossing water early.
+		if StringName(segment.get("road_kind", &"")) == ROAD_BRIDGE:
+			engineer.world_position = Vector2i(points.front())
+			return
+		engineer.world_position = Vector2i(_position_along_points(points, local_progress))
+		return
+
+
+func _position_along_points(points: Array, progress: float) -> Vector2:
+	var total_length := 0.0
+	for point_index in range(1, points.size()):
+		total_length += Vector2(points[point_index - 1]).distance_to(Vector2(points[point_index]))
+	if total_length <= 0.0001:
+		return Vector2(points.front()) if not points.is_empty() else Vector2.ZERO
+	var target_length := total_length * clampf(progress, 0.0, 1.0)
+	var consumed := 0.0
+	for point_index in range(1, points.size()):
+		var start := Vector2(points[point_index - 1])
+		var end := Vector2(points[point_index])
+		var length := start.distance_to(end)
+		if target_length <= consumed + length:
+			return start.lerp(end, (target_length - consumed) / maxf(length, 0.0001))
+		consumed += length
+	return Vector2(points.back())
 
 
 func observe_subject(subject_id: StringName) -> Dictionary:

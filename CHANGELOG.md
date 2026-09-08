@@ -14,6 +14,20 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 on-site construction checkpoint
+
+- Made the existing engineer specialist travel to a construction start before
+  work begins, persist its real work position over land segments, and remain
+  on the reachable bank while a bridge is unfinished.
+- Kept newly completed camp construction at the actual road endpoint until
+  the runtime camp exists, preventing a transient non-persistent coordinate.
+- Separated construction, repair, and macro-march disk suites into isolated
+  save roots; the repair chain now explicitly persists a real return journey
+  and repair-arrival remainder.
+- Focused Field R2 smoke passes 42 assertions and all three cross-process
+  field chains pass. This is not a complete R2 tactical loop or normal-input
+  player evidence.
+
 ### FIELD_TACTICS_R2 map and command UI checkpoint
 
 - Put the return action in the same fixed command stack as the engineer action

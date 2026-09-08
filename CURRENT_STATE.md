@@ -2,6 +2,20 @@
 
 ## FIELD_TACTICS_R2 map and command UI checkpoint (2026-09-08)
 
+### R2 on-site construction checkpoint
+
+An engineer now uses the existing persistent specialist record to travel from
+its actual world position to the confirmed construction start, then advances
+along completed land work. During a bridge segment the engineer stays on the
+reachable bank until that bridge opens; a newly created camp no longer creates
+a one-frame zero-coordinate persistence value at completion. Construction,
+repair, and macro-march cold-recovery suites now use isolated save roots so
+one scenario cannot alter another route's path choice. Field smoke passes 42
+assertions and the three separate cross-process chains pass. This is an
+engineering checkpoint only: interruption/reassignment, reachable broken-
+bridge stationing, patrol guard/ambush casualties, full routes and normal-
+input media remain open.
+
 ### R2 input-safety follow-up
 
 The return action now belongs to the same six-slot command stack as the other
