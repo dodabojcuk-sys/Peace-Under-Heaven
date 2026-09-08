@@ -5,8 +5,8 @@
 V4 派遣主链路冻结，以及 V5-G0 至 V5-G2 的单兵种、驻军、训练、军队、
 战果写回和持久化运行时验收。
 
-当前不是可发布版本。V5 仍为 `IN_PROGRESS`，G3–G6、P6、P7 和 V6 均未
-启动。
+当前不是可发布版本。R2 已形成可自动复核的外城战术闭环候选，但真实玩家
+验收、最终数值与完整美术仍未关闭；V5 的其他后续阶段也不因本候选自动推进。
 
 ## 当前权威入口
 
@@ -41,7 +41,7 @@ V4 派遣主链路冻结，以及 V5-G0 至 V5-G2 的单兵种、驻军、训练
 直接 headless 运行：
 
 ```sh
-GODOT=/Applications/Godot.app/Contents/MacOS/Godot
+GODOT=/Users/m4-zhi/Documents/codex-tools/godot/4.5.1-stable-standard/Godot.app/Contents/MacOS/Godot
 "$GODOT" --headless --path . --scene res://scenes/blank_map.tscn --quit-after 5
 "$GODOT" --headless --path . --scene res://scenes/blackstone_expedition_mvp.tscn --quit-after 5
 "$GODOT" --headless --path . --scene res://scenes/c0_battle_graybox.tscn --quit-after 5
@@ -61,7 +61,7 @@ REVIEW_SAVE="/tmp/txwzs-war-loop-review"
 单个 runner：
 
 ```sh
-GODOT=/Applications/Godot.app/Contents/MacOS/Godot
+GODOT=/Users/m4-zhi/Documents/codex-tools/godot/4.5.1-stable-standard/Godot.app/Contents/MacOS/Godot
 "$GODOT" --headless --path . --script res://tests/run_v5_vertical_loop_smoke.gd
 ```
 
@@ -96,6 +96,7 @@ tests/run_war_loop_formal_scene_smoke.gd
 tests/run_war_loop_arrival_persistence_smoke.gd
 tests/run_field_tactics_r2_smoke.gd
 tests/run_field_tactics_r2_persistence_smoke.gd
+tests/run_field_tactics_r2_playthrough_smoke.gd
 ```
 
 The first runner covers deterministic combat timing, formation-preserving
@@ -108,7 +109,9 @@ The formal-scene runner keeps the real `blank_map` entry open while siege time
 advances, covers closed-army reissue, and compares 30/60/irregular engine-frame
 splits. The arrival runner verifies Redcliff siege creation, first-city
 occupation, and Silverford immediate surrender from separate processes without
-an extra manual flush.
+an extra manual flush. The R2 playthrough runner starts from the normal 80-food
+city state and completes both the main-road route and the scout/engineering
+route without test-only troop, food, or victory mutation.
 
 已验收基线为 focused `6/6 · 185`、tracked `33/33 · 1739`、
 all-present `35/35 · 1871 assertions / 1905 PASS`。测试通过不自动推进
@@ -116,9 +119,10 @@ G3 或替代真实窗口、独立复查和用户试玩 Gate。
 
 ## Git 与保护边界
 
-- 当前工作分支：`codex/v5-g0-review-g1-contracts-001`。
+- 当前工作分支：`codex/txwzs-field-tactics-r2`。
 - V5-G2 acceptance checkpoint：`af244167f7b0a31f3de2cc34673faa953113b96b`。
-- 不 push、不 tag、不发布，除非用户明确授权。
+- 普通 push 仅授权到上述 R2 审阅分支；不 force、不合并主分支、不 tag、
+  不部署。
 - S1A.2 八个文件必须保持 untracked、unstaged 和哈希不变；它们不是 Markdown，
   也不是已采用的 V5 writer/schema。
 - 不使用 `git add -A`；提交时按精确路径暂存。

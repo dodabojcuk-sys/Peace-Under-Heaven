@@ -41,23 +41,38 @@ func _run() -> void:
 				passed = scene.flush_runtime_persistence(&"macro_worker_a")
 		"B":
 			var army: Dictionary = city.get_macro_march_army()
+			var resumed: Dictionary = {}
 			if StringName(army.phase) == ArmyRegistry.PHASE_BLOCKED:
 				var macro: Dictionary = army.macro_march
-				var resumed: Dictionary = city.resume_blocked_macro_march(
+				resumed = city.resume_blocked_macro_march(
 					StringName(army.army_id), StringName(macro.order_id)
 				)
-				if not resumed.is_empty():
-					var arrival: Dictionary = city.advance_macro_march_time(
-						StringName(army.army_id), StringName(macro.order_id),
-						int(resumed.macro_march.progress_millis), int(resumed.macro_march.total_millis)
-					)
-					passed = bool(arrival.get("arrived", false)) and scene.flush_runtime_persistence(&"macro_worker_b")
+			elif StringName(army.phase) == ArmyRegistry.PHASE_MARCHING:
+				# Scenario-only road blocks are intentionally transient. The formal
+				# scene can therefore resume the persisted BLOCKED order during startup.
+				resumed = army
+			if not resumed.is_empty():
+				var resumed_macro: Dictionary = resumed.macro_march
+				city._advance_all_macro_marches_seconds(
+					float(int(resumed_macro.total_millis) - int(resumed_macro.progress_millis)) / 1000.0
+				)
+				var arrived: Dictionary = city.get_macro_march_army()
+				passed = (
+					StringName(arrived.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED
+					and StringName(arrived.get("target_node_id", &"")) == &"northwatch_garrison"
+					and scene.flush_runtime_persistence(&"macro_worker_b")
+				)
+			if not passed:
+				print("MACRO_MARCH_WORKER_B_RESUMED %s" % JSON.stringify(resumed))
 		"C":
 			var army: Dictionary = city.get_macro_march_army()
 			passed = (
 				StringName(army.phase) == ArmyRegistry.PHASE_STATIONED
 				and StringName(army.target_node_id) == &"northwatch_garrison"
 			)
+	if not passed:
+		print("MACRO_MARCH_WORKER_%s_STATUS %s" % [mode, JSON.stringify(scene.get_runtime_persistence_status())])
+		print("MACRO_MARCH_WORKER_%s_ARMY %s" % [mode, JSON.stringify(city.get_macro_march_army())])
 	print("MACRO_MARCH_WORKER_%s %s pid=%d" % [mode, "PASS" if passed else "FAIL", OS.get_process_id()])
 	scene.queue_free()
 	await process_frame

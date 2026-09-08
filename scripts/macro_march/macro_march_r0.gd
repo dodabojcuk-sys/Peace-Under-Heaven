@@ -1017,6 +1017,36 @@ func _draw() -> void:
 		var specialist_position := _world_to_screen(Vector2(specialist.get("world_position", Vector2.ZERO)))
 		draw_circle(specialist_position, 10.0, specialist_color)
 		draw_string(ThemeDB.fallback_font, specialist_position + Vector2(-5, 5), "侦" if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else "工", HORIZONTAL_ALIGNMENT_CENTER, 12, 12, Color("1d2a30"))
+	for project_value in Dictionary(field.get("projects_by_id", {})).values():
+		var project: Dictionary = project_value
+		var project_phase := StringName(project.get("phase", &""))
+		if project_phase == &"COMPLETE":
+			continue
+		var engineer := Dictionary(Dictionary(field.get("specialists_by_id", {})).get(StringName(project.get("engineer_id", &"")), {}))
+		var project_position := _world_to_screen(Vector2(engineer.get("world_position", Array(project.get("route_world_points", [Vector2.ZERO])).front())))
+		var progress := float(project.get("progress_milliseconds", 0)) / maxf(float(project.get("required_milliseconds", 1)), 1.0)
+		var progress_rect := Rect2(project_position + Vector2(-24, 15), Vector2(48, 6))
+		draw_rect(progress_rect, Color("2d3531"), true)
+		draw_rect(Rect2(progress_rect.position, Vector2(progress_rect.size.x * clampf(progress, 0.0, 1.0), progress_rect.size.y)), Color("f2b86e") if project_phase != &"INTERRUPTED" else Color("cf5b52"), true)
+		var phase_label := "赴工" if project_phase == &"TRAVELING" else ("中断·待补派" if project_phase == &"INTERRUPTED" else ("维修" if StringName(project.get("project_kind", &"")) == &"REPAIR" else "施工"))
+		draw_string(ThemeDB.fallback_font, project_position + Vector2(-30, 34), phase_label, HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color("fff0c5"))
+	for patrol_value in Dictionary(field.get("visible_patrols_by_id", {})).values():
+		var patrol: Dictionary = patrol_value
+		var patrol_position := _world_to_screen(Vector2(patrol.get("last_known_world_position", Vector2.ZERO)))
+		var is_live := StringName(patrol.get("fog_state", &"")) == FieldTacticsState.FOG_VISIBLE
+		var patrol_color := Color("e26452") if is_live else Color("b98e7b")
+		var diamond := PackedVector2Array([
+			patrol_position + Vector2(0, -13), patrol_position + Vector2(13, 0),
+			patrol_position + Vector2(0, 13), patrol_position + Vector2(-13, 0),
+		])
+		draw_colored_polygon(diamond, Color(patrol_color, 0.85 if is_live else 0.5))
+		draw_polyline(PackedVector2Array([diamond[0], diamond[1], diamond[2], diamond[3], diamond[0]]), Color("4b2925"), 2.0, true)
+		var patrol_label := "巡逻·实时" if is_live else "巡逻·旧情报"
+		if bool(patrol.get("exposed", false)):
+			patrol_label += "·已暴露"
+		draw_string(ThemeDB.fallback_font, patrol_position + Vector2(-42, 31), patrol_label, HORIZONTAL_ALIGNMENT_CENTER, 84, 12, Color("fff0c5"))
+		if not Dictionary(patrol.get("last_engagement", {})).is_empty():
+			draw_arc(patrol_position, 19.0, 0.0, TAU, 24, Color("ffd166"), 2.0, true)
 	for point_value in _all_points(_model()).values():
 		var point: Dictionary = point_value
 		var center := _world_to_screen(Vector2(point.world_position))
@@ -1025,12 +1055,12 @@ func _draw() -> void:
 		draw_circle(center, 18.0, Color("c65a42") if enemy else Color("d7b465"))
 		draw_string(ThemeDB.fallback_font, center + Vector2(-38, 47), str(point.display_name), HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.WHITE)
 	_draw_minimap()
-	draw_string(ThemeDB.fallback_font, Vector2(30, size.y - 20), "滚轮缩放 · 中键拖动 · 小地图定位 · 金：主道 · 青：道路 · 紫：桥 · 灰：受损 · 蓝侦/橙工", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("e3dcc5"))
+	draw_string(ThemeDB.fallback_font, Vector2(30, size.y - 20), "滚轮缩放 · 中键拖动 · 小地图定位 · 金主道/青道路/紫桥/灰受损 · 蓝侦/橙工 · 红巡逻/褐旧情报", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("e3dcc5"))
 
 
 func _draw_terrain(rect: Rect2) -> void:
-	# Greybox terrain is presentational only.  Routes and interactions continue
-	# to use world coordinates and FieldTacticsState as their sole authority.
+	# The Resource-owned terrain regions are shared with FieldTacticsState for
+	# ambush rules; this method only projects those same facts to screen space.
 	for terrain_value in THEATER.get_terrain_regions():
 		var terrain: Dictionary = terrain_value
 		if StringName(terrain.get("kind", &"")) != &"FOREST":

@@ -11,6 +11,66 @@ transaction and persistence-checkpoint caller.
 
 ## Delivered engineering evidence
 
+### Playable-loop candidate
+
+Two isolated routes now start from the normal city resource and formation
+state and use the same formal dispatch, construction, world-clock, encounter,
+siege, resource, and V5 snapshot owners as the game.
+
+| Route | Formal result |
+| --- | --- |
+| Main road | 20 troops dispatched, moving patrol encountered, four real formation casualties, Redcliff and Silverford captured, 36.05 seconds, 68 food remaining. |
+| Scout/engineering | Engineer killed during travel, same project resumed by a replacement, scout intel, guarded completion, one-use forest ambush, generated bridge traversed both ways, three connector roads, explicit test road-damage event, actual camp transfer/repair/resume, both cities captured, 93.79 seconds, 3 food remaining, two army casualties. |
+
+The road damage in the second route is an explicitly labelled test event. It
+proves the blocked-transfer and repair behavior but is not evidence that a
+player-authored enemy road-damage command exists. Patrol-driven damage remains
+limited to a nearby engineered road and never applies to a main road.
+
+During the engineering route, the candidate exports a formal V5 snapshot while
+the army is waiting at camp after patrol/ambush and road damage. A fresh formal
+city restores the snapshot and must exactly match both the army record and
+`FieldTacticsState` snapshot before repair and the remaining captures proceed.
+The dedicated disk harnesses separately retain their transfer/wait/return and
+temporary-route-rebreak process boundaries.
+
+The outer-city view now renders project progress and the phases travelling,
+building, repair, and interrupted/waiting-for-replacement. Visible and stale
+patrols use different markers; exposure and a known engagement are shown only
+after the patrol has entered player knowledge. The engineer-contact path now
+interrupts a travelling project immediately when its assigned engineer dies.
+
+Media is stored in `docs/milestones/txwzs-field-tactics-r2/evidence/`:
+
+- `r2-candidate-city-33eb303-dirty.png`
+- `r2-candidate-city-live-6s.mov`
+- `r2-field-map-33eb303-dirty.png`
+- `r2-field-map-live-8s.mov`
+
+The captures are restricted to the uniquely titled R2 candidate window and an
+isolated review save. A second unidentified Godot process made target-safe UI
+automation ambiguous, so no system click was sent. These files demonstrate a
+real running candidate and live map, but they are not normal human-input proof
+or Founder/player acceptance.
+
+Focused verification uses
+`/Users/m4-zhi/Documents/codex-tools/godot/4.5.1-stable-standard/Godot.app/Contents/MacOS/Godot`
+(`4.5.1.stable.official.f62fdbde1`). The relevant basket covers Field R2,
+the two playthrough routes, audited R2 persistence, Macro March and its disk
+chain, War Loop R1/formal/arrival/disk recovery, V5 army/campaign/encounter
+state, editor import, scene starts, and `git diff --check`. One old full-repo
+runner, `run_blackstone_playable_mvp_smoke.gd`, still targets removed prototype
+nodes and hangs after script errors; it is recorded as historical test debt,
+not counted as a pass. Manual playtesting, normal-input evidence, and final
+balance acceptance remain open.
+
+Raw per-run output for the final 12-run affected basket is retained locally at
+`/tmp/txwzs-r2-audit-final-20260908/`. The obsolete-runner failure is retained
+at `/tmp/txwzs-r2-full-smoke-20260908/run_blackstone_playable_mvp_smoke.log`.
+
+The remaining subsections preserve chronological checkpoint evidence. Their
+then-open lists are historical and do not supersede this candidate summary.
+
 ### Patrol encounter, guard, ambush, and casualty checkpoint
 
 The shared field clock now moves the authored patrol on its resolved

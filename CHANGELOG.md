@@ -14,6 +14,25 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 playable-loop candidate
+
+- Added a formal two-route playthrough regression from the default 80-food
+  city state. The main-road route resolves finite patrol losses and both city
+  captures; the engineering route covers scouting, a real engineer loss and
+  replacement, bridge traversal, guarded construction, one-use ambush, road
+  damage, camp transfer, repair, original-order recovery, and both captures.
+- Made a patrol kill interrupt a linked project during engineer travel as well
+  as active construction, preserving the same project for formal reassignment.
+- Projected construction progress, visible/historical patrol markers, exposure,
+  and last engagement on the outer-city map without exposing unobserved patrols.
+- Strengthened the engineering route with strict combined V5 restoration before
+  repair, then continued through victory. Updated the legacy Macro March disk
+  worker to use the unified scheduler and emit child diagnostics on failure.
+- Updated the V5 Army regression for current schema 6 and retained its explicit
+  legacy non-macro single-active policy check.
+- Added window-specific PNG and MOV evidence under the R2 milestone. This is
+  automated engineering evidence, not normal human input or player acceptance.
+
 ### FIELD_TACTICS_R2 patrol, guard, ambush, and casualty checkpoint
 
 - Advanced patrols on resolved runtime-road geometry and compared swept patrol

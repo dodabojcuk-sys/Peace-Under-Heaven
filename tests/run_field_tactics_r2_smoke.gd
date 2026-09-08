@@ -617,6 +617,7 @@ func _run_formal_controller_contract() -> void:
 	var ambush_patrol_after: Dictionary = Dictionary(ambush_field.patrols_by_id[&"patrol.ridge.001"])
 	var ambush_encounter: Dictionary = Dictionary(ambush_encounters.front()) if not ambush_encounters.is_empty() else {}
 	var ambush_road_id := StringName(ambush_project_record.get("road_id", &""))
+	var visible_ambush_patrol := Dictionary(Dictionary(ambush_city.get_field_tactics_read_model().get("visible_patrols_by_id", {})).get(&"patrol.ridge.001", {}))
 	_check(
 		bool(ambush_project.get("success", false)) and bool(ambush_issue.get("success", false))
 			and StringName(ambush_after.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED
@@ -625,6 +626,8 @@ func _run_formal_controller_contract() -> void:
 			and int(ambush_encounter.get("patrol_losses", 0)) == 5
 			and ambush_city._macro_army_member_count(ambush_after) == 5
 			and Array(ambush_patrol_after.get("ambush_consumed_army_ids", [])).has(ambush_army_id)
+			and bool(visible_ambush_patrol.get("exposed", false))
+			and not Dictionary(visible_ambush_patrol.get("last_engagement", {})).is_empty()
 			and StringName(ambush_encounter.get("damaged_road_id", &"")) == ambush_road_id
 			and not ambush_field.is_route_open(ambush_road_id),
 		"已侦察巡逻进入林地驻军伏击时只获得一次先手并暴露，护卫保住工程师且巡逻会实际损坏附近工程道路"

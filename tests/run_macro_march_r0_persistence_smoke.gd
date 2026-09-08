@@ -27,6 +27,10 @@ func _run() -> void:
 			and str(c.output).contains("MACRO_MARCH_WORKER_C PASS"),
 		"跨进程实盘验证未伪造军令，状态依次为 BLOCKED、恢复、STATIONED"
 	)
+	if not failures.is_empty():
+		print("MACRO_MARCH_WORKER_A_OUTPUT\n%s" % str(a.output))
+		print("MACRO_MARCH_WORKER_B_OUTPUT\n%s" % str(b.output))
+		print("MACRO_MARCH_WORKER_C_OUTPUT\n%s" % str(c.output))
 	_remove_tree(absolute_directory)
 	if failures.is_empty():
 		print("MACRO_MARCH_R0_PERSISTENCE_SMOKE PASS")

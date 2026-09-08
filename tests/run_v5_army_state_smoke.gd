@@ -153,7 +153,7 @@ func _run() -> void:
 
 	var registry_snapshot: Dictionary = city.get_army_registry_snapshot()
 	_check(
-		registry_snapshot.schema_version == 2
+		registry_snapshot.schema_version == ArmyRegistry.SCHEMA_VERSION
 			and registry_snapshot.next_army_sequence == 2
 			and registry_snapshot.next_macro_order_sequence == 1
 			and registry_snapshot.armies_by_id.size() == 1
@@ -325,7 +325,7 @@ func _run() -> void:
 		not enforced.valid
 			and enforced.error_id == &"V5_ACTIVE_ARMY_LIMIT"
 			and lifted.valid
-			and lifted.snapshot.schema_version == 2,
+			and lifted.snapshot.schema_version == ArmyRegistry.SCHEMA_VERSION,
 		"解除 V5 policy 后同一 schema 可容纳两支 active army"
 	)
 
@@ -391,5 +391,5 @@ func _finish() -> void:
 		print("V5_ARMY_STATE_SMOKE PASS")
 		quit(0)
 		return
-	print("V5_ARMY_STATE_SMOKE FAIL: %s" % failures)
+	print("V5_ARMY_STATE_SMOKE FAIL: %s" % [failures])
 	quit(1)

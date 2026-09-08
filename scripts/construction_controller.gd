@@ -5390,7 +5390,11 @@ func get_field_tactics_read_model() -> Dictionary:
 		var patrol_id := StringName(patrol_id_value)
 		var intel := _war_loop_state.field_tactics.observe_subject(patrol_id)
 		if StringName(intel.get("fog_state", &"")) != FieldTacticsState.FOG_UNOBSERVED:
-			visible_patrols[patrol_id] = intel
+			var patrol: Dictionary = Dictionary(field_snapshot.patrols_by_id[patrol_id])
+			var projected := intel.duplicate(true)
+			projected.exposed = bool(patrol.get("exposed", false))
+			projected.last_engagement = Dictionary(patrol.get("last_engagement", {})).duplicate(true)
+			visible_patrols[patrol_id] = projected
 	return {
 		"roads_by_id": Dictionary(field_snapshot.roads_by_id).duplicate(true),
 		"camps_by_id": Dictionary(field_snapshot.camps_by_id).duplicate(true),

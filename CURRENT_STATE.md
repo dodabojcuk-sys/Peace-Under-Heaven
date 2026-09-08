@@ -1,5 +1,56 @@
 # 当前状态
 
+## FIELD_TACTICS_R2 playable-loop candidate (2026-09-08)
+
+The R2 engineering candidate now completes two isolated, normal-resource
+outer-city routes through the formal city and Controller entry. The main-road
+route dispatches the full 20-person roster, meets one finite moving patrol,
+writes four casualties back to the real formations, and captures both required
+cities in 36.05 seconds with 68 food remaining. The engineering route dispatches
+specialists and separate armies, loses an engineer to the patrol, resumes the
+same interrupted project with a replacement, scouts and consumes a one-use
+forest ambush, traverses a player-built road-bridge-road in both directions,
+then performs a real blocked transfer to camp, repair, return, and original-
+order continuation before capturing both cities. It completes in 93.79 seconds
+with 3 food remaining and two army casualties.
+
+The combined engineering route exports and strictly restores a formal V5
+snapshot while the army is waiting at camp after the ambush and road damage.
+The restored army, immutable order, blocked-transfer state, field roads,
+patrol/ambush facts, formation losses, specialist/project ownership, and resource
+state must match before repair and victory continue. Existing audited disk
+chains additionally cover transfer, waiting, return, temporary-route rebreak,
+and return completion in independent processes.
+
+Player-facing projection now shows active project position/progress and phases,
+visible or historical patrol markers, exposure, and the last known engagement,
+without exposing an unobserved patrol. A moving engineer killed by a patrol now
+immediately interrupts its linked travelling project, making the existing
+replacement-engineer flow operable instead of leaving a project permanently
+stuck in travel.
+
+Evidence under `docs/milestones/txwzs-field-tactics-r2/evidence/` contains two
+window-specific PNG captures and 6/8-second MOV recordings. The outer-city
+capture is from the identified R2 checkout and an isolated save directory.
+Because another unidentified Godot process was present, no ambiguous automated
+click was sent; the media proves the real candidate window and live map render,
+not normal human input or player acceptance. The lower legend remains close to
+the 648px crop and is a known greybox presentation limitation.
+
+Focused verification currently covers Field R2 65 assertions, both formal
+playthrough routes, audited field persistence, Macro March 27 assertions and
+its three-process recovery chain, War Loop R1 16 assertions, formal scene 10,
+arrival persistence 3, disk recovery, V5 army state/campaign persistence/
+encounter writeback, editor import, scene starts, and `git diff --check`.
+`run_blackstone_playable_mvp_smoke.gd` is a pre-existing obsolete runner which
+still requests removed `BlackstoneExpeditionMvp` nodes and hangs after script
+errors; it is not counted as a passing full-repository sweep. User playtesting,
+manual-input media, and final balance acceptance remain open.
+
+The sections below are chronological engineering checkpoints. Their open-item
+lists describe what was missing at that checkpoint and do not override the
+current conclusion above.
+
 ## FIELD_TACTICS_R2 patrol encounter checkpoint (2026-09-08)
 
 The outer-city clock now advances a finite patrol on its resolved runtime-road
@@ -79,7 +130,8 @@ original marching or retreat phase before the checkpoint is published. This
 prevents invalid transition snapshots from being persisted. Focused Field R2
 and the J/K/L/M isolated-disk chain pass after this repair.
 
-The current uncommitted work extends `ArmyRegistry` schema 6 with a temporary
+At that checkpoint, the then-uncommitted work extended `ArmyRegistry` schema 6
+with a temporary
 execution record alongside the immutable original macro order. A march blocked
 by a future damaged physical road can now use its exact ordered segment and
 progress to clip the road beneath the army, move through the open road graph

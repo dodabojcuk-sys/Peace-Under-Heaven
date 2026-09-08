@@ -1199,6 +1199,13 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 				if guard_army_ids.is_empty():
 					specialist.alive = false
 					specialist.phase = SPECIALIST_LOST
+					var project_id := StringName(specialist.get("project_id", &""))
+					if projects_by_id.has(project_id):
+						var interrupted_project := Dictionary(projects_by_id[project_id])
+						if StringName(interrupted_project.get("phase", &"")) in [&"TRAVELING", &"BUILDING"]:
+							interrupted_project.phase = &"INTERRUPTED"
+							interrupted_project.interruption_reason = &"ENGINEER_LOST"
+							projects_by_id[project_id] = interrupted_project
 					specialists_by_id[specialist_id] = specialist
 				engagements.append({"patrol_id": patrol_id, "specialist_id": specialist_id, "guard_army_ids": guard_army_ids, "point_id": patrol.current_point_id, "world_position": Vector2i(patrol.get("world_position", Vector2i.ZERO))})
 	_refresh_intel()
