@@ -233,3 +233,12 @@ therefore triggers the controller's ordinary checkpoint/rollback flow even
 before the whole project completes. Focused automated checks currently pass:
 Field R2 40 assertions, War Loop R1 16, and Macro March 27. No normal-input
 media or two-route tactical acceptance is claimed.
+
+### Scalable route-planning follow-up
+
+The runtime planner now uses a weighted graph search rather than enumerating
+every simple path. Open physical-road length is the base cost and distance from
+the player-drawn line is a route-choice penalty. This retains the alternative
+route interaction while removing the former 12-segment ceiling; the focused
+runner proves a 13-segment legal route. Larger-map interaction profiling,
+safe-camp transfer, and encounter settlement are still open.

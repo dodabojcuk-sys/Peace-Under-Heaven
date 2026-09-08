@@ -469,23 +469,23 @@ func runtime_route_duration_milliseconds(route_id: StringName) -> int:
 func plan_runtime_path(source_point_id: StringName, target_point_id: StringName, preferred_world_points: Array = []) -> Dictionary:
 	if source_point_id == &"" or target_point_id == &"" or source_point_id == target_point_id:
 		return {"valid": false, "error": "起点和目标必须是不同的合法据点"}
-	var queue: Array[Dictionary] = [{"point_id": source_point_id, "segments": [], "visited": {source_point_id: true}}]
-	var best: Dictionary = {}
-	var best_score := INF
-	while not queue.is_empty():
-		var current: Dictionary = queue.pop_front()
+	var frontier: Array[Dictionary] = [{"point_id": source_point_id, "segments": [], "cost": 0.0}]
+	var best_cost_by_point: Dictionary = {source_point_id: 0.0}
+	while not frontier.is_empty():
+		var cheapest_index := 0
+		for frontier_index in range(1, frontier.size()):
+			if float(frontier[frontier_index].get("cost", INF)) < float(frontier[cheapest_index].get("cost", INF)):
+				cheapest_index = frontier_index
+		var current: Dictionary = frontier.pop_at(cheapest_index)
 		var current_point := StringName(current.get("point_id", &""))
+		var current_cost := float(current.get("cost", INF))
+		if current_cost > float(best_cost_by_point.get(current_point, INF)) + 0.0001:
+			continue
 		if current_point == target_point_id:
 			var segments: Array = current.get("segments", [])
 			var route_id := _path_id(segments)
 			var points := _path_world_points_from_segments(segments)
-			var score := _path_draw_score(preferred_world_points, points)
-			if score < best_score or (is_equal_approx(score, best_score) and (best.is_empty() or String(route_id) < String(best.get("route_id", &"")))):
-				best_score = score
-				best = {"valid": true, "route_id": route_id, "segments": segments, "points": points, "duration_milliseconds": _path_duration_milliseconds(points)}
-			continue
-		if Array(current.get("segments", [])).size() >= 12:
-			continue
+			return {"valid": true, "route_id": route_id, "segments": segments, "points": points, "duration_milliseconds": _path_duration_milliseconds(points)}
 		for road_value in roads_by_id.values():
 			var road: Dictionary = road_value
 			if not bool(road.get("built", false)) or StringName(road.get("state", &"")) != ROAD_OPEN:
@@ -497,17 +497,34 @@ func plan_runtime_path(source_point_id: StringName, target_point_id: StringName,
 			elif StringName(road.get("target_point_id", &"")) == current_point:
 				next_point = StringName(road.get("source_point_id", &""))
 				forward = false
-			var visited: Dictionary = current.get("visited", {})
-			if next_point == &"" or visited.has(next_point):
+			if next_point == &"":
+				continue
+			var next_cost := current_cost + _road_traversal_cost(road, forward, preferred_world_points)
+			if next_cost >= float(best_cost_by_point.get(next_point, INF)) - 0.0001:
 				continue
 			var next_segments: Array = Array(current.get("segments", [])).duplicate(true)
 			next_segments.append({"road_id": StringName(road.get("road_id", &"")), "forward": forward})
-			var next_visited := visited.duplicate(true)
-			next_visited[next_point] = true
-			queue.append({"point_id": next_point, "segments": next_segments, "visited": next_visited})
-	if not best.is_empty():
-		return best
+			best_cost_by_point[next_point] = next_cost
+			frontier.append({"point_id": next_point, "segments": next_segments, "cost": next_cost})
 	return {"valid": false, "error": "没有连通的已完工道路路径"}
+
+
+func _road_traversal_cost(road: Dictionary, forward: bool, preferred_world_points: Array) -> float:
+	var points: Array = Array(road.get("route_world_points", [])).duplicate(true)
+	if not forward:
+		points.reverse()
+	var length := 0.0
+	for point_index in range(1, points.size()):
+		length += Vector2(points[point_index - 1]).distance_to(Vector2(points[point_index]))
+	if preferred_world_points.size() < 2:
+		return length
+	var draw_penalty := 0.0
+	for point in points:
+		var nearest := INF
+		for draw_index in range(1, preferred_world_points.size()):
+			nearest = minf(nearest, _distance_to_segment(Vector2(point), Vector2(preferred_world_points[draw_index - 1]), Vector2(preferred_world_points[draw_index])))
+		draw_penalty += nearest
+	return length + draw_penalty * 12.0 / float(maxi(points.size(), 1))
 
 
 func _path_id(segments: Array) -> StringName:

@@ -86,6 +86,13 @@ field event, so the controller publishes an immediate checkpoint even before
 the overall project completes. Automated Field/R1/Macro results are 40/16/27;
 these remain engineering checks rather than the two complete player routes.
 
+Runtime path planning now uses a weighted graph search instead of enumerating
+simple paths. Physical route length remains the base cost; the player's drawn
+line supplies a route-proximity penalty, so alternative routes remain
+selectable without a twelve-segment cutoff. The focused R2 runner includes a
+13-segment continuous path check. Larger-map interaction profiling and
+enemy/patrol encounter work remain pending.
+
 ## FIELD_TACTICS_R2 engineering checkpoint (2026-09-07)
 
 ### R2 formal-input and on-site-repair checkpoint

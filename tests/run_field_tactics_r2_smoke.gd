@@ -119,6 +119,29 @@ func _run_field_tactics_contract() -> void:
 			and StringName(Dictionary(Array(ridge_path.get("segments", [])).front()).get("road_id", &"")) == &"road.blackstone.northwatch.ridge",
 		"同一起终点的两条多段路线按玩家绘线选择对应道路序列"
 	)
+	var long_path_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	var previous_point_id: StringName = &"long.route.00"
+	for segment_index in range(13):
+		var next_point_id := StringName("long.route.%02d" % (segment_index + 1))
+		var road_id := StringName("road.long.%02d" % segment_index)
+		long_path_state.roads_by_id[road_id] = {
+			"road_id": road_id,
+			"source_point_id": previous_point_id,
+			"target_point_id": next_point_id,
+			"route_world_points": [Vector2i(segment_index * 10, 0), Vector2i((segment_index + 1) * 10, 0)],
+			"road_kind": FieldTacticsState.ROAD_NORMAL,
+			"state": FieldTacticsState.ROAD_OPEN,
+			"durability": 70,
+			"max_durability": 70,
+			"built": true,
+			"project_id": &"",
+		}
+		previous_point_id = next_point_id
+	var long_path := long_path_state.plan_runtime_path(&"long.route.00", &"long.route.13", [Vector2i(0, 0), Vector2i(130, 0)])
+	_check(
+		bool(long_path.get("valid", false)) and Array(long_path.get("segments", [])).size() == 13,
+		"图搜索可规划超过十二段的连续合法路线，而不枚举所有简单路径"
+	)
 	var lowland_segments: Array = Array(lowland_path.get("segments", [])).duplicate(true)
 	var lowland_path_points: Array = Array(lowland_path.get("points", [])).duplicate(true)
 	var lowland_duration := int(lowland_path.get("duration_milliseconds", 0))

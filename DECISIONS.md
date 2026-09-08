@@ -96,6 +96,10 @@ Road-damage checks start at
 	the ordered segments and their directions but never invents a derivative
 	route ID. A construction segment becoming traversable is a durable world
 	event, so it uses the controller's existing checkpoint/rollback boundary.
+- Runtime path planning is weighted graph search, not all-simple-path
+	enumeration. Physical road length is the base cost and proximity to the
+	player's drawn line biases legal alternatives, removing the artificial
+	twelve-segment ceiling without substituting a UI-side route choice.
 
 ## Macro March R0 outer-city greybox
 

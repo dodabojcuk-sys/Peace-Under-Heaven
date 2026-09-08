@@ -43,6 +43,10 @@
   sequence instead of inventing a non-existent `.return` route ID. Added a
   formal siege-retreat return regression and made each newly opened construction
   segment an immediate persistence-checkpoint event.
+- Replaced bounded simple-path enumeration with weighted graph search over
+  open physical roads. Draw proximity biases the selected legal route without
+  limiting commands to twelve road segments; focused R2 smoke now has 41
+  automated assertions.
 
 - Replaced fixed 1000×650 screen compression with a shared tactical-map camera:
   cursor-anchored wheel zoom, middle-drag pan, minimap recentering and
