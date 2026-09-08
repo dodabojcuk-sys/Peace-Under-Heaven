@@ -2,6 +2,7 @@ extends SceneTree
 
 
 const CITY_SCENE: PackedScene = preload("res://scenes/blank_map.tscn")
+const THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
 
 
 func _initialize() -> void:
@@ -76,6 +77,32 @@ func _run() -> void:
 			city.advance_war_loop_time(int(repair_project.get("required_milliseconds", 0)) - int(repair_project.get("progress_milliseconds", 0)))
 			var road := Dictionary(state.roads_by_id.get(StringName(repair_project.get("road_id", &"")), {}))
 			passed = StringName(repair_project.get("phase", &"")) == &"COMPLETE" and StringName(road.get("state", &"")) == FieldTacticsState.ROAD_OPEN
+		"G":
+			city.food = 200
+			var roster: Array[Dictionary] = city.get_formation_roster()
+			var lowland: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.lowland")
+			var northwatch_reedbank: Dictionary = THEATER.get_route(&"road.northwatch.reedbank")
+			var draw_points := Array(lowland.points).duplicate(true)
+			draw_points.pop_back()
+			draw_points.append_array(Array(northwatch_reedbank.points))
+			var plan: Dictionary = city.plan_field_path(&"blackstone_city", &"reedbank_garrison", draw_points)
+			var issued: Dictionary = city.commit_macro_march_from_city(
+				[StringName(roster[0].formation_id)], &"reedbank_garrison", StringName(plan.get("route_id", &"")), Array(plan.get("points", []))
+			)
+			var macro: Dictionary = Dictionary(Dictionary(issued.get("army", {})).get("macro_march", {}))
+			city._advance_all_macro_marches_seconds(float(int(plan.get("duration_milliseconds", 0))) * 0.7 / 1000.0)
+			var advanced: Dictionary = city._army_registry.get_army(StringName(Dictionary(issued.get("army", {})).get("army_id", &"")))
+			passed = bool(plan.get("valid", false)) and bool(issued.get("success", false)) and Array(macro.get("route_segments", [])).size() == 2 and int(Dictionary(advanced.get("macro_march", {})).get("progress_millis", 0)) > 0 and scene.flush_runtime_persistence(&"field_worker_g")
+		"H":
+			var marching: Dictionary = _first_macro_army(city)
+			var marching_macro: Dictionary = Dictionary(marching.get("macro_march", {}))
+			city._advance_all_macro_marches_seconds(float(int(marching_macro.get("total_millis", 0)) - int(marching_macro.get("progress_millis", 0))) / 1000.0)
+			var arrived: Dictionary = city._army_registry.get_army(StringName(marching.get("army_id", &"")))
+			passed = StringName(marching.get("phase", &"")) == ArmyRegistry.PHASE_MARCHING and Array(marching_macro.get("route_segments", [])).size() == 2 and StringName(arrived.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED and scene.flush_runtime_persistence(&"field_worker_h")
+		"I":
+			var arrived: Dictionary = _first_macro_army(city)
+			var arrived_macro: Dictionary = Dictionary(arrived.get("macro_march", {}))
+			passed = StringName(arrived.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED and StringName(arrived.get("target_node_id", &"")) == &"reedbank_garrison" and Array(arrived_macro.get("route_segments", [])).size() == 2
 	print("FIELD_TACTICS_WORKER_%s %s pid=%d" % [mode, "PASS" if passed else "FAIL", OS.get_process_id()])
 	scene.queue_free()
 	await process_frame
@@ -94,4 +121,10 @@ func _first_repair_project(state: FieldTacticsState) -> Dictionary:
 		var project: Dictionary = project_value
 		if StringName(project.get("project_kind", &"")) == &"REPAIR":
 			return project
+	return {}
+
+
+func _first_macro_army(city: Node) -> Dictionary:
+	for army_value in city.get_macro_march_armies():
+		return Dictionary(army_value)
 	return {}

@@ -200,3 +200,10 @@ damage; a road already passed by the army does not stop it. Focused field smoke
 passes 38 assertions and Macro March smoke passes 27 under Godot 4.5.1.
 This is automated engineering evidence, not normal system-input media, a full
 cross-process tactical route, or R2 player acceptance.
+
+The isolated persistence runner now provides the missing disk-level route
+check: three separate Godot processes issue a two-road order, reload it while
+in flight, complete the remaining route, and cold-reload the stationed result.
+It verifies the stored directional sequence and one-time food transaction.
+It does not yet include a multi-segment damaged bridge, safe-camp transfer,
+or normal-input playthrough.

@@ -64,6 +64,13 @@ passes 38 automated assertions and Macro March smoke passes 27. These checks
 do not yet prove the required normal-input cross-process tactical playthrough
 or the remaining multi-part construction, encounter and safe-camp work.
 
+The isolated field persistence runner now starts a multi-road order in one
+Godot process, restores it while moving in the next process, advances through
+the remaining segment boundary, then cold-restores the stationed result a
+third time. It verifies the same stored road sequence and no second food
+transaction. This disk test does not cover a damaged multi-road bridge plan
+or real player input.
+
 ## FIELD_TACTICS_R2 engineering checkpoint (2026-09-07)
 
 ### R2 formal-input and on-site-repair checkpoint
