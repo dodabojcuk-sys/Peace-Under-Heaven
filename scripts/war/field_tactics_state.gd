@@ -316,6 +316,47 @@ func is_route_open(route_id: StringName) -> bool:
 	return not road.is_empty() and bool(road.get("built", false)) and StringName(road.get("state", &"")) == ROAD_OPEN
 
 
+func first_unavailable_route_segment(
+	route_id: StringName,
+	route_segments: Array,
+	route_world_points: Array,
+	progress_milliseconds: int,
+	total_milliseconds: int
+) -> int:
+	var resolved_segments := route_segments.duplicate(true)
+	if resolved_segments.is_empty():
+		resolved_segments = _path_segments(route_id)
+	if resolved_segments.is_empty() and route_id != &"":
+		resolved_segments = [{"road_id": route_id, "forward": true}]
+	if resolved_segments.is_empty():
+		return 0
+	var total_length := 0.0
+	for point_index in range(1, route_world_points.size()):
+		total_length += Vector2(route_world_points[point_index - 1]).distance_to(Vector2(route_world_points[point_index]))
+	var progressed_length := total_length * clampf(
+		float(progress_milliseconds) / float(maxi(total_milliseconds, 1)), 0.0, 1.0
+	)
+	var current_segment_index := 0
+	var consumed_length := 0.0
+	for segment_index in range(resolved_segments.size()):
+		var segment: Dictionary = Dictionary(resolved_segments[segment_index])
+		var segment_points: Array = Array(Dictionary(roads_by_id.get(StringName(segment.get("road_id", &"")), {})).get("route_world_points", [])).duplicate(true)
+		if not bool(segment.get("forward", false)):
+			segment_points.reverse()
+		var segment_length := 0.0
+		for point_index in range(1, segment_points.size()):
+			segment_length += Vector2(segment_points[point_index - 1]).distance_to(Vector2(segment_points[point_index]))
+		consumed_length += segment_length
+		if progressed_length < consumed_length - 0.0001:
+			current_segment_index = segment_index
+			break
+		current_segment_index = mini(segment_index + 1, resolved_segments.size() - 1)
+	for segment_index in range(current_segment_index, resolved_segments.size()):
+		if not is_route_open(StringName(Dictionary(resolved_segments[segment_index]).get("road_id", &""))):
+			return segment_index
+	return -1
+
+
 func validate_runtime_route(source_point_id: StringName, target_point_id: StringName, route_id: StringName, route_world_points: Array) -> Dictionary:
 	if String(route_id).begins_with(PATH_PREFIX):
 		return _validate_runtime_path(source_point_id, target_point_id, route_id, route_world_points)
@@ -345,6 +386,7 @@ func validate_runtime_route(source_point_id: StringName, target_point_id: String
 		traversed.source_point_id = source_point_id
 		traversed.target_point_id = target_point_id
 		traversed.route_world_points = reverse_points
+	traversed.segment_ids = [{"road_id": route_id, "forward": not reverse}]
 	return {"valid": true, "error_id": &"", "error": "", "route": traversed}
 
 
@@ -453,8 +495,21 @@ func _path_duration_milliseconds(points: Array) -> int:
 
 func _validate_runtime_path(source_point_id: StringName, target_point_id: StringName, route_id: StringName, route_world_points: Array) -> Dictionary:
 	var segments := _path_segments(route_id)
+	if segments.size() < 2:
+		return {"valid": false, "error_id": &"PATH_MISMATCH", "error": "军令路径缺少连续道路段"}
+	var expected_point_id := source_point_id
+	for segment_value in segments:
+		var segment: Dictionary = segment_value
+		var road: Dictionary = Dictionary(roads_by_id.get(StringName(segment.get("road_id", &"")), {}))
+		var segment_start := StringName(road.get("source_point_id", &"")) if bool(segment.get("forward", false)) else StringName(road.get("target_point_id", &""))
+		var segment_end := StringName(road.get("target_point_id", &"")) if bool(segment.get("forward", false)) else StringName(road.get("source_point_id", &""))
+		if road.is_empty() or segment_start != expected_point_id:
+			return {"valid": false, "error_id": &"PATH_DISCONNECTED", "error": "军令路径包含未连接的道路段"}
+		expected_point_id = segment_end
+	if expected_point_id != target_point_id:
+		return {"valid": false, "error_id": &"PATH_MISMATCH", "error": "军令路径没有抵达指定目标"}
 	var points := _path_world_points_from_segments(segments)
-	if segments.size() < 2 or points != route_world_points:
+	if points.is_empty() or points != route_world_points:
 		return {"valid": false, "error_id": &"PATH_MISMATCH", "error": "军令路径与已确认路段不一致"}
 	var first: Dictionary = Dictionary(segments.front())
 	var last: Dictionary = Dictionary(segments.back())
@@ -462,7 +517,9 @@ func _validate_runtime_path(source_point_id: StringName, target_point_id: String
 	var last_road := Dictionary(roads_by_id.get(StringName(last.road_id), {}))
 	var actual_source := StringName(first_road.get("source_point_id", &"")) if bool(first.forward) else StringName(first_road.get("target_point_id", &""))
 	var actual_target := StringName(last_road.get("target_point_id", &"")) if bool(last.forward) else StringName(last_road.get("source_point_id", &""))
-	if actual_source != source_point_id or actual_target != target_point_id or not is_route_open(route_id):
+	if actual_source != source_point_id or actual_target != target_point_id:
+		return {"valid": false, "error_id": &"PATH_MISMATCH", "error": "军令路径端点与命令不一致"}
+	if not is_route_open(route_id):
 		return {"valid": false, "error_id": &"ROAD_DAMAGED", "error": "路径道路不再可通行"}
 	return {"valid": true, "error_id": &"", "error": "", "route": {"route_id": route_id, "route_world_points": points, "segment_ids": segments}}
 

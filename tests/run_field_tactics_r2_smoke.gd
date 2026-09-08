@@ -39,6 +39,9 @@ func _run_parallel_army_contract() -> void:
 	duplicate_snapshot.armies_by_id[second.army_id] = duplicate_army
 	var duplicate_validation := ArmyRegistry.validate_snapshot(duplicate_snapshot, [&"infantry"], false)
 	_check(not bool(duplicate_validation.valid) and StringName(duplicate_validation.error_id) == &"DUPLICATE_MACRO_FORMATION", "快照拒绝同一编队同时属于两支军队")
+	var legacy_snapshot := registry.get_snapshot()
+	Dictionary(legacy_snapshot.armies_by_id[first.army_id]).macro_march.erase("route_segments")
+	_check(bool(ArmyRegistry.validate_snapshot(legacy_snapshot, [&"infantry"], false).get("valid", false)), "旧单路军令快照可迁移为未显式段序列的兼容格式")
 
 
 func _run_field_tactics_contract() -> void:
@@ -65,6 +68,58 @@ func _run_field_tactics_contract() -> void:
 			and bool(state.validate_runtime_route(&"blackstone_city", &"reedbank_garrison", multi_route_id, Array(multi_path.get("points", []))).get("valid", false))
 			and int(multi_path.get("duration_milliseconds", 0)) == state.runtime_route_duration_milliseconds(multi_route_id),
 		"运行时路网将连续主路解析为有序路段路径，预览与权威时长使用同一条路径"
+	)
+	var lowland_points: Array = Array(Dictionary(state.roads_by_id[&"road.blackstone.northwatch.lowland"]).get("route_world_points", [])).duplicate(true)
+	var ridge_points: Array = Array(Dictionary(state.roads_by_id[&"road.blackstone.northwatch.ridge"]).get("route_world_points", [])).duplicate(true)
+	var northwatch_reedbank_points: Array = Array(Dictionary(state.roads_by_id[&"road.northwatch.reedbank"]).get("route_world_points", [])).duplicate(true)
+	var lowland_draw := lowland_points.duplicate(true)
+	lowland_draw.pop_back()
+	lowland_draw.append_array(northwatch_reedbank_points)
+	var ridge_draw := ridge_points.duplicate(true)
+	ridge_draw.pop_back()
+	ridge_draw.append_array(northwatch_reedbank_points)
+	var lowland_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison", lowland_draw)
+	var ridge_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison", ridge_draw)
+	_check(
+		bool(lowland_path.get("valid", false))
+			and bool(ridge_path.get("valid", false))
+			and StringName(Dictionary(Array(lowland_path.get("segments", [])).front()).get("road_id", &"")) == &"road.blackstone.northwatch.lowland"
+			and StringName(Dictionary(Array(ridge_path.get("segments", [])).front()).get("road_id", &"")) == &"road.blackstone.northwatch.ridge",
+		"同一起终点的两条多段路线按玩家绘线选择对应道路序列"
+	)
+	var lowland_segments: Array = Array(lowland_path.get("segments", [])).duplicate(true)
+	var lowland_path_points: Array = Array(lowland_path.get("points", [])).duplicate(true)
+	var lowland_duration := int(lowland_path.get("duration_milliseconds", 0))
+	var lowland_road: Dictionary = Dictionary(state.roads_by_id[&"road.blackstone.northwatch.lowland"])
+	lowland_road.state = FieldTacticsState.ROAD_DAMAGED
+	state.roads_by_id[&"road.blackstone.northwatch.lowland"] = lowland_road
+	var first_segment_blocked := state.first_unavailable_route_segment(
+		StringName(lowland_path.get("route_id", &"")), lowland_segments, lowland_path_points, 0, lowland_duration
+	)
+	var passed_segment_ignored := state.first_unavailable_route_segment(
+		StringName(lowland_path.get("route_id", &"")), lowland_segments, lowland_path_points, lowland_duration - 1, lowland_duration
+	)
+	lowland_road = Dictionary(state.roads_by_id[&"road.blackstone.northwatch.lowland"])
+	lowland_road.state = FieldTacticsState.ROAD_OPEN
+	state.roads_by_id[&"road.blackstone.northwatch.lowland"] = lowland_road
+	var northwatch_reedbank_road: Dictionary = Dictionary(state.roads_by_id[&"road.northwatch.reedbank"])
+	northwatch_reedbank_road.state = FieldTacticsState.ROAD_DAMAGED
+	state.roads_by_id[&"road.northwatch.reedbank"] = northwatch_reedbank_road
+	var forward_segment_blocked := state.first_unavailable_route_segment(
+		StringName(lowland_path.get("route_id", &"")), lowland_segments, lowland_path_points, lowland_duration - 1, lowland_duration
+	)
+	northwatch_reedbank_road = Dictionary(state.roads_by_id[&"road.northwatch.reedbank"])
+	northwatch_reedbank_road.state = FieldTacticsState.ROAD_OPEN
+	state.roads_by_id[&"road.northwatch.reedbank"] = northwatch_reedbank_road
+	_check(
+		first_segment_blocked == 0 and passed_segment_ignored == -1 and forward_segment_blocked == 1,
+		"跨段行军只因当前或前方受损道路受阻，已走过道路不会误停"
+	)
+	var disconnected_route := StringName("path.road.blackstone.northwatch.lowland:f|road.reedbank.silverford:f")
+	var disconnected := state.validate_runtime_route(&"blackstone_city", &"silverford_city", disconnected_route, [])
+	_check(
+		not bool(disconnected.get("valid", false)) and StringName(disconnected.get("error_id", &"")) == &"PATH_DISCONNECTED",
+		"权威确认拒绝两段开放但端点不相连的道路序列"
 	)
 	var patrol_partition_start: FieldTacticsState = FIELD_TACTICS_STATE.new()
 	patrol_partition_start.initialize_from_theater(THEATER.get_points(), THEATER.get_routes())
@@ -235,6 +290,56 @@ func _run_formal_controller_contract() -> void:
 	restored.set_process(false)
 	var restored_result: Dictionary = restored.restore_v5_campaign_snapshot(snapshot)
 	_check(bool(restored_result.get("success", false)) and Array(restored.get_macro_march_read_model().armies).size() == 2 and not Dictionary(restored.get_field_tactics_read_model().camps_by_id).is_empty(), "两支军令与工程战区状态可在同一正式快照冷恢复")
+	scene.queue_free()
+	restored_scene.queue_free()
+	await process_frame
+	await _run_formal_multisegment_march_contract()
+
+
+func _run_formal_multisegment_march_contract() -> void:
+	var scene := CITY_SCENE.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var city: Node = scene.get_node("ConstructionController")
+	city.set_process(false)
+	city.food = 120
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var lowland: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.lowland")
+	var northwatch_reedbank: Dictionary = THEATER.get_route(&"road.northwatch.reedbank")
+	var draw_points := Array(lowland.points).duplicate(true)
+	draw_points.pop_back()
+	draw_points.append_array(Array(northwatch_reedbank.points))
+	var plan: Dictionary = city.plan_field_path(&"blackstone_city", &"reedbank_garrison", draw_points)
+	var route_id := StringName(plan.get("route_id", &""))
+	var issued: Dictionary = city.commit_macro_march_from_city(
+		[StringName(roster[0].formation_id)], &"reedbank_garrison", route_id, Array(plan.get("points", []))
+	)
+	var issued_army: Dictionary = Dictionary(issued.get("army", {}))
+	var issued_macro: Dictionary = Dictionary(issued_army.get("macro_march", {}))
+	var food_after_issue := int(city.food)
+	city._advance_all_macro_marches_seconds(float(int(plan.get("duration_milliseconds", 0))) / 1000.0)
+	var arrived: Dictionary = city._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	var snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	var restored_scene := CITY_SCENE.instantiate()
+	root.add_child(restored_scene)
+	await process_frame
+	var restored: Node = restored_scene.get_node("ConstructionController")
+	restored.set_process(false)
+	var restore_result: Dictionary = restored.restore_v5_campaign_snapshot(snapshot)
+	var restored_army: Dictionary = restored._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	_check(
+		bool(plan.get("valid", false))
+			and bool(issued.get("success", false))
+			and Array(issued_macro.get("route_segments", [])).size() == 2
+			and StringName(Dictionary(Array(issued_macro.get("route_segments", [])).front()).get("road_id", &"")) == &"road.blackstone.northwatch.lowland"
+			and StringName(arrived.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED
+			and StringName(arrived.get("target_node_id", &"")) == &"reedbank_garrison"
+			and int(city.food) == food_after_issue
+			and bool(restore_result.get("success", false))
+			and Array(Dictionary(restored_army.get("macro_march", {})).get("route_segments", [])).size() == 2,
+		"正式绘线确认的多段军令保留段序列、连续抵达且冷恢复不重复扣粮"
+	)
 	scene.queue_free()
 	restored_scene.queue_free()
 	await process_frame

@@ -598,7 +598,8 @@ func create_macro_march(
 	units_by_definition_id: Dictionary,
 	formation_snapshots: Array,
 	food_cost: int,
-	duration_milliseconds: int
+	duration_milliseconds: int,
+	route_segments: Array = []
 ) -> Dictionary:
 	if (
 		owner_faction_id == &""
@@ -623,7 +624,7 @@ func create_macro_march(
 	_next_army_sequence += 1
 	var macro_march := _build_macro_march(
 		order_id, source_point_id, target_point_id, route_id, route_world_points,
-		formation_snapshots, food_cost, duration_milliseconds
+		formation_snapshots, food_cost, duration_milliseconds, route_segments
 	)
 	var army := {
 		"army_id": army_id,
@@ -651,7 +652,8 @@ func issue_stationed_macro_march(
 	route_id: StringName,
 	route_world_points: Array,
 	food_cost: int,
-	duration_milliseconds: int
+	duration_milliseconds: int,
+	route_segments: Array = []
 ) -> Dictionary:
 	var army: Dictionary = _armies_by_id.get(army_id, {})
 	if (
@@ -680,7 +682,7 @@ func issue_stationed_macro_march(
 	army.phase = PHASE_MARCHING
 	army.macro_march = _build_macro_march(
 		order_id, source_point_id, target_point_id, route_id, route_world_points,
-		Array(prior_macro.formation_snapshots), food_cost, duration_milliseconds
+		Array(prior_macro.formation_snapshots), food_cost, duration_milliseconds, route_segments
 	)
 	var macro_history: Array = Array(army.get("macro_order_history", [])).duplicate(true)
 	macro_history.append(prior_macro.duplicate(true))
@@ -851,7 +853,7 @@ func block_macro_march(
 		or macro.is_empty()
 		or StringName(army.phase) != PHASE_MARCHING
 		or StringName(macro.order_id) != order_id
-		or segment_index < 1
+		or segment_index < 0
 		or temporary_station_point == &""
 		or progress_before_segment_millis < int(macro.progress_millis)
 		or progress_before_segment_millis > int(macro.total_millis)
@@ -904,7 +906,8 @@ func _build_macro_march(
 	route_world_points: Array,
 	formation_snapshots: Array,
 	food_cost: int,
-	duration_milliseconds: int
+	duration_milliseconds: int,
+	route_segments: Array = []
 ) -> Dictionary:
 	return {
 		"order_id": order_id,
@@ -912,6 +915,7 @@ func _build_macro_march(
 		"target_point_id": target_point_id,
 		"route_id": route_id,
 		"route_world_points": route_world_points.duplicate(),
+		"route_segments": route_segments.duplicate(true),
 		"formation_snapshots": formation_snapshots.duplicate(true),
 		"food_cost": food_cost,
 		"progress_millis": 0,
@@ -968,6 +972,8 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 		"progress_millis", "total_millis", "blocked_segment_index",
 		"temporary_station_point", "phase",
 	]
+	if macro.has("route_segments"):
+		expected_keys.append("route_segments")
 	if macro.size() != expected_keys.size():
 		return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
 	for key in expected_keys:
@@ -1002,9 +1008,18 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 	for point in macro.route_world_points:
 		if typeof(point) != TYPE_VECTOR2I:
 			return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+	if macro.has("route_segments"):
+		if not (macro.route_segments is Array):
+			return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+		for segment_value in Array(macro.route_segments):
+			if not (segment_value is Dictionary):
+				return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+			var segment: Dictionary = segment_value
+			if StringName(segment.get("road_id", &"")) == &"" or typeof(segment.get("forward", null)) != TYPE_BOOL:
+				return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
 	if (
 		StringName(macro.phase) == PHASE_BLOCKED
-		and (int(macro.blocked_segment_index) < 1 or StringName(macro.temporary_station_point) == &"")
+		and (int(macro.blocked_segment_index) < 0 or StringName(macro.temporary_station_point) == &"")
 	):
 		return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
 	if (

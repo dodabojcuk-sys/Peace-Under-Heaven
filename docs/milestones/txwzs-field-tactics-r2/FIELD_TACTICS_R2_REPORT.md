@@ -183,3 +183,20 @@ Patrol advancement now consumes the residual milliseconds after wait and route
 arrival instead of dropping them. The 32-assertion field runner compares a
 single advance with split wait/move/contact advances. This remains patrol
 motion evidence, not army casualty or ambush evidence.
+
+### Ordered runtime-path checkpoint
+
+Runtime path planning now accepts the player's world-space draft and chooses
+among all simple connected candidates by that expressed route intent. The
+authority rejects directed road sequences with an endpoint discontinuity before
+any city resource transaction. The map displays the authority-returned duration
+rather than reproducing a local travel-time formula.
+
+New macro orders persist the validated road-ID/direction sequence, while old
+single-road records and earlier composite path handles remain readable without
+the optional field. The scheduler derives the current physical segment from
+the shared order progress and only checks that segment and later segments for
+damage; a road already passed by the army does not stop it. Focused field smoke
+passes 38 assertions and Macro March smoke passes 27 under Godot 4.5.1.
+This is automated engineering evidence, not normal system-input media, a full
+cross-process tactical route, or R2 player acceptance.

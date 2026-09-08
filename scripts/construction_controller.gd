@@ -5596,6 +5596,8 @@ func commit_macro_march_from_city(
 	var route_validation := _validate_macro_march_route(&"blackstone_city", target_point_id, route_id, route_world_points)
 	if not bool(route_validation.valid):
 		return _macro_failure(StringName(route_validation.error_id), str(route_validation.error))
+	var validated_route: Dictionary = Dictionary(route_validation.get("route", {}))
+	var route_segments: Array = Array(validated_route.get("segment_ids", [])).duplicate(true)
 	if is_macro_march_route_blocked(route_id) or not _war_loop_state.field_tactics.is_route_open(route_id):
 		return _macro_failure(&"ROAD_BLOCKED", "该道路当前受阻，请选择另一条道路或等待恢复")
 	if food < food_cost:
@@ -5606,7 +5608,7 @@ func commit_macro_march_from_city(
 	var local_commit := func() -> Dictionary:
 		var army := _army_registry.create_macro_march(
 			&"player", &"blackstone_city", &"blackstone_city", target_point_id,
-			route_id, route_world_points, units, selected, food_cost, duration
+			route_id, route_world_points, units, selected, food_cost, duration, route_segments
 		)
 		if army.is_empty() or not _garrison_state.try_extract_selected_formations(selected):
 			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
@@ -5640,6 +5642,8 @@ func commit_macro_march_from_station(
 	var route_validation := _validate_macro_march_route(StringName(army.target_node_id), target_point_id, route_id, route_world_points)
 	if not bool(route_validation.valid):
 		return _macro_failure(StringName(route_validation.error_id), str(route_validation.error))
+	var validated_route: Dictionary = Dictionary(route_validation.get("route", {}))
+	var route_segments: Array = Array(validated_route.get("segment_ids", [])).duplicate(true)
 	if is_macro_march_route_blocked(route_id) or not _war_loop_state.field_tactics.is_route_open(route_id):
 		return _macro_failure(&"ROAD_BLOCKED", "该道路当前受阻，请选择另一条道路或等待恢复")
 	var total := 0
@@ -5652,7 +5656,7 @@ func commit_macro_march_from_station(
 	var duration := _macro_march_route_duration(route_id)
 	var local_commit := func() -> Dictionary:
 		var issued := _army_registry.issue_stationed_macro_march(
-			army_id, target_point_id, route_id, route_world_points, food_cost, duration
+			army_id, target_point_id, route_id, route_world_points, food_cost, duration, route_segments
 		)
 		return {"success": not issued.is_empty(), "army": issued.duplicate(true)}
 	var transaction := _nation_state.commit_resource_transaction(
@@ -5706,8 +5710,12 @@ func _advance_all_macro_marches_seconds(delta_seconds: float) -> void:
 		if StringName(army.get("phase", &"")) not in [ArmyRegistry.PHASE_MARCHING, ArmyRegistry.PHASE_RETREATING]:
 			continue
 		var macro: Dictionary = army.get("macro_march", {})
-		if not _war_loop_state.field_tactics.is_route_open(StringName(macro.get("route_id", &""))):
-			_block_macro_march_for_damaged_road(army)
+		var unavailable_segment := _war_loop_state.field_tactics.first_unavailable_route_segment(
+			StringName(macro.get("route_id", &"")), Array(macro.get("route_segments", [])),
+			Array(macro.get("route_world_points", [])), int(macro.get("progress_millis", 0)), int(macro.get("total_millis", 0))
+		)
+		if unavailable_segment >= 0:
+			_block_macro_march_for_damaged_road(army, unavailable_segment)
 			continue
 		_advance_macro_march_elapsed_milliseconds(
 			StringName(army.get("army_id", &"")), StringName(macro.get("order_id", &"")),
@@ -5835,7 +5843,7 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 	return result.duplicate(true) if not result.is_empty() else field_advance
 
 
-func _block_macro_march_for_damaged_road(army: Dictionary) -> Dictionary:
+func _block_macro_march_for_damaged_road(army: Dictionary, blocked_road_segment_index: int) -> Dictionary:
 	var macro: Dictionary = army.get("macro_march", {})
 	var army_id := StringName(army.get("army_id", &""))
 	var order_id := StringName(macro.get("order_id", &""))
@@ -5843,7 +5851,7 @@ func _block_macro_march_for_damaged_road(army: Dictionary) -> Dictionary:
 		return {}
 	var registry_before := _army_registry.get_snapshot()
 	var blocked := _army_registry.block_macro_march(
-		army_id, order_id, _macro_segment_at_progress(macro), int(macro.get("progress_millis", 0)),
+		army_id, order_id, blocked_road_segment_index, int(macro.get("progress_millis", 0)),
 		&"受损道路前临时驻扎"
 	)
 	if blocked.is_empty():
@@ -5863,7 +5871,10 @@ func _resume_macro_marches_on_repaired_roads() -> Array[StringName]:
 		if StringName(army.get("phase", &"")) != ArmyRegistry.PHASE_BLOCKED:
 			continue
 		var macro: Dictionary = army.get("macro_march", {})
-		if not _war_loop_state.field_tactics.is_route_open(StringName(macro.get("route_id", &""))):
+		if _war_loop_state.field_tactics.first_unavailable_route_segment(
+			StringName(macro.get("route_id", &"")), Array(macro.get("route_segments", [])),
+			Array(macro.get("route_world_points", [])), int(macro.get("progress_millis", 0)), int(macro.get("total_millis", 0))
+		) >= 0:
 			continue
 		var resumed_army := _army_registry.resume_blocked_macro_march(
 			StringName(army.get("army_id", &"")), StringName(macro.get("order_id", &""))
