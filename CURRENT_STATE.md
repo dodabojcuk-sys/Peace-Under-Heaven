@@ -18,6 +18,13 @@ return-in-progress army, completes its remaining return path, and verifies the
 original order advances. Field R2 smoke and the expanded persistence suite
 both pass with the historical Godot 4.5.1 binary.
 
+The start and completion edges now use that same contract: `TO_CAMP` starts
+with its target solely in the temporary task and an empty arrived-station
+field; completing `TO_RESUME` atomically clears blocked state and restores the
+original marching or retreat phase before the checkpoint is published. This
+prevents invalid transition snapshots from being persisted. Focused Field R2
+and the J/K/L/M isolated-disk chain pass after this repair.
+
 The current uncommitted work extends `ArmyRegistry` schema 6 with a temporary
 execution record alongside the immutable original macro order. A march blocked
 by a future damaged physical road can now use its exact ordered segment and

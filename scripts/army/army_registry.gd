@@ -876,22 +876,23 @@ func block_macro_march(
 ) -> Dictionary:
 	var army: Dictionary = _armies_by_id.get(army_id, {})
 	var macro: Dictionary = army.get("macro_march", {})
+	var blocked_transfer := transfer.duplicate(true) if not transfer.is_empty() else _empty_blocked_transfer()
 	if (
 		army.is_empty()
 		or macro.is_empty()
 		or StringName(army.phase) not in [PHASE_MARCHING, PHASE_RETREATING]
 		or StringName(macro.order_id) != order_id
 		or segment_index < 0
-		or temporary_station_point == &""
+		or (temporary_station_point == &"" and StringName(blocked_transfer.get("phase", &"NONE")) not in [&"TO_CAMP", &"TO_RESUME"])
 		or progress_before_segment_millis < int(macro.progress_millis)
 		or progress_before_segment_millis > int(macro.total_millis)
 	):
 		return {}
 	macro.progress_millis = progress_before_segment_millis
 	macro.blocked_segment_index = segment_index
-	macro.temporary_station_point = temporary_station_point
+	macro.temporary_station_point = temporary_station_point if StringName(blocked_transfer.get("phase", &"NONE")) in [&"NONE", &"WAITING"] else &""
 	macro.blocked_resume_phase = StringName(army.phase)
-	macro.blocked_transfer = transfer.duplicate(true) if not transfer.is_empty() else _empty_blocked_transfer()
+	macro.blocked_transfer = blocked_transfer
 	macro.phase = PHASE_BLOCKED
 	army.progress_milliseconds = progress_before_segment_millis
 	army.phase = PHASE_BLOCKED
@@ -935,8 +936,19 @@ func advance_blocked_transfer(army_id: StringName, order_id: StringName, expecte
 		return {}
 	transfer.progress_millis = mini(int(transfer.progress_millis) + delta_milliseconds, int(transfer.total_millis))
 	var arrived := int(transfer.progress_millis) == int(transfer.total_millis)
-	if arrived:
-		transfer.phase = &"WAITING" if StringName(transfer.phase) == &"TO_CAMP" else &"NONE"
+	if arrived and StringName(transfer.phase) == &"TO_CAMP":
+		transfer.phase = &"WAITING"
+	elif arrived:
+		macro.blocked_segment_index = -1
+		macro.temporary_station_point = &""
+		macro.blocked_transfer = _empty_blocked_transfer()
+		var resume_phase := StringName(macro.get("blocked_resume_phase", PHASE_MARCHING))
+		macro.blocked_resume_phase = PHASE_MARCHING
+		macro.phase = resume_phase
+		army.phase = resume_phase
+		army.macro_march = macro
+		_armies_by_id[army_id] = army
+		return {"success": true, "arrived": true, "army": army.duplicate(true)}
 	macro.temporary_station_point = StringName(transfer.target_point_id) if StringName(transfer.phase) == &"WAITING" else &""
 	macro.blocked_transfer = transfer
 	army.macro_march = macro

@@ -23,6 +23,9 @@
 - Reused accumulated millisecond remainders for temporary transfer movement
   and extended isolated disk recovery through a fourth process that restores
   `TO_RESUME`, completes the return, and advances the original order.
+- Made the transfer start and return-completion writes atomic with their
+  validation contract: no premature station field during `TO_CAMP`, and no
+  invalid `BLOCKED + NONE` snapshot before original-task resumption.
 
 - Added schema-6 temporary execution records beside immutable macro orders.
   A future damaged road now sends an army from its exact ordered-road position
