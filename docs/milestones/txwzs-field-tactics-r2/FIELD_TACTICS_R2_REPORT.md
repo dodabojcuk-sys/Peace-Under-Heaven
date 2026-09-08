@@ -13,8 +13,8 @@ transaction and persistence-checkpoint caller.
 
 ### Formal bridge-use and deferred-recovery checkpoint
 
-The bridge verification now enters through the formal city, map adapter and
-Controller path. It confirms a player-shaped construction project, advances
+The bridge verification now enters through the formal city and Controller
+path. It confirms a player-shaped construction project, advances
 the authoritative world clock to completion, dispatches a later engineer, and
 checks the resulting specialist route against the physical bridge points
 created by that project before the engineer reaches Reedbank. Specialist path

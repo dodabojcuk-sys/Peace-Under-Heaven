@@ -4,7 +4,7 @@
 
 ### Formal bridge-use and deferred-recovery checkpoint
 
-The formal city → map adapter → Controller construction path now has an
+The formal city → Controller construction path now has an
 end-to-end bridge-use regression: it completes a player-shaped road-bridge-
 road project, dispatches a later engineer, and confirms that the engineer's
 stored movement route contains the generated bridge endpoints before arriving

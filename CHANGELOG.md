@@ -16,7 +16,7 @@
 
 ### FIELD_TACTICS_R2 formal bridge-use and deferred-recovery checkpoint
 
-- Added a formal Controller-path regression that completes a player-shaped
+- Added a formal city/Controller regression that completes a player-shaped
   bridge project and sends a second expert over the actual generated bridge.
 - Restricted specialist water access to open bridge geometry and shore
   connections, while retaining physical-distance movement time.
