@@ -123,6 +123,11 @@ func dispatch_field_specialist(role: StringName) -> Dictionary:
 	return city.dispatch_field_specialist(role) if city != null else {}
 
 
+func order_field_specialist_move(specialist_id: StringName, target_point_id: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.order_field_specialist_move(specialist_id, target_point_id) if city != null else {}
+
+
 func begin_field_road_project(
 	engineer_id: StringName,
 	source_point_id: StringName,

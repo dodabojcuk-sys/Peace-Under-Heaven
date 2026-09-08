@@ -971,6 +971,35 @@ func _test_points_length(points: Array) -> float:
 
 
 func _run_patrol_encounter_contract() -> void:
+	var geometry_scene := CITY_SCENE.instantiate()
+	root.add_child(geometry_scene)
+	await process_frame
+	await process_frame
+	var geometry_city: Node = geometry_scene.get_node("ConstructionController")
+	geometry_city.set_process(false)
+	var opposing: bool = geometry_city._timed_movement_segments_within_distance(
+		[{"from": Vector2(0, 0), "to": Vector2(100, 0), "start_milliseconds": 0, "end_milliseconds": 1000}],
+		[{"from": Vector2(100, 0), "to": Vector2(0, 0), "start_milliseconds": 0, "end_milliseconds": 1000}], 8.0
+	)
+	var separated_same_direction: bool = geometry_city._timed_movement_segments_within_distance(
+		[{"from": Vector2(0, 0), "to": Vector2(100, 0), "start_milliseconds": 0, "end_milliseconds": 1000}],
+		[{"from": Vector2(-100, 0), "to": Vector2(0, 0), "start_milliseconds": 0, "end_milliseconds": 1000}], 8.0
+	)
+	var different_times: bool = geometry_city._timed_movement_segments_within_distance(
+		[{"from": Vector2(0, 0), "to": Vector2(50, 0), "start_milliseconds": 0, "end_milliseconds": 400}],
+		[{"from": Vector2(50, 0), "to": Vector2(0, 0), "start_milliseconds": 600, "end_milliseconds": 1000}], 8.0
+	)
+	var arrival_contact: bool = geometry_city._timed_movement_segments_within_distance(
+		[
+			{"from": Vector2(0, 0), "to": Vector2(50, 0), "start_milliseconds": 0, "end_milliseconds": 500},
+			{"from": Vector2(50, 0), "to": Vector2(50, 0), "start_milliseconds": 500, "end_milliseconds": 1000},
+		],
+		[{"from": Vector2(100, 0), "to": Vector2(50, 0), "start_milliseconds": 0, "end_milliseconds": 700}], 8.0
+	)
+	_check(opposing and not separated_same_direction and not different_times and arrival_contact, "巡逻接敌同时比较空间与时间：相向交会和到站边界命中，同向间隔及先后经过不误判")
+	geometry_scene.queue_free()
+	await process_frame
+
 	var unguarded: FieldTacticsState = FIELD_TACTICS_STATE.new()
 	unguarded.initialize_from_theater(THEATER.get_points(), THEATER.get_routes(), THEATER.get_water_regions(), Rect2i(THEATER.get_world_bounds()), THEATER.get_terrain_regions())
 	var moving_scout: Dictionary = unguarded.dispatch_specialist(FieldTacticsState.SPECIALIST_SCOUT, &"northwatch_garrison")
@@ -1095,16 +1124,49 @@ func _run_patrol_encounter_contract() -> void:
 	crossing_patrol.resolved_army_ids = []
 	crossing_patrol.ambush_consumed_army_ids = []
 	crossing_field.patrols_by_id[&"patrol.ridge.001"] = crossing_patrol
-	crossing_city._process(float(int(crossing_plan.get("duration_milliseconds", 0))) / 1000.0)
+	var crossing_duration := float(int(crossing_plan.get("duration_milliseconds", 0))) / 1000.0
+	var crossing_snapshot: Dictionary = crossing_city.export_v5_campaign_snapshot()
+	var crossing_comparison_scenes: Array[Node] = []
+	var crossing_comparison_cities: Array[Node] = []
+	for unused in 3:
+		var comparison_scene := CITY_SCENE.instantiate()
+		root.add_child(comparison_scene)
+		await process_frame
+		await process_frame
+		var comparison_city: Node = comparison_scene.get_node("ConstructionController")
+		comparison_city.set_process(false)
+		var restored_crossing: Dictionary = comparison_city.restore_v5_campaign_snapshot(crossing_snapshot)
+		if not bool(restored_crossing.get("success", false)):
+			failures.append("巡逻时间等价场景无法从正式 V5 快照恢复")
+		crossing_comparison_scenes.append(comparison_scene)
+		crossing_comparison_cities.append(comparison_city)
+	crossing_city._process(crossing_duration)
+	_advance_controller_frames(crossing_comparison_cities[0], crossing_duration, [1.0 / 30.0])
+	_advance_controller_frames(crossing_comparison_cities[1], crossing_duration, [1.0 / 60.0])
+	_advance_controller_frames(crossing_comparison_cities[2], crossing_duration, [0.017, 0.041, 0.113, 0.007])
 	var crossing_after: Dictionary = crossing_city._army_registry.get_army(crossing_army_id)
 	var crossing_patrol_after: Dictionary = Dictionary(crossing_field.patrols_by_id[&"patrol.ridge.001"])
+	var crossing_army_count: int = crossing_city._macro_army_member_count(crossing_after)
+	var crossing_results_match := true
+	for comparison_city in crossing_comparison_cities:
+		var comparison_army: Dictionary = comparison_city._army_registry.get_army(crossing_army_id)
+		var comparison_patrol: Dictionary = Dictionary(comparison_city._war_loop_state.field_tactics.patrols_by_id[&"patrol.ridge.001"])
+		crossing_results_match = crossing_results_match and (
+			StringName(comparison_army.get("phase", &"")) == StringName(crossing_after.get("phase", &""))
+			and comparison_city._macro_army_member_count(comparison_army) == crossing_army_count
+			and int(comparison_patrol.get("strength", -1)) == int(crossing_patrol_after.get("strength", -1))
+			and Array(comparison_patrol.get("resolved_army_ids", [])) == Array(crossing_patrol_after.get("resolved_army_ids", []))
+		)
 	_check(
 		bool(crossing_issue.get("success", false))
 			and StringName(crossing_after.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED
 			and int(crossing_patrol_after.get("strength", 5)) < 5
-			and Array(crossing_patrol_after.get("resolved_army_ids", [])).has(crossing_army_id),
-		"军队与巡逻在一个大时间步内沿同一道路相向穿越时仍会结算遭遇，不能因帧末错开而漏战"
+			and Array(crossing_patrol_after.get("resolved_army_ids", [])).has(crossing_army_id)
+			and crossing_results_match,
+		"军队与巡逻在同一道路相向穿越时不会因帧末错开而漏战，单步、30/60 FPS 与不规则帧得到相同结算"
 	)
+	for comparison_scene in crossing_comparison_scenes:
+		comparison_scene.queue_free()
 	crossing_scene.queue_free()
 	await process_frame
 

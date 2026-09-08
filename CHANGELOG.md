@@ -14,6 +14,33 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 formal operations, time, and map experience
+
+- Added a real scout-target interaction to the Macro March screen. Dispatch now
+  creates a waiting scout, map selection sends the movement order through the
+  Controller adapter, cancellation is side-effect free, and the panel reports
+  waiting, moving, arrived, or lost state without claiming an idle unit left.
+- Moved all world rendering into a clipped map canvas, separated the legend and
+  side rail from world objects, clamped city labels, packed only visible actions,
+  and retained one camera transform for drawing, hit testing, minimap navigation,
+  and route drafting. Layout checks cover 1152x648, 1280x720, and 1920x1080.
+- Added time-stamped army and patrol movement segments, including authored road
+  bends and stationary arrival intervals. Encounter checks now require spatial
+  proximity during an overlapping time interval, preventing same-direction or
+  different-time trace overlap from creating false combat.
+- Removed route-B army-only time advancement. Both full routes now use the formal
+  shared world-clock entry and aggregate all army casualties, specialist losses,
+  food transactions, and elapsed field time. Current results are 35.90 seconds,
+  12 food spent, and four casualties for route A; 180.60 seconds, 79 food spent,
+  five army casualties, and one specialist loss for route B.
+- Kept evidence boundaries explicit: route B resolves forest deployment and the
+  patrol but records zero ambush openings in this run; the separate integrated
+  Field contract verifies one-use ambush persistence. Exact remaining food is no
+  longer an acceptance assertion, and test-only road damage remains labelled.
+- Verified Field R2 66 assertions, both playthroughs, audited field persistence,
+  Macro March 28 assertions and disk persistence, War Loop R1/formal/arrival,
+  V5 army/campaign/encounter recovery, editor import, and three scene starts.
+
 ### FIELD_TACTICS_R2 playable-loop candidate
 
 - Added a formal two-route playthrough regression from the default 80-food

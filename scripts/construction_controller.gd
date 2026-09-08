@@ -874,7 +874,9 @@ func _process(delta: float) -> void:
 	advance_city_time(delta * city_time_speed)
 	var macro_before := get_macro_march_armies()
 	_advance_all_macro_marches_seconds(delta)
-	_macro_march_traces_for_war_step = _macro_army_movement_traces(macro_before, get_macro_march_armies())
+	_macro_march_traces_for_war_step = _macro_army_movement_traces(
+		macro_before, get_macro_march_armies(), delta * 1000.0 * city_time_speed
+	)
 	advance_war_loop_time_seconds(delta)
 	_macro_march_traces_for_war_step.clear()
 	_refresh_constructing_building_visuals()
@@ -6019,11 +6021,20 @@ func _resolve_field_patrol_encounters(field_advance: Dictionary) -> Dictionary:
 			var army := _army_registry.get_army(army_id)
 			if army.is_empty() or StringName(army.get("phase", &"")) not in [ArmyRegistry.PHASE_MARCHING, ArmyRegistry.PHASE_BLOCKED, ArmyRegistry.PHASE_STATIONED, ArmyRegistry.PHASE_RETREATING]:
 				continue
-			var army_trace: Array = Array(_macro_march_traces_for_war_step.get(army_id, [army_positions[army_id], army_positions[army_id]]))
+			var step_milliseconds := float(field_advance.get("delta_milliseconds", 0))
+			var army_trace: Array = Array(_macro_march_traces_for_war_step.get(
+				army_id, _stationary_timed_trace(Vector2(army_positions[army_id]), step_milliseconds)
+			))
 			var contacted := Vector2(army_positions[army_id]).distance_to(Vector2(patrol.get("world_position", Vector2.ZERO))) <= 32.0
 			for movement_value in Array(movements_by_patrol.get(patrol_id, [])):
 				var movement: Dictionary = Dictionary(movement_value)
-				if _world_traces_within_distance(army_trace, [movement.get("from", Vector2.ZERO), movement.get("to", Vector2.ZERO)], 32.0):
+				var patrol_trace := [{
+					"from": Vector2(movement.get("from", Vector2.ZERO)),
+					"to": Vector2(movement.get("to", Vector2.ZERO)),
+					"start_milliseconds": float(movement.get("start_offset_milliseconds", 0)),
+					"end_milliseconds": float(movement.get("end_offset_milliseconds", step_milliseconds)),
+				}]
+				if _timed_movement_segments_within_distance(army_trace, patrol_trace, 32.0):
 					contacted = true
 					break
 			if contacted:
@@ -6131,7 +6142,7 @@ func _macro_army_world_positions() -> Dictionary:
 	return result
 
 
-func _macro_army_movement_traces(before_armies: Array[Dictionary], after_armies: Array[Dictionary]) -> Dictionary:
+func _macro_army_movement_traces(before_armies: Array[Dictionary], after_armies: Array[Dictionary], step_milliseconds: float) -> Dictionary:
 	var before_by_id: Dictionary = {}
 	for army in before_armies:
 		before_by_id[StringName(army.get("army_id", &""))] = army
@@ -6148,14 +6159,51 @@ func _macro_army_movement_traces(before_armies: Array[Dictionary], after_armies:
 		var before_points: Array = Array(before_motion.points)
 		var after_points: Array = Array(after_motion.points)
 		if before_points == after_points and int(after_motion.progress) >= int(before_motion.progress):
-			traces[army_id] = _world_points_between_progress(
-				before_points,
-				float(before_motion.progress) / maxf(float(before_motion.total), 1.0),
-				float(after_motion.progress) / maxf(float(after_motion.total), 1.0)
+			traces[army_id] = _timed_segments_between_progress(
+				before_points, int(before_motion.progress), int(after_motion.progress),
+				maxi(int(before_motion.total), 1), step_milliseconds
 			)
 		else:
-			traces[army_id] = [before_motion.position, after_motion.position]
+			traces[army_id] = [{
+				"from": Vector2(before_motion.position), "to": Vector2(after_motion.position),
+				"start_milliseconds": 0.0, "end_milliseconds": step_milliseconds,
+			}]
 	return traces
+
+
+func _timed_segments_between_progress(points: Array, start_milliseconds: int, end_milliseconds: int, total_milliseconds: int, step_milliseconds: float) -> Array:
+	var start_progress := float(start_milliseconds) / maxf(float(total_milliseconds), 1.0)
+	var end_progress := float(end_milliseconds) / maxf(float(total_milliseconds), 1.0)
+	var trace_points := _world_points_between_progress(points, start_progress, end_progress)
+	var movement_milliseconds := minf(maxf(float(end_milliseconds - start_milliseconds), 0.0), step_milliseconds)
+	var trace_length := 0.0
+	for index in range(1, trace_points.size()):
+		trace_length += Vector2(trace_points[index - 1]).distance_to(Vector2(trace_points[index]))
+	var segments: Array = []
+	var elapsed := 0.0
+	for index in range(1, trace_points.size()):
+		var from := Vector2(trace_points[index - 1])
+		var to := Vector2(trace_points[index])
+		var segment_milliseconds := movement_milliseconds * from.distance_to(to) / maxf(trace_length, 0.0001)
+		segments.append({
+			"from": from, "to": to,
+			"start_milliseconds": elapsed, "end_milliseconds": elapsed + segment_milliseconds,
+		})
+		elapsed += segment_milliseconds
+	var final_position := Vector2(trace_points.back()) if not trace_points.is_empty() else _world_position_along_points(points, end_progress)
+	if segments.is_empty() or movement_milliseconds < step_milliseconds - 0.0001:
+		segments.append({
+			"from": final_position, "to": final_position,
+			"start_milliseconds": movement_milliseconds, "end_milliseconds": step_milliseconds,
+		})
+	return segments
+
+
+func _stationary_timed_trace(position: Vector2, step_milliseconds: float) -> Array:
+	return [{
+		"from": position, "to": position,
+		"start_milliseconds": 0.0, "end_milliseconds": step_milliseconds,
+	}]
 
 
 func _macro_army_motion_state(army: Dictionary) -> Dictionary:
@@ -6249,6 +6297,39 @@ func _world_traces_within_distance(first: Array, second: Array, distance: float)
 				minf(_distance_to_world_segment(first_start, second_start, second_end), _distance_to_world_segment(first_end, second_start, second_end)),
 				minf(_distance_to_world_segment(second_start, first_start, first_end), _distance_to_world_segment(second_end, first_start, first_end))
 			) <= distance:
+				return true
+	return false
+
+
+func _timed_movement_segments_within_distance(first: Array, second: Array, distance: float) -> bool:
+	for first_value in first:
+		var first_segment: Dictionary = Dictionary(first_value)
+		var first_start_time := float(first_segment.get("start_milliseconds", 0.0))
+		var first_end_time := float(first_segment.get("end_milliseconds", first_start_time))
+		for second_value in second:
+			var second_segment: Dictionary = Dictionary(second_value)
+			var overlap_start := maxf(first_start_time, float(second_segment.get("start_milliseconds", 0.0)))
+			var overlap_end := minf(first_end_time, float(second_segment.get("end_milliseconds", overlap_start)))
+			if overlap_end < overlap_start - 0.0001:
+				continue
+			var first_from := Vector2(first_segment.get("from", Vector2.ZERO))
+			var first_to := Vector2(first_segment.get("to", first_from))
+			var second_from := Vector2(second_segment.get("from", Vector2.ZERO))
+			var second_to := Vector2(second_segment.get("to", second_from))
+			var first_duration := maxf(first_end_time - first_start_time, 0.0001)
+			var second_start_time := float(second_segment.get("start_milliseconds", 0.0))
+			var second_end_time := float(second_segment.get("end_milliseconds", second_start_time))
+			var second_duration := maxf(second_end_time - second_start_time, 0.0001)
+			var first_at_start := first_from.lerp(first_to, clampf((overlap_start - first_start_time) / first_duration, 0.0, 1.0))
+			var first_at_end := first_from.lerp(first_to, clampf((overlap_end - first_start_time) / first_duration, 0.0, 1.0))
+			var second_at_start := second_from.lerp(second_to, clampf((overlap_start - second_start_time) / second_duration, 0.0, 1.0))
+			var second_at_end := second_from.lerp(second_to, clampf((overlap_end - second_start_time) / second_duration, 0.0, 1.0))
+			var relative_start := first_at_start - second_at_start
+			var relative_delta := (first_at_end - second_at_end) - relative_start
+			var closest_ratio := 0.0
+			if relative_delta.length_squared() > 0.000001:
+				closest_ratio = clampf(-relative_start.dot(relative_delta) / relative_delta.length_squared(), 0.0, 1.0)
+			if relative_start.lerp(relative_start + relative_delta, closest_ratio).length() <= distance:
 				return true
 	return false
 

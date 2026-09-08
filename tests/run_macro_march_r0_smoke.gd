@@ -255,7 +255,28 @@ func _run_mouse_selection_and_replacement_contract() -> void:
 	var first_selected := macro_screen._selected_army_id
 	macro_screen._on_gui_input(click)
 	var second_selected := macro_screen._selected_army_id
-	var scout: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_SCOUT)
+	var scout_food_before: int = city.food
+	macro_screen._scout_button.emit_signal("pressed")
+	var field_after_scout_dispatch: Dictionary = city.get_field_tactics_read_model()
+	var scout_ids: Array = Dictionary(field_after_scout_dispatch.get("specialists_by_id", {})).keys()
+	scout_ids.sort()
+	var scout_id := StringName(scout_ids.filter(func(id): return StringName(Dictionary(field_after_scout_dispatch.specialists_by_id[id]).get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT).front())
+	var scout_before_order: Dictionary = Dictionary(field_after_scout_dispatch.specialists_by_id[scout_id])
+	var scout_target_click := InputEventMouseButton.new()
+	scout_target_click.button_index = MOUSE_BUTTON_LEFT
+	scout_target_click.pressed = true
+	scout_target_click.position = macro_screen._world_to_screen(Vector2(THEATER.get_point(&"northwatch_garrison").world_position))
+	macro_screen._on_gui_input(scout_target_click)
+	var scout_after_order: Dictionary = Dictionary(city.get_field_tactics_read_model().specialists_by_id[scout_id])
+	_check(
+		StringName(scout_before_order.get("phase", &"")) == FieldTacticsState.SPECIALIST_IDLE
+			and not String(macro_screen._status_label.text).contains("已出发")
+			and StringName(scout_after_order.get("phase", &"")) == FieldTacticsState.SPECIALIST_MOVING
+			and StringName(scout_after_order.get("target_point_id", &"")) == &"northwatch_garrison"
+			and String(macro_screen._specialist_status_label.text).contains("在途")
+			and city.food == scout_food_before - 4,
+		"正式侦察按钮先创建待命单位，再由地图点击写入实际目标和移动状态"
+	)
 	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
 	var field: FieldTacticsState = city._war_loop_state.field_tactics
 	var repair_route := [Vector2i(150, 430), Vector2i(355, 470), Vector2i(500, 440)]
@@ -278,7 +299,6 @@ func _run_mouse_selection_and_replacement_contract() -> void:
 			and repair_project_id != &"" and not field.is_route_open(repair_road_id),
 		"自动化鼠标命中受损道路并点击维修入口，会创建到场维修而不立即放行"
 	)
-	var scout_id := StringName(Dictionary(scout.get("specialist", {})).get("specialist_id", &""))
 	var engineer_id := StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &""))
 	var lost_scout := Dictionary(field.specialists_by_id[scout_id])
 	var lost_engineer := Dictionary(field.specialists_by_id[engineer_id])
@@ -291,7 +311,8 @@ func _run_mouse_selection_and_replacement_contract() -> void:
 	_check(
 		bool(first.success) and bool(second.success)
 			and first_selected != &"" and second_selected != &"" and first_selected != second_selected
-			and macro_screen._scout_button.visible and macro_screen._engineer_button.visible,
+			and macro_screen._scout_button.visible and macro_screen._engineer_button.visible
+			and String(macro_screen._specialist_status_label.text).contains("阵亡"),
 		"鼠标命中同点重叠军队可轮换选队；死亡历史不会阻止补派"
 	)
 	var selected_siege := macro_screen._siege_for_army({
@@ -308,14 +329,15 @@ func _run_camera_and_layout_contract() -> void:
 	var city: Node = context.city
 	var macro_screen: MacroMarchR0 = scene.get_node("UI/MacroMarchR0")
 	scene.open_macro_march_r0()
-	for width in [1152, 1280, 1920]:
-		root.size = Vector2i(width, 648)
+	for viewport_size in [Vector2i(1152, 648), Vector2i(1280, 720), Vector2i(1920, 1080)]:
+		root.size = viewport_size
 		await process_frame
 		macro_screen.refresh()
 		var map_rect := macro_screen._map_rect()
 		var panel_rect := macro_screen._side_panel_rect()
 		var all_controls: Array[Control] = [
 			macro_screen._detail_label,
+			macro_screen._specialist_status_label,
 			macro_screen._formation_scroll,
 			macro_screen._confirm_button,
 			macro_screen._scout_button,
@@ -331,14 +353,18 @@ func _run_camera_and_layout_contract() -> void:
 			if not control.visible:
 				continue
 			var control_rect := control.get_global_rect()
-			controls_fit = controls_fit and control_rect.position.x >= panel_rect.position.x and control_rect.end.x <= float(width) and control_rect.position.y >= panel_rect.position.y and control_rect.end.y <= 648.0
+			controls_fit = controls_fit and control_rect.position.x >= panel_rect.position.x and control_rect.end.x <= float(viewport_size.x) and control_rect.position.y >= panel_rect.position.y and control_rect.end.y <= float(viewport_size.y)
 			for other in all_controls:
 				if control == other or not other.visible:
 					continue
 				controls_do_not_overlap = controls_do_not_overlap and not control_rect.intersects(other.get_global_rect())
 		_check(
-			controls_fit and controls_do_not_overlap and macro_screen._formation_scroll.get_parent() == macro_screen and macro_screen._interrupted_project_selector.get_parent() == macro_screen and macro_screen._formation_buttons.all(func(button: Button) -> bool: return button.get_parent() == macro_screen._formation_list),
-			"自动化 UI 布局在 %d×648 下保持地图、滚动编队和每个可见行动区互不覆盖" % width
+			controls_fit and controls_do_not_overlap
+				and macro_screen._map_canvas.get_parent() == macro_screen and macro_screen._map_canvas.clip_contents
+				and macro_screen._map_canvas.get_global_rect() == map_rect
+				and not macro_screen._map_canvas.get_global_rect().intersects(panel_rect)
+				and macro_screen._formation_scroll.get_parent() == macro_screen and macro_screen._interrupted_project_selector.get_parent() == macro_screen and macro_screen._formation_buttons.all(func(button: Button) -> bool: return button.get_parent() == macro_screen._formation_list),
+			"自动化 UI 布局在 %d×%d 下保持裁剪地图、滚动编队和可见行动区互不覆盖" % [viewport_size.x, viewport_size.y]
 		)
 	root.size = Vector2i(1152, 648)
 	await process_frame

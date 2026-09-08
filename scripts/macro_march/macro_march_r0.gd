@@ -6,6 +6,7 @@ signal return_to_city_requested
 
 const THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
 const ARMY_REGISTRY = preload("res://scripts/army/army_registry.gd")
+const MAP_CANVAS = preload("res://scripts/macro_march/macro_march_map_canvas.gd")
 
 const CAMERA_MIN_ZOOM := 0.62
 const CAMERA_MAX_ZOOM := 2.4
@@ -19,6 +20,8 @@ var _draw_points: Array[Vector2] = []
 var _is_drawing := false
 var _engineering_mode := false
 var _engineering_engineer_id: StringName = &""
+var _scout_target_mode := false
+var _selected_scout_id: StringName = &""
 var _selected_army_id: StringName = &""
 var _selected_damaged_road_id: StringName = &""
 var _selected_interrupted_project_id: StringName = &""
@@ -27,13 +30,16 @@ var _army_hit_cycle_index := 0
 var _formation_buttons: Array[Button] = []
 var _formation_signature := ""
 var _camera_center := Vector2(500, 325)
-var _camera_zoom := 1.0
+var _camera_zoom := 0.78
 var _is_panning := false
 var _last_pan_position := Vector2.ZERO
 
 var _title_label := Label.new()
+var _map_canvas := MAP_CANVAS.new()
+var _legend_label := Label.new()
 var _status_label := Label.new()
 var _detail_label := Label.new()
+var _specialist_status_label := Label.new()
 var _formation_scroll := ScrollContainer.new()
 var _formation_list := VBoxContainer.new()
 var _confirm_button := Button.new()
@@ -76,6 +82,7 @@ func refresh() -> void:
 	_refresh_copy(model, army)
 	_layout_ui()
 	queue_redraw()
+	_map_canvas.queue_redraw()
 
 
 func _process(delta: float) -> void:
@@ -86,7 +93,11 @@ func _process(delta: float) -> void:
 
 
 func _build_ui() -> void:
-	for label in [_title_label, _status_label, _detail_label]:
+	_map_canvas.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_map_canvas.clip_contents = true
+	_map_canvas.renderer = _draw_map_canvas
+	add_child(_map_canvas)
+	for label in [_title_label, _status_label, _detail_label, _specialist_status_label]:
 		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(label)
@@ -96,6 +107,14 @@ func _build_ui() -> void:
 	_status_label.add_theme_color_override("font_color", Color("f4f0df"))
 	_detail_label.add_theme_font_size_override("font_size", 14)
 	_detail_label.add_theme_color_override("font_color", Color("3e3428"))
+	_specialist_status_label.add_theme_font_size_override("font_size", 13)
+	_specialist_status_label.add_theme_color_override("font_color", Color("31505a"))
+	_legend_label.text = "滚轮缩放 · 中键拖动 · 小地图定位 · 金主道/青道路/紫桥/灰受损 · 蓝侦/橙工 · 红巡逻/褐旧情报"
+	_legend_label.add_theme_font_size_override("font_size", 12)
+	_legend_label.add_theme_color_override("font_color", Color("e3dcc5"))
+	_legend_label.clip_text = true
+	_legend_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(_legend_label)
 	_formation_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	_formation_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	_formation_scroll.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -132,26 +151,35 @@ func _layout_ui() -> void:
 	var panel_rect := _side_panel_rect()
 	var action_height := 34.0
 	var action_gap := 4.0
-	var action_count := 7
-	# Seven explicit actions (new construction, repair, and resume are separate)
-	# must remain inside the 648 px review window without covering the selector.
+	var action_buttons: Array[Button] = [_confirm_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _return_button]
+	var visible_action_buttons: Array[Button] = []
+	for button in action_buttons:
+		if button.visible:
+			visible_action_buttons.append(button)
+	var action_count := maxi(visible_action_buttons.size(), 1)
 	var action_top := maxf(panel_rect.position.y + 276.0, size.y - 16.0 - action_height * action_count - action_gap * (action_count - 1))
 	var panel_inner := Rect2(panel_rect.position + Vector2(14, 12), panel_rect.size - Vector2(28, 24))
+	var map_rect := _map_rect()
+	_map_canvas.position = map_rect.position
+	_map_canvas.size = map_rect.size
+	_legend_label.position = Vector2(map_rect.position.x, map_rect.end.y + 2.0)
+	_legend_label.size = Vector2(map_rect.size.x, 20.0)
 	_title_label.position = Vector2(22, 12)
 	_title_label.size = Vector2(size.x - 44, 34)
 	_status_label.position = Vector2(22, 48)
 	_status_label.size = Vector2(size.x - 44, 36)
 	_detail_label.position = panel_inner.position
-	_detail_label.size = Vector2(panel_inner.size.x, 106)
-	_formation_scroll.position = panel_inner.position + Vector2(0, 148)
+	_detail_label.size = Vector2(panel_inner.size.x, 132)
+	_specialist_status_label.position = panel_inner.position + Vector2(0, 136)
+	_specialist_status_label.size = Vector2(panel_inner.size.x, 38)
+	_formation_scroll.position = panel_inner.position + Vector2(0, 178)
 	_formation_scroll.size = Vector2(panel_inner.size.x, maxf(68.0, action_top - _formation_scroll.position.y - 42.0))
 	_interrupted_project_selector.position = Vector2(panel_inner.position.x, action_top - 36.0)
 	_interrupted_project_selector.size = Vector2(panel_inner.size.x, 30.0)
 	for button in _formation_buttons:
 		button.custom_minimum_size = Vector2(panel_inner.size.x - 10.0, 38)
-	var action_buttons: Array[Button] = [_confirm_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _return_button]
-	for index in action_buttons.size():
-		var button := action_buttons[index]
+	for index in visible_action_buttons.size():
+		var button := visible_action_buttons[index]
 		button.position = Vector2(panel_inner.position.x, action_top + index * (action_height + action_gap))
 		button.size = Vector2(panel_inner.size.x, action_height)
 	_block_button.position = Vector2(panel_inner.position.x, action_top)
@@ -199,13 +227,32 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	var visible_patrols: Dictionary = field.get("visible_patrols_by_id", {})
 	var has_selected_damage := _selected_damaged_road_id != &"" and StringName(Dictionary(field.get("roads_by_id", {})).get(_selected_damaged_road_id, {}).get("state", &"")) == FieldTacticsState.ROAD_DAMAGED
 	_refresh_interrupted_project_selector(model, projects)
-	_scout_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_SCOUT) < 1
+	_refresh_selected_specialist_status(specialists, model)
+	_configure_scout_action(specialists)
 	_engineer_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_ENGINEER) < 1
 	_side_road_button.visible = not specialists.is_empty()
 	_side_road_button.disabled = not _has_idle_engineer(specialists)
 	_side_road_button.text = "安排工程师维修受损道路（3 粮）" if has_selected_damage else "工程师拖线修路"
 	_resume_project_button.visible = not _first_interrupted_project(projects).is_empty()
 	_resume_project_button.disabled = not _has_idle_engineer(specialists)
+	if _scout_target_mode:
+		_confirm_button.visible = false
+		_block_button.visible = false
+		_recover_button.visible = false
+		_retreat_button.visible = false
+		_engineer_button.visible = false
+		_side_road_button.visible = false
+		_resume_project_button.visible = false
+		_interrupted_project_selector.visible = false
+		_scout_button.visible = true
+		_scout_button.disabled = false
+		_scout_button.text = "取消侦察目标选择"
+		_status_label.text = "侦察目标模式：单击地图上的城池或驻点；右键或按钮取消。"
+		var scout := Dictionary(specialists.get(_selected_scout_id, {}))
+		_detail_label.text = "侦察兵：%s\n当前位置：%s\n尚未下达移动命令；取消不会产生新的资源事务。" % [
+			String(_selected_scout_id), String(scout.get("current_point_id", "野外")),
+		]
+		return
 	var source_id := _source_point_id(model, army)
 	var source := _point_from_model(model, source_id)
 	var draft_text := "未画路线"
@@ -297,7 +344,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_retreat_button.visible = false
 	# Do not use historical specialist entries here: lost specialists remain in
 	# the save for evidence, but must not block a replacement dispatch.
-	_scout_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_SCOUT) < 1
+	_configure_scout_action(specialists)
 	_engineer_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_ENGINEER) < 1
 	_side_road_button.visible = _has_idle_engineer(specialists)
 	_confirm_button.text = "确认施工" if not _engineering_draft.is_empty() else "确认并锁定军令"
@@ -340,6 +387,29 @@ func _has_idle_engineer(specialists: Dictionary) -> bool:
 		):
 			return true
 	return false
+
+
+func _idle_specialist_id(specialists: Dictionary, role: StringName) -> StringName:
+	var ids: Array = specialists.keys()
+	ids.sort()
+	for specialist_id_value in ids:
+		var specialist: Dictionary = Dictionary(specialists[specialist_id_value])
+		if (
+			StringName(specialist.get("role", &"")) == role
+			and bool(specialist.get("alive", false))
+			and StringName(specialist.get("phase", &"")) == FieldTacticsState.SPECIALIST_IDLE
+			and StringName(specialist.get("project_id", &"")) == &""
+		):
+			return StringName(specialist_id_value)
+	return &""
+
+
+func _configure_scout_action(specialists: Dictionary) -> void:
+	var idle_scout_id := _idle_specialist_id(specialists, FieldTacticsState.SPECIALIST_SCOUT)
+	var alive_scout_count := _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_SCOUT)
+	_scout_button.visible = idle_scout_id != &"" or alive_scout_count == 0
+	_scout_button.disabled = false
+	_scout_button.text = "安排侦察目标" if idle_scout_id != &"" else "派遣侦察兵（4 粮）"
 
 
 func _first_interrupted_project(projects: Dictionary) -> Dictionary:
@@ -427,7 +497,9 @@ func _on_gui_input(event: InputEvent) -> void:
 			accept_event()
 			return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		if not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty() or _selected_damaged_road_id != &"":
+		if _scout_target_mode or not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty() or _selected_damaged_road_id != &"":
+			_scout_target_mode = false
+			_selected_scout_id = &""
 			_draft_route = {}
 			_engineering_draft = {}
 			_engineering_mode = false
@@ -448,6 +520,20 @@ func _on_gui_input(event: InputEvent) -> void:
 			_center_camera_from_minimap(event.position)
 			accept_event()
 			return
+		if _scout_target_mode:
+			var target_id := _point_id_at_screen(event.position)
+			if target_id == &"":
+				_status_label.text = "请选择地图上的城池或驻点作为侦察目标。"
+				return
+			var scout_result := _dispatch_adapter.order_field_specialist_move(_selected_scout_id, target_id)
+			if not bool(scout_result.get("success", false)):
+				_status_label.text = str(scout_result.get("error", "侦察目标无法到达"))
+				return
+			_scout_target_mode = false
+			_status_label.text = "侦察目标已确认；侦察兵正在移动。"
+			refresh()
+			accept_event()
+			return
 		var selected_id := _army_id_at_screen(_model(), event.position)
 		if selected_id != &"":
 			_selected_army_id = selected_id
@@ -460,6 +546,15 @@ func _on_gui_input(event: InputEvent) -> void:
 		if damaged_road_id != &"":
 			_selected_damaged_road_id = damaged_road_id
 			_status_label.text = "已选中受损道路；可安排空闲工程师前往维修。"
+			refresh()
+			accept_event()
+			return
+		var specialist_id := _specialist_id_at_screen(_dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}, event.position)
+		if specialist_id != &"":
+			var selected_specialist := Dictionary(_dispatch_adapter.get_field_tactics_read_model().get("specialists_by_id", {}).get(specialist_id, {}))
+			if StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT:
+				_selected_scout_id = specialist_id
+			_status_label.text = "已选中地图上的专家；右栏显示其实际任务状态。"
 			refresh()
 			accept_event()
 			return
@@ -632,9 +727,44 @@ func _request_retreat() -> void:
 func _dispatch_scout() -> void:
 	if _dispatch_adapter == null:
 		return
-	var result := _dispatch_adapter.dispatch_field_specialist(FieldTacticsState.SPECIALIST_SCOUT)
-	_status_label.text = "侦察兵已从黑石城出发。" if bool(result.get("success", false)) else str(result.get("error", "侦察兵派遣失败"))
+	if _scout_target_mode:
+		_scout_target_mode = false
+		_selected_scout_id = &""
+		_status_label.text = "已取消侦察目标选择；没有新增移动命令。"
+		refresh()
+		return
+	var field := _dispatch_adapter.get_field_tactics_read_model()
+	var scout_id := _idle_specialist_id(Dictionary(field.get("specialists_by_id", {})), FieldTacticsState.SPECIALIST_SCOUT)
+	if scout_id == &"":
+		var result := _dispatch_adapter.dispatch_field_specialist(FieldTacticsState.SPECIALIST_SCOUT)
+		if not bool(result.get("success", false)):
+			_status_label.text = str(result.get("error", "侦察兵派遣失败"))
+			refresh()
+			return
+		scout_id = StringName(Dictionary(result.get("specialist", {})).get("specialist_id", &""))
+	_scout_target_mode = scout_id != &""
+	_selected_scout_id = scout_id
+	_status_label.text = "侦察兵已待命；请选择实际侦察目标。" if _scout_target_mode else "没有可安排的侦察兵。"
 	refresh()
+
+
+func _refresh_selected_specialist_status(specialists: Dictionary, model: Dictionary) -> void:
+	if _selected_scout_id == &"":
+		_specialist_status_label.text = "侦察：未选择"
+		return
+	var specialist := Dictionary(specialists.get(_selected_scout_id, {}))
+	if specialist.is_empty() or not bool(specialist.get("alive", false)):
+		_specialist_status_label.text = "侦察：%s 已阵亡或失联，可从城市重新派遣。" % String(_selected_scout_id)
+		return
+	var phase := StringName(specialist.get("phase", &""))
+	var current := _point_from_model(model, StringName(specialist.get("current_point_id", &"")))
+	var target := _point_from_model(model, StringName(specialist.get("target_point_id", &"")))
+	if _scout_target_mode:
+		_specialist_status_label.text = "侦察：%s 待命，等待地图目标。" % str(current.get("display_name", "当前位置"))
+	elif phase == FieldTacticsState.SPECIALIST_MOVING:
+		_specialist_status_label.text = "侦察：在途 → %s" % str(target.get("display_name", specialist.get("target_point_id", "目标")))
+	else:
+		_specialist_status_label.text = "侦察：已抵达 %s，等待下一项安排。" % str(current.get("display_name", specialist.get("current_point_id", "当前位置")))
 
 
 func _dispatch_engineer() -> void:
@@ -724,6 +854,18 @@ func _damaged_road_id_at_screen(field: Dictionary, screen_position: Vector2) -> 
 	return &""
 
 
+func _specialist_id_at_screen(field: Dictionary, screen_position: Vector2) -> StringName:
+	var specialist_ids: Array = Dictionary(field.get("specialists_by_id", {})).keys()
+	specialist_ids.sort()
+	for specialist_id_value in specialist_ids:
+		var specialist: Dictionary = Dictionary(field.specialists_by_id[specialist_id_value])
+		if not bool(specialist.get("alive", false)):
+			continue
+		if _world_to_screen(Vector2(specialist.get("world_position", Vector2.ZERO))).distance_to(screen_position) <= 18.0:
+			return StringName(specialist_id_value)
+	return &""
+
+
 func _can_draw_route() -> bool:
 	var army := _selected_army(_model())
 	return (
@@ -800,6 +942,19 @@ func _nearest_target_at_draw_end(source_id: StringName) -> StringName:
 		if StringName(point_id) != source_id and end.distance_to(Vector2(point.get("world_position", Vector2.ZERO))) <= 65.0:
 			return StringName(point_id)
 	return &""
+
+
+func _point_id_at_screen(screen_position: Vector2) -> StringName:
+	var nearest_id := &""
+	var nearest_distance := 34.0
+	for point_id_value in _all_points(_model()):
+		var point_id := StringName(point_id_value)
+		var point := _point_from_model(_model(), point_id)
+		var distance := _world_to_screen(Vector2(point.get("world_position", Vector2.ZERO))).distance_to(screen_position)
+		if distance <= nearest_distance:
+			nearest_id = point_id
+			nearest_distance = distance
+	return nearest_id
 
 
 func _all_points(model: Dictionary) -> Dictionary:
@@ -970,15 +1125,21 @@ func _screen_to_world(screen: Vector2) -> Vector2:
 
 
 func _draw() -> void:
-	var rect := _map_rect()
 	draw_rect(Rect2(Vector2.ZERO, size), Color("19211e"))
-	draw_rect(rect, Color("728b67"))
-	_draw_terrain(rect)
+	draw_rect(_side_panel_rect(), Color("eee4cc"))
+
+
+func _draw_map_canvas(canvas: Control) -> void:
+	var rect := _map_rect()
+	# World drawing keeps the parent's screen-space transform, while the child
+	# canvas clips every primitive to the actual map viewport.
+	canvas.draw_set_transform(-rect.position)
+	canvas.draw_rect(rect, Color("728b67"))
+	_draw_terrain(canvas, rect)
 	for water_region in THEATER.get_water_regions():
 		var water_position := _world_to_screen(Vector2(water_region.position))
 		var water_size := Vector2(water_region.size) * _camera_zoom
-		draw_rect(Rect2(water_position, water_size), Color("4c95b5"), true)
-	draw_rect(_side_panel_rect(), Color("eee4cc"))
+		canvas.draw_rect(Rect2(water_position, water_size), Color("4c95b5"), true)
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
 	for route_value in Dictionary(field.get("roads_by_id", {})).values():
 		var route: Dictionary = route_value
@@ -991,45 +1152,47 @@ func _draw() -> void:
 		var damaged := StringName(route.get("state", &"")) == FieldTacticsState.ROAD_DAMAGED
 		var color := Color("66535c") if damaged else (Color("68b8a7") if kind == FieldTacticsState.ROAD_NORMAL else (Color("8f62b7") if kind == FieldTacticsState.ROAD_BRIDGE else Color("b89257")))
 		var width := 15.0 if kind == FieldTacticsState.ROAD_MAIN else (12.0 if kind == FieldTacticsState.ROAD_BRIDGE else 10.0)
-		draw_polyline(points, color, width, true)
-		draw_polyline(points, Color("4b3927"), 2.0, true)
+		canvas.draw_polyline(points, color, width, true)
+		canvas.draw_polyline(points, Color("4b3927"), 2.0, true)
 	if not _draft_route.is_empty():
 		var draft_points := PackedVector2Array()
 		for point in _draft_route.points:
 			draft_points.append(_world_to_screen(Vector2(point)))
-		draw_polyline(draft_points, Color("54d7df"), 5.0, true)
+		canvas.draw_polyline(draft_points, Color("54d7df"), 5.0, true)
 	elif not _draw_points.is_empty():
 		var drawn := PackedVector2Array()
 		for point in _draw_points:
 			drawn.append(_world_to_screen(point))
-		draw_polyline(drawn, Color("54d7df"), 4.0, true)
+		canvas.draw_polyline(drawn, Color("54d7df"), 4.0, true)
 	for army_value in Array(_model().get("armies", [])):
-		_draw_army_marker(Dictionary(army_value))
+		_draw_army_marker(canvas, Dictionary(army_value))
 	for camp_value in Dictionary(field.get("camps_by_id", {})).values():
 		var camp: Dictionary = camp_value
 		var camp_center := _world_to_screen(Vector2(camp.get("world_position", Vector2.ZERO)))
-		draw_rect(Rect2(camp_center - Vector2(11, 11), Vector2(22, 22)), Color("f0c46b"), true)
+		canvas.draw_rect(Rect2(camp_center - Vector2(11, 11), Vector2(22, 22)), Color("f0c46b"), true)
 	for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
 		var specialist: Dictionary = specialist_value
 		if not bool(specialist.get("alive", false)):
 			continue
 		var specialist_color := Color("73d7ed") if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else Color("f2b86e")
 		var specialist_position := _world_to_screen(Vector2(specialist.get("world_position", Vector2.ZERO)))
-		draw_circle(specialist_position, 10.0, specialist_color)
-		draw_string(ThemeDB.fallback_font, specialist_position + Vector2(-5, 5), "侦" if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else "工", HORIZONTAL_ALIGNMENT_CENTER, 12, 12, Color("1d2a30"))
+		canvas.draw_circle(specialist_position, 10.0, specialist_color)
+		canvas.draw_string(ThemeDB.fallback_font, specialist_position + Vector2(-5, 5), "侦" if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else "工", HORIZONTAL_ALIGNMENT_CENTER, 12, 12, Color("1d2a30"))
 	for project_value in Dictionary(field.get("projects_by_id", {})).values():
 		var project: Dictionary = project_value
 		var project_phase := StringName(project.get("phase", &""))
 		if project_phase == &"COMPLETE":
 			continue
 		var engineer := Dictionary(Dictionary(field.get("specialists_by_id", {})).get(StringName(project.get("engineer_id", &"")), {}))
-		var project_position := _world_to_screen(Vector2(engineer.get("world_position", Array(project.get("route_world_points", [Vector2.ZERO])).front())))
+		var project_points: Array = Array(project.get("route_world_points", []))
+		var project_fallback_position := Vector2(project_points.front()) if not project_points.is_empty() else Vector2.ZERO
+		var project_position := _world_to_screen(Vector2(engineer.get("world_position", project_fallback_position)))
 		var progress := float(project.get("progress_milliseconds", 0)) / maxf(float(project.get("required_milliseconds", 1)), 1.0)
 		var progress_rect := Rect2(project_position + Vector2(-24, 15), Vector2(48, 6))
-		draw_rect(progress_rect, Color("2d3531"), true)
-		draw_rect(Rect2(progress_rect.position, Vector2(progress_rect.size.x * clampf(progress, 0.0, 1.0), progress_rect.size.y)), Color("f2b86e") if project_phase != &"INTERRUPTED" else Color("cf5b52"), true)
+		canvas.draw_rect(progress_rect, Color("2d3531"), true)
+		canvas.draw_rect(Rect2(progress_rect.position, Vector2(progress_rect.size.x * clampf(progress, 0.0, 1.0), progress_rect.size.y)), Color("f2b86e") if project_phase != &"INTERRUPTED" else Color("cf5b52"), true)
 		var phase_label := "赴工" if project_phase == &"TRAVELING" else ("中断·待补派" if project_phase == &"INTERRUPTED" else ("维修" if StringName(project.get("project_kind", &"")) == &"REPAIR" else "施工"))
-		draw_string(ThemeDB.fallback_font, project_position + Vector2(-30, 34), phase_label, HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color("fff0c5"))
+		canvas.draw_string(ThemeDB.fallback_font, project_position + Vector2(-30, 34), phase_label, HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color("fff0c5"))
 	for patrol_value in Dictionary(field.get("visible_patrols_by_id", {})).values():
 		var patrol: Dictionary = patrol_value
 		var patrol_position := _world_to_screen(Vector2(patrol.get("last_known_world_position", Vector2.ZERO)))
@@ -1039,26 +1202,26 @@ func _draw() -> void:
 			patrol_position + Vector2(0, -13), patrol_position + Vector2(13, 0),
 			patrol_position + Vector2(0, 13), patrol_position + Vector2(-13, 0),
 		])
-		draw_colored_polygon(diamond, Color(patrol_color, 0.85 if is_live else 0.5))
-		draw_polyline(PackedVector2Array([diamond[0], diamond[1], diamond[2], diamond[3], diamond[0]]), Color("4b2925"), 2.0, true)
+		canvas.draw_colored_polygon(diamond, Color(patrol_color, 0.85 if is_live else 0.5))
+		canvas.draw_polyline(PackedVector2Array([diamond[0], diamond[1], diamond[2], diamond[3], diamond[0]]), Color("4b2925"), 2.0, true)
 		var patrol_label := "巡逻·实时" if is_live else "巡逻·旧情报"
 		if bool(patrol.get("exposed", false)):
 			patrol_label += "·已暴露"
-		draw_string(ThemeDB.fallback_font, patrol_position + Vector2(-42, 31), patrol_label, HORIZONTAL_ALIGNMENT_CENTER, 84, 12, Color("fff0c5"))
+		canvas.draw_string(ThemeDB.fallback_font, patrol_position + Vector2(-42, 31), patrol_label, HORIZONTAL_ALIGNMENT_CENTER, 84, 12, Color("fff0c5"))
 		if not Dictionary(patrol.get("last_engagement", {})).is_empty():
-			draw_arc(patrol_position, 19.0, 0.0, TAU, 24, Color("ffd166"), 2.0, true)
+			canvas.draw_arc(patrol_position, 19.0, 0.0, TAU, 24, Color("ffd166"), 2.0, true)
 	for point_value in _all_points(_model()).values():
 		var point: Dictionary = point_value
 		var center := _world_to_screen(Vector2(point.world_position))
 		var enemy := StringName(point.get("point_kind", &"")) == &"ENEMY_CITY"
-		draw_circle(center, 25.0, Color("5c2b25") if enemy else Color("273d3c"))
-		draw_circle(center, 18.0, Color("c65a42") if enemy else Color("d7b465"))
-		draw_string(ThemeDB.fallback_font, center + Vector2(-38, 47), str(point.display_name), HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.WHITE)
-	_draw_minimap()
-	draw_string(ThemeDB.fallback_font, Vector2(30, size.y - 20), "滚轮缩放 · 中键拖动 · 小地图定位 · 金主道/青道路/紫桥/灰受损 · 蓝侦/橙工 · 红巡逻/褐旧情报", HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("e3dcc5"))
+		canvas.draw_circle(center, 25.0, Color("5c2b25") if enemy else Color("273d3c"))
+		canvas.draw_circle(center, 18.0, Color("c65a42") if enemy else Color("d7b465"))
+		var label_position := Vector2(clampf(center.x - 38.0, rect.position.x + 2.0, rect.end.x - 82.0), clampf(center.y + 47.0, rect.position.y + 16.0, rect.end.y - 6.0))
+		canvas.draw_string(ThemeDB.fallback_font, label_position, str(point.display_name), HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.WHITE)
+	_draw_minimap(canvas)
 
 
-func _draw_terrain(rect: Rect2) -> void:
+func _draw_terrain(canvas: Control, rect: Rect2) -> void:
 	# The Resource-owned terrain regions are shared with FieldTacticsState for
 	# ambush rules; this method only projects those same facts to screen space.
 	for terrain_value in THEATER.get_terrain_regions():
@@ -1067,48 +1230,48 @@ func _draw_terrain(rect: Rect2) -> void:
 			continue
 		var forest := Rect2(terrain.get("rect", Rect2i()))
 		var forest_rect := Rect2(_world_to_screen(forest.position), forest.size * _camera_zoom)
-		draw_rect(forest_rect, Color("466044"), true)
+		canvas.draw_rect(forest_rect, Color("466044"), true)
 		for offset in [Vector2(18, 24), Vector2(64, 58), Vector2(118, 30), Vector2(140, 92)]:
-			draw_circle(_world_to_screen(forest.position + offset), 9.0 * _camera_zoom, Color("315039"))
+			canvas.draw_circle(_world_to_screen(forest.position + offset), 9.0 * _camera_zoom, Color("315039"))
 	var shore := Rect2(_world_to_screen(Vector2(500, 330)), Vector2(155, 175) * _camera_zoom)
-	draw_rect(shore, Color("98a969"), false, 3.0)
-	draw_rect(rect, Color("d9cfaa"), false, 2.0)
+	canvas.draw_rect(shore, Color("98a969"), false, 3.0)
+	canvas.draw_rect(rect, Color("d9cfaa"), false, 2.0)
 
 
-func _draw_minimap() -> void:
+func _draw_minimap(canvas: Control) -> void:
 	var minimap := _minimap_rect()
-	draw_rect(minimap, Color("25332f"), true)
+	canvas.draw_rect(minimap, Color("25332f"), true)
 	for water_region in THEATER.get_water_regions():
 		var world_bounds := THEATER.get_world_bounds()
 		var normalized_position := (Vector2(water_region.position) - world_bounds.position) / world_bounds.size
 		var normalized_size := Vector2(water_region.size) / world_bounds.size
-		draw_rect(Rect2(minimap.position + minimap.size * normalized_position, minimap.size * normalized_size), Color("4c95b5"), true)
+		canvas.draw_rect(Rect2(minimap.position + minimap.size * normalized_position, minimap.size * normalized_size), Color("4c95b5"), true)
 	for point_value in _all_points(_model()).values():
 		var point: Dictionary = point_value
 		var world_bounds := THEATER.get_world_bounds()
 		var normalized := (Vector2(point.get("world_position", Vector2.ZERO)) - world_bounds.position) / world_bounds.size
-		draw_circle(minimap.position + minimap.size * normalized, 3.0, Color("d94d3f") if StringName(point.get("point_kind", &"")) == &"ENEMY_CITY" else Color("f0c46b"))
+		canvas.draw_circle(minimap.position + minimap.size * normalized, 3.0, Color("d94d3f") if StringName(point.get("point_kind", &"")) == &"ENEMY_CITY" else Color("f0c46b"))
 	var view := _visible_world_rect()
 	var world_bounds := THEATER.get_world_bounds()
 	var viewport_position := minimap.position + minimap.size * ((view.position - world_bounds.position) / world_bounds.size)
 	var viewport_size := minimap.size * (view.size / world_bounds.size)
-	draw_rect(Rect2(viewport_position, viewport_size), Color("f6e5ba"), false, 1.5)
-	draw_rect(minimap, Color("e3dcc5"), false, 1.0)
+	canvas.draw_rect(Rect2(viewport_position, viewport_size), Color("f6e5ba"), false, 1.5)
+	canvas.draw_rect(minimap, Color("e3dcc5"), false, 1.0)
 
 
-func _draw_army_marker(army: Dictionary) -> void:
+func _draw_army_marker(canvas: Control, army: Dictionary) -> void:
 	var display_route := _display_route_for_army(army)
 	var points: Array = Array(display_route.get("points", []))
 	var progress := float(display_route.get("progress_millis", 0)) / maxf(float(display_route.get("total_millis", 1)), 1.0)
 	var position := _point_along_route(points, progress)
 	var screen := _world_to_screen(position)
-	draw_circle(screen, 18.0, Color("f8e3a6") if StringName(army.get("army_id", &"")) == _selected_army_id else Color("4b3927"))
-	draw_circle(screen, 15.0, Color("d94d3f"))
-	draw_circle(screen, 8.0, Color("fff0c5"))
-	draw_colored_polygon(PackedVector2Array([screen + Vector2(4, -22), screen + Vector2(4, -6), screen + Vector2(17, -12)]), Color("f7d46b"))
-	draw_line(screen + Vector2(4, -24), screen + Vector2(4, 6), Color("342b27"), 2.0)
+	canvas.draw_circle(screen, 18.0, Color("f8e3a6") if StringName(army.get("army_id", &"")) == _selected_army_id else Color("4b3927"))
+	canvas.draw_circle(screen, 15.0, Color("d94d3f"))
+	canvas.draw_circle(screen, 8.0, Color("fff0c5"))
+	canvas.draw_colored_polygon(PackedVector2Array([screen + Vector2(4, -22), screen + Vector2(4, -6), screen + Vector2(17, -12)]), Color("f7d46b"))
+	canvas.draw_line(screen + Vector2(4, -24), screen + Vector2(4, 6), Color("342b27"), 2.0)
 	for offset in [-7.0, 0.0, 7.0]:
-		draw_circle(screen + Vector2(offset, 12), 3.0, Color("f8e3a6"))
+		canvas.draw_circle(screen + Vector2(offset, 12), 3.0, Color("f8e3a6"))
 	if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED:
 		var transfer: Dictionary = Dictionary(Dictionary(army.get("macro_march", {})).get("blocked_transfer", {}))
 		var label := "受阻等待"
@@ -1122,7 +1285,7 @@ func _draw_army_marker(army: Dictionary) -> void:
 			label = "返回原令"
 		elif StringName(transfer.get("phase", &"")) == &"TO_RESUME_BLOCKED":
 			label = "返回再受阻"
-		draw_string(ThemeDB.fallback_font, screen + Vector2(18, -12), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("ffe8a3"))
+		canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(18, -12), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("ffe8a3"))
 
 
 func _display_route_for_army(army: Dictionary) -> Dictionary:

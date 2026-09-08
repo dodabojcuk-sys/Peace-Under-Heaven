@@ -19,8 +19,17 @@ siege, resource, and V5 snapshot owners as the game.
 
 | Route | Formal result |
 | --- | --- |
-| Main road | 20 troops dispatched, moving patrol encountered, four real formation casualties, Redcliff and Silverford captured, 36.05 seconds, 68 food remaining. |
-| Scout/engineering | Engineer killed during travel, same project resumed by a replacement, scout intel, guarded completion, one-use forest ambush, generated bridge traversed both ways, three connector roads, explicit test road-damage event, actual camp transfer/repair/resume, both cities captured, 93.79 seconds, 3 food remaining, two army casualties. |
+| Main road | 20 troops dispatched, moving patrol encountered, four real formation casualties, Redcliff and Silverford captured, 35.90 seconds, 12 food spent, 68 remaining. |
+| Scout/engineering | Engineer killed during travel, same project resumed by a replacement, visible scout control plus map target, guarded deployment, generated bridge traversed both ways, finite patrol resolved, three connector roads, explicit test road-damage event, actual camp transfer/repair/resume, both cities captured, 180.60 seconds, 79 food spent, 1 remaining, five army casualties and one specialist loss. |
+
+Both route records now advance armies, specialists, construction, patrols,
+encounters, repairs, and sieges through the same formal world-clock entry. The
+engineering route no longer omits guard and construction travel by advancing an
+army alone. Its deterministic full-run record has zero ambush openings, so this
+report does not attribute its patrol result to an ambush. The separate integrated
+Field regression remains the evidence for one-use forest ambush, exposure,
+casualty writeback, and V5 persistence. Exact remaining food is reported as an
+observation rather than a brittle success condition.
 
 The road damage in the second route is an explicitly labelled test event. It
 proves the blocked-transfer and repair behavior but is not evidence that a
@@ -28,45 +37,60 @@ player-authored enemy road-damage command exists. Patrol-driven damage remains
 limited to a nearby engineered road and never applies to a main road.
 
 During the engineering route, the candidate exports a formal V5 snapshot while
-the army is waiting at camp after patrol/ambush and road damage. A fresh formal
+the army is waiting at camp after patrol resolution and road damage. A fresh formal
 city restores the snapshot and must exactly match both the army record and
 `FieldTacticsState` snapshot before repair and the remaining captures proceed.
 The dedicated disk harnesses separately retain their transfer/wait/return and
 temporary-route-rebreak process boundaries.
 
-The outer-city view now renders project progress and the phases travelling,
-building, repair, and interrupted/waiting-for-replacement. Visible and stale
-patrols use different markers; exposure and a known engagement are shown only
-after the patrol has entered player knowledge. The engineer-contact path now
-interrupts a travelling project immediately when its assigned engineer dies.
+The outer-city view now exposes a real scout interaction. The first action
+creates or selects an idle scout and enters target mode without claiming it has
+departed; a map-point click sends the real movement order through the Controller
+adapter. Right-click or the same action cancels without a new movement
+transaction. The selected specialist reports waiting, moving, arrived, or lost
+state.
 
-Media is stored in `docs/milestones/txwzs-field-tactics-r2/evidence/`:
+World objects now render inside an independent clipped map canvas. The side
+panel and footer legend are outside that canvas; city labels are clamped and
+only visible actions consume vertical layout. Drawing, hit testing, minimap
+navigation, zoom/pan, and route drafting continue to use one screen/world
+transform. Automated layout checks cover 1152x648, 1280x720, and 1920x1080.
+
+Patrol contact now uses time-stamped movement pieces rather than treating any
+geometric trace overlap as simultaneous. Army and patrol pieces preserve road
+bends, waits, and stationary arrival intervals. Focused counterexamples cover
+opposing movement, same-direction fixed separation, different-time visits to
+the same point, and the arrival boundary.
+
+Historical process media is stored in
+`docs/milestones/txwzs-field-tactics-r2/evidence/`:
 
 - `r2-candidate-city-33eb303-dirty.png`
 - `r2-candidate-city-live-6s.mov`
 - `r2-field-map-33eb303-dirty.png`
 - `r2-field-map-live-8s.mov`
 
-The captures are restricted to the uniquely titled R2 candidate window and an
-isolated review save. A second unidentified Godot process made target-safe UI
-automation ambiguous, so no system click was sent. These files demonstrate a
-real running candidate and live map, but they are not normal human-input proof
-or Founder/player acceptance.
+Those captures belong to the earlier dirty checkpoint. In the current pass the
+new candidate could be captured by exact window ID, but the system-input
+controller still attached to a different `UNKNOWN · UNIDENTIFIED` Godot window.
+No ambiguous click was sent. A clean-SHA still may document the new map render;
+normal-input video and Founder/player acceptance remain open.
 
 Focused verification uses
 `/Users/m4-zhi/Documents/codex-tools/godot/4.5.1-stable-standard/Godot.app/Contents/MacOS/Godot`
 (`4.5.1.stable.official.f62fdbde1`). The relevant basket covers Field R2,
 the two playthrough routes, audited R2 persistence, Macro March and its disk
 chain, War Loop R1/formal/arrival/disk recovery, V5 army/campaign/encounter
-state, editor import, scene starts, and `git diff --check`. One old full-repo
+state, editor import, scene starts, and `git diff --check`. Current counts are
+Field R2 66 assertions and Macro March 28 assertions. One old full-repo
 runner, `run_blackstone_playable_mvp_smoke.gd`, still targets removed prototype
 nodes and hangs after script errors; it is recorded as historical test debt,
 not counted as a pass. Manual playtesting, normal-input evidence, and final
 balance acceptance remain open.
 
-Raw per-run output for the final 12-run affected basket is retained locally at
-`/tmp/txwzs-r2-audit-final-20260908/`. The obsolete-runner failure is retained
-at `/tmp/txwzs-r2-full-smoke-20260908/run_blackstone_playable_mvp_smoke.log`.
+Raw per-run output for the current 11-run affected basket and three scene starts
+is retained locally at `/tmp/txwzs-r2-formal-ops-20260908-final/`. The obsolete-runner
+failure remains historical debt and was not rerun for this scoped pass.
 
 The remaining subsections preserve chronological checkpoint evidence. Their
 then-open lists are historical and do not supersede this candidate summary.

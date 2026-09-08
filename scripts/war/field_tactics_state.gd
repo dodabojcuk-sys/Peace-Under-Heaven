@@ -1133,10 +1133,17 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 		var patrol_transitions := 0
 		while patrol_remaining_milliseconds > 0 and patrol_transitions < 16:
 			patrol_transitions += 1
+			var transition_start_offset := delta_milliseconds - patrol_remaining_milliseconds
 			var patrol_wait := mini(int(patrol.get("wait_remaining_milliseconds", 0)), patrol_remaining_milliseconds)
 			if patrol_wait > 0:
+				var wait_position := Vector2i(patrol.get("world_position", Vector2i.ZERO))
 				patrol.wait_remaining_milliseconds = int(patrol.get("wait_remaining_milliseconds", 0)) - patrol_wait
 				patrol_remaining_milliseconds -= patrol_wait
+				patrol_movements.append({
+					"patrol_id": patrol_id, "from": wait_position, "to": wait_position,
+					"start_offset_milliseconds": transition_start_offset,
+					"end_offset_milliseconds": transition_start_offset + patrol_wait,
+				})
 				if patrol_remaining_milliseconds <= 0:
 					break
 			var patrol_route: Array = Array(patrol.get("route_point_ids", []))
@@ -1151,12 +1158,18 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 			if patrol_move <= 0:
 				break
 			var patrol_start_position := Vector2i(patrol.get("world_position", patrol.get("move_start_position", Vector2i.ZERO)))
+			var patrol_move_start_offset := delta_milliseconds - patrol_remaining_milliseconds
+			var patrol_elapsed_before := int(patrol.get("move_elapsed_milliseconds", 0))
 			patrol.move_elapsed_milliseconds = int(patrol.get("move_elapsed_milliseconds", 0)) + patrol_move
 			patrol_remaining_milliseconds -= patrol_move
 			var patrol_progress := float(patrol.get("move_elapsed_milliseconds", 0)) / float(patrol_total_milliseconds)
 			var patrol_route_points: Array = Array(patrol.get("move_route_world_points", [patrol.get("move_start_position", Vector2i.ZERO), target_position]))
 			patrol.world_position = Vector2i(_position_along_points(patrol_route_points, patrol_progress))
-			patrol_movements.append({"patrol_id": patrol_id, "from": patrol_start_position, "to": Vector2i(patrol.world_position)})
+			patrol_movements.append_array(_timed_route_movement_records(
+				patrol_id, patrol_route_points, patrol_elapsed_before,
+				int(patrol.get("move_elapsed_milliseconds", 0)), patrol_total_milliseconds,
+				patrol_move_start_offset
+			))
 			if int(patrol.get("move_elapsed_milliseconds", 0)) < patrol_total_milliseconds:
 				break
 			patrol.current_point_id = target_point_id
@@ -1209,7 +1222,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 					specialists_by_id[specialist_id] = specialist
 				engagements.append({"patrol_id": patrol_id, "specialist_id": specialist_id, "guard_army_ids": guard_army_ids, "point_id": patrol.current_point_id, "world_position": Vector2i(patrol.get("world_position", Vector2i.ZERO))})
 	_refresh_intel()
-	return {"success": true, "completed_project_ids": completed, "opened_road_ids": opened_road_ids, "engagements": engagements, "patrol_movements": patrol_movements, "world_milliseconds": world_milliseconds}
+	return {"success": true, "completed_project_ids": completed, "opened_road_ids": opened_road_ids, "engagements": engagements, "patrol_movements": patrol_movements, "world_milliseconds": world_milliseconds, "delta_milliseconds": delta_milliseconds}
 
 
 func _open_completed_construction_segments(project_id: StringName, project: Dictionary) -> Array[StringName]:
@@ -1288,6 +1301,40 @@ func _position_along_points(points: Array, progress: float) -> Vector2:
 			return start.lerp(end, (target_length - consumed) / maxf(length, 0.0001))
 		consumed += length
 	return Vector2(points.back())
+
+
+func _timed_route_movement_records(patrol_id: StringName, points: Array, start_elapsed: int, end_elapsed: int, total_milliseconds: int, step_start_offset: int) -> Array[Dictionary]:
+	var records: Array[Dictionary] = []
+	if points.size() < 2:
+		return records
+	var total_length := 0.0
+	var cumulative: Array[float] = [0.0]
+	for index in range(1, points.size()):
+		total_length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
+		cumulative.append(total_length)
+	var start_progress := float(start_elapsed) / maxf(float(total_milliseconds), 1.0)
+	var end_progress := float(end_elapsed) / maxf(float(total_milliseconds), 1.0)
+	var start_distance := total_length * clampf(start_progress, 0.0, 1.0)
+	var end_distance := total_length * clampf(end_progress, 0.0, 1.0)
+	var trace_points: Array = [_position_along_points(points, start_progress)]
+	for index in range(1, points.size() - 1):
+		if cumulative[index] > start_distance + 0.0001 and cumulative[index] < end_distance - 0.0001:
+			trace_points.append(Vector2(points[index]))
+	trace_points.append(_position_along_points(points, end_progress))
+	var trace_length := maxf(end_distance - start_distance, 0.0001)
+	var elapsed_offset := float(step_start_offset)
+	var movement_milliseconds := float(end_elapsed - start_elapsed)
+	for index in range(1, trace_points.size()):
+		var from := Vector2(trace_points[index - 1])
+		var to := Vector2(trace_points[index])
+		var segment_milliseconds := movement_milliseconds * from.distance_to(to) / trace_length
+		records.append({
+			"patrol_id": patrol_id, "from": Vector2i(from), "to": Vector2i(to),
+			"start_offset_milliseconds": elapsed_offset,
+			"end_offset_milliseconds": elapsed_offset + segment_milliseconds,
+		})
+		elapsed_offset += segment_milliseconds
+	return records
 
 
 func _plan_specialist_land_path(start_position: Vector2, target_position: Vector2) -> Dictionary:
