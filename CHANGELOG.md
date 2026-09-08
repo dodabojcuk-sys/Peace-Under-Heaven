@@ -37,6 +37,8 @@
   position interpolation. Generated construction junctions now resolve their
   physical coordinates; invalid point IDs are rejected rather than becoming
   world-origin movement targets. Field R2 smoke passes 44 assertions.
+- Passed theatre bounds into field authority and tightened water intersection
+  checks to unit-coordinate resolution for specialist path planning.
 
 ### FIELD_TACTICS_R2 map and command UI checkpoint
 

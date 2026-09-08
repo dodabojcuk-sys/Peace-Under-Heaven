@@ -54,6 +54,13 @@ resolve from the adjoining physical road endpoint; unknown positions are
 explicitly rejected instead of silently becoming `(0, 0)`. Field smoke adds
 water-detour and junction-coordinate assertions and passes 44 assertions.
 
+The theatre bounds now reach field authority through the controller and war
+loop, and water checks use unit-coordinate sampling rather than the former
+16px interval. Bridge endpoints are represented in the specialist graph, but
+the automatically split bridge endpoint normalization is still open; this
+checkpoint must not be read as proof that all specialists can already traverse
+every completed bridge.
+
 ### Map camera and command UI follow-up
 
 The return action and engineer action now occupy separate managed slots even

@@ -5360,7 +5360,8 @@ func get_macro_march_command_preview(formation_ids: Array, army_id: StringName =
 func _ensure_war_loop_initialized() -> void:
 	_war_loop_state.initialize_from_theater(
 		MACRO_MARCH_THEATER.get_points(), MACRO_MARCH_THEATER.get_routes(),
-		MACRO_MARCH_THEATER.get_water_regions()
+		MACRO_MARCH_THEATER.get_water_regions(),
+		Rect2i(MACRO_MARCH_THEATER.get_world_bounds())
 	)
 
 

@@ -33,14 +33,16 @@ var patrols_by_id: Dictionary = {}
 var intel_by_subject_id: Dictionary = {}
 var point_positions_by_id: Dictionary = {}
 var water_regions: Array[Rect2i] = []
+var world_bounds := Rect2i(-260, -180, 1520, 1040)
 var world_milliseconds := 0
 var next_specialist_sequence := 1
 var next_project_sequence := 1
 var next_camp_sequence := 1
 
 
-func initialize_from_theater(points: Dictionary, routes: Dictionary, water_regions_value: Array[Rect2i] = []) -> void:
+func initialize_from_theater(points: Dictionary, routes: Dictionary, water_regions_value: Array[Rect2i] = [], world_bounds_value: Rect2i = Rect2i(-260, -180, 1520, 1040)) -> void:
 	water_regions = water_regions_value.duplicate()
+	world_bounds = world_bounds_value
 	for point_id_value in points:
 		var point: Dictionary = Dictionary(points[point_id_value])
 		point_positions_by_id[StringName(point_id_value)] = Vector2i(point.get("world_position", Vector2i.ZERO))
@@ -299,7 +301,10 @@ func _route_crosses_water(route_world_points: Array) -> bool:
 	for index in range(1, route_world_points.size()):
 		var start := Vector2(route_world_points[index - 1])
 		var end := Vector2(route_world_points[index])
-		var samples := maxi(1, ceili(start.distance_to(end) / 16.0))
+		# Unit-length sampling is intentionally conservative for the greybox
+		# coordinate grid. It catches narrow water strips that the former 16px
+		# sampling interval could skip without relying on unavailable geometry APIs.
+		var samples := maxi(1, ceili(start.distance_to(end)))
 		for sample_index in range(samples + 1):
 			var position := Vector2i(start.lerp(end, float(sample_index) / float(samples)))
 			for water_region in water_regions:
@@ -944,7 +949,7 @@ func _position_along_points(points: Array, progress: float) -> Vector2:
 
 
 func _plan_specialist_land_path(start_position: Vector2, target_position: Vector2) -> Dictionary:
-	if _point_is_in_water(Vector2i(start_position)) or _point_is_in_water(Vector2i(target_position)):
+	if not world_bounds.has_point(Vector2i(start_position)) or not world_bounds.has_point(Vector2i(target_position)) or _point_is_in_water(Vector2i(start_position)) or _point_is_in_water(Vector2i(target_position)):
 		return {}
 	var nodes: Array[Vector2] = [start_position, target_position]
 	# A visibility graph over water bounds is sufficient for the small greybox
@@ -958,7 +963,16 @@ func _plan_specialist_land_path(start_position: Vector2, target_position: Vector
 			Vector2(water.position.x - margin, water.end.y + margin),
 			Vector2(water.end.x + margin, water.end.y + margin),
 		]:
-			nodes.append(corner)
+			if world_bounds.has_point(Vector2i(corner)):
+				nodes.append(corner)
+	for road_value in roads_by_id.values():
+		var bridge: Dictionary = road_value
+		if StringName(bridge.get("road_kind", &"")) != ROAD_BRIDGE or not is_route_open(StringName(bridge.get("road_id", &""))):
+			continue
+		var bridge_points: Array = Array(bridge.get("route_world_points", []))
+		if bridge_points.size() >= 2:
+			nodes.append(Vector2(bridge_points.front()))
+			nodes.append(Vector2(bridge_points.back()))
 	var costs: Array[float] = []
 	var previous: Array[int] = []
 	var visited: Array[bool] = []
@@ -977,7 +991,7 @@ func _plan_specialist_land_path(start_position: Vector2, target_position: Vector
 			break
 		visited[current] = true
 		for next_index in nodes.size():
-			if next_index == current or _route_crosses_water([nodes[current], nodes[next_index]]):
+			if next_index == current or not _specialist_segment_traversable(nodes[current], nodes[next_index]):
 				continue
 			var candidate := costs[current] + nodes[current].distance_to(nodes[next_index])
 			if candidate < costs[next_index]:
@@ -995,6 +1009,23 @@ func _plan_specialist_land_path(start_position: Vector2, target_position: Vector
 		"points": reverse_points,
 		"duration_milliseconds": maxi(1800, ceili(costs[1] * 2.5)),
 	}
+
+
+func _specialist_segment_traversable(start: Vector2, end: Vector2) -> bool:
+	if not _route_crosses_water([start, end]):
+		return world_bounds.has_point(Vector2i(start)) and world_bounds.has_point(Vector2i(end))
+	for road_value in roads_by_id.values():
+		var bridge: Dictionary = road_value
+		if StringName(bridge.get("road_kind", &"")) != ROAD_BRIDGE or not is_route_open(StringName(bridge.get("road_id", &""))):
+			continue
+		var bridge_points: Array = Array(bridge.get("route_world_points", []))
+		if bridge_points.size() < 2:
+			continue
+		var bridge_start := Vector2(bridge_points.front())
+		var bridge_end := Vector2(bridge_points.back())
+		if (start.is_equal_approx(bridge_start) and end.is_equal_approx(bridge_end)) or (start.is_equal_approx(bridge_end) and end.is_equal_approx(bridge_start)):
+			return true
+	return false
 
 
 func observe_subject(subject_id: StringName) -> Dictionary:

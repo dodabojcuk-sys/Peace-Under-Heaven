@@ -39,6 +39,13 @@ their adjoining road endpoints, while unknown point IDs use an explicit
 invalid coordinate and are rejected at command entry. Field smoke passes 44
 assertions; interruption/reassignment and safe-camp transfer remain open.
 
+Specialist path candidates now remain inside the theatre bounds and test water
+at unit-coordinate resolution, closing the prior map-edge and narrow-water
+gaps. The theatre bounds flow through Controller, WarLoop and FieldTactics
+instead of being screen-owned. Open bridge endpoints are now exposed to the
+specialist path graph, but automatic bridge-segment endpoint normalization is
+still required before claiming a complete cross-water specialist route.
+
 ### R2 input-safety follow-up
 
 The return action now belongs to the same six-slot command stack as the other
