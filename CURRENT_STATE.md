@@ -1,5 +1,37 @@
 # 当前状态
 
+## FIELD_TACTICS_R2 safe-camp transfer checkpoint (2026-09-08)
+
+The current uncommitted work extends `ArmyRegistry` schema 6 with a temporary
+execution record alongside the immutable original macro order. A march blocked
+by a future damaged physical road can now use its exact ordered segment and
+progress to clip the road beneath the army, move through the open road graph
+to a deterministic friendly camp, wait there, then reverse that actual
+temporary geometry after repair before resuming the original order. The
+temporary route preserves the physical source segment, direction, current
+progress and resume progress; it neither reissues the order nor charges the
+original food transaction again. Authored friendly garrisons (other than the
+order's source) and completed runtime camps are both candidates.
+
+Macro March rendering and hit testing now consume the temporary route during
+transfer, waiting, and return, so the marker no longer stays at the frozen
+original-route position while the army is moving or waiting at a camp. The
+focused Field test contains a formal Controller scenario in which an army is
+part-way around the lowland curve, the following Northwatch--Reedbank segment
+is damaged, and the army returns along the curve to a constructed camp before
+repair and original-order continuation are checked.
+
+Validation uses the verified historical engine binary:
+`/Users/m4-zhi/Documents/codex-tools/godot/4.5.1-stable-standard/Godot.app/Contents/MacOS/Godot`
+(`4.5.1.stable.official.f62fdbde1`). Godot editor import, `blank_map` and
+Blackstone scene startup passed. Focused results are: Field R2 **55
+assertions**, the new three-process transfer/wait/return isolated-disk chain
+PASS, Macro March R0 **27 assertions**, War Loop R1 **16 assertions**, and
+`git diff --check` PASS. These are automated engineering checks. Normal system
+input media, player-facing visual review, transfer-route rebreak handling,
+patrol/guard/ambush casualties, and complete R2 routes remain outside this
+checkpoint; this is not player acceptance or R2 completion.
+
 ## FIELD_TACTICS_R2 map and command UI checkpoint (2026-09-08)
 
 ### Formal bridge-return, V5 canonicalization, and project-action repair

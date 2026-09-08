@@ -667,6 +667,110 @@ func plan_runtime_path(source_point_id: StringName, target_point_id: StringName,
 	return {"valid": false, "error": "没有连通的已完工道路路径"}
 
 
+## Plans from a marching army's exact position without inventing a permanent
+## node. The first connector is a clipped portion of the already-confirmed
+## physical road; only after reaching one of that road's endpoints may normal
+## network search continue.
+func plan_runtime_path_from_progress(route_segments: Array, total_milliseconds: int, progress_milliseconds: int, target_point_id: StringName) -> Dictionary:
+	if route_segments.is_empty() or total_milliseconds <= 0 or target_point_id == &"":
+		return {"valid": false, "error": "缺少可定位的原军令路径"}
+	var ordered_segments: Array[Dictionary] = []
+	var lengths: Array[float] = []
+	var total_length := 0.0
+	for segment_value in route_segments:
+		var segment: Dictionary = Dictionary(segment_value)
+		var road := Dictionary(roads_by_id.get(StringName(segment.get("road_id", &"")), {}))
+		# A damaged *future* segment is exactly why callers use this method.  We
+		# still need its geometry to locate the marching army, but only the
+		# physical segment under the army may serve as the temporary connector.
+		if road.is_empty():
+			return {"valid": false, "error": "军令引用的道路不存在"}
+		var points: Array = Array(road.get("route_world_points", [])).duplicate(true)
+		if not bool(segment.get("forward", false)):
+			points.reverse()
+		var length := _points_length(points)
+		if points.size() < 2 or length <= 0.001:
+			return {"valid": false, "error": "军令路段几何无效"}
+		ordered_segments.append({"road_id": StringName(segment.get("road_id", &"")), "forward": bool(segment.get("forward", false)), "points": points, "source_point_id": StringName(road.get("source_point_id", &"")) if bool(segment.get("forward", false)) else StringName(road.get("target_point_id", &"")), "target_point_id": StringName(road.get("target_point_id", &"")) if bool(segment.get("forward", false)) else StringName(road.get("source_point_id", &""))})
+		lengths.append(length)
+		total_length += length
+	var travelled := total_length * clampf(float(progress_milliseconds) / float(total_milliseconds), 0.0, 1.0)
+	var consumed := 0.0
+	for segment_index in range(ordered_segments.size()):
+		var segment: Dictionary = ordered_segments[segment_index]
+		var length := lengths[segment_index]
+		if travelled > consumed + length and segment_index < ordered_segments.size() - 1:
+			consumed += length
+			continue
+		var local_progress := clampf((travelled - consumed) / length, 0.0, 1.0)
+		var current_position := _position_along_points(Array(segment.points), local_progress)
+		if not is_route_open(StringName(segment.get("road_id", &""))):
+			return {"valid": false, "error": "军队当前位置所在道路不可通行", "current_position": Vector2i(current_position), "origin_segment_index": segment_index}
+		var candidates: Array[Dictionary] = []
+		for endpoint_key in ["source_point_id", "target_point_id"]:
+			var endpoint_id := StringName(segment.get(endpoint_key, &""))
+			if endpoint_id == &"":
+				continue
+			var connector := _clip_points_to_endpoint(Array(segment.points), local_progress, endpoint_key == "target_point_id")
+			# `plan_runtime_path` rightly rejects same-point march orders, but an
+			# endpoint can itself be the lawful safe garrison for this temporary
+			# transfer.  In that case the clipped connector is the complete path.
+			var onward := {"valid": true, "route_id": &"", "segments": [], "points": [connector.back()]} if endpoint_id == target_point_id else plan_runtime_path(endpoint_id, target_point_id)
+			if not bool(onward.get("valid", false)):
+				continue
+			var points := connector.duplicate(true)
+			var onward_points: Array = Array(onward.get("points", []))
+			if not points.is_empty() and not onward_points.is_empty():
+				onward_points.pop_front()
+			points.append_array(onward_points)
+			var duration := maxi(1, ceili(_points_length(points) * 20.0))
+			# Persist the physical road that the clipped connector belongs to.  Its
+			# geometry is deliberately carried in `points`; the `partial` marker
+			# prevents a later reader from mistaking it for a newly-created road.
+			var transfer_segments: Array = [{"road_id": StringName(segment.get("road_id", &"")), "forward": bool(segment.get("forward", false)) if endpoint_key == "target_point_id" else not bool(segment.get("forward", false)), "partial": true}]
+			transfer_segments.append_array(Array(onward.get("segments", [])).duplicate(true))
+			candidates.append({"valid": true, "route_id": StringName(onward.get("route_id", &"")), "segments": transfer_segments, "points": points, "duration_milliseconds": duration, "current_position": Vector2i(current_position), "origin_segment_index": segment_index})
+		if candidates.is_empty():
+			return {"valid": false, "error": "没有从当前位置可达的友方驻点", "current_position": Vector2i(current_position), "origin_segment_index": segment_index}
+		candidates.sort_custom(func(left: Dictionary, right: Dictionary) -> bool: return int(left.duration_milliseconds) < int(right.duration_milliseconds) or (int(left.duration_milliseconds) == int(right.duration_milliseconds) and String(left.route_id) < String(right.route_id)))
+		return candidates.front()
+	return {"valid": false, "error": "军令进度不在有效路段内"}
+
+
+func _points_length(points: Array) -> float:
+	var length := 0.0
+	for index in range(1, points.size()):
+		length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
+	return length
+
+
+func _clip_points_to_endpoint(points: Array, progress: float, toward_end: bool) -> Array:
+	if points.size() < 2:
+		return points.duplicate(true)
+	var total_length := _points_length(points)
+	var remaining_length := total_length * clampf(progress, 0.0, 1.0)
+	for index in range(1, points.size()):
+		var start := Vector2(points[index - 1])
+		var end := Vector2(points[index])
+		var segment_length := start.distance_to(end)
+		if segment_length <= 0.001:
+			continue
+		if remaining_length <= segment_length or index == points.size() - 1:
+			var position := Vector2i(start.lerp(end, clampf(remaining_length / segment_length, 0.0, 1.0)))
+			var result: Array = [position]
+			if toward_end:
+				for point_index in range(index, points.size()):
+					if Vector2(result.back()) != Vector2(points[point_index]):
+						result.append(points[point_index])
+			else:
+				for point_index in range(index - 1, -1, -1):
+					if Vector2(result.back()) != Vector2(points[point_index]):
+						result.append(points[point_index])
+			return result
+		remaining_length -= segment_length
+	return [Vector2i(points.back())]
+
+
 func _road_traversal_cost(road: Dictionary, forward: bool, preferred_world_points: Array) -> float:
 	var points: Array = Array(road.get("route_world_points", [])).duplicate(true)
 	if not forward:

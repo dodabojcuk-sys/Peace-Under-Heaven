@@ -14,6 +14,24 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 safe-camp transfer checkpoint
+
+- Added schema-6 temporary execution records beside immutable macro orders.
+  A future damaged road now sends an army from its exact ordered-road position
+  along a clipped physical connector to a deterministic reachable garrison or
+  completed camp, without reissuing the order or charging departure food.
+- Added actual temporary movement, camp waiting, repair-triggered reverse
+  return to the frozen original position, and original-task resumption. The
+  Macro March marker, hit testing and status text use that temporary path.
+- Added a formal Controller regression for a curved first segment and damaged
+  constructed second segment, plus an isolated three-process disk chain for
+  transfer-in-progress, waiting, and repair-return-in-progress recovery.
+- Verified with Godot 4.5.1: Field R2 55 assertions, field persistence PASS,
+  Macro March R0 27 assertions, War Loop R1 16 assertions, editor import,
+  `blank_map` and Blackstone startup, and `git diff --check`. This is an
+  engineering checkpoint, not normal-input media, player acceptance, or a
+  completed R2 tactical loop.
+
 ### FIELD_TACTICS_R2 formal bridge-return and restore canonicalization repair
 
 - Added the interrupted-project selector to the Macro March scene tree and

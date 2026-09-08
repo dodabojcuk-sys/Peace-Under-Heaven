@@ -249,7 +249,16 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		var target := _point_from_model(model, StringName(macro.target_point_id))
 		var phase_text := "行军中"
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED:
-			phase_text = "受阻临时驻扎"
+			var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
+			match StringName(transfer.get("phase", &"")):
+				&"TO_CAMP":
+					phase_text = "受阻，正转移至驻点"
+				&"WAITING":
+					phase_text = "驻点待维修"
+				&"TO_RESUME":
+					phase_text = "道路已修复，正返回原路线"
+				_:
+					phase_text = "受阻等待"
 		elif StringName(army.phase) == ARMY_REGISTRY.PHASE_STATIONED:
 			phase_text = "已抵达驻扎点"
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING:
@@ -262,7 +271,12 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING:
 			_detail_label.text = "城门耐久：%d\n守军：%d\n我军可战：%d\n自动先行招降，未降则攻门并清剿守军。" % [int(siege.get("gate_hp", 0)), ceili(float(int(siege.get("defender_total_hp", 0))) / maxf(float(int(siege.get("defender_hp_per_member", 1))), 1.0)), ceili(float(int(siege.get("attacker_total_hp", 0))) / maxf(float(int(siege.get("attacker_hp_per_member", 1))), 1.0))]
 		else:
-			_detail_label.text = "行军进度：%d%%\n粮食已扣：%d\n%s" % [roundi(float(macro.progress_millis) / maxf(float(macro.total_millis), 1.0) * 100.0), int(macro.food_cost), ("道路恢复后会继续原军令，不再扣粮。" if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED else "到达后可从驻扎点发出下一道军令。")]
+			var blocked_detail := ""
+			if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED:
+				var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
+				var transfer_target := _point_from_model(model, StringName(transfer.get("target_point_id", &"")))
+				blocked_detail = "\n受阻路段：%d；临时状态：%s%s" % [int(macro.get("blocked_segment_index", -1)) + 1, String(transfer.get("phase", "NONE")), (" → %s" % str(transfer_target.get("display_name", transfer.get("target_point_id", "")))) if StringName(transfer.get("target_point_id", &"")) != &"" else ""]
+			_detail_label.text = "原军令进度：%d%%\n粮食已扣：%d\n%s%s" % [roundi(float(macro.progress_millis) / maxf(float(macro.total_millis), 1.0) * 100.0), int(macro.food_cost), ("工程师维修后会沿实际道路接续原军令，不再扣粮。" if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED else "到达后可从驻扎点发出下一道军令。"), blocked_detail]
 		_confirm_button.disabled = true
 		_block_button.visible = false
 		_recover_button.visible = false
@@ -754,10 +768,11 @@ func _army_id_at_screen(model: Dictionary, screen_position: Vector2) -> StringNa
 	for army_value in Array(model.get("armies", [])):
 		var army: Dictionary = army_value
 		var macro: Dictionary = army.get("macro_march", {})
-		var points: Array = macro.get("route_world_points", [])
+		var display_route := _display_route_for_army(army)
+		var points: Array = Array(display_route.get("points", []))
 		if points.is_empty():
 			continue
-		var progress := float(macro.get("progress_millis", 0)) / maxf(float(macro.get("total_millis", 1)), 1.0)
+		var progress := float(display_route.get("progress_millis", 0)) / maxf(float(display_route.get("total_millis", 1)), 1.0)
 		if _world_to_screen(_point_along_route(points, progress)).distance_to(screen_position) <= 24.0:
 			hits.append(StringName(army.get("army_id", &"")))
 	if hits.is_empty():
@@ -1048,9 +1063,9 @@ func _draw_minimap() -> void:
 
 
 func _draw_army_marker(army: Dictionary) -> void:
-	var macro: Dictionary = army.macro_march
-	var points: Array = macro.route_world_points
-	var progress := float(macro.progress_millis) / maxf(float(macro.total_millis), 1.0)
+	var display_route := _display_route_for_army(army)
+	var points: Array = Array(display_route.get("points", []))
+	var progress := float(display_route.get("progress_millis", 0)) / maxf(float(display_route.get("total_millis", 1)), 1.0)
 	var position := _point_along_route(points, progress)
 	var screen := _world_to_screen(position)
 	draw_circle(screen, 18.0, Color("f8e3a6") if StringName(army.get("army_id", &"")) == _selected_army_id else Color("4b3927"))
@@ -1061,7 +1076,31 @@ func _draw_army_marker(army: Dictionary) -> void:
 	for offset in [-7.0, 0.0, 7.0]:
 		draw_circle(screen + Vector2(offset, 12), 3.0, Color("f8e3a6"))
 	if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED:
-		draw_string(ThemeDB.fallback_font, screen + Vector2(18, -12), "受阻驻扎", HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("ffe8a3"))
+		var transfer: Dictionary = Dictionary(Dictionary(army.get("macro_march", {})).get("blocked_transfer", {}))
+		var label := "受阻等待"
+		if StringName(transfer.get("phase", &"")) == &"TO_CAMP":
+			label = "转移驻点"
+		elif StringName(transfer.get("phase", &"")) == &"WAITING":
+			label = "驻点待修"
+		elif StringName(transfer.get("phase", &"")) == &"TO_RESUME":
+			label = "返回原令"
+		draw_string(ThemeDB.fallback_font, screen + Vector2(18, -12), label, HORIZONTAL_ALIGNMENT_LEFT, -1, 14, Color("ffe8a3"))
+
+
+func _display_route_for_army(army: Dictionary) -> Dictionary:
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
+	if StringName(army.get("phase", &"")) == ARMY_REGISTRY.PHASE_BLOCKED and StringName(transfer.get("phase", &"")) in [&"TO_CAMP", &"WAITING", &"TO_RESUME"]:
+		return {
+			"points": Array(transfer.get("route_world_points", [])).duplicate(true),
+			"progress_millis": int(transfer.get("progress_millis", 0)),
+			"total_millis": int(transfer.get("total_millis", 1)),
+		}
+	return {
+		"points": Array(macro.get("route_world_points", [])).duplicate(true),
+		"progress_millis": int(macro.get("progress_millis", 0)),
+		"total_millis": int(macro.get("total_millis", 1)),
+	}
 
 
 func _point_along_route(points: Array, progress: float) -> Vector2:

@@ -22,6 +22,7 @@ func _run() -> void:
 	_run_r1_war_snapshot_migration()
 	await _run_formal_controller_contract()
 	await _run_damaged_road_resume_contract()
+	await _run_mid_segment_camp_transfer_contract()
 	_finish()
 
 
@@ -59,6 +60,21 @@ func _run_parallel_army_contract() -> void:
 func _run_field_tactics_contract() -> void:
 	var state: FieldTacticsState = FIELD_TACTICS_STATE.new()
 	state.initialize_from_theater(THEATER.get_points(), THEATER.get_routes())
+	var progress_path_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	progress_path_state.initialize_from_theater(
+		{&"start": {"world_position": Vector2i(0, 0)}, &"bend": {"world_position": Vector2i(100, 100)}, &"camp": {"world_position": Vector2i(0, 200)}}, {}
+	)
+	progress_path_state.roads_by_id = {
+		&"road.start.bend": {"road_id": &"road.start.bend", "source_point_id": &"start", "target_point_id": &"bend", "route_world_points": [Vector2i(0, 0), Vector2i(100, 0), Vector2i(100, 100)], "road_kind": FieldTacticsState.ROAD_NORMAL, "state": FieldTacticsState.ROAD_OPEN, "built": true},
+		&"road.start.camp": {"road_id": &"road.start.camp", "source_point_id": &"start", "target_point_id": &"camp", "route_world_points": [Vector2i(0, 0), Vector2i(0, 200)], "road_kind": FieldTacticsState.ROAD_NORMAL, "state": FieldTacticsState.ROAD_OPEN, "built": true},
+	}
+	var progress_path := progress_path_state.plan_runtime_path_from_progress([{"road_id": &"road.start.bend", "forward": true}], 1000, 500, &"camp")
+	var progress_points: Array = Array(progress_path.get("points", []))
+	_check(
+		bool(progress_path.get("valid", false)) and Vector2i(progress_path.get("current_position", Vector2i.ZERO)) == Vector2i(100, 0)
+			and progress_points.size() >= 3 and Vector2i(progress_points[0]) == Vector2i(100, 0) and Vector2i(progress_points[1]) == Vector2i(0, 0),
+		"临时路径从有向弯道路段中点沿原道路回退接入路网，不跳到或直切路口"
+	)
 	var bridge_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
 	bridge_state.initialize_from_theater(THEATER.get_points(), THEATER.get_routes(), [Rect2i(515, 350, 120, 145)])
 	var bridge_engineer := bridge_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"blackstone_city")
@@ -649,6 +665,100 @@ func _run_damaged_road_resume_contract() -> void:
 			and int(city.food) == food_after_issue - int(repair.get("food_cost", 0))
 			and int(Dictionary(advancing.get("macro_march", {})).get("progress_millis", 0)) > int(Dictionary(resumed.get("macro_march", {})).get("progress_millis", 0)),
 		"真实受损道路使军令就近受阻；到场维修后原 order 自动恢复且不重复扣行军粮"
+	)
+	scene.queue_free()
+	await process_frame
+
+
+## This goes through the production Controller rather than calling the Field
+## planner alone.  The second original segment is damaged while the army is in
+## the first curved segment, so a valid result must preserve the mid-road
+## position and physically return along that curve before entering the camp
+## branch.
+func _run_mid_segment_camp_transfer_contract() -> void:
+	var scene := CITY_SCENE.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var city: Node = scene.get_node("ConstructionController")
+	city.set_process(false)
+	city.food = 200
+	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var camp_points := [Vector2i(150, 430), Vector2i(150, 555)]
+	var project: Dictionary = city.begin_field_road_project(
+		StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")),
+		&"blackstone_city", &"camp.site.mid_transfer", camp_points, FieldTacticsState.ROAD_NORMAL, true
+	)
+	city.advance_war_loop_time(int(Dictionary(project.get("project", {})).get("required_milliseconds", 0)))
+	var target_points := [Vector2i(790, 170), Vector2i(895, 245)]
+	var target_project: Dictionary = city.begin_field_road_project(
+		StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")),
+		&"northwatch_garrison", &"camp.site.mid_target", target_points, FieldTacticsState.ROAD_NORMAL, true
+	)
+	city.advance_war_loop_time(int(Dictionary(target_project.get("project", {})).get("travel_milliseconds", 0)) + int(Dictionary(target_project.get("project", {})).get("required_milliseconds", 0)))
+	var target_road_id := StringName(Dictionary(target_project.get("project", {})).get("road_id", &""))
+	var lowland: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.lowland")
+	var drawn_points := Array(lowland.points).duplicate(true)
+	drawn_points.pop_back()
+	drawn_points.append_array(target_points)
+	var main_plan: Dictionary = city.plan_field_path(&"blackstone_city", &"camp.site.mid_target", drawn_points)
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var issued: Dictionary = city.commit_macro_march_from_city(
+		[StringName(roster[0].formation_id)], &"camp.site.mid_target", StringName(main_plan.get("route_id", &"")), Array(main_plan.get("points", []))
+	)
+	var issued_army: Dictionary = Dictionary(issued.get("army", {}))
+	var issued_macro: Dictionary = Dictionary(issued_army.get("macro_march", {}))
+	var original_order_id := StringName(issued_macro.get("order_id", &""))
+	var food_after_issue := int(city.food)
+	# 4.5 seconds places the army just past the first lowland bend; returning
+	# to the nearby camp is shorter than continuing to Northwatch.
+	city._advance_all_macro_marches_seconds(4.5)
+	var before_damage: Dictionary = city._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	var before_macro: Dictionary = Dictionary(before_damage.get("macro_march", {}))
+	var field: FieldTacticsState = city._war_loop_state.field_tactics
+	field.damage_road(target_road_id, 999)
+	city._advance_all_macro_marches_seconds(0.1)
+	var blocked: Dictionary = city._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	var blocked_macro: Dictionary = Dictionary(blocked.get("macro_march", {}))
+	var transfer: Dictionary = Dictionary(blocked_macro.get("blocked_transfer", {}))
+	var transfer_points: Array = Array(transfer.get("route_world_points", []))
+	var transfer_total_seconds := float(int(transfer.get("total_millis", 0))) / 1000.0
+	city._advance_all_macro_marches_seconds(transfer_total_seconds)
+	var stationed: Dictionary = city._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	var stationed_transfer: Dictionary = Dictionary(Dictionary(stationed.get("macro_march", {})).get("blocked_transfer", {}))
+	var food_before_repair := int(city.food)
+	var repair: Dictionary = city.begin_field_road_repair(StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")), target_road_id)
+	var repairing_engineer: Dictionary = Dictionary(field.specialists_by_id[StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &""))])
+	city.advance_war_loop_time(int(repairing_engineer.get("move_remaining_milliseconds", 0)) + int(Dictionary(repair.get("project", {})).get("required_milliseconds", 0)))
+	var returning: Dictionary = city._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	var return_transfer: Dictionary = Dictionary(Dictionary(returning.get("macro_march", {})).get("blocked_transfer", {}))
+	city._advance_all_macro_marches_seconds(float(int(return_transfer.get("total_millis", 0))) / 1000.0)
+	city.advance_war_loop_time(1)
+	var resumed: Dictionary = city._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	city._advance_all_macro_marches_seconds(1.0)
+	var resumed_advancing: Dictionary = city._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	_check(
+		bool(project.get("success", false)) and bool(target_project.get("success", false)) and bool(main_plan.get("valid", false)) and bool(issued.get("success", false)) and bool(repair.get("success", false))
+			and int(before_macro.get("progress_millis", 0)) > 0
+			and StringName(blocked.get("phase", &"")) == ArmyRegistry.PHASE_BLOCKED
+			and StringName(transfer.get("phase", &"")) == &"TO_CAMP"
+			and StringName(transfer.get("target_point_id", &"")) == &"camp.site.mid_transfer"
+			and StringName(Dictionary(Array(transfer.get("route_segments", [])).front()).get("road_id", &"")) == &"road.blackstone.northwatch.lowland"
+			and bool(Dictionary(Array(transfer.get("route_segments", [])).front()).get("partial", false))
+			and transfer_points.size() >= 3
+			and Vector2(transfer_points[0]).distance_to(Vector2(transfer_points[1])) > 1.0
+			and int(blocked_macro.get("progress_millis", 0)) == int(before_macro.get("progress_millis", 0))
+			and StringName(stationed_transfer.get("phase", &"")) == &"WAITING"
+			and StringName(Dictionary(stationed.get("macro_march", {})).get("order_id", &"")) == original_order_id
+			and food_before_repair == food_after_issue,
+		"正式 Controller 在前方断路后从低洼弯道路中实际回退并转移到可达工程驻点，原令和粮食保持不变"
+	)
+	_check(
+		StringName(return_transfer.get("phase", &"")) == &"TO_RESUME"
+			and StringName(resumed.get("phase", &"")) == ArmyRegistry.PHASE_MARCHING
+			and StringName(Dictionary(resumed.get("macro_march", {})).get("order_id", &"")) == original_order_id
+			and int(Dictionary(resumed_advancing.get("macro_march", {})).get("progress_millis", 0)) > int(Dictionary(resumed.get("macro_march", {})).get("progress_millis", 0)),
+		"维修完成后军队先沿临时路径返回冻结位置，再以同一原军令继续行军"
 	)
 	scene.queue_free()
 	await process_frame

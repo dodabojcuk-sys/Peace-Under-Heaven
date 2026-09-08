@@ -2,7 +2,7 @@ class_name ArmyRegistry
 extends RefCounted
 
 
-const SCHEMA_VERSION := 5
+const SCHEMA_VERSION := 6
 const MAX_EXACT_PERSISTED_SEQUENCE := 9007199254740991
 const PHASE_RESERVED := &"RESERVED"
 const PHASE_MARCHING := &"MARCHING"
@@ -381,7 +381,7 @@ static func validate_snapshot(
 ) -> Dictionary:
 	var source_schema_version := int(snapshot.get("schema_version", 0))
 	if (
-		source_schema_version not in [1, 2, 3, 4, SCHEMA_VERSION]
+		source_schema_version not in [1, 2, 3, 4, 5, SCHEMA_VERSION]
 		or typeof(snapshot.get("next_army_sequence", null)) != TYPE_INT
 		or int(snapshot.get("next_army_sequence", 0)) <= 0
 		or int(snapshot.get("next_army_sequence", 0))
@@ -394,7 +394,7 @@ static func validate_snapshot(
 	):
 		return {"valid": false, "error_id": &"INVALID_ARMY_REGISTRY"}
 	var normalized := snapshot.duplicate(true)
-	if source_schema_version in [1, 2, 3]:
+	if source_schema_version in [1, 2, 3, 5]:
 		normalized["schema_version"] = SCHEMA_VERSION
 		if source_schema_version == 1:
 			normalized["next_macro_order_sequence"] = 1
@@ -413,6 +413,8 @@ static func validate_snapshot(
 			# conservative migration default. New blocks retain RETREATING exactly.
 			if not normalized_macro.has("blocked_resume_phase"):
 				normalized_macro["blocked_resume_phase"] = PHASE_MARCHING
+			if not normalized_macro.has("blocked_transfer"):
+				normalized_macro["blocked_transfer"] = _empty_blocked_transfer()
 			normalized_army["macro_march"] = normalized_macro
 			normalized.armies_by_id[army_id_value] = normalized_army
 	if (
@@ -868,7 +870,8 @@ func block_macro_march(
 	order_id: StringName,
 	segment_index: int,
 	progress_before_segment_millis: int,
-	temporary_station_point: StringName
+	temporary_station_point: StringName,
+	transfer: Dictionary = {}
 ) -> Dictionary:
 	var army: Dictionary = _armies_by_id.get(army_id, {})
 	var macro: Dictionary = army.get("macro_march", {})
@@ -887,6 +890,7 @@ func block_macro_march(
 	macro.blocked_segment_index = segment_index
 	macro.temporary_station_point = temporary_station_point
 	macro.blocked_resume_phase = StringName(army.phase)
+	macro.blocked_transfer = transfer.duplicate(true) if not transfer.is_empty() else _empty_blocked_transfer()
 	macro.phase = PHASE_BLOCKED
 	army.progress_milliseconds = progress_before_segment_millis
 	army.phase = PHASE_BLOCKED
@@ -914,8 +918,41 @@ func resume_blocked_macro_march(
 	if resume_phase not in [PHASE_MARCHING, PHASE_RETREATING]:
 		return {}
 	macro.blocked_resume_phase = PHASE_MARCHING
+	macro.blocked_transfer = _empty_blocked_transfer()
 	macro.phase = resume_phase
 	army.phase = resume_phase
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func advance_blocked_transfer(army_id: StringName, order_id: StringName, expected_progress_milliseconds: int, delta_milliseconds: int) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
+	if army.is_empty() or StringName(army.phase) != PHASE_BLOCKED or StringName(macro.get("order_id", &"")) != order_id or StringName(transfer.get("phase", &"")) not in [&"TO_CAMP", &"TO_RESUME"] or int(transfer.get("progress_millis", 0)) != expected_progress_milliseconds or delta_milliseconds <= 0:
+		return {}
+	transfer.progress_millis = mini(int(transfer.progress_millis) + delta_milliseconds, int(transfer.total_millis))
+	var arrived := int(transfer.progress_millis) == int(transfer.total_millis)
+	if arrived:
+		transfer.phase = &"WAITING" if StringName(transfer.phase) == &"TO_CAMP" else &"NONE"
+	macro.temporary_station_point = StringName(transfer.target_point_id) if StringName(transfer.phase) == &"WAITING" else &""
+	macro.blocked_transfer = transfer
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return {"success": true, "arrived": arrived, "army": army.duplicate(true)}
+
+
+## The temporary transfer belongs to the same immutable original order as the
+## blocked macro march.  Keep the registry mutation here so controllers never
+## patch an army snapshot behind validation's back.
+func replace_blocked_transfer(army_id: StringName, order_id: StringName, transfer: Dictionary) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	if army.is_empty() or StringName(army.get("phase", &"")) != PHASE_BLOCKED or StringName(macro.get("order_id", &"")) != order_id or not _valid_blocked_transfer(transfer):
+		return {}
+	macro.blocked_transfer = transfer.duplicate(true)
+	macro.temporary_station_point = StringName(transfer.get("target_point_id", &"")) if StringName(transfer.get("phase", &"")) == &"WAITING" else &""
 	army.macro_march = macro
 	_armies_by_id[army_id] = army
 	return army.duplicate(true)
@@ -952,9 +989,13 @@ func _build_macro_march(
 		"blocked_segment_index": -1,
 		"temporary_station_point": &"",
 		"blocked_resume_phase": PHASE_MARCHING,
+		"blocked_transfer": _empty_blocked_transfer(),
 		"phase": PHASE_MARCHING,
 	}
 
+
+static func _empty_blocked_transfer() -> Dictionary:
+	return {"phase": &"NONE", "target_point_id": &"", "route_id": &"", "route_segments": [], "route_world_points": [], "progress_millis": 0, "total_millis": 0, "resume_progress_millis": 0}
 
 static func _has_valid_macro_formations(
 	formation_snapshots: Array,
@@ -1000,7 +1041,7 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 		"order_id", "source_point_id", "target_point_id", "route_id",
 		"route_world_points", "formation_snapshots", "food_cost",
 		"progress_millis", "total_millis", "blocked_segment_index",
-		"temporary_station_point", "blocked_resume_phase", "phase",
+		"temporary_station_point", "blocked_resume_phase", "blocked_transfer", "phase",
 	]
 	if macro.has("route_segments"):
 		expected_keys.append("route_segments")
@@ -1028,6 +1069,7 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 		or int(army.duration_milliseconds) != int(macro.total_millis)
 		or typeof(macro.blocked_segment_index) != TYPE_INT
 		or typeof(macro.temporary_station_point) != TYPE_STRING_NAME
+		or not _valid_blocked_transfer(Dictionary(macro.blocked_transfer))
 		or StringName(macro.blocked_resume_phase) not in [PHASE_MARCHING, PHASE_RETREATING]
 		or StringName(macro.phase) not in [PHASE_MARCHING, PHASE_BLOCKED, PHASE_STATIONED, PHASE_SIEGING, PHASE_RETREATING, PHASE_CLOSED]
 		or StringName(army.phase) != StringName(macro.phase)
@@ -1059,6 +1101,18 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 	):
 		return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
 	return {"valid": true}
+
+
+static func _valid_blocked_transfer(value: Dictionary) -> bool:
+	if value.size() != 8:
+		return false
+	if StringName(value.get("phase", &"")) not in [&"NONE", &"TO_CAMP", &"WAITING", &"TO_RESUME"]:
+		return false
+	if typeof(value.get("target_point_id", null)) != TYPE_STRING_NAME or typeof(value.get("route_id", null)) != TYPE_STRING_NAME or not value.get("route_segments", null) is Array or not value.get("route_world_points", null) is Array or typeof(value.get("progress_millis", null)) != TYPE_INT or typeof(value.get("total_millis", null)) != TYPE_INT or typeof(value.get("resume_progress_millis", null)) != TYPE_INT:
+		return false
+	if int(value.progress_millis) < 0 or int(value.total_millis) < 0 or int(value.progress_millis) > int(value.total_millis) or int(value.resume_progress_millis) < 0:
+		return false
+	return StringName(value.phase) == &"NONE" or (StringName(value.target_point_id) != &"" and Array(value.route_world_points).size() >= 2 and int(value.total_millis) > 0)
 
 
 static func _validate_macro_order_history(history: Array, current_order_id: StringName) -> Dictionary:

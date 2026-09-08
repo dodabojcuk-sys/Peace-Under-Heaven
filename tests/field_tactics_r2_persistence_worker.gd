@@ -111,6 +111,30 @@ func _run() -> void:
 			var arrived: Dictionary = _first_macro_army(city)
 			var arrived_macro: Dictionary = Dictionary(arrived.get("macro_march", {}))
 			passed = StringName(arrived.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED and StringName(arrived.get("target_node_id", &"")) == &"reedbank_garrison" and Array(arrived_macro.get("route_segments", [])).size() == 2
+		"J":
+			passed = _start_blocked_transfer(city, scene)
+		"K":
+			var army := _first_macro_army(city)
+			var transfer := Dictionary(Dictionary(army.get("macro_march", {})).get("blocked_transfer", {}))
+			city._advance_all_macro_marches_seconds(float(int(transfer.get("total_millis", 0)) - int(transfer.get("progress_millis", 0))) / 1000.0)
+			army = _first_macro_army(city)
+			transfer = Dictionary(Dictionary(army.get("macro_march", {})).get("blocked_transfer", {}))
+			passed = StringName(army.get("phase", &"")) == ArmyRegistry.PHASE_BLOCKED and StringName(transfer.get("phase", &"")) == &"WAITING" and scene.flush_runtime_persistence(&"field_worker_k")
+		"L":
+			var army := _first_macro_army(city)
+			var macro := Dictionary(army.get("macro_march", {}))
+			var transfer := Dictionary(macro.get("blocked_transfer", {}))
+			var road_id := StringName(Dictionary(Array(macro.get("route_segments", [])).back()).get("road_id", &""))
+			var engineer_id := _first_engineer_id(city)
+			var repair := city.begin_field_road_repair(engineer_id, road_id)
+			var engineer := Dictionary(city._war_loop_state.field_tactics.specialists_by_id[engineer_id])
+			city.advance_war_loop_time(int(engineer.get("move_remaining_milliseconds", 0)) + int(Dictionary(repair.get("project", {})).get("required_milliseconds", 0)))
+			army = _first_macro_army(city)
+			transfer = Dictionary(Dictionary(army.get("macro_march", {})).get("blocked_transfer", {}))
+			city._advance_all_macro_marches_seconds(float(int(transfer.get("total_millis", 0)) / 2) / 1000.0)
+			army = _first_macro_army(city)
+			transfer = Dictionary(Dictionary(army.get("macro_march", {})).get("blocked_transfer", {}))
+			passed = bool(repair.get("success", false)) and StringName(transfer.get("phase", &"")) == &"TO_RESUME" and int(transfer.get("progress_millis", 0)) > 0 and scene.flush_runtime_persistence(&"field_worker_l")
 	print("FIELD_TACTICS_WORKER_%s %s pid=%d" % [mode, "PASS" if passed else "FAIL", OS.get_process_id()])
 	scene.queue_free()
 	await process_frame
@@ -136,3 +160,38 @@ func _first_macro_army(city: Node) -> Dictionary:
 	for army_value in city.get_macro_march_armies():
 		return Dictionary(army_value)
 	return {}
+
+
+func _first_engineer_id(city: Node) -> StringName:
+	for specialist_id_value in city._war_loop_state.field_tactics.specialists_by_id:
+		var specialist: Dictionary = city._war_loop_state.field_tactics.specialists_by_id[specialist_id_value]
+		if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER:
+			return StringName(specialist_id_value)
+	return &""
+
+
+func _start_blocked_transfer(city: Node, scene: Node) -> bool:
+	city.food = 200
+	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var engineer_id := StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &""))
+	var safe := city.begin_field_road_project(engineer_id, &"blackstone_city", &"camp.site.transfer_safe", [Vector2i(150, 430), Vector2i(150, 555)], FieldTacticsState.ROAD_NORMAL, true)
+	city.advance_war_loop_time(int(Dictionary(safe.get("project", {})).get("required_milliseconds", 0)))
+	var target := city.begin_field_road_project(engineer_id, &"northwatch_garrison", &"camp.site.transfer_target", [Vector2i(790, 170), Vector2i(895, 245)], FieldTacticsState.ROAD_NORMAL, true)
+	var target_project := Dictionary(target.get("project", {}))
+	city.advance_war_loop_time(int(target_project.get("travel_milliseconds", 0)) + int(target_project.get("required_milliseconds", 0)))
+	var lowland := THEATER.get_route(&"road.blackstone.northwatch.lowland")
+	var drawn := Array(lowland.points).duplicate(true)
+	drawn.pop_back()
+	drawn.append_array([Vector2i(790, 170), Vector2i(895, 245)])
+	var plan := city.plan_field_path(&"blackstone_city", &"camp.site.transfer_target", drawn)
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var issued := city.commit_macro_march_from_city([StringName(roster[0].formation_id)], &"camp.site.transfer_target", StringName(plan.get("route_id", &"")), Array(plan.get("points", [])))
+	city._advance_all_macro_marches_seconds(4.5)
+	city._war_loop_state.field_tactics.damage_road(StringName(target_project.get("road_id", &"")), 999)
+	city._advance_all_macro_marches_seconds(0.1)
+	var army := _first_macro_army(city)
+	var transfer := Dictionary(Dictionary(army.get("macro_march", {})).get("blocked_transfer", {}))
+	city._advance_all_macro_marches_seconds(float(int(transfer.get("total_millis", 0)) / 2) / 1000.0)
+	army = _first_macro_army(city)
+	transfer = Dictionary(Dictionary(army.get("macro_march", {})).get("blocked_transfer", {}))
+	return bool(safe.get("success", false)) and bool(target.get("success", false)) and bool(plan.get("valid", false)) and bool(issued.get("success", false)) and StringName(transfer.get("phase", &"")) == &"TO_CAMP" and int(transfer.get("progress_millis", 0)) > 0 and scene.flush_runtime_persistence(&"field_worker_j")
