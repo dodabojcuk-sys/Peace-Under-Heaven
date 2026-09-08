@@ -232,9 +232,17 @@ func begin_road_project(
 
 
 func road_kind_for_route(route_world_points: Array, requested_road_kind: StringName) -> StringName:
-	if requested_road_kind == ROAD_BRIDGE or _route_crosses_water(route_world_points):
-		return ROAD_BRIDGE
+	# This is the player's land-road material, not a summary of every physical
+	# segment. _build_construction_segment_plans independently marks only water
+	# spans as bridges, so a normal or reinforced road keeps its material on
+	# both banks when submitted through the formal Controller path.
+	if requested_road_kind not in [ROAD_NORMAL, ROAD_REINFORCED, ROAD_BRIDGE]:
+		return ROAD_NORMAL
 	return requested_road_kind
+
+
+func construction_contains_bridge(route_world_points: Array, requested_road_kind: StringName) -> bool:
+	return requested_road_kind == ROAD_BRIDGE or _route_crosses_water(route_world_points)
 
 
 func _build_construction_segment_plans(
@@ -260,7 +268,10 @@ func _build_construction_segment_plans(
 	for point_index in range(1, route_world_points.size()):
 		var start := Vector2(route_world_points[point_index - 1])
 		var end := Vector2(route_world_points[point_index])
-		var samples := maxi(1, ceili(start.distance_to(end) / 16.0))
+		# Keep construction classification as conservative as specialist movement:
+		# a narrow water strip must produce a bridge segment instead of being
+		# skipped by a coarse midpoint interval.
+		var samples := maxi(1, ceili(start.distance_to(end)))
 		for sample_index in range(1, samples + 1):
 			var part_start := start.lerp(end, float(sample_index - 1) / float(samples))
 			var part_end := start.lerp(end, float(sample_index) / float(samples))
@@ -349,7 +360,7 @@ func begin_road_repair(engineer_id: StringName, road_id: StringName) -> Dictiona
 	if Vector2i(target_position) == INVALID_WORLD_POSITION:
 		return {}
 	var start_position := Vector2(engineer.get("world_position", _point_position(StringName(engineer.get("current_point_id", &"")))))
-	var movement_plan := _plan_specialist_land_path(start_position, target_position)
+	var movement_plan := Dictionary(repair_target.get("movement_plan", {}))
 	if movement_plan.is_empty():
 		return {}
 	var travel_milliseconds := int(movement_plan.get("duration_milliseconds", 0)) if start_position.distance_to(target_position) > 0.01 else 0
@@ -388,25 +399,27 @@ func begin_road_repair(engineer_id: StringName, road_id: StringName) -> Dictiona
 
 
 func _reachable_repair_endpoint(engineer: Dictionary, road: Dictionary) -> Dictionary:
-	var source_point_id := StringName(engineer.get("current_point_id", &""))
-	if source_point_id == &"":
+	var start_position := Vector2(engineer.get("world_position", _point_position(StringName(engineer.get("current_point_id", &"")))))
+	if Vector2i(start_position) == INVALID_WORLD_POSITION:
 		return {}
 	var best: Dictionary = {}
 	for endpoint_id_value in [road.get("source_point_id", &""), road.get("target_point_id", &"")]:
 		var endpoint_id := StringName(endpoint_id_value)
 		if endpoint_id == &"":
 			continue
-		var duration := 0
-		if endpoint_id != source_point_id:
-			var path := plan_runtime_path(source_point_id, endpoint_id)
-			if not bool(path.get("valid", false)):
-				continue
-			duration = int(path.get("duration_milliseconds", 0))
-		if best.is_empty() or duration < int(best.get("duration_milliseconds", 0)):
+		var endpoint_position := _point_position(endpoint_id)
+		if endpoint_position == INVALID_WORLD_POSITION:
+			continue
+		var movement_plan := _plan_specialist_land_path(start_position, Vector2(endpoint_position))
+		if movement_plan.is_empty():
+			continue
+		var distance_units := float(movement_plan.get("distance_units", INF))
+		if best.is_empty() or distance_units < float(best.get("distance_units", INF)):
 			best = {
 				"point_id": endpoint_id,
-				"world_position": _point_position(endpoint_id),
-				"duration_milliseconds": duration,
+				"world_position": endpoint_position,
+				"distance_units": distance_units,
+				"movement_plan": movement_plan,
 			}
 	return best
 
@@ -969,10 +982,8 @@ func _plan_specialist_land_path(start_position: Vector2, target_position: Vector
 		var bridge: Dictionary = road_value
 		if StringName(bridge.get("road_kind", &"")) != ROAD_BRIDGE or not is_route_open(StringName(bridge.get("road_id", &""))):
 			continue
-		var bridge_points: Array = Array(bridge.get("route_world_points", []))
-		if bridge_points.size() >= 2:
-			nodes.append(Vector2(bridge_points.front()))
-			nodes.append(Vector2(bridge_points.back()))
+		for bridge_point in _bridge_navigation_points(Array(bridge.get("route_world_points", []))):
+			nodes.append(Vector2(bridge_point))
 	var costs: Array[float] = []
 	var previous: Array[int] = []
 	var visited: Array[bool] = []
@@ -1007,6 +1018,7 @@ func _plan_specialist_land_path(start_position: Vector2, target_position: Vector
 	reverse_points.reverse()
 	return {
 		"points": reverse_points,
+		"distance_units": costs[1],
 		"duration_milliseconds": maxi(1800, ceili(costs[1] * 2.5)),
 	}
 
@@ -1014,18 +1026,38 @@ func _plan_specialist_land_path(start_position: Vector2, target_position: Vector
 func _specialist_segment_traversable(start: Vector2, end: Vector2) -> bool:
 	if not _route_crosses_water([start, end]):
 		return world_bounds.has_point(Vector2i(start)) and world_bounds.has_point(Vector2i(end))
+	return _is_open_bridge_edge(start, end)
+
+
+func _is_open_bridge_edge(start: Vector2, end: Vector2) -> bool:
 	for road_value in roads_by_id.values():
 		var bridge: Dictionary = road_value
 		if StringName(bridge.get("road_kind", &"")) != ROAD_BRIDGE or not is_route_open(StringName(bridge.get("road_id", &""))):
 			continue
-		var bridge_points: Array = Array(bridge.get("route_world_points", []))
-		if bridge_points.size() < 2:
-			continue
-		var bridge_start := Vector2(bridge_points.front())
-		var bridge_end := Vector2(bridge_points.back())
-		if (start.is_equal_approx(bridge_start) and end.is_equal_approx(bridge_end)) or (start.is_equal_approx(bridge_end) and end.is_equal_approx(bridge_start)):
-			return true
+		var bridge_points := _bridge_navigation_points(Array(bridge.get("route_world_points", [])))
+		for point_index in range(1, bridge_points.size()):
+			var edge_start := Vector2(bridge_points[point_index - 1])
+			var edge_end := Vector2(bridge_points[point_index])
+			if (start.is_equal_approx(edge_start) and end.is_equal_approx(edge_end)) or (start.is_equal_approx(edge_end) and end.is_equal_approx(edge_start)):
+				return true
 	return false
+
+
+func _bridge_navigation_points(route_world_points: Array) -> Array:
+	if route_world_points.size() <= 2:
+		return route_world_points.duplicate(true)
+	var points: Array = [route_world_points.front()]
+	for point_index in range(1, route_world_points.size() - 1):
+		var previous := Vector2(route_world_points[point_index - 1])
+		var current := Vector2(route_world_points[point_index])
+		var following := Vector2(route_world_points[point_index + 1])
+		# Unit-sampled construction geometry can contain hundreds of collinear
+		# points. Keep turns and endpoints for movement without turning a bridge
+		# path into a straight endpoint-to-endpoint shortcut.
+		if not is_zero_approx((current - previous).cross(following - current)):
+			points.append(route_world_points[point_index])
+	points.append(route_world_points.back())
+	return points
 
 
 func observe_subject(subject_id: StringName) -> Dictionary:

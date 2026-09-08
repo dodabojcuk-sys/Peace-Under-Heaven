@@ -14,6 +14,22 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 formal bridge-planning checkpoint
+
+- Kept the selected land-road material through the formal Macro March,
+  Controller, and Field construction chain. Cross-water normal construction
+  now yields `NORMAL → BRIDGE → NORMAL` physical segments instead of
+  converting the whole project to bridge material.
+- Unified construction water detection with unit-coordinate sampling and kept
+  the existing one-time bridge-project food transaction.
+- Made specialist bridge traversal follow the open bridge polyline (including
+  bends) and choose repair endpoints using the same specialist path and actual
+  distance rather than the army road graph or minimum-duration tie.
+- Added formal Controller, bent-bridge, and roadless-land repair regressions.
+  Godot 4.5.1 focused results: Field 47 assertions, Macro March 27,
+  three-process field persistence PASS, and R1 war 16 assertions. This is not
+  normal-input evidence or a completed R2 player route.
+
 ### FIELD_TACTICS_R2 on-site construction checkpoint
 
 - Made the existing engineer specialist travel to a construction start before

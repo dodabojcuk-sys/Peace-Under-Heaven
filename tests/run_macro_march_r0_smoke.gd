@@ -211,8 +211,9 @@ func _run_map_draft_contract() -> void:
 	macro_screen._draw_points = [Vector2(150, 430), Vector2(475, 420), Vector2(710, 410)]
 	macro_screen._finish_draw()
 	_check(
-		StringName(macro_screen._engineering_draft.get("road_kind", &"")) == FieldTacticsState.ROAD_BRIDGE,
-		"自动化地图工程绘线穿过战区水域时预览为桥梁，而非普通道路"
+		StringName(macro_screen._engineering_draft.get("road_kind", &"")) == FieldTacticsState.ROAD_NORMAL
+			and THEATER.route_crosses_water(Array(macro_screen._engineering_draft.get("route_world_points", []))),
+		"自动化地图工程绘线保留陆地材料，并将跨水事实交给权威分段规划"
 	)
 	macro_screen._engineering_draft = {}
 	var construction_food_before: int = city.food

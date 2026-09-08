@@ -5442,8 +5442,9 @@ func begin_field_road_project(
 ) -> Dictionary:
 	_ensure_war_loop_initialized()
 	var resolved_road_kind := _war_loop_state.field_tactics.road_kind_for_route(route_world_points, road_kind)
+	var contains_bridge := _war_loop_state.field_tactics.construction_contains_bridge(route_world_points, resolved_road_kind)
 	var food_cost := 5 if resolved_road_kind == FieldTacticsState.ROAD_NORMAL else 10
-	if resolved_road_kind == FieldTacticsState.ROAD_BRIDGE:
+	if contains_bridge:
 		food_cost = 12
 	if food < food_cost:
 		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足，无法安排工程施工")

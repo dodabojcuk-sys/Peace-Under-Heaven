@@ -67,11 +67,24 @@ func _run_field_tactics_contract() -> void:
 		[Vector2i(150, 430), Vector2i(475, 420), Vector2i(710, 410)], FieldTacticsState.ROAD_NORMAL, true
 	)
 	_check(
-		StringName(bridge_project.get("road_kind", &"")) == FieldTacticsState.ROAD_BRIDGE
+		StringName(bridge_project.get("road_kind", &"")) == FieldTacticsState.ROAD_NORMAL
 			and Array(bridge_project.get("segment_plans", [])).size() == 3
+			and StringName(Dictionary(Array(bridge_project.get("segment_plans", []))[0]).get("road_kind", &"")) == FieldTacticsState.ROAD_NORMAL
 			and StringName(Dictionary(Array(bridge_project.get("segment_plans", []))[1]).get("road_kind", &"")) == FieldTacticsState.ROAD_BRIDGE
+			and StringName(Dictionary(Array(bridge_project.get("segment_plans", []))[2]).get("road_kind", &"")) == FieldTacticsState.ROAD_NORMAL
 			and int(bridge_project.get("required_milliseconds", 0)) == 21000,
 		"战区 Resource 水域命中的工程线拆为道路、桥梁、道路的连续施工计划"
+	)
+	var reinforced_bridge_segments := bridge_state._build_construction_segment_plans(
+		&"project.reinforced", &"blackstone_city", &"camp.site.reinforced",
+		[Vector2i(150, 430), Vector2i(475, 420), Vector2i(710, 410)], FieldTacticsState.ROAD_REINFORCED, 99
+	)
+	_check(
+		reinforced_bridge_segments.size() == 3
+			and StringName(Dictionary(reinforced_bridge_segments.front()).get("road_kind", &"")) == FieldTacticsState.ROAD_REINFORCED
+			and StringName(Dictionary(reinforced_bridge_segments[1]).get("road_kind", &"")) == FieldTacticsState.ROAD_BRIDGE
+			and StringName(Dictionary(reinforced_bridge_segments.back()).get("road_kind", &"")) == FieldTacticsState.ROAD_REINFORCED,
+		"加固道路跨水时两岸保留加固材料，仅水域段成为桥梁"
 	)
 	var bridge_segments: Array = Array(bridge_project.get("segment_plans", []))
 	var bridge_first_advance := bridge_state.advance_world(5000)
@@ -136,6 +149,41 @@ func _run_field_tactics_contract() -> void:
 	_check(
 		land_route_clear and not land_state._point_is_in_water(land_midpoint),
 		"专家移动保存并执行绕水陆地路径，位置不会沿直线穿过水域"
+	)
+	var bridge_crossing_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	bridge_crossing_state.initialize_from_theater(
+		{&"bridge.start": {"world_position": Vector2i(80, 300)}, &"bridge.target": {"world_position": Vector2i(720, 300)}},
+		{}, [Rect2i(300, -180, 190, 1040)]
+	)
+	bridge_crossing_state.roads_by_id[&"road.bridge.bent"] = {
+		"road_id": &"road.bridge.bent", "source_point_id": &"bridge.west", "target_point_id": &"bridge.east",
+		"route_world_points": [Vector2i(299, 300), Vector2i(350, 230), Vector2i(440, 230), Vector2i(490, 300)],
+		"road_kind": FieldTacticsState.ROAD_BRIDGE, "state": FieldTacticsState.ROAD_OPEN,
+		"durability": 100, "max_durability": 100, "built": true,
+	}
+	var bridge_crossing_engineer := bridge_crossing_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"bridge.start")
+	var bridge_crossing_move := bridge_crossing_state.order_specialist_move(StringName(bridge_crossing_engineer.specialist_id), &"bridge.target")
+	var bridge_crossing_route: Array = Array(bridge_crossing_move.get("move_route_world_points", []))
+	_check(
+		not bridge_crossing_move.is_empty() and bridge_crossing_route.has(Vector2i(350, 230)) and bridge_crossing_route.has(Vector2i(440, 230)),
+		"专家跨越已开放弯桥时保存桥梁折线，不以桥头直线缩短路径"
+	)
+	var repair_land_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	repair_land_state.initialize_from_theater(
+		{&"repair.start": {"world_position": Vector2i(100, 100)}, &"repair.site": {"world_position": Vector2i(420, 100)}, &"repair.end": {"world_position": Vector2i(560, 100)}}, {}
+	)
+	repair_land_state.roads_by_id[&"road.repair.land"] = {
+		"road_id": &"road.repair.land", "source_point_id": &"repair.site", "target_point_id": &"repair.end",
+		"route_world_points": [Vector2i(420, 100), Vector2i(560, 100)],
+		"road_kind": FieldTacticsState.ROAD_NORMAL, "state": FieldTacticsState.ROAD_DAMAGED,
+		"durability": 0, "max_durability": 70, "built": true,
+	}
+	var repair_land_engineer := repair_land_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"repair.start")
+	var repair_land_project := repair_land_state.begin_road_repair(StringName(repair_land_engineer.specialist_id), &"road.repair.land")
+	_check(
+		not repair_land_project.is_empty() and StringName(repair_land_project.get("target_point_id", &"")) == &"repair.site"
+			and Array(Dictionary(repair_land_state.specialists_by_id[StringName(repair_land_engineer.specialist_id)]).get("move_route_world_points", [])).size() >= 2,
+		"维修端点按工程师实际陆地路径选择，不要求先存在军队道路连接"
 	)
 	_check(state.is_route_open(&"road.blackstone.northwatch.ridge"), "主路进入运行时路网且默认可通行")
 	var multi_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison")
@@ -386,10 +434,19 @@ func _run_formal_controller_contract() -> void:
 	var scout: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_SCOUT)
 	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
 	_check(bool(scout.get("success", false)) and bool(engineer.get("success", false)), "侦察兵和工程师通过正式城市资源事务派遣")
-	var project: Dictionary = city.begin_field_road_project(StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")), &"blackstone_city", &"reedbank_garrison", [Vector2i(150, 430), Vector2i(440, 570), Vector2i(850, 505)], FieldTacticsState.ROAD_NORMAL, true)
-	city.advance_war_loop_time(5000)
+	var project: Dictionary = city.begin_field_road_project(StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")), &"blackstone_city", &"reedbank_garrison", [Vector2i(150, 430), Vector2i(850, 505)], FieldTacticsState.ROAD_NORMAL, true)
+	var project_required_milliseconds := int(Dictionary(project.get("project", {})).get("required_milliseconds", 0))
+	city.advance_war_loop_time(project_required_milliseconds)
 	var field_model: Dictionary = city.get_field_tactics_read_model()
-	_check(bool(project.get("success", false)) and not Dictionary(field_model.projects_by_id).is_empty() and not Dictionary(field_model.camps_by_id).is_empty(), "正式世界时间推进工程，并将道路和驻点投影给地图")
+	var formal_segments: Array = Array(Dictionary(project.get("project", {})).get("segment_plans", []))
+	_check(
+		bool(project.get("success", false)) and not Dictionary(field_model.projects_by_id).is_empty() and not Dictionary(field_model.camps_by_id).is_empty()
+			and formal_segments.size() >= 3
+			and StringName(Dictionary(formal_segments.front()).get("road_kind", &"")) == FieldTacticsState.ROAD_NORMAL
+			and StringName(Dictionary(formal_segments[1]).get("road_kind", &"")) == FieldTacticsState.ROAD_BRIDGE
+			and StringName(Dictionary(formal_segments.back()).get("road_kind", &"")) == FieldTacticsState.ROAD_NORMAL,
+		"正式 Controller 入口保留陆地材料，仅将跨水区段规划为桥梁"
+	)
 	var snapshot: Dictionary = city.export_v5_campaign_snapshot()
 	var restored_scene := CITY_SCENE.instantiate()
 	root.add_child(restored_scene)

@@ -2,6 +2,27 @@
 
 ## FIELD_TACTICS_R2 map and command UI checkpoint (2026-09-08)
 
+### Formal bridge-planning and expert-route checkpoint
+
+The formal map, Controller, and field construction entry now preserve the
+player's land-road material while treating water crossing as a property of
+only the physical segment plan. A normal cross-water draft therefore confirms
+as `NORMAL → BRIDGE → NORMAL`, keeps the existing one-time bridge project
+charge, and no longer turns both banks into bridge material. Construction
+water sampling now uses the same unit-coordinate resolution as specialist
+movement, so narrow water is not silently classified as dry land.
+
+Open bridges are part of the specialist path graph as their real bend points,
+not an endpoint-to-endpoint shortcut. Repair endpoint choice now uses that
+same specialist land/bridge path and actual geometric distance, rather than
+requiring an unrelated army-road route or comparing the clamped minimum travel
+time. A completed bridge can be used by an expert; an incomplete or damaged
+bridge remains unavailable. The focused Field suite passes 47 assertions,
+the Macro March suite 27, the isolated three-process persistence suite, and
+the R1 war suite 16. These are automated engineering checks only: formal
+normal-input media, interruption/reassignment, safe-camp transfer, patrol
+guard/ambush casualties, and both complete R2 player routes remain open.
+
 ### R2 on-site construction checkpoint
 
 An engineer now uses the existing persistent specialist record to travel from

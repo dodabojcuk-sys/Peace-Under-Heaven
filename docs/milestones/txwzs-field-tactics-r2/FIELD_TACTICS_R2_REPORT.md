@@ -11,6 +11,27 @@ transaction and persistence-checkpoint caller.
 
 ## Delivered engineering evidence
 
+### Formal bridge-planning and expert-route checkpoint
+
+The formal map draft no longer converts a cross-water line into a global
+`BRIDGE` material choice. It keeps the requested land material through the
+Macro March adapter and `ConstructionController`; `FieldTacticsState` alone
+produces the persisted per-segment `NORMAL → BRIDGE → NORMAL` plan. The
+Controller still publishes one reversible project transaction, with the
+existing bridge cost for a route containing a bridge. Unit-coordinate water
+sampling is shared by construction classification and specialist movement, so
+narrow water is not skipped by the former coarse construction interval.
+
+An open bridge now enters the specialist path graph through its ordered,
+turn-preserving polyline. An expert crossing a bent bridge stores those bridge
+turns and does not travel directly between bridgeheads. Repair endpoint choice
+uses that same specialist path and its geometric distance, permitting a
+roadless-land approach while continuing to reject incomplete or damaged bridge
+crossings. Focused Godot 4.5.1 results: Field 47 assertions, Macro March 27,
+three isolated field persistence chains PASS, and R1 war 16 assertions. This
+does not prove normal system-input play, interrupted-project reassignment,
+safe-camp transfer, patrol guard/ambush casualties, or either full R2 route.
+
 ### On-site construction checkpoint
 
 Road construction now reuses the persistent engineer specialist as its only

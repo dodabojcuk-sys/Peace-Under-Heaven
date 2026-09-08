@@ -198,8 +198,9 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		]
 	if _engineering_mode or not _engineering_draft.is_empty():
 		var draft_kind := StringName(_engineering_draft.get("road_kind", FieldTacticsState.ROAD_NORMAL))
-		var draft_kind_label := "桥梁" if draft_kind == FieldTacticsState.ROAD_BRIDGE else "普通路"
-		var draft_cost := 12 if draft_kind == FieldTacticsState.ROAD_BRIDGE else 5
+		var draft_contains_bridge := THEATER.route_crosses_water(Array(_engineering_draft.get("route_world_points", _draw_points)))
+		var draft_kind_label := ("加固路" if draft_kind == FieldTacticsState.ROAD_REINFORCED else "普通路") + ("（含桥梁）" if draft_contains_bridge else "")
+		var draft_cost := 12 if draft_contains_bridge else (10 if draft_kind == FieldTacticsState.ROAD_REINFORCED else 5)
 		_confirm_button.visible = true
 		_confirm_button.text = "确认施工"
 		_confirm_button.disabled = _engineering_draft.is_empty()
@@ -453,7 +454,10 @@ func _finish_engineering_draw(model: Dictionary, source_id: StringName) -> void:
 		_status_label.text = "工程路线至少需要两个位置。"
 		return
 	var target_id := _nearest_target_at_draw_end(source_id)
-	var road_kind := FieldTacticsState.ROAD_BRIDGE if THEATER.route_crosses_water(_draw_points) else FieldTacticsState.ROAD_NORMAL
+	# Water crossing is an attribute of the physical segment plan, not the
+	# player's selected land material. FieldTacticsState turns only the water
+	# spans into bridges when the confirmed project is built.
+	var road_kind := FieldTacticsState.ROAD_NORMAL
 	_engineering_draft = {
 		"engineer_id": _engineering_engineer_id,
 		"source_point_id": source_id,
