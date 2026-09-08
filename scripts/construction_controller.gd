@@ -5730,7 +5730,7 @@ func _advance_all_macro_marches_seconds(delta_seconds: float) -> void:
 			var transfer: Dictionary = Dictionary(blocked_macro.get("blocked_transfer", {}))
 			if StringName(transfer.get("phase", &"")) in [&"TO_CAMP", &"TO_RESUME"]:
 				var registry_before := _army_registry.get_snapshot()
-				var transfer_result := _army_registry.advance_blocked_transfer(StringName(army.get("army_id", &"")), StringName(blocked_macro.get("order_id", &"")), int(transfer.get("progress_millis", 0)), roundi(delta_seconds * 1000.0 * city_time_speed))
+				var transfer_result := _advance_blocked_transfer_elapsed_milliseconds(StringName(army.get("army_id", &"")), StringName(blocked_macro.get("order_id", &"")), int(transfer.get("progress_millis", 0)), delta_seconds * 1000.0 * city_time_speed)
 				if bool(transfer_result.get("arrived", false)) and not bool(_persist_macro_march_checkpoint().get("success", false)):
 					_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 			continue
@@ -5748,6 +5748,19 @@ func _advance_all_macro_marches_seconds(delta_seconds: float) -> void:
 			StringName(army.get("army_id", &"")), StringName(macro.get("order_id", &"")),
 			int(macro.get("progress_millis", 0)), delta_seconds * 1000.0 * city_time_speed
 		)
+
+
+func _advance_blocked_transfer_elapsed_milliseconds(army_id: StringName, order_id: StringName, expected_progress_milliseconds: int, elapsed_milliseconds: float) -> Dictionary:
+	var remainder_key := StringName("transfer:%s:%s" % [String(army_id), String(order_id)])
+	var pending := float(_macro_march_frame_remainders_by_order.get(remainder_key, 0.0)) + elapsed_milliseconds
+	var whole_milliseconds := floori(pending + 0.000001)
+	_macro_march_frame_remainders_by_order[remainder_key] = maxf(pending - float(whole_milliseconds), 0.0)
+	if whole_milliseconds <= 0:
+		return {}
+	var result := _army_registry.advance_blocked_transfer(army_id, order_id, expected_progress_milliseconds, whole_milliseconds)
+	if bool(result.get("arrived", false)):
+		_macro_march_frame_remainders_by_order.erase(remainder_key)
+	return result
 
 
 func _advance_macro_march_elapsed_milliseconds(
@@ -5956,7 +5969,7 @@ func _resume_macro_marches_on_repaired_roads() -> Array[StringName]:
 					# persists it through the same formal event path as a resume.
 					resumed.append(StringName(returning_army.get("army_id", &"")))
 					continue
-		if StringName(transfer.get("phase", &"")) == &"TO_RESUME":
+		if StringName(transfer.get("phase", &"")) in [&"TO_CAMP", &"TO_RESUME"]:
 			continue
 		var resumed_army := _army_registry.resume_blocked_macro_march(
 			StringName(army.get("army_id", &"")), StringName(macro.get("order_id", &""))

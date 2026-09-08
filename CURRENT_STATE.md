@@ -2,6 +2,22 @@
 
 ## FIELD_TACTICS_R2 safe-camp transfer checkpoint (2026-09-08)
 
+Follow-up integrity repair: schema-5 registry migration now preserves an
+existing macro-order history, while only truly old records missing that field
+receive an empty default. `BLOCKED` validation distinguishes transfer-in-
+progress, waiting, and return-in-progress: moving states carry a valid
+temporary path and target but no false claim that the army has already
+arrived. Temporary movement now consumes the same accumulated millisecond
+remainder discipline as normal macro march, preventing per-frame rounding
+drift. If the original road repairs while an army is still travelling to camp,
+the transfer remains authoritative until arrival; only then does the reverse
+return path start.
+
+The isolated disk chain now includes a fourth process which cold-restores a
+return-in-progress army, completes its remaining return path, and verifies the
+original order advances. Field R2 smoke and the expanded persistence suite
+both pass with the historical Godot 4.5.1 binary.
+
 The current uncommitted work extends `ArmyRegistry` schema 6 with a temporary
 execution record alongside the immutable original macro order. A march blocked
 by a future damaged physical road can now use its exact ordered segment and

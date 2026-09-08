@@ -135,6 +135,18 @@ func _run() -> void:
 			army = _first_macro_army(city)
 			transfer = Dictionary(Dictionary(army.get("macro_march", {})).get("blocked_transfer", {}))
 			passed = bool(repair.get("success", false)) and StringName(transfer.get("phase", &"")) == &"TO_RESUME" and int(transfer.get("progress_millis", 0)) > 0 and scene.flush_runtime_persistence(&"field_worker_l")
+		"M":
+			var army := _first_macro_army(city)
+			var macro := Dictionary(army.get("macro_march", {}))
+			var transfer := Dictionary(macro.get("blocked_transfer", {}))
+			city._advance_all_macro_marches_seconds(float(int(transfer.get("total_millis", 0)) - int(transfer.get("progress_millis", 0))) / 1000.0)
+			city.advance_war_loop_time(1)
+			army = _first_macro_army(city)
+			macro = Dictionary(army.get("macro_march", {}))
+			var resume_progress := int(macro.get("progress_millis", 0))
+			city._advance_all_macro_marches_seconds(1.0)
+			army = _first_macro_army(city)
+			passed = StringName(army.get("phase", &"")) == ArmyRegistry.PHASE_MARCHING and int(Dictionary(army.get("macro_march", {})).get("progress_millis", 0)) > resume_progress
 	print("FIELD_TACTICS_WORKER_%s %s pid=%d" % [mode, "PASS" if passed else "FAIL", OS.get_process_id()])
 	scene.queue_free()
 	await process_frame

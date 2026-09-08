@@ -400,7 +400,8 @@ static func validate_snapshot(
 			normalized["next_macro_order_sequence"] = 1
 		for army_id_value in normalized.armies_by_id:
 			var migrated_army: Dictionary = Dictionary(normalized.armies_by_id[army_id_value]).duplicate(true)
-			migrated_army["macro_order_history"] = []
+			if not migrated_army.has("macro_order_history"):
+				migrated_army["macro_order_history"] = []
 			normalized.armies_by_id[army_id_value] = migrated_army
 	for army_id_value in normalized.armies_by_id:
 		var normalized_army: Dictionary = Dictionary(normalized.armies_by_id[army_id_value]).duplicate(true)
@@ -1090,11 +1091,14 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 			var segment: Dictionary = segment_value
 			if StringName(segment.get("road_id", &"")) == &"" or typeof(segment.get("forward", null)) != TYPE_BOOL:
 				return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
-	if (
-		StringName(macro.phase) == PHASE_BLOCKED
-		and (int(macro.blocked_segment_index) < 0 or StringName(macro.temporary_station_point) == &"")
-	):
-		return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+	if StringName(macro.phase) == PHASE_BLOCKED:
+		var transfer_phase := StringName(Dictionary(macro.blocked_transfer).get("phase", &"NONE"))
+		if int(macro.blocked_segment_index) < 0:
+			return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+		if transfer_phase in [&"TO_CAMP", &"TO_RESUME"] and StringName(macro.temporary_station_point) != &"":
+			return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+		if transfer_phase in [&"NONE", &"WAITING"] and StringName(macro.temporary_station_point) == &"":
+			return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
 	if (
 		StringName(macro.phase) != PHASE_BLOCKED
 		and (int(macro.blocked_segment_index) != -1 or StringName(macro.temporary_station_point) != &"")

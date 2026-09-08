@@ -16,6 +16,14 @@
 
 ### FIELD_TACTICS_R2 safe-camp transfer checkpoint
 
+- Corrected the follow-up state contract: moving blocked transfers no longer
+  violate the temporary-station validation, schema-5 migration retains macro
+  order history, and repaired original roads do not interrupt an in-progress
+  camp transfer.
+- Reused accumulated millisecond remainders for temporary transfer movement
+  and extended isolated disk recovery through a fourth process that restores
+  `TO_RESUME`, completes the return, and advances the original order.
+
 - Added schema-6 temporary execution records beside immutable macro orders.
   A future damaged road now sends an army from its exact ordered-road position
   along a clipped physical connector to a deterministic reachable garrison or
