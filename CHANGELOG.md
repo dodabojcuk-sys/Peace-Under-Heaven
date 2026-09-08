@@ -29,8 +29,8 @@
   routes, validate every directed segment join, and remove the map's duplicate
   duration calculation.
 - Persisted the authority-validated physical road sequence on new macro orders
-  while retaining optional-field compatibility for existing single-road and
-  composite-handle records. The shared scheduler now ignores damage behind a
+  and migrate existing single-road and composite-handle records into that
+  field at snapshot validation. The shared scheduler now ignores damage behind a
   marching army and blocks only its current or forward road segment. Focused
   field smoke passes 38 assertions; Macro March smoke passes 27.
 - Added a three-process disk regression for a multi-road macro order: issue

@@ -55,9 +55,9 @@ road endpoints do not connect. Map duration copy now consumes the authoritative
 draft duration; it no longer reimplements the travel formula.
 
 Confirmed macro orders now retain the authority-validated ordered physical
-road segments alongside their immutable path geometry. Existing single-road
-orders remain readable without that optional field, while a legacy composite
-path handle is resolved through the same physical-road parser. The shared
+road segments alongside their immutable path geometry. Snapshot validation
+migrates existing single-road orders and legacy composite path handles into
+that explicit field before restore. The shared
 scheduler checks only the current and forward segments against road damage;
 damage on an already passed segment no longer blocks the order. Field smoke
 passes 38 automated assertions and Macro March smoke passes 27. These checks

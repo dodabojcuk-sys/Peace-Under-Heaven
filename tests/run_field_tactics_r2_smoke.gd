@@ -41,7 +41,19 @@ func _run_parallel_army_contract() -> void:
 	_check(not bool(duplicate_validation.valid) and StringName(duplicate_validation.error_id) == &"DUPLICATE_MACRO_FORMATION", "快照拒绝同一编队同时属于两支军队")
 	var legacy_snapshot := registry.get_snapshot()
 	Dictionary(legacy_snapshot.armies_by_id[first.army_id]).macro_march.erase("route_segments")
-	_check(bool(ArmyRegistry.validate_snapshot(legacy_snapshot, [&"infantry"], false).get("valid", false)), "旧单路军令快照可迁移为未显式段序列的兼容格式")
+	var migrated_single_route := ArmyRegistry.validate_snapshot(legacy_snapshot, [&"infantry"], false)
+	var legacy_path_snapshot := registry.get_snapshot()
+	Dictionary(legacy_path_snapshot.armies_by_id[first.army_id]).macro_march.route_id = &"path.road.a:f|road.b:r"
+	Dictionary(legacy_path_snapshot.armies_by_id[first.army_id]).route_id = &"path.road.a:f|road.b:r"
+	Dictionary(legacy_path_snapshot.armies_by_id[first.army_id]).macro_march.erase("route_segments")
+	var migrated_path_route := ArmyRegistry.validate_snapshot(legacy_path_snapshot, [&"infantry"], false)
+	_check(
+		bool(migrated_single_route.get("valid", false))
+			and Array(Dictionary(Dictionary(migrated_single_route.snapshot).armies_by_id[first.army_id]).macro_march.get("route_segments", [])).size() == 1
+			and bool(migrated_path_route.get("valid", false))
+			and Array(Dictionary(Dictionary(migrated_path_route.snapshot).armies_by_id[first.army_id]).macro_march.get("route_segments", [])).size() == 2,
+		"旧单路与复合路径句柄快照恢复时迁移为显式有向段序列"
+	)
 
 
 func _run_field_tactics_contract() -> void:

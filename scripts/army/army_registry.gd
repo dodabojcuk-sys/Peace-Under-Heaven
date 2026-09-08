@@ -402,6 +402,13 @@ static func validate_snapshot(
 			var migrated_army: Dictionary = Dictionary(normalized.armies_by_id[army_id_value]).duplicate(true)
 			migrated_army["macro_order_history"] = []
 			normalized.armies_by_id[army_id_value] = migrated_army
+	for army_id_value in normalized.armies_by_id:
+		var normalized_army: Dictionary = Dictionary(normalized.armies_by_id[army_id_value]).duplicate(true)
+		var normalized_macro: Dictionary = Dictionary(normalized_army.get("macro_march", {})).duplicate(true)
+		if not normalized_macro.is_empty() and not normalized_macro.has("route_segments"):
+			normalized_macro["route_segments"] = _legacy_macro_route_segments(StringName(normalized_macro.get("route_id", &"")))
+			normalized_army["macro_march"] = normalized_macro
+			normalized.armies_by_id[army_id_value] = normalized_army
 	if (
 		int(normalized.next_macro_order_sequence) <= 0
 		or int(normalized.next_macro_order_sequence)
@@ -1058,3 +1065,16 @@ static func _parse_macro_order_sequence(order_id: StringName) -> int:
 		return 0
 	var sequence := int(digits)
 	return sequence if sequence > 0 and text == "%s%06d" % [prefix, sequence] else 0
+
+
+static func _legacy_macro_route_segments(route_id: StringName) -> Array:
+	var route_text := String(route_id)
+	if route_text.begins_with("path."):
+		var segments: Array = []
+		for token in route_text.trim_prefix("path.").split("|", false):
+			var parts := token.rsplit(":", true, 1)
+			if parts.size() != 2 or parts[0].is_empty() or parts[1] not in ["f", "r"]:
+				return []
+			segments.append({"road_id": StringName(parts[0]), "forward": parts[1] == "f"})
+		return segments
+	return [{"road_id": route_id, "forward": true}] if route_id != &"" else []

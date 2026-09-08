@@ -82,9 +82,9 @@
 	displays the authoritative selected geometry and duration.
 - A newly issued macro order persists the directed physical road segments that
 	the field authority validated. This is immutable command intent, whereas
-	progress remains the existing single shared-clock value. Snapshot readers
-	may omit the segment field for older single-road orders; a composite route
-	handle is parsed as its legacy segment source. Road-damage checks start at
+progress remains the existing single shared-clock value. Snapshot validation
+migrates older single-road orders and composite route handles into this field.
+Road-damage checks start at
 	the segment containing current progress, so completed segments cannot freeze
 	the remainder of the same order.
 
