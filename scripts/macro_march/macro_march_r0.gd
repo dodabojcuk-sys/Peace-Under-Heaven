@@ -668,6 +668,19 @@ func _on_gui_input(event: InputEvent) -> void:
 			_draw_points = [Vector2(engineering_source.get("world_position", _screen_to_world(event.position)))]
 			accept_event()
 			return
+		# A specialist at a city or camp stays selectable even when a stationed
+		# army at the same anchor is eligible to begin a route draft.
+		var specialist_id := _specialist_id_at_screen(_dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}, event.position)
+		if specialist_id != &"" and specialist_id != _selected_specialist_id:
+			var selected_specialist := Dictionary(_dispatch_adapter.get_field_tactics_read_model().get("specialists_by_id", {}).get(specialist_id, {}))
+			_selected_specialist_id = specialist_id
+			_selected_formation_ids.clear()
+			if StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT:
+				_selected_scout_id = specialist_id
+			_status_label.text = "已选中%s；右栏操作将优先作用于该专家。" % ("侦察兵" if StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else "工程师")
+			refresh()
+			accept_event()
+			return
 		var command_army := _selected_army(_model())
 		var has_explicit_command_subject := not _selected_formation_ids.is_empty() or (
 			not command_army.is_empty()
@@ -689,21 +702,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			refresh()
 			accept_event()
 			return
-		var specialist_id := _specialist_id_at_screen(_dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}, event.position)
 		var selected_id := _army_id_at_screen(_model(), event.position)
-		# Specialists and armies can share a station. The first click chooses the
-		# specialist; a repeated click cycles to the army without making either
-		# object unreachable through normal input.
-		if specialist_id != &"" and specialist_id != _selected_specialist_id:
-			var selected_specialist := Dictionary(_dispatch_adapter.get_field_tactics_read_model().get("specialists_by_id", {}).get(specialist_id, {}))
-			_selected_specialist_id = specialist_id
-			_selected_formation_ids.clear()
-			if StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT:
-				_selected_scout_id = specialist_id
-			_status_label.text = "已选中%s；右栏操作将优先作用于该专家。" % ("侦察兵" if StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else "工程师")
-			refresh()
-			accept_event()
-			return
 		if selected_id != &"":
 			_selected_army_id = selected_id
 			_selected_specialist_id = &""
