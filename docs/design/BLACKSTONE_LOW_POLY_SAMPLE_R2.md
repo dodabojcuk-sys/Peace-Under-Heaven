@@ -23,12 +23,14 @@ to display those same coordinates.
 
 ## Projection contract
 
-The low-poly ground is constructed in the active camera's right/up basis. Its
-orthographic projection therefore equals the authoritative 2D expression
-`(x + 0.20y, 0.72y)` for every ground anchor, rather than relying on manual
-per-location offsets. `Camera3D.unproject_position()` is the renderer-side
-reference, and the host converts its SubViewport-local result back through the
-map rectangle only when comparing it to the 2D map coordinate.
+The low-poly ground is horizontal in XZ. Its two horizontal basis vectors are
+derived from the active camera and scaled so orthographic projection still
+equals the authoritative 2D expression `(x + 0.20y, 0.72y)` for every ground
+anchor, rather than relying on manual per-location offsets. Only the explicit
+presentation elevation changes 3D Y; world north/south never changes ground
+height. `Camera3D.unproject_position()` is the renderer-side reference, and
+the host converts its SubViewport-local result back through the map rectangle
+only when comparing it to the 2D map coordinate.
 
 Road and bridge segments are attached to their scene parent before their global
 midpoint and `look_at()` transform are applied. Runtime actors and projects
@@ -45,8 +47,12 @@ no garrison changed owner.
   third-party asset, generated model, or external texture is included.
 - Cities, garrisons, trees, rocks, river surfaces, roads, bridges, armies,
   specialists, patrols, and active construction are rebuilt or updated from
-  the authoritative read models. Bridge state visibly distinguishes deck,
-  scaffold, and damaged break geometry.
+  the authoritative read models. The presentation adds a horizontal overscan
+  ground only to fill the clipped camera viewport; it never expands terrain or
+  passability. A released engineering draft is drawn from Field's authoritative
+  segment plan, while active work renders only its current segment: normal road
+  uses a road surface and bridge uses deck/rails. Bridge state visibly
+  distinguishes deck, scaffold, and damaged break geometry.
 
 ## Player information correction
 
@@ -67,10 +73,12 @@ army remains seven members and the status reports `黑石城 → 北望驻扎点
 `tests/run_macro_march_low_poly_graphical_smoke.gd` deliberately requires a
 non-headless Godot process. At 1152x648, 1280x720, and 1920x1080 it compares
 named points, bridge heads, and a road midpoint against `Camera3D` projection,
-checks actual segment midpoint/facing, drives route drawing and engineering
-confirmation through the Macro March input handlers, verifies a moving army
-updates its rendered node, and confirms switching 2D/3D does not mutate the
-campaign snapshot. Headless suites do not claim this rendering coverage.
+checks actual segment midpoint/facing plus horizontal ground mesh normals,
+drives route drawing and engineering confirmation through the Macro March input
+handlers, verifies a released draft remains visible as `NORMAL → BRIDGE →
+NORMAL` construction, verifies a moving army updates its rendered node, and
+confirms switching 2D/3D does not mutate the campaign snapshot. Headless suites
+do not claim this rendering coverage.
 
 The sample 3D viewport was launched in a separate Godot process for visual
 inspection. It is render evidence only. The current desktop automation surface

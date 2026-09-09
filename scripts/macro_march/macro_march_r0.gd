@@ -9,7 +9,7 @@ const ARMY_REGISTRY = preload("res://scripts/army/army_registry.gd")
 const MAP_CANVAS = preload("res://scripts/macro_march/macro_march_map_canvas.gd")
 const LOW_POLY_PRESENTATION = preload("res://scripts/macro_march/macro_march_low_poly_presentation.gd")
 
-const CAMERA_MIN_ZOOM := 0.62
+const CAMERA_MIN_ZOOM := 0.48
 const CAMERA_MAX_ZOOM := 2.4
 const CAMERA_ZOOM_STEP := 1.18
 const OBLIQUE_X_SKEW := 0.20
@@ -36,8 +36,8 @@ var _formation_buttons: Array[Button] = []
 var _formation_signature := ""
 # Start on the authored playable segment (gate, river and forest garrison),
 # while retaining the same pan/zoom transform for all command input.
-var _camera_center := Vector2(440, 540)
-var _camera_zoom := 0.68
+var _camera_center := Vector2(750, 490)
+var _camera_zoom := 0.50
 var _is_panning := false
 var _last_pan_position := Vector2.ZERO
 
@@ -62,6 +62,8 @@ var _resume_project_button := Button.new()
 var _interrupted_project_selector := OptionButton.new()
 var _return_button := Button.new()
 var _presentation_toggle_button := Button.new()
+var _overview_button := Button.new()
+var _focus_subject_button := Button.new()
 var _interrupted_project_selector_signature := ""
 
 
@@ -136,7 +138,7 @@ func _build_ui() -> void:
 	_formation_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_formation_scroll.add_child(_formation_list)
 	add_child(_formation_scroll)
-	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _return_button, _presentation_toggle_button]:
+	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
 	_interrupted_project_selector.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -153,6 +155,8 @@ func _build_ui() -> void:
 	_interrupted_project_selector.visible = false
 	_return_button.text = "返回黑石城"
 	_presentation_toggle_button.text = "切换为二维战区"
+	_overview_button.text = "全图复位"
+	_focus_subject_button.text = "聚焦选中"
 	_confirm_button.pressed.connect(_confirm_draft)
 	_retreat_button.pressed.connect(_request_retreat)
 	_scout_button.pressed.connect(_dispatch_scout)
@@ -162,6 +166,8 @@ func _build_ui() -> void:
 	_interrupted_project_selector.item_selected.connect(_select_interrupted_project)
 	_return_button.pressed.connect(func(): return_to_city_requested.emit())
 	_presentation_toggle_button.pressed.connect(_toggle_low_poly_presentation)
+	_overview_button.pressed.connect(_reset_camera_overview)
+	_focus_subject_button.pressed.connect(_focus_selected_subject)
 
 
 func _layout_ui() -> void:
@@ -184,6 +190,11 @@ func _layout_ui() -> void:
 	_presentation_toggle_button.position = map_rect.position + Vector2(12.0, map_rect.size.y - 42.0)
 	_presentation_toggle_button.size = Vector2(132.0, 30.0)
 	_presentation_toggle_button.visible = _low_poly_available()
+	_overview_button.position = _presentation_toggle_button.position + Vector2(140.0, 0.0)
+	_overview_button.size = Vector2(92.0, 30.0)
+	_focus_subject_button.position = _overview_button.position + Vector2(100.0, 0.0)
+	_focus_subject_button.size = Vector2(96.0, 30.0)
+	_focus_subject_button.visible = not _selected_army(_model()).is_empty() or _selected_specialist_id != &""
 	_legend_label.position = Vector2(map_rect.position.x, map_rect.end.y + 2.0)
 	_legend_label.size = Vector2(map_rect.size.x, 20.0)
 	_title_label.position = Vector2(22, 12)
@@ -316,8 +327,9 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		_recover_button.visible = false
 		_retreat_button.visible = false
 		_status_label.text = "工程草稿待确认；右键取消不会扣除资源。" if not _engineering_draft.is_empty() else ("工程绘线：从所选起点拖到已有驻点或新驻点位置。" if _engineering_source_point_id != &"" else "工程模式：先在地图上选择施工起点。")
-		_detail_label.text = "工程师施工计划\n%s → %s · 路径点：%d\n路线类型：%s\n到场 %0.1f 秒 · 施工 %0.1f 秒 · 粮食 %d；确认后才会扣除。" % [
-			source_label, target_label, Array(_engineering_draft.get("route_world_points", _draw_points)).size(), draft_kind_label, travel_seconds, draft_seconds, draft_cost,
+		var segment_summary := _engineering_segment_summary(_engineering_draft)
+		_detail_label.text = "工程师施工计划\n%s → %s\n%s · %s\n到场 %0.1f 秒 · 施工 %0.1f 秒 · 粮食 %d；确认后才会扣除。" % [
+			source_label, target_label, segment_summary, draft_kind_label, travel_seconds, draft_seconds, draft_cost,
 		]
 		return
 	if army.is_empty():
@@ -722,6 +734,37 @@ func _pan_by_screen_delta(screen_delta: Vector2) -> void:
 	queue_redraw()
 
 
+func _reset_camera_overview() -> void:
+	_camera_center = THEATER.get_world_bounds().get_center()
+	_camera_zoom = CAMERA_MIN_ZOOM
+	_clamp_camera()
+	_status_label.text = "已复位为战区概览；可用小地图、滚轮和中键查看局部。"
+	refresh()
+
+
+func _focus_selected_subject() -> void:
+	var model := _model()
+	var army := _selected_army(model)
+	if not army.is_empty():
+		var display_route := _display_route_for_army(army)
+		_camera_center = _point_along_route(
+			Array(display_route.get("points", [])),
+			float(display_route.get("progress_millis", 0)) / maxf(float(display_route.get("total_millis", 1)), 1.0)
+		)
+	elif _selected_specialist_id != &"":
+		var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+		var specialist := Dictionary(Dictionary(field.get("specialists_by_id", {})).get(_selected_specialist_id, {}))
+		if specialist.is_empty():
+			return
+		_camera_center = Vector2(specialist.get("world_position", _camera_center))
+	else:
+		return
+	_camera_zoom = maxf(_camera_zoom, 0.9)
+	_clamp_camera()
+	_status_label.text = "镜头已聚焦选中对象；可继续绘线或用全图复位返回概览。"
+	refresh()
+
+
 func _pan_while_drawing(screen_position: Vector2) -> void:
 	var rect := _map_rect()
 	var edge := 24.0
@@ -792,6 +835,19 @@ func _finish_engineering_draw(model: Dictionary, source_id: StringName) -> void:
 	_draw_points.clear()
 	_status_label.text = "工程草稿已生成：%s；确认施工才会扣除资源并派工程师前往。" % ("连接已有驻点" if not build_camp else "新建工程驻点")
 	refresh()
+
+
+func _engineering_segment_summary(draft: Dictionary) -> String:
+	var land_segments := 0
+	var bridge_segments := 0
+	for plan_value in Array(draft.get("segment_plans", [])):
+		if StringName(Dictionary(plan_value).get("road_kind", &"")) == FieldTacticsState.ROAD_BRIDGE:
+			bridge_segments += 1
+		else:
+			land_segments += 1
+	if bridge_segments > 0:
+		return "%d 段陆路 + %d 段桥梁" % [land_segments, bridge_segments]
+	return "%d 段陆路施工" % land_segments
 
 
 func _confirm_draft() -> void:
@@ -1397,6 +1453,8 @@ func _draw_map_canvas(canvas: Control) -> void:
 			_draw_bridge_deck(canvas, points, damaged)
 		elif damaged:
 			_draw_road_damage(canvas, Array(points))
+	_draw_engineering_draft_overlay(canvas, rect)
+	_draw_project_construction_overlays(canvas, Dictionary(field.get("projects_by_id", {})))
 	if not _draft_route.is_empty():
 		var draft_points := PackedVector2Array()
 		for point in _draft_route.points:
@@ -1461,8 +1519,7 @@ func _draw_map_canvas(canvas: Control) -> void:
 			_draw_city_marker(canvas, center, enemy, palette)
 		else:
 			_draw_garrison_marker(canvas, center)
-		var label_position := Vector2(clampf(center.x - 38.0, rect.position.x + 2.0, rect.end.x - 82.0), clampf(center.y + 47.0, rect.position.y + 16.0, rect.end.y - 6.0))
-		canvas.draw_string(ThemeDB.fallback_font, label_position, str(point.display_name), HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.WHITE)
+		_draw_point_label(canvas, rect, center, str(point.display_name), 80, Color.WHITE)
 	_draw_minimap(canvas)
 
 
@@ -1480,6 +1537,8 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 		for point in _draw_points:
 			drawn.append(_world_to_screen(point))
 		canvas.draw_polyline(drawn, Color("54d7df"), 4.0, true)
+	_draw_engineering_draft_overlay(canvas, rect)
+	_draw_project_construction_overlays(canvas, Dictionary(field.get("projects_by_id", {})))
 	for army_value in Array(_model().get("armies", [])):
 		var army: Dictionary = Dictionary(army_value)
 		var display_route := _display_route_for_army(army)
@@ -1513,10 +1572,117 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 	for point_value in _all_points(_model()).values():
 		var point: Dictionary = point_value
 		var center := _world_to_screen(Vector2(point.get("world_position", Vector2.ZERO)))
-		var label_position := Vector2(clampf(center.x - 45.0, rect.position.x + 2.0, rect.end.x - 92.0), clampf(center.y + 43.0, rect.position.y + 16.0, rect.end.y - 6.0))
-		canvas.draw_string(ThemeDB.fallback_font, label_position, str(point.get("display_name", "据点")), HORIZONTAL_ALIGNMENT_CENTER, 92, 14, Color("fff4d3"))
+		_draw_point_label(canvas, rect, center, str(point.get("display_name", "据点")), 92, Color("fff4d3"))
 	canvas.draw_rect(rect, Color("e7d7a8", 0.92), false, 2.0)
 	_draw_minimap(canvas)
+
+
+func _draw_engineering_draft_overlay(canvas: Control, rect: Rect2) -> void:
+	# Engineering persists after mouse release in _engineering_draft.  It must be
+	# drawn from Field's authoritative segment plan, not the transient pointer list.
+	if _engineering_draft.is_empty():
+		return
+	for segment in _engineering_overlay_segments(_engineering_draft):
+		_draw_engineering_segment(canvas, Array(segment.get("points", [])), StringName(segment.get("road_kind", &"")), Color("80e8e0"), 0.92, false)
+	var route_points: Array = Array(_engineering_draft.get("route_world_points", []))
+	var source := Vector2(route_points.front()) if not route_points.is_empty() else Vector2.ZERO
+	source = Vector2(_engineering_draft.get("source_world_position", source))
+	var target := Vector2(route_points.back()) if not route_points.is_empty() else source
+	var source_screen := _world_to_screen(source)
+	var target_screen := _world_to_screen(target)
+	canvas.draw_circle(source_screen, 9.0, Color("fff2bf"))
+	canvas.draw_circle(target_screen, 9.0, Color("80e8e0"))
+	canvas.draw_string(ThemeDB.fallback_font, source_screen + Vector2(-30, -14), "施工起点", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color("fff4d3"))
+	canvas.draw_string(ThemeDB.fallback_font, target_screen + Vector2(-30, -14), "施工目标", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color("fff4d3"))
+
+
+func _draw_project_construction_overlays(canvas: Control, projects: Dictionary) -> void:
+	for project_value in projects.values():
+		var project: Dictionary = Dictionary(project_value)
+		if StringName(project.get("phase", &"")) == &"COMPLETE":
+			continue
+		var elapsed := int(project.get("progress_milliseconds", 0))
+		for plan_value in Array(project.get("segment_plans", [])):
+			var plan: Dictionary = Dictionary(plan_value)
+			var points: Array = Array(plan.get("route_world_points", []))
+			var duration := maxi(int(plan.get("required_milliseconds", 0)), 1)
+			var kind := StringName(plan.get("road_kind", &""))
+			if elapsed >= duration:
+				elapsed -= duration
+				continue
+			# The complete physical part is shown by roads_by_id.  This translucent
+			# remainder is a plan hint, while the solid clipped part shows actual work.
+			_draw_engineering_segment(canvas, points, kind, Color("f0bc70"), 0.34, true)
+			if elapsed > 0:
+				_draw_engineering_segment(canvas, _partial_world_points(points, float(elapsed) / float(duration)), kind, Color("f5d18b"), 0.94, false)
+			break
+
+
+func _engineering_overlay_segments(draft: Dictionary) -> Array[Dictionary]:
+	var segments: Array[Dictionary] = []
+	for plan_value in Array(draft.get("segment_plans", [])):
+		var plan: Dictionary = Dictionary(plan_value)
+		segments.append({
+			"points": Array(plan.get("route_world_points", [])).duplicate(true),
+			"road_kind": StringName(plan.get("road_kind", FieldTacticsState.ROAD_NORMAL)),
+		})
+	if segments.is_empty() and Array(draft.get("route_world_points", [])).size() >= 2:
+		segments.append({
+			"points": Array(draft.get("route_world_points", [])).duplicate(true),
+			"road_kind": StringName(draft.get("road_kind", FieldTacticsState.ROAD_NORMAL)),
+		})
+	return segments
+
+
+func _draw_engineering_segment(canvas: Control, world_points: Array, road_kind: StringName, color: Color, opacity: float, planned: bool) -> void:
+	if world_points.size() < 2:
+		return
+	var points := PackedVector2Array()
+	for point in world_points:
+		points.append(_world_to_screen(Vector2(point)))
+	var bridge := road_kind == FieldTacticsState.ROAD_BRIDGE
+	var width := 12.0 if bridge else 9.0
+	var tint := Color(color, opacity)
+	if planned:
+		for index in range(1, points.size()):
+			canvas.draw_dashed_line(points[index - 1], points[index], tint, width, 10.0, true)
+	else:
+		canvas.draw_polyline(points, tint, width, true)
+		canvas.draw_polyline(points, Color("3c3024", opacity), 1.5, true)
+	if bridge:
+		_draw_bridge_deck(canvas, points, false)
+
+
+func _partial_world_points(points: Array, fraction: float) -> Array:
+	if points.size() < 2:
+		return []
+	var total_length := 0.0
+	for index in range(1, points.size()):
+		total_length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
+	var target_length := total_length * clampf(fraction, 0.0, 1.0)
+	var result: Array = [Vector2(points.front())]
+	var consumed := 0.0
+	for index in range(1, points.size()):
+		var start := Vector2(points[index - 1])
+		var end := Vector2(points[index])
+		var length := start.distance_to(end)
+		if consumed + length <= target_length:
+			result.append(end)
+			consumed += length
+			continue
+		if target_length > consumed:
+			result.append(start.lerp(end, (target_length - consumed) / maxf(length, 0.0001)))
+		break
+	return result
+
+
+func _draw_point_label(canvas: Control, rect: Rect2, center: Vector2, label: String, width: float, color: Color) -> void:
+	var label_rect := Rect2(center + Vector2(-width * 0.5, 31.0), Vector2(width, 18.0))
+	# Do not clamp an off-screen city name into the map edge: it falsely suggests
+	# that the location is underneath that edge label. The minimap still locates it.
+	if not rect.grow(-12.0).encloses(label_rect):
+		return
+	canvas.draw_string(ThemeDB.fallback_font, label_rect.position, label, HORIZONTAL_ALIGNMENT_CENTER, width, 14, color)
 
 
 func _draw_terrain(canvas: Control, rect: Rect2) -> void:

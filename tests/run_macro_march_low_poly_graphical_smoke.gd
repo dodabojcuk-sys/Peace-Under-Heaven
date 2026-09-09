@@ -54,6 +54,11 @@ func _check_projection_at_size(viewport_size: Vector2i) -> void:
 		road_geometry_error <= 0.01,
 		"图形进程 %d×%d 中道路与桥段按实际端点居中、朝向，最大几何误差 %.4f" % [viewport_size.x, viewport_size.y, road_geometry_error]
 	)
+	var ground_error := _ground_surface_error(presentation)
+	_check(
+		ground_error <= 0.001,
+		"图形进程 %d×%d 中基础地面保持水平、网格法线与实际几何一致，最大误差 %.5f" % [viewport_size.x, viewport_size.y, ground_error]
+	)
 	scene.queue_free()
 	await process_frame
 
@@ -152,17 +157,36 @@ func _check_engineering_input() -> void:
 	release.position = macro._world_to_screen(construction_points.back())
 	macro._on_gui_input(release)
 	var draft := macro._engineering_draft.duplicate(true)
+	var overlay_segments := macro._engineering_overlay_segments(draft)
+	var planned_normal := 0
+	var planned_bridge := 0
+	for segment in overlay_segments:
+		if StringName(segment.get("road_kind", &"")) == FieldTacticsState.ROAD_BRIDGE:
+			planned_bridge += 1
+		else:
+			planned_normal += 1
 	var food_before := int(city.food)
 	macro._confirm_button.emit_signal("pressed")
+	city.advance_war_loop_time(2500)
+	macro.refresh()
+	var has_active_road := _has_named_descendant(macro._low_poly_presentation._project_root, "ProjectRoadSegment")
+	city.advance_war_loop_time(8000)
+	macro.refresh()
+	var has_active_bridge := _has_named_descendant(macro._low_poly_presentation._project_root, "ProjectBridgeSegment")
 	var field: Dictionary = city.get_field_tactics_read_model()
 	_check(
 		bool(dispatch.get("success", false))
 			and StringName(draft.get("source_point_id", &"")) == &"blackstone_city"
 			and THEATER.route_crosses_water(Array(draft.get("route_world_points", [])))
+			and macro._draw_points.is_empty()
+			and planned_normal >= 2
+			and planned_bridge == 1
+			and has_active_road
+			and has_active_bridge
 			and int(draft.get("food_cost", 0)) > 0
 			and int(city.food) < food_before
 			and not Dictionary(field.get("projects_by_id", {})).is_empty(),
-		"图形进程在低模模式通过工程师选择、可见施工起点、跨河拖线与确认创建权威道路桥梁工程"
+		"图形进程在低模模式保留松手后的工程草稿，并按权威陆路-桥梁-陆路计划显示分段施工"
 	)
 	scene.queue_free()
 	await process_frame
@@ -190,6 +214,29 @@ func _max_road_geometry_error(presentation: MacroMarchLowPolyPresentation) -> fl
 		var facing_error := 1.0 - absf((-segment.global_transform.basis.z).normalized().dot(expected_direction))
 		max_error = maxf(max_error, maxf(midpoint_error, facing_error))
 	return max_error
+
+
+func _ground_surface_error(presentation: MacroMarchLowPolyPresentation) -> float:
+	var ground := presentation._static_root.get_node_or_null("Ground") as MeshInstance3D
+	if ground == null:
+		return INF
+	var heights: Array = Array(ground.get_meta("ground_corner_heights", []))
+	var normal := Vector3(ground.get_meta("ground_surface_normal", Vector3.ZERO))
+	if heights.size() != 4:
+		return INF
+	var min_height := float(heights.front())
+	var max_height := min_height
+	for height_value in heights:
+		min_height = minf(min_height, float(height_value))
+		max_height = maxf(max_height, float(height_value))
+	return maxf(max_height - min_height, 1.0 - normal.normalized().dot(Vector3.UP))
+
+
+func _has_named_descendant(node: Node, expected_name: String) -> bool:
+	for child in node.get_children():
+		if child.name == expected_name or _has_named_descendant(child, expected_name):
+			return true
+	return false
 
 
 func _check(condition: bool, description: String) -> void:

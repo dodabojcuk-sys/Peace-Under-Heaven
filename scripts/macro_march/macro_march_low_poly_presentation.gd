@@ -116,15 +116,17 @@ func _build_world_lighting() -> void:
 	environment.background_color = Color("6b835f")
 	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	environment.ambient_light_color = Color("d8e3c1")
-	environment.ambient_light_energy = 0.74
+	# A brighter ambient contribution keeps command targets readable without the
+	# former long, high-contrast shadows dominating the miniature battlefield.
+	environment.ambient_light_energy = 0.86
 	environment.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	var world_environment := WorldEnvironment.new()
 	world_environment.environment = environment
 	_world.add_child(world_environment)
 	var sun := DirectionalLight3D.new()
-	sun.rotation_degrees = Vector3(-54.0, -28.0, 0.0)
+	sun.rotation_degrees = Vector3(-68.0, -28.0, 0.0)
 	sun.light_color = Color("ffe7b2")
-	sun.light_energy = 1.15
+	sun.light_energy = 1.0
 	sun.shadow_enabled = true
 	_world.add_child(sun)
 	_camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -151,15 +153,22 @@ func project_world_to_viewport(world_position: Vector2, elevation := 0.0) -> Vec
 
 
 func _ground_position(world_position: Vector2, elevation := 0.0) -> Vector3:
-	# Build the presentation ground in the camera's screen basis.  This makes the
-	# renderer's orthographic projection exactly match MacroMarchR0's authoritative
-	# 2D transform: right is x + skew*y and screen-down is y*scale.
+	# Preserve the authoritative oblique screen transform on a horizontal XZ
+	# ground plane.  The previous implementation used Camera3D's tilted screen-up
+	# vector for world y, which made north/south map movement alter model height.
+	# Here only the explicit elevation controls Y; the two horizontal basis vectors
+	# are scaled so Camera3D still projects x + skew*y and y*scale identically to
+	# MacroMarchR0's map transform.
 	var forward := _camera_forward()
 	var right := forward.cross(Vector3.UP).normalized()
 	var camera_up := right.cross(forward).normalized()
 	var horizontal := world_position.x + world_position.y * OBLIQUE_X_SKEW
 	var vertical := world_position.y * OBLIQUE_Y_SCALE
-	return right * horizontal - camera_up * vertical + Vector3.UP * elevation
+	var screen_down_on_ground := Vector3(-camera_up.x, 0.0, -camera_up.z)
+	var screen_down_length := screen_down_on_ground.length()
+	if screen_down_length <= 0.0001:
+		return right * horizontal + Vector3.UP * elevation
+	return right * horizontal + screen_down_on_ground * (vertical / (screen_down_length * screen_down_length)) + Vector3.UP * elevation
 
 
 func _camera_forward() -> Vector3:
@@ -173,7 +182,10 @@ func _rebuild_static_theater() -> void:
 		return
 	var palette: Dictionary = _theater.get_presentation_profile()
 	var bounds: Rect2 = _theater.get_world_bounds()
-	_add_ground_quad(_static_root, bounds, Color(palette.get("ground_color", Color("6f875f"))), 0.0, "Ground")
+	# The authored theatre is an oblique projected parallelogram.  A horizontal
+	# overscan ground keeps the clipped command viewport filled at overview zoom
+	# without changing any authoritative terrain or passability bounds.
+	_add_ground_quad(_static_root, bounds.grow(720.0), Color(palette.get("ground_color", Color("6f875f"))), 0.0, "Ground")
 	for terrain_value in _theater.get_terrain_regions():
 		var terrain: Dictionary = Dictionary(terrain_value)
 		var terrain_rect := Rect2(terrain.get("rect", Rect2i()))
@@ -197,7 +209,10 @@ func _add_ground_quad(parent: Node3D, rect: Rect2, color: Color, elevation: floa
 	var arrays := []
 	arrays.resize(Mesh.ARRAY_MAX)
 	arrays[Mesh.ARRAY_VERTEX] = PackedVector3Array([corners[0], corners[1], corners[2], corners[3]])
-	arrays[Mesh.ARRAY_NORMAL] = PackedVector3Array([Vector3.UP, Vector3.UP, Vector3.UP, Vector3.UP])
+	var surface_normal: Vector3 = (Vector3(corners[1]) - Vector3(corners[0])).cross(Vector3(corners[3]) - Vector3(corners[0])).normalized()
+	if surface_normal.dot(Vector3.UP) < 0.0:
+		surface_normal = -surface_normal
+	arrays[Mesh.ARRAY_NORMAL] = PackedVector3Array([surface_normal, surface_normal, surface_normal, surface_normal])
 	arrays[Mesh.ARRAY_INDEX] = PackedInt32Array([0, 1, 2, 0, 2, 3])
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
@@ -205,6 +220,8 @@ func _add_ground_quad(parent: Node3D, rect: Rect2, color: Color, elevation: floa
 	instance.name = node_name
 	instance.mesh = mesh
 	instance.material_override = _material(color, 0.96)
+	instance.set_meta("ground_surface_normal", surface_normal)
+	instance.set_meta("ground_corner_heights", [corners[0].y, corners[1].y, corners[2].y, corners[3].y])
 	parent.add_child(instance)
 
 
@@ -290,29 +307,29 @@ func _rebuild_roads(roads: Dictionary) -> void:
 			_add_road_segment(_road_root, Vector2(points[index - 1]), Vector2(points[index]), color, kind == &"BRIDGE", damaged, elevation)
 
 
-func _add_road_segment(parent: Node3D, start: Vector2, end: Vector2, color: Color, bridge: bool, damaged: bool, elevation: float) -> void:
+func _add_road_segment(parent: Node3D, start: Vector2, end: Vector2, color: Color, bridge: bool, damaged: bool, elevation: float, construction := false) -> void:
 	var start_3d := _ground_position(start, elevation)
 	var end_3d := _ground_position(end, elevation)
 	var distance := start_3d.distance_to(end_3d)
 	if distance <= 0.01:
 		return
 	var segment := Node3D.new()
-	segment.name = "BridgeSegment" if bridge else "RoadSegment"
+	segment.name = ("ProjectBridgeSegment" if bridge else "ProjectRoadSegment") if construction else ("BridgeSegment" if bridge else "RoadSegment")
 	parent.add_child(segment)
 	segment.global_position = start_3d.lerp(end_3d, 0.5)
 	segment.look_at(end_3d, Vector3.UP)
 	segment.set_meta("road_start", start_3d)
 	segment.set_meta("road_end", end_3d)
-	var deck_width := 9.5 if bridge else 8.0
+	var deck_width := 12.5 if bridge else 10.5
 	var deck_height := 1.7 if bridge else 0.7
 	_add_box(segment, Vector3(deck_width, deck_height, distance + 2.0), Vector3.ZERO, color, "Deck")
 	if bridge:
 		var plank_count := maxi(2, floori(distance / 14.0))
 		for index in range(plank_count):
 			var z := -distance * 0.5 + float(index) * distance / float(maxi(plank_count - 1, 1))
-			_add_box(segment, Vector3(13.0, 0.75, 1.0), Vector3(0, 1.15, z), Color("f0c67a"), "Plank")
-		_add_box(segment, Vector3(0.9, 4.0, distance), Vector3(-5.2, 2.0, 0), Color("6d4e35"), "Rail")
-		_add_box(segment, Vector3(0.9, 4.0, distance), Vector3(5.2, 2.0, 0), Color("6d4e35"), "Rail")
+			_add_box(segment, Vector3(15.0, 0.75, 1.0), Vector3(0, 1.15, z), Color("f0c67a"), "Plank")
+		_add_box(segment, Vector3(0.9, 4.0, distance), Vector3(-6.7, 2.0, 0), Color("6d4e35"), "Rail")
+		_add_box(segment, Vector3(0.9, 4.0, distance), Vector3(6.7, 2.0, 0), Color("6d4e35"), "Rail")
 	if damaged:
 		_add_box(segment, Vector3(15.0, 2.0, 7.0), Vector3(0, 2.0, 0), Color("332b2b"), "Break")
 
@@ -348,13 +365,13 @@ func _add_city(parent: Node3D, position: Vector2, enemy: bool) -> void:
 	var wall_color := Color("6b3f3a") if enemy else Color("6a6654")
 	var roof_color := Color("71372f") if enemy else Color("38515e")
 	var banner_color := Color("bf4e41") if enemy else Color("ddb550")
-	_add_box(city, Vector3(54.0, 16.0, 18.0), Vector3(0, 8.0, 0), wall_color, "Wall")
-	for x in [-22.0, 22.0]:
-		_add_box(city, Vector3(13.0, 27.0, 13.0), Vector3(x, 13.5, 0), wall_color, "Tower")
-		_add_cylinder(city, 0.0, 10.0, 10.0, Vector3(x, 32.0, 0), roof_color, 4, "TowerRoof")
-	_add_box(city, Vector3(16.0, 12.0, 4.0), Vector3(0, 6.0, -10.5), Color("2e2724"), "Gate")
-	_add_box(city, Vector3(2.0, 34.0, 2.0), Vector3(10.0, 30.0, 0), Color("332d29"), "FlagPole")
-	_add_box(city, Vector3(12.0, 7.0, 1.0), Vector3(16.0, 41.0, 0), banner_color, "Flag")
+	_add_box(city, Vector3(66.0, 18.0, 22.0), Vector3(0, 9.0, 0), wall_color, "Wall")
+	for x in [-27.0, 27.0]:
+		_add_box(city, Vector3(15.0, 31.0, 15.0), Vector3(x, 15.5, 0), wall_color, "Tower")
+		_add_cylinder(city, 0.0, 11.0, 11.0, Vector3(x, 36.0, 0), roof_color, 4, "TowerRoof")
+	_add_box(city, Vector3(19.0, 13.0, 4.0), Vector3(0, 6.5, -12.5), Color("2e2724"), "Gate")
+	_add_box(city, Vector3(2.0, 39.0, 2.0), Vector3(12.0, 34.5, 0), Color("332d29"), "FlagPole")
+	_add_box(city, Vector3(14.0, 8.0, 1.0), Vector3(19.0, 47.0, 0), banner_color, "Flag")
 
 
 func _add_garrison(parent: Node3D, position: Vector2, is_runtime_camp: bool) -> void:
@@ -444,16 +461,11 @@ func _sync_projects(projects: Dictionary, specialists: Dictionary) -> void:
 		var project: Dictionary = Dictionary(project_value)
 		if StringName(project.get("phase", &"")) in [&"COMPLETE", &"INTERRUPTED"]:
 			continue
-		var points: Array = Array(project.get("route_world_points", []))
-		if points.size() < 2:
-			continue
 		var project_node := Node3D.new()
 		project_node.name = "Project"
 		_project_root.add_child(project_node)
-		var progress := clampf(float(project.get("progress_milliseconds", 0)) / maxf(float(project.get("required_milliseconds", 1)), 1.0), 0.0, 1.0)
-		var segment_limit := maxi(1, ceili(float(points.size() - 1) * progress))
-		for index in range(1, mini(points.size(), segment_limit + 1)):
-			_add_road_segment(project_node, Vector2(points[index - 1]), Vector2(points[index]), Color("d6a75d"), true, false, 1.7)
+		_add_active_project_segment(project_node, project)
+		var points: Array = Array(project.get("route_world_points", []))
 		var engineer := Dictionary(specialists.get(StringName(project.get("engineer_id", &"")), {}))
 		if not engineer.is_empty() and bool(engineer.get("alive", false)):
 			var scaffold := Node3D.new()
@@ -461,6 +473,58 @@ func _sync_projects(projects: Dictionary, specialists: Dictionary) -> void:
 			project_node.add_child(scaffold)
 			_add_box(scaffold, Vector3(12, 16, 1.5), Vector3.ZERO, Color("a87544"), "Scaffold")
 			_add_box(scaffold, Vector3(1.5, 16, 12), Vector3.ZERO, Color("a87544"), "Scaffold")
+
+
+func _add_active_project_segment(parent: Node3D, project: Dictionary) -> void:
+	# Completed physical segments are rendered through roads_by_id.  This root only
+	# renders the part currently under construction and retains each authoritative
+	# segment's kind instead of converting all project geometry into a bridge.
+	if StringName(project.get("phase", &"")) != &"BUILDING":
+		return
+	var elapsed := int(project.get("progress_milliseconds", 0))
+	for plan_value in Array(project.get("segment_plans", [])):
+		var plan: Dictionary = Dictionary(plan_value)
+		var duration := maxi(int(plan.get("required_milliseconds", 0)), 1)
+		if elapsed >= duration:
+			elapsed -= duration
+			continue
+		if elapsed <= 0:
+			return
+		var partial_points := _partial_route_points(Array(plan.get("route_world_points", [])), float(elapsed) / float(duration))
+		if partial_points.size() < 2:
+			return
+		var kind := StringName(plan.get("road_kind", &""))
+		var bridge := kind == &"BRIDGE"
+		_add_road_polyline(parent, partial_points, Color("e6bb6d") if bridge else Color("b98752"), bridge, 0.92 if bridge else 0.52, true)
+		return
+
+
+func _add_road_polyline(parent: Node3D, points: Array, color: Color, bridge: bool, elevation: float, construction: bool) -> void:
+	for index in range(1, points.size()):
+		_add_road_segment(parent, Vector2(points[index - 1]), Vector2(points[index]), color, bridge, false, elevation, construction)
+
+
+func _partial_route_points(points: Array, fraction: float) -> Array:
+	if points.size() < 2:
+		return []
+	var total_length := 0.0
+	for index in range(1, points.size()):
+		total_length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
+	var target_length := total_length * clampf(fraction, 0.0, 1.0)
+	var result: Array = [Vector2(points.front())]
+	var consumed := 0.0
+	for index in range(1, points.size()):
+		var start := Vector2(points[index - 1])
+		var end := Vector2(points[index])
+		var length := start.distance_to(end)
+		if consumed + length <= target_length:
+			result.append(end)
+			consumed += length
+			continue
+		if target_length > consumed:
+			result.append(start.lerp(end, (target_length - consumed) / maxf(length, 0.0001)))
+		break
+	return result
 
 
 func _add_unit_group(parent: Node3D, coat: Color, banner: Color, count: int, node_name: String) -> void:

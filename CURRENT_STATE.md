@@ -4,6 +4,43 @@
 
 ### Low-poly sample and battle-report correction (current worktree checkpoint)
 
+### Low-poly ground, engineering-plan and command-readability repair (current worktree)
+
+The low-poly map now derives the established oblique screen projection from a
+horizontal XZ ground plane. World north/south coordinates no longer change
+model height; base-ground mesh normals are calculated from the actual geometry,
+and bridge elevation is an explicit presentation offset. A render-only ground
+overscan fills the clipped overview viewport without changing Resource terrain,
+road availability, or input bounds. Camera3D anchor agreement remains at
+0--0.22 pixels across 1152x648, 1280x720 and 1920x1080.
+
+Engineering previews no longer disappear when the mouse is released: Macro
+March draws the persisted authority preview's individual road and bridge plans,
+including source and target markers, until confirm or cancel. Active project
+rendering now consumes actual segment durations and kinds instead of point
+count: completed roads remain in `roads_by_id`, normal-road work has a road
+surface, and bridge work alone has bridge deck/rail geometry. The player rail
+uses a material/segment summary rather than internal path-point counts. The
+default view is an all-theatre overview, with explicit overview reset and
+selection focus controls; off-screen labels are hidden rather than clamped to a
+misleading map edge. See
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-low-poly-readability-fix/`
+for inspected engine-viewport states and provenance.
+
+The graphical smoke has 11 assertions: existing projection, road transform,
+GUI route/engineering and mode-switch checks plus new horizontal-ground/normal
+and released-draft segmented-construction checks. This evidence uses Godot GUI
+events and engine viewport capture, not normal desktop input; the recording
+constraint remains an explicit media gap and is not player acceptance.
+
+Wider R2 rechecks are currently mixed and must not be summarized as a complete
+green candidate: the isolated field-persistence chain passes, but the main
+Field R2 smoke reaches an empty `blocked_transfer.route_segments` test fixture
+at line 887 before later assertions fail, and the engineering playthrough's
+natural-ambush expectation reports `ambushes=0`. These are tracked as separate
+gameplay/test blockers in the new verification record, not as failures hidden
+by this presentation checkpoint.
+
 The Macro March screen now has a render-only low-poly miniature mode for the
 Blackstone sample theatre. An orthographic `Camera3D` inside a `SubViewport`
 reads the same 2D world positions and Field/Army read models as the established

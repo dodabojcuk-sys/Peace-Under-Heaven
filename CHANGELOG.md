@@ -16,6 +16,22 @@
 
 ### FIELD_TACTICS_R2 low-poly Blackstone sample
 
+- Replaced the camera-up-plane ground mapping with a horizontal XZ mapping that
+  preserves the existing oblique anchor projection. Ground normals now come
+  from the actual mesh, bridge elevation is explicit, and a render-only
+  overscan ground fills the clipped overview without changing passability.
+- Kept engineering drafts visible after mouse release and rendered them from the
+  authority preview's physical normal-road/bridge segment plan. Active projects
+  now use segment duration and kind rather than route point count, so normal
+  construction is not drawn as a bridge.
+- Added overview reset/selection focus controls, larger roads/city silhouettes,
+  less severe directional shadowing, and non-misleading off-screen labels.
+  Updated graphical checks cover horizontal ground normals and released-draft
+  `NORMAL → BRIDGE → NORMAL` rendering at all three supported resolutions.
+- Recorded inspected engine-viewport evidence under
+  `20260909-low-poly-readability-fix`; it remains GUI-event/render evidence,
+  not normal-system-input video or player acceptance.
+
 - Added a switchable, render-only low-poly `SubViewport` for the Blackstone
   outer map. Its orthographic camera displays authoritative 2D theatre, army,
   specialist, patrol, road, bridge, and project facts without introducing a
