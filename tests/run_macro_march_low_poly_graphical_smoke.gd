@@ -102,6 +102,7 @@ func _check_dynamic_actor_and_mode_switch() -> void:
 	var actor: Node3D = presentation._army_nodes.get(army_id, null)
 	var before := actor.global_position if actor != null else Vector3.ZERO
 	var has_selection_marker := actor != null and actor.find_child("ArmySelectionMarker", true, false) != null
+	var selection_marker_is_hollow := actor != null and actor.find_child("SelectionRing", true, false) == null and actor.find_child("SelectionPennant", true, false) != null
 	var macro_order: Dictionary = Dictionary(army.get("macro_march", {}))
 	city.advance_macro_march_time(army_id, StringName(macro_order.get("order_id", &"")), 0, 1000)
 	macro.refresh()
@@ -112,14 +113,15 @@ func _check_dynamic_actor_and_mode_switch() -> void:
 	var two_dimensional_visible := not presentation.visible
 	macro._toggle_low_poly_presentation()
 	_check(
-		drafted_correct_route
+			drafted_correct_route
 			and actor != null
 			and has_selection_marker
+			and selection_marker_is_hollow
 			and before.distance_to(after) > 0.01
 			and two_dimensional_visible
 			and presentation.visible
 			and city.export_v5_campaign_snapshot() == snapshot_before_toggle,
-		"图形进程在低模模式接收鼠标绘线、确认军令并更新军队位置；选中部队具有不受建筑遮挡的标记，二维/三维切换不重发军令或改写状态"
+		"图形进程在低模模式接收鼠标绘线、确认军令并更新军队位置；选中部队使用旗帜配合既有空心圈而非遮挡模型的实心圆盘，二维/三维切换不重发军令或改写状态"
 	)
 	scene.queue_free()
 	await process_frame
@@ -139,6 +141,7 @@ func _check_formal_art_assets() -> void:
 	var anchors_match := true
 	var visible_meshes := 0
 	var material_partitions_match := true
+	var nature_materials_non_metallic := true
 	var grounding_match := true
 	var plausible_sizes := true
 	var screen_mapping_match := true
@@ -162,7 +165,9 @@ func _check_formal_art_assets() -> void:
 			visible_meshes += 1
 			material_partitions_match = material_partitions_match and mesh_instance.material_override == null
 			for surface in mesh_instance.mesh.get_surface_count():
-				material_partitions_match = material_partitions_match and mesh_instance.get_surface_override_material(surface) != null
+				var surface_material := mesh_instance.get_surface_override_material(surface)
+				material_partitions_match = material_partitions_match and surface_material != null
+				nature_materials_non_metallic = nature_materials_non_metallic and surface_material is BaseMaterial3D and absf((surface_material as BaseMaterial3D).metallic) <= 0.0001
 			var bounds := _world_aabb(mesh_instance)
 			lowest_y = minf(lowest_y, bounds.position.y)
 			highest_y = maxf(highest_y, bounds.end.y)
@@ -175,8 +180,8 @@ func _check_formal_art_assets() -> void:
 	var has_gatehouse := presentation._point_root.find_child("Gatehouse", true, false) != null
 	var has_watchtower := presentation._point_root.find_child("Watchtower", true, false) != null
 	_check(
-		asset_paths.size() == 7 and visible_meshes >= 7 and anchors_match and grounding_match and plausible_sizes and material_partitions_match and screen_mapping_match and has_gatehouse and has_watchtower,
-		"图形进程实例化七项已登记 CC0 自然素材的非空网格；材质分区、落地锚点、合理包围尺寸及相机/点击投影均有效（素材=%d，网格=%d，锚点=%s，落地=%s，尺寸=%s，材质=%s，投影=%s）" % [asset_paths.size(), visible_meshes, anchors_match, grounding_match, plausible_sizes, material_partitions_match, screen_mapping_match]
+		asset_paths.size() == 7 and visible_meshes >= 7 and anchors_match and grounding_match and plausible_sizes and material_partitions_match and nature_materials_non_metallic and screen_mapping_match and has_gatehouse and has_watchtower,
+		"图形进程实例化七项已登记 CC0 自然素材的非空网格；材质分区、非金属运行时变体、落地锚点、合理包围尺寸及相机/点击投影均有效（素材=%d，网格=%d，锚点=%s，落地=%s，尺寸=%s，材质=%s，非金属=%s，投影=%s）" % [asset_paths.size(), visible_meshes, anchors_match, grounding_match, plausible_sizes, material_partitions_match, nature_materials_non_metallic, screen_mapping_match]
 	)
 	scene.queue_free()
 	await process_frame
@@ -230,12 +235,14 @@ func _check_engineering_input() -> void:
 	macro.refresh()
 	var scout_visual: Node3D = macro._low_poly_presentation._specialist_nodes.get(scout_id, null)
 	var scout_marker_visible := scout_visual != null and scout_visual.find_child("SpecialistSelectionMarker", true, false) != null
+	var scout_marker_is_hollow := scout_visual != null and scout_visual.find_child("SelectionRing", true, false) == null and scout_visual.find_child("SelectionPennant", true, false) != null
 	var dispatch: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
 	var engineer_id := StringName(Dictionary(dispatch.get("specialist", {})).get("specialist_id", &""))
 	macro._selected_specialist_id = engineer_id
 	macro.refresh()
 	var engineer_visual: Node3D = macro._low_poly_presentation._specialist_nodes.get(engineer_id, null)
 	var engineer_marker_visible := engineer_visual != null and engineer_visual.find_child("SpecialistSelectionMarker", true, false) != null
+	var engineer_marker_is_hollow := engineer_visual != null and engineer_visual.find_child("SelectionRing", true, false) == null and engineer_visual.find_child("SelectionPennant", true, false) != null
 	macro._side_road_button.emit_signal("pressed")
 	var source_click := InputEventMouseButton.new()
 	source_click.button_index = MOUSE_BUTTON_LEFT
@@ -279,7 +286,9 @@ func _check_engineering_input() -> void:
 		bool(dispatch.get("success", false))
 			and bool(scout_dispatch.get("success", false))
 			and scout_marker_visible
+			and scout_marker_is_hollow
 			and engineer_marker_visible
+			and engineer_marker_is_hollow
 			and StringName(draft.get("source_point_id", &"")) == &"blackstone_city"
 			and THEATER.route_crosses_water(Array(draft.get("route_world_points", [])))
 			and macro._draw_points.is_empty()
@@ -290,7 +299,7 @@ func _check_engineering_input() -> void:
 			and int(draft.get("food_cost", 0)) > 0
 			and int(city.food) < food_before
 			and not Dictionary(field.get("projects_by_id", {})).is_empty(),
-		"图形进程为选中侦察兵和工程师保留可见标记，并在低模模式保留松手后的工程草稿、按权威陆路-桥梁-陆路计划显示分段施工"
+		"图形进程为选中侦察兵和工程师保留旗帜配合空心圈的可见标记，并在低模模式保留松手后的工程草稿、按权威陆路-桥梁-陆路计划显示分段施工"
 	)
 	scene.queue_free()
 	await process_frame

@@ -389,6 +389,10 @@ func _nature_material_variant(asset_kind: StringName, surface: int, source: Mate
 	if variant == null:
 		return source
 	variant.albedo_color = _nature_surface_color(asset_kind, surface)
+	# Kenney's imported GLB surfaces declare metallicFactor=1. They are trees,
+	# grass and rocks in this miniature, so retain their surface partition while
+	# correcting only these runtime copies to a non-metallic material response.
+	variant.metallic = 0.0
 	variant.roughness = maxf(variant.roughness, 0.78)
 	_nature_material_variants[key] = variant
 	return variant
@@ -718,26 +722,16 @@ func _add_specialist(parent: Node3D, role: StringName) -> void:
 
 
 func _add_selection_marker(parent: Node3D, member_count: int, specialist: bool) -> void:
-	# A deliberately elevated, depth-independent command pennant keeps the real
-	# actor discoverable when its truthful ground position is occluded by a city,
-	# camp, tree cluster, or bridge. It carries no simulation position or input.
+	# A compact elevated, depth-independent command pennant complements the
+	# existing hollow 2D selection ring when a truthful ground actor is occluded
+	# by a city, camp, tree cluster, or bridge. It carries no simulation position,
+	# input, or duplicate count label.
 	var marker := Node3D.new()
 	marker.name = "SpecialistSelectionMarker" if specialist else "ArmySelectionMarker"
 	parent.add_child(marker)
-	var height := 44.0 if specialist else 52.0
+	var height := 30.0 if specialist else 36.0
 	_add_marker_box(marker, Vector3(1.4, height, 1.4), Vector3(0, height * 0.5, 0), Color("f7df7b"), "SelectionPole")
-	_add_marker_box(marker, Vector3(18.0, 9.0, 0.8), Vector3(9.5, height - 5.0, 0), Color("f7df7b") if specialist else Color("f4b94c"), "SelectionPennant")
-	var ring := CylinderMesh.new()
-	ring.top_radius = 14.0 if specialist else 18.0
-	ring.bottom_radius = ring.top_radius
-	ring.height = 0.7
-	ring.radial_segments = 24
-	var ring_instance := MeshInstance3D.new()
-	ring_instance.name = "SelectionRing"
-	ring_instance.mesh = ring
-	ring_instance.position = Vector3(0, 2.0, 0)
-	ring_instance.material_override = _overlay_material(Color("fff1a8", 0.92))
-	marker.add_child(ring_instance)
+	_add_marker_box(marker, Vector3(14.0, 7.0, 0.8), Vector3(7.5, height - 4.0, 0), Color("f7df7b") if specialist else Color("f4b94c"), "SelectionPennant")
 	marker.set_meta("member_count", member_count)
 
 
@@ -803,6 +797,7 @@ func _material(color: Color, roughness: float) -> StandardMaterial3D:
 func _overlay_material(color: Color) -> StandardMaterial3D:
 	var material := _material(color, 0.7)
 	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.transparency = BaseMaterial3D.TRANSPARENCY_DISABLED
 	material.no_depth_test = true
 	return material
 

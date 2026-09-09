@@ -15,8 +15,12 @@
   `MacroMarchLowPolyPresentation`. At runtime, each imported mesh retains its
   source surface layout, textures and render flags. The presentation creates
   cached, per-kind/per-surface material variants only for Blackstone palette
-  colour and roughness: tree trunks and crowns remain separate, as do rock
-  light/dark facets. It does not use a whole-instance `material_override`.
+  colour, roughness and non-metallic response: tree trunks and crowns remain
+  separate, as do rock light/dark facets. The selected GLBs import with
+  `metallicFactor=1`; their Blackstone runtime copies explicitly set
+  `metallic=0` because these trees, grass and rocks are not metal. This does
+  not mutate the original GLBs or affect any other game asset. It does not use
+  a whole-instance `material_override`.
   After instancing, the transformed visible mesh's actual lowest bound is
   settled onto the authoritative ground anchor; empty scene parents are not
   treated as the contact point.

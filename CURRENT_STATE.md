@@ -2,6 +2,25 @@
 
 ## FIELD_TACTICS_R2 Blackstone sample-theatre candidate (2026-09-09)
 
+### Targeted natural-material and selection-marker repair (current worktree)
+
+The seven selected Kenney GLBs import their source surfaces with
+`metallicFactor=1`. Blackstone now corrects this only in the cached runtime
+variants for those trees, grass and rocks: `metallic=0`, per-surface palette
+colour and roughness preserve the authored GLBs and their trunk/crown or rock
+facet separation. No global material property or source asset has changed.
+
+The render-only `SelectionRing` cylinder has been removed. Selection remains a
+single, readable expression: the established hollow 2D ring and status/count
+overlay, supplemented by a compact 3D pennant at the truthful army, engineer
+or scout location. This does not change actor positions,
+orders, strength, fog or input ownership. The corresponding graphical smoke
+now checks both the non-metallic natural variants and that no opaque selection
+disc is reintroduced. Current screenshot/validation evidence is being recorded
+under `evidence/20260909-blackstone-render-targeted-fixes/`; the prior
+30-frame measurement remains an initial sampling baseline, not a stable-FPS or
+performance-pass claim.
+
 ### Low-poly sample and battle-report correction (current worktree checkpoint)
 
 ### Low-poly ground, engineering-plan and command-readability repair (current worktree)

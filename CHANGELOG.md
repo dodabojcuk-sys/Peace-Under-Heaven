@@ -14,6 +14,19 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 Blackstone targeted render fixes
+
+- Corrected only the seven selected Kenney natural-material runtime variants:
+  their imported `metallicFactor=1` is now overridden to `metallic=0` while
+  preserving each source GLB, its surface partitions and the separate
+  trunk/crown and rock-facet variants.
+- Replaced the opaque 3D `SelectionRing` cylinder with a compact command
+  pennant. The existing hollow 2D selection ring and status/count layer remain
+  authoritative for selection feedback, so neither troops nor buildings are
+  covered by a depth-disabled solid disc.
+- Extended the non-headless graphical smoke to check non-metallic natural
+  runtime materials and the army, scout and engineer marker contract.
+
 ### FIELD_TACTICS_R2 Blackstone formal-art finish
 
 - Replaced whole-instance imported-GLB material overrides with cached

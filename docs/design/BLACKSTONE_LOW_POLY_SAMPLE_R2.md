@@ -65,7 +65,10 @@ The seven selected GLBs retain their imported mesh surfaces. The presentation
 does not assign one `material_override` to a whole tree or rock: it makes a
 cached material variant per declared asset kind and source surface, preserving
 the GLB's texture slots and render flags while harmonising trunk/crown and
-rock-facet colours with the Blackstone palette. Runtime instances are then
+rock-facet colours with the Blackstone palette. The selected Kenney imports
+declare `metallicFactor=1`, so only those runtime natural-material copies set
+`metallic=0`; they remain non-metallic trees, grass and rocks without mutating
+their source files or unrelated game materials. Runtime instances are then
 settled by the transformed lowest visible mesh bound, rather than the imported
 scene root, so an authored GLB offset cannot leave a tree, rock or grass clump
 floating or buried beneath the horizontal ground.
@@ -78,10 +81,11 @@ only in the render layer; their authoritative polylines and input transform are
 unchanged.
 
 The selected army or specialist receives an elevated, depth-independent command
-pennant plus the existing 2D count/status overlay. This makes a truthful actor
-position discoverable when a gatehouse, camp, bridge or tree canopy visually
-occludes it. The marker has no game position, hit target, visibility knowledge,
-or simulation responsibility.
+pennant plus the existing hollow 2D selection ring and count/status overlay.
+This replaces the former opaque 3D ground disc, so an occluded truthful actor
+is discoverable without covering its troop, specialist or building model. The
+marker has no game position, hit target, visibility knowledge, or simulation
+responsibility.
 
 ## Player information correction
 
@@ -112,10 +116,11 @@ do not claim this rendering coverage.
 The graphical runner also asserts that all seven declared CC0 nature assets
 were instantiated as visible, non-empty meshes; that their transformed bounds
 are grounded at the authoritative anchors with plausible size; that surface
-material partitioning is retained; and that their camera projection agrees with
-the clickable 2D map. It also checks the gatehouse/watchtower assemblies and
-selected army/specialist command markers rather than accepting an empty parent
-node. The runner logs a fixed 1280×720 30-frame process-time, draw-call,
+material partitioning is retained and their runtime variants are non-metallic;
+and that their camera projection agrees with the clickable 2D map. It also
+checks the gatehouse/watchtower assemblies and selected army/specialist command
+pennants in combination with the existing hollow selection ring rather than
+accepting an empty parent node or opaque disc. The runner logs a fixed 1280×720 30-frame process-time, draw-call,
 render-object and static-memory baseline for later comparison; because no
 matching pre-art measurement exists, that baseline is not an improvement claim.
 

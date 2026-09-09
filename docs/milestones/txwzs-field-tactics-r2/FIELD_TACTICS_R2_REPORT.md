@@ -32,6 +32,25 @@ transaction and persistence-checkpoint caller.
 
 #### Formal-art finish evidence (current worktree)
 
+#### Targeted material and selection-marker repair (current worktree)
+
+The seven selected Kenney source GLBs were independently inspected: every
+active imported `BaseMaterial3D` surface reports `metallic=1.00`. That is not a
+credible response for Blackstone trees, riverbank grass and rocks. The
+presentation now changes only its cached per-kind/per-surface runtime copies to
+`metallic=0`, retaining source GLBs, texture slots, render flags and material
+partitions. It does not alter another presentation asset or global material
+policy.
+
+The renderer no longer creates the opaque, depth-disabled `SelectionRing`
+cylinder. Selection uses the existing hollow 2D ring and status/count overlay,
+supplemented by one compact elevated command pennant. Army, scout and engineer
+checks confirm the shared marker contract without adding a duplicate troop
+count or changing a truthful actor location. Same-camera engine-viewport
+captures and the non-headless regression record are under
+`evidence/20260909-blackstone-render-targeted-fixes/`; those captures are
+GUI-event/render evidence, not desktop-system-input footage or acceptance.
+
 The current finish keeps the selected Kenney GLB material surfaces intact. The
 presentation no longer applies a uniform whole-instance material override:
 cached surface variants preserve each import's texture slots and render flags
