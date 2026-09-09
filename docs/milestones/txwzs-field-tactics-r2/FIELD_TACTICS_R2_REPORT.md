@@ -30,6 +30,34 @@ transaction and persistence-checkpoint caller.
 
 ### Low-poly presentation checkpoint (current worktree)
 
+#### Formal-art finish evidence (current worktree)
+
+The current finish keeps the selected Kenney GLB material surfaces intact. The
+presentation no longer applies a uniform whole-instance material override:
+cached surface variants preserve each import's texture slots and render flags
+while making trunk/crown and rock-facet colours coherent in the Blackstone
+palette. The visible transformed mesh, not the GLB root node, is settled onto
+the same horizontal ground anchor used by the authoritative map.
+
+Forest/rock ground variation, shallow riverbank strips and expanded camp
+silhouettes improve reading of the existing gate-road-river-bridge-forest-camp
+segment only. Roads are wider in the renderer and selected actors receive an
+elevated depth-independent pennant plus their normal 2D count/status overlay;
+neither change alters passability, army position, fog, selection authority,
+combat, clock or saves. The latest graphical runner validates visible imported
+mesh bounds, actual ground contact, material partitions, camera/click alignment
+and army/scout/engineer selection markers. It also records the first matched
+1280×720 render baseline for later comparison, not a performance claim. Exact
+engine-viewport evidence and the retained normal-system-input media gap are
+under `evidence/20260909-blackstone-art-finish/`.
+
+The final recheck also repaired one Macro March test-fixture boundary: each
+independent UI contract now restores the same pristine production V5 snapshot
+before it opens a new city scene. Earlier contracts can therefore no longer
+leak dispatched formations, projects or patrol state into a later UI assertion.
+This is runner isolation only; no player persistence, world-time or campaign
+authority changes were made.
+
 The Blackstone outer map now offers a render-only low-poly mode backed by an
 orthographic `Camera3D` and `SubViewport`. It projects the existing 2D world
 coordinates into a small 3D scene and consumes the established Macro March and

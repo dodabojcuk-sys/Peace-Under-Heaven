@@ -6,6 +6,40 @@
 
 ### Low-poly ground, engineering-plan and command-readability repair (current worktree)
 
+### Formal-art material, grounding and command-readability finish (current worktree)
+
+The current art-finish worktree preserves the seven selected CC0 GLBs' source
+mesh partitions rather than flattening every imported instance through one
+`material_override`. Cached per-surface runtime variants keep source texture
+slots and render flags while separating trunks/crowns and rock facets in the
+Blackstone palette. Each instance is settled from its transformed visible-mesh
+bound, so the actual model contact—rather than an empty GLB root—is at the
+authoritative horizontal ground anchor. The graphical smoke now checks those
+visible meshes, material partitions, transformed bounds, plausible dimensions
+and renderer-side screen positions at all three review resolutions.
+
+The render-only theatre gained restrained forest/rock floor variation, shallow
+riverbank strips, denser tree groups, and a more legible tent/palisade/fire camp
+silhouette. Roads and bridges are visually broadened only in the presentation;
+the existing road geometry, passability, drawing transform, fog and save facts
+are unchanged. Selected armies and specialists now have an elevated command
+pennant plus the established 2D count/status overlay, making their truthful
+ground position identifiable through gates, camps, trees and bridge scenery
+without moving the army, exposing hidden units, or adding another input/sim
+owner. A fixed 1280×720 30-frame render baseline is recorded with draw calls,
+render objects and static memory; there is no prior matched measurement, so no
+performance-improvement claim is made. Candidate screenshots and the explicit
+engine-viewport/GUI-event boundary are in
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-blackstone-art-finish/`.
+
+The same final isolated recheck found that independent Macro March UI contracts
+could inherit a preceding contract's normal save publication inside one Godot
+process. The runner now restores its pristine production V5 snapshot for every
+new contract scene, matching the established Field scenario isolation approach.
+This is test-fixture repair only: campaign persistence, food transactions and
+army ownership remain unchanged. Macro March smoke again passes all 30
+assertions; its three-process persistence smoke also passes.
+
 The first formal Blackstone art-integration checkpoint now uses seven selected
 CC0 GLB assets (three trees, three rocks and riverbank grass) from Kenney
 Nature Kit 2.1 in the render-only miniature layer. Their precise source,

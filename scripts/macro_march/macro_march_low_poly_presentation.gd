@@ -43,6 +43,9 @@ var _specialist_visual_signatures: Dictionary = {}
 var _patrol_nodes: Dictionary = {}
 var _patrol_visual_signatures: Dictionary = {}
 var _nature_scenes: Dictionary = {}
+var _nature_material_variants: Dictionary = {}
+var _selected_army_id: StringName = &""
+var _selected_specialist_id: StringName = &""
 
 
 func _ready() -> void:
@@ -77,13 +80,17 @@ func sync(
 	model: Dictionary,
 	field: Dictionary,
 	camera_center: Vector2,
-	camera_zoom: float
+	camera_zoom: float,
+	selected_army_id: StringName = &"",
+	selected_specialist_id: StringName = &""
 ) -> void:
 	if not is_available() or theater == null or size.x < 2.0 or size.y < 2.0:
 		visible = false
 		return
 	visible = true
 	_theater = theater
+	_selected_army_id = selected_army_id
+	_selected_specialist_id = selected_specialist_id
 	_resize_viewport()
 	_update_camera(camera_center, camera_zoom)
 	var definition_id := StringName(_theater.get_definition_id())
@@ -237,13 +244,17 @@ func _add_ground_quad(parent: Node3D, rect: Rect2, color: Color, elevation: floa
 
 
 func _add_forest_patch(rect: Rect2) -> void:
+	# Forest floor is a restrained visual cue for the already-authoritative forest
+	# region. It deliberately does not change fog, ambush eligibility, or movement.
+	_add_ground_quad(_static_root, rect.grow(-5.0), Color("617850"), 0.055, "ForestFloor")
 	var patch := Node3D.new()
 	patch.name = "Forest"
 	_static_root.add_child(patch)
 	for offset in [
 		Vector2(20, 24), Vector2(55, 48), Vector2(88, 23), Vector2(123, 63),
 		Vector2(154, 32), Vector2(38, 98), Vector2(77, 118), Vector2(115, 91),
-		Vector2(166, 130), Vector2(205, 68), Vector2(215, 150),
+		Vector2(166, 130), Vector2(205, 68), Vector2(215, 150), Vector2(29, 154),
+		Vector2(145, 158), Vector2(196, 116), Vector2(102, 151),
 	]:
 		if offset.x > rect.size.x - 8.0 or offset.y > rect.size.y - 8.0:
 			continue
@@ -252,6 +263,7 @@ func _add_forest_patch(rect: Rect2) -> void:
 
 
 func _add_rock_patch(rect: Rect2) -> void:
+	_add_ground_quad(_static_root, rect.grow(-7.0), Color("70805c"), 0.05, "RockFloor")
 	var rocks := Node3D.new()
 	rocks.name = "Rocks"
 	_static_root.add_child(rocks)
@@ -280,6 +292,10 @@ func _add_riverbank_detail(rect: Rect2) -> void:
 	var bank := Node3D.new()
 	bank.name = "RiverbankArt"
 	_static_root.add_child(bank)
+	# The shallow strips deliberately remain outside the water rect. They make the
+	# shore legible without suggesting that water is walkable.
+	_add_ground_quad(bank, Rect2(rect.position - Vector2(15.0, 0.0), Vector2(12.0, rect.size.y)), Color("7d9569"), 0.075, "ShallowBank")
+	_add_ground_quad(bank, Rect2(Vector2(rect.end.x + 3.0, rect.position.y), Vector2(12.0, rect.size.y)), Color("7d9569"), 0.075, "ShallowBank")
 	for ratio in [0.14, 0.42, 0.70, 0.88]:
 		var y := lerpf(rect.position.y, rect.end.y, ratio)
 		_add_nature_asset(bank, &"GRASS", Vector2(rect.position.x - 11.0, y), 26.0, 0.0, "RiverbankGrass")
@@ -336,31 +352,86 @@ func _add_nature_asset(parent: Node3D, asset_kind: StringName, world_position: V
 	instance.rotation.y = yaw
 	instance.set_meta("asset_path", path)
 	instance.set_meta("world_anchor", world_position)
-	var tint := _nature_tint(asset_kind)
 	for child in instance.find_children("*", "MeshInstance3D", true, false):
 		var mesh_instance := child as MeshInstance3D
-		mesh_instance.material_override = _material(tint, 0.96)
+		# Imported GLBs expose separate trunk/crown and rock-light/rock-dark
+		# surfaces. A single material_override erased that authored separation.
+		# Surface variants keep every source material's texture and render flags,
+		# while applying the Blackstone palette without mutating shared imports.
+		mesh_instance.material_override = null
+		mesh_instance.material_overlay = null
+		if mesh_instance.mesh == null:
+			continue
+		for surface in mesh_instance.mesh.get_surface_count():
+			var source_material := mesh_instance.get_active_material(surface)
+			var variant := _nature_material_variant(asset_kind, surface, source_material)
+			if variant != null:
+				mesh_instance.set_surface_override_material(surface, variant)
 	parent.add_child(instance)
+	# GLB roots preserve their authored child transforms. Some selected Kenney
+	# meshes extend a small distance below their root, so settle the transformed
+	# visible mesh—not an empty parent or metadata marker—onto the shared ground.
+	var expected_ground_y := _ground_position(world_position).y
+	var lowest_y := _lowest_visible_mesh_y(instance)
+	if is_finite(lowest_y):
+		instance.position.y += expected_ground_y - lowest_y
+	instance.set_meta("ground_contact_y", expected_ground_y)
 	return true
 
 
-func _nature_tint(asset_kind: StringName) -> Color:
+func _nature_material_variant(asset_kind: StringName, surface: int, source: Material) -> Material:
+	var key := "%s:%d" % [String(asset_kind), surface]
+	if _nature_material_variants.has(key):
+		return _nature_material_variants[key]
+	if not source is BaseMaterial3D:
+		return source
+	var variant := (source as BaseMaterial3D).duplicate() as BaseMaterial3D
+	if variant == null:
+		return source
+	variant.albedo_color = _nature_surface_color(asset_kind, surface)
+	variant.roughness = maxf(variant.roughness, 0.78)
+	_nature_material_variants[key] = variant
+	return variant
+
+
+func _nature_surface_color(asset_kind: StringName, surface: int) -> Color:
+	# Kenney trees use surface 0 for the trunk and surface 1 for the crown.
+	# Rocks retain two or three shaded facets, rather than becoming flat grey.
 	match asset_kind:
 		&"TREE_BROADLEAF":
-			return Color("3e7445")
+			return Color("75543a") if surface == 0 else Color("557947")
 		&"TREE_PINE":
-			return Color("285b45")
+			return Color("6e4e38") if surface == 0 else Color("3e6a4d")
 		&"TREE_DARK":
-			return Color("234438")
+			return Color("5b4233") if surface == 0 else Color("2f5945")
 		&"ROCK_WIDE":
-			return Color("6f7269")
+			return Color("8a8171") if surface == 0 else Color("62685e")
 		&"ROCK_LOW":
-			return Color("83796a")
+			return Color("9a8974") if surface == 0 else Color("6d7064")
 		&"ROCK_TALL":
-			return Color("665f57")
+			if surface == 0:
+				return Color("827b70")
+			if surface == 1:
+				return Color("5c655e")
+			return Color("b6a587")
 		&"GRASS":
-			return Color("6f9040")
+			return Color("6f9148")
 	return Color.WHITE
+
+
+func _lowest_visible_mesh_y(root: Node3D) -> float:
+	var lowest := INF
+	for child in root.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		if mesh_instance == null or mesh_instance.mesh == null or not mesh_instance.visible:
+			continue
+		var bounds := mesh_instance.get_aabb()
+		for x in [0.0, 1.0]:
+			for y in [0.0, 1.0]:
+				for z in [0.0, 1.0]:
+					var corner := bounds.position + bounds.size * Vector3(x, y, z)
+					lowest = minf(lowest, (mesh_instance.global_transform * corner).y)
+	return lowest
 
 
 func _rebuild_roads(roads: Dictionary) -> void:
@@ -399,18 +470,20 @@ func _add_road_segment(parent: Node3D, start: Vector2, end: Vector2, color: Colo
 	segment.look_at(end_3d, Vector3.UP)
 	segment.set_meta("road_start", start_3d)
 	segment.set_meta("road_end", end_3d)
-	var deck_width := 12.5 if bridge else 10.5
+	# Slightly broader presentation-only surfaces keep the legal route legible at
+	# overview without altering the underlying route geometry or hit target.
+	var deck_width := 20.0 if bridge else 15.0
 	var deck_height := 1.7 if bridge else 0.7
 	_add_box(segment, Vector3(deck_width, deck_height, distance + 2.0), Vector3.ZERO, color, "Deck")
 	if bridge:
 		var plank_count := maxi(2, floori(distance / 14.0))
 		for index in range(plank_count):
 			var z := -distance * 0.5 + float(index) * distance / float(maxi(plank_count - 1, 1))
-			_add_box(segment, Vector3(15.0, 0.75, 1.0), Vector3(0, 1.15, z), Color("f0c67a"), "Plank")
-		_add_box(segment, Vector3(0.9, 4.0, distance), Vector3(-6.7, 2.0, 0), Color("6d4e35"), "Rail")
-		_add_box(segment, Vector3(0.9, 4.0, distance), Vector3(6.7, 2.0, 0), Color("6d4e35"), "Rail")
+			_add_box(segment, Vector3(23.0, 0.75, 1.0), Vector3(0, 1.15, z), Color("f0c67a"), "Plank")
+		_add_box(segment, Vector3(0.9, 4.0, distance), Vector3(-10.4, 2.0, 0), Color("6d4e35"), "Rail")
+		_add_box(segment, Vector3(0.9, 4.0, distance), Vector3(10.4, 2.0, 0), Color("6d4e35"), "Rail")
 	if damaged:
-		_add_box(segment, Vector3(15.0, 2.0, 7.0), Vector3(0, 2.0, 0), Color("332b2b"), "Break")
+		_add_box(segment, Vector3(deck_width + 3.0, 2.0, 7.0), Vector3(0, 2.0, 0), Color("332b2b"), "Break")
 
 
 func _rebuild_points(model: Dictionary, field: Dictionary) -> void:
@@ -466,7 +539,10 @@ func _add_garrison(parent: Node3D, position: Vector2, is_runtime_camp: bool, poi
 	parent.add_child(camp)
 	_add_cylinder(camp, 0.0, 12.0, 15.0, Vector3(-7, 7.5, 2), Color("ded3ae"), 4, "Tent")
 	_add_cylinder(camp, 0.0, 9.0, 12.0, Vector3(10, 6.0, -4), Color("b8965f"), 4, "Tent")
+	_add_cylinder(camp, 0.0, 7.5, 10.0, Vector3(3, 5.0, 12), Color("c9b07a"), 4, "Tent")
 	_add_box(camp, Vector3(32.0, 2.5, 2.5), Vector3(0, 4.0, 14), Color("684b34"), "CampPalisade")
+	_add_box(camp, Vector3(2.5, 2.0, 25.0), Vector3(-17.0, 3.5, 1.0), Color("684b34"), "CampPalisade")
+	_add_cylinder(camp, 2.2, 2.2, 1.0, Vector3(-2.0, 0.8, -9.0), Color("d88a45"), 10, "CampFire")
 	_add_box(camp, Vector3(2.0, 27.0, 2.0), Vector3(8, 14.0, 8), Color("49372b"), "FlagPole")
 	_add_box(camp, Vector3(11.0, 6.0, 1.0), Vector3(14.0, 22.0, 8), Color("ddb550"), "Flag")
 	if point_id == &"ridge_watch":
@@ -491,11 +567,14 @@ func _sync_armies(armies: Array) -> void:
 		var state := _army_motion_state(army)
 		node.position = _ground_position(Vector2(state.get("world_position", Vector2.ZERO)), 2.2)
 		var count := _army_member_count(army)
-		var signature := "%s:%d" % [String(army.get("phase", &"")), count]
+		var selected := army_id == _selected_army_id
+		var signature := "%s:%d:%s" % [String(army.get("phase", &"")), count, selected]
 		if _army_visual_signatures.get(army_id, "") != signature:
 			_army_visual_signatures[army_id] = signature
 			_clear_children(node)
 			_add_unit_group(node, Color("d44d3f"), Color("f4d476"), count, "Army")
+			if selected:
+				_add_selection_marker(node, count, false)
 	_remove_absent_nodes(_army_nodes, _army_visual_signatures, seen)
 
 
@@ -515,10 +594,14 @@ func _sync_specialists(specialists: Dictionary) -> void:
 			_specialist_nodes[specialist_id] = node
 		var role := StringName(specialist.get("role", &""))
 		node.position = _ground_position(Vector2(specialist.get("world_position", Vector2.ZERO)), 2.4)
-		if _specialist_visual_signatures.get(specialist_id, &"") != role:
-			_specialist_visual_signatures[specialist_id] = role
+		var selected := specialist_id == _selected_specialist_id
+		var signature := "%s:%s" % [String(role), selected]
+		if _specialist_visual_signatures.get(specialist_id, &"") != signature:
+			_specialist_visual_signatures[specialist_id] = signature
 			_clear_children(node)
 			_add_specialist(node, role)
+			if selected:
+				_add_selection_marker(node, 1, true)
 	_remove_absent_nodes(_specialist_nodes, _specialist_visual_signatures, seen)
 
 
@@ -634,6 +717,41 @@ func _add_specialist(parent: Node3D, role: StringName) -> void:
 		_add_box(parent, Vector3(6.0, 0.8, 1.2), Vector3(5.0, 5.0, 0), Color("74503a"), "Tool")
 
 
+func _add_selection_marker(parent: Node3D, member_count: int, specialist: bool) -> void:
+	# A deliberately elevated, depth-independent command pennant keeps the real
+	# actor discoverable when its truthful ground position is occluded by a city,
+	# camp, tree cluster, or bridge. It carries no simulation position or input.
+	var marker := Node3D.new()
+	marker.name = "SpecialistSelectionMarker" if specialist else "ArmySelectionMarker"
+	parent.add_child(marker)
+	var height := 44.0 if specialist else 52.0
+	_add_marker_box(marker, Vector3(1.4, height, 1.4), Vector3(0, height * 0.5, 0), Color("f7df7b"), "SelectionPole")
+	_add_marker_box(marker, Vector3(18.0, 9.0, 0.8), Vector3(9.5, height - 5.0, 0), Color("f7df7b") if specialist else Color("f4b94c"), "SelectionPennant")
+	var ring := CylinderMesh.new()
+	ring.top_radius = 14.0 if specialist else 18.0
+	ring.bottom_radius = ring.top_radius
+	ring.height = 0.7
+	ring.radial_segments = 24
+	var ring_instance := MeshInstance3D.new()
+	ring_instance.name = "SelectionRing"
+	ring_instance.mesh = ring
+	ring_instance.position = Vector3(0, 2.0, 0)
+	ring_instance.material_override = _overlay_material(Color("fff1a8", 0.92))
+	marker.add_child(ring_instance)
+	marker.set_meta("member_count", member_count)
+
+
+func _add_marker_box(parent: Node3D, mesh_size: Vector3, position: Vector3, color: Color, node_name: String) -> void:
+	var mesh := BoxMesh.new()
+	mesh.size = mesh_size
+	var instance := MeshInstance3D.new()
+	instance.name = node_name
+	instance.mesh = mesh
+	instance.position = position
+	instance.material_override = _overlay_material(color)
+	parent.add_child(instance)
+
+
 func _add_box(parent: Node3D, mesh_size: Vector3, position: Vector3, color: Color, node_name: String) -> void:
 	var mesh := BoxMesh.new()
 	mesh.size = mesh_size
@@ -679,6 +797,13 @@ func _material(color: Color, roughness: float) -> StandardMaterial3D:
 	material.roughness = roughness
 	material.metallic = 0.0
 	material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	return material
+
+
+func _overlay_material(color: Color) -> StandardMaterial3D:
+	var material := _material(color, 0.7)
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.no_depth_test = true
 	return material
 
 

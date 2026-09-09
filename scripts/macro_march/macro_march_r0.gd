@@ -1315,7 +1315,7 @@ func _sync_low_poly_presentation(model: Dictionary) -> void:
 	if not enabled:
 		return
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
-	_low_poly_presentation.sync(THEATER, model, field, _camera_center, _camera_zoom)
+	_low_poly_presentation.sync(THEATER, model, field, _camera_center, _camera_zoom, _selected_army_id, _selected_specialist_id)
 
 
 func _toggle_low_poly_presentation() -> void:
@@ -1550,6 +1550,10 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 		var selected := StringName(army.get("army_id", &"")) == _selected_army_id
 		canvas.draw_arc(screen, 20.0 if selected else 16.0, 0.0, TAU, 24, Color("fff2bf") if selected else Color("342b27", 0.72), 2.0, true)
 		canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-24, 31), "%d 人" % _army_member_count(army), HORIZONTAL_ALIGNMENT_CENTER, 48, 12, Color("fff0c5"))
+		if selected:
+			# The 3D pennant remains visible through occluding scenery; this overlay
+			# keeps the player-facing count tied to the same authoritative army.
+			canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-34, -31), "已选 · %d 人" % _army_member_count(army), HORIZONTAL_ALIGNMENT_CENTER, 68, 12, Color("fff4c4"))
 	for project_value in Dictionary(field.get("projects_by_id", {})).values():
 		var project: Dictionary = Dictionary(project_value)
 		if StringName(project.get("phase", &"")) == &"COMPLETE":

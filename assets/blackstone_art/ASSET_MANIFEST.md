@@ -10,9 +10,16 @@
 - License: CC0 1.0 Universal; the upstream license text is retained in
   `kenney_nature/License.txt` with whitespace normalized only so repository
   diff checks remain meaningful.
-- Modification: original GLBs are retained unmodified.  Runtime scale,
+- Modification: original GLBs are retained unmodified. Runtime scale,
   placement and presentation lighting are applied by
-  `MacroMarchLowPolyPresentation`.
+  `MacroMarchLowPolyPresentation`. At runtime, each imported mesh retains its
+  source surface layout, textures and render flags. The presentation creates
+  cached, per-kind/per-surface material variants only for Blackstone palette
+  colour and roughness: tree trunks and crowns remain separate, as do rock
+  light/dark facets. It does not use a whole-instance `material_override`.
+  After instancing, the transformed visible mesh's actual lowest bound is
+  settled onto the authoritative ground anchor; empty scene parents are not
+  treated as the contact point.
 
 | Game path | Upstream archive member | SHA-256 | Purpose |
 | --- | --- | --- | --- |

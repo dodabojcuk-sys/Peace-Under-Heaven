@@ -6,6 +6,7 @@ const THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
 
 var failures: Array[String] = []
 var assertions := 0
+var _scenario_seed_snapshot: Dictionary = {}
 
 
 func _initialize() -> void:
@@ -504,6 +505,15 @@ func _new_city(food_amount: int) -> Dictionary:
 	await process_frame
 	await process_frame
 	var city: Node = scene.get_node("ConstructionController")
+	# Each contract below issues production events. Restore one pristine snapshot
+	# before an independent scene so a dispatched formation, project, or patrol
+	# from an earlier contract cannot invalidate a later UI assertion.
+	if _scenario_seed_snapshot.is_empty():
+		_scenario_seed_snapshot = city.export_v5_campaign_snapshot()
+	else:
+		var restored: Dictionary = city.restore_v5_campaign_snapshot(_scenario_seed_snapshot.duplicate(true))
+		if not bool(restored.get("success", false)):
+			push_error("Macro March smoke could not restore its pristine scenario snapshot: %s" % str(restored))
 	city.set_process(false)
 	city.food = food_amount
 	return {"scene": scene, "city": city}

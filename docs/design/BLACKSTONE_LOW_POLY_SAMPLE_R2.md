@@ -59,6 +59,30 @@ no garrison changed owner.
   uses a road surface and bridge uses deck/rails. Bridge state visibly
   distinguishes deck, scaffold, and damaged break geometry.
 
+### Formal-art material and grounding policy
+
+The seven selected GLBs retain their imported mesh surfaces. The presentation
+does not assign one `material_override` to a whole tree or rock: it makes a
+cached material variant per declared asset kind and source surface, preserving
+the GLB's texture slots and render flags while harmonising trunk/crown and
+rock-facet colours with the Blackstone palette. Runtime instances are then
+settled by the transformed lowest visible mesh bound, rather than the imported
+scene root, so an authored GLB offset cannot leave a tree, rock or grass clump
+floating or buried beneath the horizontal ground.
+
+Forest floor patches, rock-ground variation, shallow bank strips, camp tents,
+palisades and campfires are presentation-only layers over existing theatre
+regions. They do not alter movement, water, fog, hidden patrol knowledge,
+forest ambush eligibility, or road availability. Roads are made visually wider
+only in the render layer; their authoritative polylines and input transform are
+unchanged.
+
+The selected army or specialist receives an elevated, depth-independent command
+pennant plus the existing 2D count/status overlay. This makes a truthful actor
+position discoverable when a gatehouse, camp, bridge or tree canopy visually
+occludes it. The marker has no game position, hit target, visibility knowledge,
+or simulation responsibility.
+
 ## Player information correction
 
 The city formation roster is an availability list, not a casualty report. Once
@@ -86,9 +110,14 @@ confirms switching 2D/3D does not mutate the campaign snapshot. Headless suites
 do not claim this rendering coverage.
 
 The graphical runner also asserts that all seven declared CC0 nature assets
-were instantiated at their world anchors, and that the gatehouse/watchtower
-assemblies exist; this checks the imported render tree rather than an empty
-parent node.
+were instantiated as visible, non-empty meshes; that their transformed bounds
+are grounded at the authoritative anchors with plausible size; that surface
+material partitioning is retained; and that their camera projection agrees with
+the clickable 2D map. It also checks the gatehouse/watchtower assemblies and
+selected army/specialist command markers rather than accepting an empty parent
+node. The runner logs a fixed 1280×720 30-frame process-time, draw-call,
+render-object and static-memory baseline for later comparison; because no
+matching pre-art measurement exists, that baseline is not an improvement claim.
 
 The sample 3D viewport was launched in a separate Godot process for visual
 inspection. It is render evidence only. The current desktop automation surface

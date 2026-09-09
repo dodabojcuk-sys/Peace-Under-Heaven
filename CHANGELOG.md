@@ -14,6 +14,30 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 Blackstone formal-art finish
+
+- Replaced whole-instance imported-GLB material overrides with cached
+  per-surface Blackstone variants. Source mesh partitions, texture slots and
+  render flags are retained, while trunks/crowns and rock facets receive
+  coordinated colours without mutating shared imports.
+- Settled selected GLBs by their transformed lowest visible mesh bound, added
+  restrained forest/rock ground variation and shallow riverbanks, expanded
+  camp silhouettes, and broadened presentation-only road/bridge decks. None of
+  these visual changes alter terrain, passability, fog, route geometry or save
+  authority.
+- Added depth-independent selected-army/specialist command pennants and
+  count/status overlays so a truthful actor remains locatable through gate,
+  camp, tree and bridge occlusion without moving it or revealing hidden facts.
+- Extended the graphical smoke to inspect actual non-empty imported meshes,
+  transformed bounds, ground contact, material partitions, screen/click
+  alignment, selected specialist markers, and a fixed 1280×720 render baseline.
+  The baseline is recorded for future comparison, not presented as a performance
+  gain.
+- Restored one pristine production V5 snapshot before each independent Macro
+  March UI-contract scene. This fixes same-process fixture leakage from prior
+  command/engineering scenarios without changing campaign persistence or
+  gameplay authority.
+
 ### FIELD_TACTICS_R2 Blackstone formal art checkpoint
 
 - Added seven selected CC0 Kenney Nature Kit GLB assets (three tree variants,
