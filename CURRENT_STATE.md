@@ -6,6 +6,19 @@
 
 ### Low-poly ground, engineering-plan and command-readability repair (current worktree)
 
+The first formal Blackstone art-integration checkpoint now uses seven selected
+CC0 GLB assets (three trees, three rocks and riverbank grass) from Kenney
+Nature Kit 2.1 in the render-only miniature layer. Their precise source,
+license, archive/file checksums and use boundary are recorded in
+`assets/blackstone_art/ASSET_MANIFEST.md`; only those selected source files are
+present, not the complete upstream archive. Chinese frontier city gates, tents
+and the Ridge Watch tower remain lightweight authored assemblies around the
+same authoritative anchors, using the generated gatehouse image only as a
+non-runtime visual reference. The non-headless graphical smoke now validates
+actual imported asset instances and anchors at the existing three review sizes.
+The two known R2 gameplay regressions remain open at this presentation
+checkpoint and are intentionally handled separately.
+
 The low-poly map now derives the established oblique screen projection from a
 horizontal XZ ground plane. World north/south coordinates no longer change
 model height; base-ground mesh normals are calculated from the actual geometry,
@@ -27,7 +40,7 @@ misleading map edge. See
 `docs/milestones/txwzs-field-tactics-r2/evidence/20260909-low-poly-readability-fix/`
 for inspected engine-viewport states and provenance.
 
-The graphical smoke has 11 assertions: existing projection, road transform,
+The graphical smoke has 12 assertions: existing projection, road transform,
 GUI route/engineering and mode-switch checks plus new horizontal-ground/normal
 and released-draft segmented-construction checks. This evidence uses Godot GUI
 events and engine viewport capture, not normal desktop input; the recording

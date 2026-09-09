@@ -42,9 +42,14 @@ no garrison changed owner.
 
 - A `SubViewport` holds an orthographic `Camera3D`, one directional light, and
   an isolated 3D world.
-- The scene uses only Godot built-in primitives (`BoxMesh`, `CylinderMesh`,
-  `SphereMesh`, and generated ground meshes) and `StandardMaterial3D`. No
-  third-party asset, generated model, or external texture is included.
+- The scene uses small authored Godot primitive assemblies for Chinese frontier
+  gates, camps, the watchtower, roads, bridges, units, and active construction.
+  The static forest, rocks, and riverbank grass instantiate seven selected GLB
+  files from Kenney Nature Kit 2.1 (CC0) through a small path mapping. The
+  upstream license, source archive checksum, selected-file checksums, and
+  modification boundary are recorded in `assets/blackstone_art/ASSET_MANIFEST.md`.
+  The generated gatehouse image in `docs/design/references/` is an internal
+  style reference only, not a runtime texture, model, or gameplay screenshot.
 - Cities, garrisons, trees, rocks, river surfaces, roads, bridges, armies,
   specialists, patrols, and active construction are rebuilt or updated from
   the authoritative read models. The presentation adds a horizontal overscan
@@ -79,6 +84,11 @@ handlers, verifies a released draft remains visible as `NORMAL → BRIDGE →
 NORMAL` construction, verifies a moving army updates its rendered node, and
 confirms switching 2D/3D does not mutate the campaign snapshot. Headless suites
 do not claim this rendering coverage.
+
+The graphical runner also asserts that all seven declared CC0 nature assets
+were instantiated at their world anchors, and that the gatehouse/watchtower
+assemblies exist; this checks the imported render tree rather than an empty
+parent node.
 
 The sample 3D viewport was launched in a separate Godot process for visual
 inspection. It is render evidence only. The current desktop automation surface

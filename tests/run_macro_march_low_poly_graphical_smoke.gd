@@ -20,6 +20,7 @@ func _initialize() -> void:
 func _run() -> void:
 	for viewport_size in [Vector2i(1152, 648), Vector2i(1280, 720), Vector2i(1920, 1080)]:
 		await _check_projection_at_size(viewport_size)
+	await _check_formal_art_assets()
 	await _check_dynamic_actor_and_mode_switch()
 	await _check_engineering_input()
 	_finish()
@@ -116,6 +117,34 @@ func _check_dynamic_actor_and_mode_switch() -> void:
 			and presentation.visible
 			and city.export_v5_campaign_snapshot() == snapshot_before_toggle,
 		"图形进程在低模模式接收鼠标绘线、确认军令并更新军队位置，二维/三维切换不重发军令或改写状态"
+	)
+	scene.queue_free()
+	await process_frame
+
+
+func _check_formal_art_assets() -> void:
+	root.size = Vector2i(1280, 720)
+	var scene := CITY_SCENE.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	scene.open_macro_march_r0()
+	await process_frame
+	var macro: MacroMarchR0 = scene.get_node("UI/MacroMarchR0")
+	var presentation: MacroMarchLowPolyPresentation = macro._low_poly_presentation
+	var asset_paths: Dictionary = {}
+	var anchors_match := true
+	for node in presentation._static_root.find_children("*", "Node3D", true, false):
+		if not node.has_meta("asset_path"):
+			continue
+		asset_paths[String(node.get_meta("asset_path"))] = true
+		var anchor := Vector2(node.get_meta("world_anchor", Vector2.INF))
+		anchors_match = anchors_match and node.global_position.distance_to(presentation._ground_position(anchor)) <= 0.001
+	var has_gatehouse := presentation._point_root.find_child("Gatehouse", true, false) != null
+	var has_watchtower := presentation._point_root.find_child("Watchtower", true, false) != null
+	_check(
+		asset_paths.size() == 7 and anchors_match and has_gatehouse and has_watchtower,
+		"图形进程实际实例化七项已登记 CC0 自然素材，并让城楼、瞭望台和素材锚点保持在权威战区坐标（素材=%d，锚点=%s，城楼=%s，瞭望=%s）" % [asset_paths.size(), anchors_match, has_gatehouse, has_watchtower]
 	)
 	scene.queue_free()
 	await process_frame

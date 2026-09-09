@@ -14,6 +14,22 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 Blackstone formal art checkpoint
+
+- Added seven selected CC0 Kenney Nature Kit GLB assets (three tree variants,
+  three rock variants, and one grass clump) to the render-only Blackstone
+  miniature layer.  The repository contains only the used files, their
+  upstream license, checksums, and a source manifest; no upstream asset pack
+  or generated-image runtime texture was added.
+- Refined the render-only city gate, wall, camp, and Ridge Watch assemblies
+  around their existing authoritative world anchors.  Forests, rock banks and
+  riverbanks now instantiate the selected GLBs during static rebuild rather
+  than during the frame update.
+- Extended the non-headless low-poly graphical smoke to prove selected asset
+  instances, authoritative ground anchors, a city gate, and the watchtower at
+  1152x648, 1280x720, and 1920x1080.  The two known gameplay regressions are
+  intentionally tracked in a separate follow-up checkpoint.
+
 ### FIELD_TACTICS_R2 low-poly Blackstone sample
 
 - Replaced the camera-up-plane ground mapping with a horizontal XZ mapping that

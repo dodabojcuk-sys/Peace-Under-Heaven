@@ -11,6 +11,15 @@ const OBLIQUE_Y_SCALE := 0.72
 const CAMERA_YAW := -atan(OBLIQUE_X_SKEW)
 const CAMERA_PITCH := deg_to_rad(47.0)
 const CAMERA_DISTANCE := 1200.0
+const NATURE_ASSET_PATHS := {
+	&"TREE_BROADLEAF": "res://assets/blackstone_art/kenney_nature/tree_default.glb",
+	&"TREE_PINE": "res://assets/blackstone_art/kenney_nature/tree_pineRoundA.glb",
+	&"TREE_DARK": "res://assets/blackstone_art/kenney_nature/tree_cone_dark.glb",
+	&"ROCK_WIDE": "res://assets/blackstone_art/kenney_nature/rock_largeA.glb",
+	&"ROCK_LOW": "res://assets/blackstone_art/kenney_nature/rock_largeC.glb",
+	&"ROCK_TALL": "res://assets/blackstone_art/kenney_nature/rock_tallB.glb",
+	&"GRASS": "res://assets/blackstone_art/kenney_nature/grass_leafsLarge.glb",
+}
 
 var _viewport := SubViewport.new()
 var _texture := TextureRect.new()
@@ -33,6 +42,7 @@ var _specialist_nodes: Dictionary = {}
 var _specialist_visual_signatures: Dictionary = {}
 var _patrol_nodes: Dictionary = {}
 var _patrol_visual_signatures: Dictionary = {}
+var _nature_scenes: Dictionary = {}
 
 
 func _ready() -> void:
@@ -193,6 +203,7 @@ func _rebuild_static_theater() -> void:
 			&"WATER":
 				_add_ground_quad(_static_root, terrain_rect, Color(palette.get("water_color", Color("438bb2"))), 0.18, "River")
 				_add_water_reeds(terrain_rect)
+				_add_riverbank_detail(terrain_rect)
 			&"FOREST":
 				_add_forest_patch(terrain_rect)
 			&"ROCKS":
@@ -236,17 +247,21 @@ func _add_forest_patch(rect: Rect2) -> void:
 	]:
 		if offset.x > rect.size.x - 8.0 or offset.y > rect.size.y - 8.0:
 			continue
-		_add_tree(patch, rect.position + offset, 0.74 + fmod(offset.x, 3.0) * 0.1)
+		var kinds := [&"TREE_BROADLEAF", &"TREE_PINE", &"TREE_DARK"]
+		_add_tree(patch, rect.position + offset, 0.74 + fmod(offset.x, 3.0) * 0.1, kinds[int(offset.x) % kinds.size()])
 
 
 func _add_rock_patch(rect: Rect2) -> void:
 	var rocks := Node3D.new()
 	rocks.name = "Rocks"
 	_static_root.add_child(rocks)
-	for offset in [Vector2(28, 34), Vector2(76, 58), Vector2(116, 28), Vector2(148, 74), Vector2(52, 95)]:
+	var offsets := [Vector2(28, 34), Vector2(76, 58), Vector2(116, 28), Vector2(148, 74), Vector2(52, 95)]
+	var kinds := [&"ROCK_WIDE", &"ROCK_LOW", &"ROCK_TALL"]
+	for index in range(offsets.size()):
+		var offset: Vector2 = offsets[index]
 		if offset.x > rect.size.x - 8.0 or offset.y > rect.size.y - 8.0:
 			continue
-		_add_rock(rocks, rect.position + offset, 7.0 + fmod(offset.x, 6.0))
+		_add_rock(rocks, rect.position + offset, 7.0 + fmod(offset.x, 6.0), kinds[index % kinds.size()])
 
 
 func _add_water_reeds(rect: Rect2) -> void:
@@ -259,7 +274,23 @@ func _add_water_reeds(rect: Rect2) -> void:
 			_add_box(reeds, Vector3(1.2, 7.0, 1.2), _ground_position(point, 3.5), Color("8a984d"), "Reed")
 
 
-func _add_tree(parent: Node3D, world_position: Vector2, scale: float) -> void:
+func _add_riverbank_detail(rect: Rect2) -> void:
+	# These visual-only instances sit just outside the authoritative water region.
+	# They improve shore readability without altering traversal geometry or fog.
+	var bank := Node3D.new()
+	bank.name = "RiverbankArt"
+	_static_root.add_child(bank)
+	for ratio in [0.14, 0.42, 0.70, 0.88]:
+		var y := lerpf(rect.position.y, rect.end.y, ratio)
+		_add_nature_asset(bank, &"GRASS", Vector2(rect.position.x - 11.0, y), 26.0, 0.0, "RiverbankGrass")
+		_add_nature_asset(bank, &"GRASS", Vector2(rect.end.x + 11.0, y + 8.0), 22.0, 0.35, "RiverbankGrass")
+	for point in [Vector2(rect.position.x - 18.0, rect.position.y + 22.0), Vector2(rect.end.x + 18.0, rect.end.y - 25.0)]:
+		_add_nature_asset(bank, &"ROCK_LOW", point, 15.0, 0.0, "RiverbankRock")
+
+
+func _add_tree(parent: Node3D, world_position: Vector2, scale: float, nature_kind: StringName) -> void:
+	if _add_nature_asset(parent, nature_kind, world_position, 23.0 * scale, fmod(world_position.x, 3.0) * 0.38, "ArtTree"):
+		return
 	var tree := Node3D.new()
 	tree.name = "Tree"
 	tree.position = _ground_position(world_position)
@@ -269,7 +300,9 @@ func _add_tree(parent: Node3D, world_position: Vector2, scale: float) -> void:
 	_add_cylinder(tree, 0.0, 5.6 * scale, 12.0 * scale, Vector3(0, 25.0 * scale, 0), Color("517443"), 7, "CrownTop")
 
 
-func _add_rock(parent: Node3D, world_position: Vector2, radius: float) -> void:
+func _add_rock(parent: Node3D, world_position: Vector2, radius: float, nature_kind: StringName) -> void:
+	if _add_nature_asset(parent, nature_kind, world_position, radius * 3.6, fmod(world_position.y, 4.0) * 0.25, "ArtRock"):
+		return
 	var mesh := SphereMesh.new()
 	mesh.radial_segments = 6
 	mesh.rings = 3
@@ -282,6 +315,52 @@ func _add_rock(parent: Node3D, world_position: Vector2, radius: float) -> void:
 	instance.scale = Vector3(1.18, 0.72, 0.9)
 	instance.material_override = _material(Color("756f61"), 1.0)
 	parent.add_child(instance)
+
+
+func _add_nature_asset(parent: Node3D, asset_kind: StringName, world_position: Vector2, visual_scale: float, yaw: float, node_name: String) -> bool:
+	var path := String(NATURE_ASSET_PATHS.get(asset_kind, ""))
+	if path.is_empty():
+		return false
+	var scene: PackedScene = _nature_scenes.get(asset_kind, null)
+	if scene == null:
+		scene = load(path) as PackedScene
+		if scene == null:
+			return false
+		_nature_scenes[asset_kind] = scene
+	var instance := scene.instantiate() as Node3D
+	if instance == null:
+		return false
+	instance.name = node_name
+	instance.position = _ground_position(world_position)
+	instance.scale = Vector3.ONE * visual_scale
+	instance.rotation.y = yaw
+	instance.set_meta("asset_path", path)
+	instance.set_meta("world_anchor", world_position)
+	var tint := _nature_tint(asset_kind)
+	for child in instance.find_children("*", "MeshInstance3D", true, false):
+		var mesh_instance := child as MeshInstance3D
+		mesh_instance.material_override = _material(tint, 0.96)
+	parent.add_child(instance)
+	return true
+
+
+func _nature_tint(asset_kind: StringName) -> Color:
+	match asset_kind:
+		&"TREE_BROADLEAF":
+			return Color("3e7445")
+		&"TREE_PINE":
+			return Color("285b45")
+		&"TREE_DARK":
+			return Color("234438")
+		&"ROCK_WIDE":
+			return Color("6f7269")
+		&"ROCK_LOW":
+			return Color("83796a")
+		&"ROCK_TALL":
+			return Color("665f57")
+		&"GRASS":
+			return Color("6f9040")
+	return Color.WHITE
 
 
 func _rebuild_roads(roads: Dictionary) -> void:
@@ -354,7 +433,7 @@ func _rebuild_points(model: Dictionary, field: Dictionary) -> void:
 		if kind == &"ENEMY_CITY" or point_id in [&"blackstone_city", &"redcliff_city", &"silverford_city"]:
 			_add_city(_point_root, position, controller != &"player")
 		else:
-			_add_garrison(_point_root, position, bool(point.get("camp_id", false)))
+			_add_garrison(_point_root, position, bool(point.get("camp_id", false)), point_id)
 
 
 func _add_city(parent: Node3D, position: Vector2, enemy: bool) -> void:
@@ -362,27 +441,37 @@ func _add_city(parent: Node3D, position: Vector2, enemy: bool) -> void:
 	city.name = "EnemyCity" if enemy else "FriendlyCity"
 	city.position = _ground_position(position, 0.8)
 	parent.add_child(city)
-	var wall_color := Color("6b3f3a") if enemy else Color("6a6654")
-	var roof_color := Color("71372f") if enemy else Color("38515e")
+	var wall_color := Color("78504a") if enemy else Color("777467")
+	var roof_color := Color("71372f") if enemy else Color("274c55")
 	var banner_color := Color("bf4e41") if enemy else Color("ddb550")
-	_add_box(city, Vector3(66.0, 18.0, 22.0), Vector3(0, 9.0, 0), wall_color, "Wall")
+	# An authored gatehouse follows the local Chinese frontier reference silhouette,
+	# while remaining a lightweight assembly at the authoritative city anchor.
+	_add_box(city, Vector3(78.0, 8.0, 38.0), Vector3(0, 4.0, 0), Color("55534d"), "WallFoot")
+	_add_box(city, Vector3(68.0, 19.0, 24.0), Vector3(0, 17.5, 0), wall_color, "Wall")
 	for x in [-27.0, 27.0]:
-		_add_box(city, Vector3(15.0, 31.0, 15.0), Vector3(x, 15.5, 0), wall_color, "Tower")
-		_add_cylinder(city, 0.0, 11.0, 11.0, Vector3(x, 36.0, 0), roof_color, 4, "TowerRoof")
-	_add_box(city, Vector3(19.0, 13.0, 4.0), Vector3(0, 6.5, -12.5), Color("2e2724"), "Gate")
-	_add_box(city, Vector3(2.0, 39.0, 2.0), Vector3(12.0, 34.5, 0), Color("332d29"), "FlagPole")
-	_add_box(city, Vector3(14.0, 8.0, 1.0), Vector3(19.0, 47.0, 0), banner_color, "Flag")
+		_add_box(city, Vector3(17.0, 35.0, 18.0), Vector3(x, 25.5, 0), wall_color, "Tower")
+		_add_cylinder(city, 0.0, 15.0, 10.0, Vector3(x, 48.0, 0), roof_color, 4, "TowerRoof")
+	_add_box(city, Vector3(25.0, 16.0, 5.0), Vector3(0, 11.0, -14.5), Color("292725"), "Gate")
+	_add_box(city, Vector3(46.0, 17.0, 25.0), Vector3(0, 45.0, 0), Color("74492f"), "Gatehouse")
+	_add_box(city, Vector3(58.0, 3.0, 33.0), Vector3(0, 55.0, 0), roof_color, "RoofEave")
+	_add_cylinder(city, 0.0, 32.0, 13.0, Vector3(0, 62.5, 0), roof_color, 4, "GatehouseRoof")
+	_add_box(city, Vector3(2.0, 53.0, 2.0), Vector3(15.0, 38.5, 0), Color("332d29"), "FlagPole")
+	_add_box(city, Vector3(16.0, 9.0, 1.0), Vector3(23.0, 56.0, 0), banner_color, "Flag")
 
 
-func _add_garrison(parent: Node3D, position: Vector2, is_runtime_camp: bool) -> void:
+func _add_garrison(parent: Node3D, position: Vector2, is_runtime_camp: bool, point_id: StringName) -> void:
 	var camp := Node3D.new()
 	camp.name = "RuntimeCamp" if is_runtime_camp else "Garrison"
 	camp.position = _ground_position(position, 0.4)
 	parent.add_child(camp)
 	_add_cylinder(camp, 0.0, 12.0, 15.0, Vector3(-7, 7.5, 2), Color("ded3ae"), 4, "Tent")
 	_add_cylinder(camp, 0.0, 9.0, 12.0, Vector3(10, 6.0, -4), Color("b8965f"), 4, "Tent")
+	_add_box(camp, Vector3(32.0, 2.5, 2.5), Vector3(0, 4.0, 14), Color("684b34"), "CampPalisade")
 	_add_box(camp, Vector3(2.0, 27.0, 2.0), Vector3(8, 14.0, 8), Color("49372b"), "FlagPole")
 	_add_box(camp, Vector3(11.0, 6.0, 1.0), Vector3(14.0, 22.0, 8), Color("ddb550"), "Flag")
+	if point_id == &"ridge_watch":
+		_add_box(camp, Vector3(15.0, 25.0, 15.0), Vector3(-17.0, 12.5, -5.0), Color("6a5039"), "Watchtower")
+		_add_box(camp, Vector3(25.0, 3.0, 25.0), Vector3(-17.0, 26.0, -5.0), Color("304e55"), "WatchtowerRoof")
 
 
 func _sync_armies(armies: Array) -> void:
