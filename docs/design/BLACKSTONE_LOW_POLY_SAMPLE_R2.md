@@ -82,10 +82,15 @@ unchanged.
 
 The selected army or specialist receives an elevated, depth-independent command
 pennant plus the existing hollow 2D selection ring and count/status overlay.
-This replaces the former opaque 3D ground disc, so an occluded truthful actor
-is discoverable without covering its troop, specialist or building model. The
-marker has no game position, hit target, visibility knowledge, or simulation
-responsibility.
+For a selected living scout or engineer, the transparent map canvas reads the
+authoritative specialist `world_position` and existing map projection to draw
+two hollow rings and a short role/phase label above any occluding gate, camp,
+tree, or bridge. A specialist selection suppresses the army's competing
+selected count/pennant, so the current command subject remains unambiguous;
+unselected armies keep a single compact member count. At a shared city anchor,
+successive normal map clicks cycle scout, engineer, then army. This replaces the
+former opaque 3D ground disc without adding a game position, hit target,
+visibility knowledge, or simulation responsibility.
 
 ## Player information correction
 
@@ -118,9 +123,10 @@ were instantiated as visible, non-empty meshes; that their transformed bounds
 are grounded at the authoritative anchors with plausible size; that surface
 material partitioning is retained and their runtime variants are non-metallic;
 and that their camera projection agrees with the clickable 2D map. It also
-checks the gatehouse/watchtower assemblies and selected army/specialist command
-pennants in combination with the existing hollow selection ring rather than
-accepting an empty parent node or opaque disc. The runner logs a fixed 1280×720 30-frame process-time, draw-call,
+uses GUI mouse events to select a moving army and both same-gate specialist
+roles, comparing whole-viewport image changes for their final overlays and
+right-click cancellation; an internal selected ID or an absent opaque disc does
+not stand in for that evidence. The runner logs a fixed 1280×720 30-frame process-time, draw-call,
 render-object and static-memory baseline for later comparison; because no
 matching pre-art measurement exists, that baseline is not an improvement claim.
 

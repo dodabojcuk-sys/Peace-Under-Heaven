@@ -32,6 +32,8 @@ var _selected_damaged_road_id: StringName = &""
 var _selected_interrupted_project_id: StringName = &""
 var _last_army_hit_position := Vector2.INF
 var _army_hit_cycle_index := 0
+var _last_specialist_hit_position := Vector2.INF
+var _specialist_hit_cycle_index := 0
 var _formation_buttons: Array[Button] = []
 var _formation_signature := ""
 # Start on the authored playable segment (gate, river and forest garrison),
@@ -300,6 +302,19 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		_detail_label.text = "侦察兵待命\n当前位置：%s\n尚未下达移动命令；取消不会产生新的资源事务。" % _point_display_name(
 			model, StringName(scout.get("current_point_id", &"")), "野外"
 		)
+		return
+	var selected_specialist := Dictionary(specialists.get(_selected_specialist_id, {}))
+	if not selected_specialist.is_empty() and bool(selected_specialist.get("alive", false)):
+		_confirm_button.visible = false
+		_block_button.visible = false
+		_recover_button.visible = false
+		_retreat_button.visible = false
+		var specialist_role := _specialist_role_label(selected_specialist)
+		var specialist_phase := _specialist_phase_label(selected_specialist)
+		var current_name := _point_display_name(model, StringName(selected_specialist.get("current_point_id", &"")), "野外")
+		var target_name := _point_display_name(model, StringName(selected_specialist.get("target_point_id", &"")), current_name)
+		_status_label.text = "已选%s：%s" % [specialist_role, specialist_phase]
+		_detail_label.text = "当前选择：%s\n状态：%s\n当前位置：%s\n任务目标：%s" % [specialist_role, specialist_phase, current_name, target_name]
 		return
 	var source_id := _source_point_id(model, army)
 	var source := _point_from_model(model, source_id)
@@ -591,9 +606,13 @@ func _on_gui_input(event: InputEvent) -> void:
 			accept_event()
 			return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		if _scout_target_mode or not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty() or _selected_damaged_road_id != &"":
+		if _scout_target_mode or not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty() or _selected_damaged_road_id != &"" or _selected_specialist_id != &"":
+			var had_specialist_selection := _selected_specialist_id != &""
+			var had_scout_target_mode := _scout_target_mode
 			_scout_target_mode = false
-			_selected_scout_id = &""
+			if had_specialist_selection or had_scout_target_mode:
+				_selected_specialist_id = &""
+				_selected_scout_id = &""
 			_draft_route = {}
 			_engineering_draft = {}
 			_engineering_mode = false
@@ -601,8 +620,8 @@ func _on_gui_input(event: InputEvent) -> void:
 			_engineering_source_point_id = &""
 			_selected_damaged_road_id = &""
 			_draw_points.clear()
-			_status_label.text = "路线草稿已取消；没有资源、编队或军令写入。"
-			queue_redraw()
+			_status_label.text = "已取消当前专员选择；没有资源、编队或军令写入。" if had_specialist_selection else "路线草稿已取消；没有资源、编队或军令写入。"
+			refresh()
 			accept_event()
 		return
 	if not event is InputEventMouseButton or event.button_index != MOUSE_BUTTON_LEFT:
@@ -678,6 +697,7 @@ func _on_gui_input(event: InputEvent) -> void:
 		if specialist_id != &"" and specialist_id != _selected_specialist_id:
 			var selected_specialist := Dictionary(_dispatch_adapter.get_field_tactics_read_model().get("specialists_by_id", {}).get(specialist_id, {}))
 			_selected_specialist_id = specialist_id
+			_selected_formation_ids.clear()
 			if StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT:
 				_selected_scout_id = specialist_id
 			_status_label.text = "已选中%s；右栏操作将优先作用于该专家。" % ("侦察兵" if StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else "工程师")
@@ -744,21 +764,21 @@ func _reset_camera_overview() -> void:
 
 func _focus_selected_subject() -> void:
 	var model := _model()
-	var army := _selected_army(model)
-	if not army.is_empty():
-		var display_route := _display_route_for_army(army)
-		_camera_center = _point_along_route(
-			Array(display_route.get("points", [])),
-			float(display_route.get("progress_millis", 0)) / maxf(float(display_route.get("total_millis", 1)), 1.0)
-		)
-	elif _selected_specialist_id != &"":
+	if _selected_specialist_id != &"":
 		var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
 		var specialist := Dictionary(Dictionary(field.get("specialists_by_id", {})).get(_selected_specialist_id, {}))
 		if specialist.is_empty():
 			return
 		_camera_center = Vector2(specialist.get("world_position", _camera_center))
 	else:
-		return
+		var army := _selected_army(model)
+		if army.is_empty():
+			return
+		var display_route := _display_route_for_army(army)
+		_camera_center = _point_along_route(
+			Array(display_route.get("points", [])),
+			float(display_route.get("progress_millis", 0)) / maxf(float(display_route.get("total_millis", 1)), 1.0)
+		)
 	_camera_zoom = maxf(_camera_zoom, 0.9)
 	_clamp_camera()
 	_status_label.text = "镜头已聚焦选中对象；可继续绘线或用全图复位返回概览。"
@@ -937,22 +957,44 @@ func _dispatch_scout() -> void:
 
 
 func _refresh_selected_specialist_status(specialists: Dictionary, model: Dictionary) -> void:
-	if _selected_scout_id == &"":
-		_specialist_status_label.text = "侦察：未选择"
+	var specialist_id := _selected_specialist_id if _selected_specialist_id != &"" else _selected_scout_id
+	if specialist_id == &"":
+		_specialist_status_label.text = "专员：未选择"
 		return
-	var specialist := Dictionary(specialists.get(_selected_scout_id, {}))
+	var specialist := Dictionary(specialists.get(specialist_id, {}))
 	if specialist.is_empty() or not bool(specialist.get("alive", false)):
-		_specialist_status_label.text = "侦察：%s 已阵亡或失联，可从城市重新派遣。" % String(_selected_scout_id)
+		_specialist_status_label.text = "专员：%s 已阵亡或失联，可从城市重新派遣。" % String(specialist_id)
 		return
+	var role_label := _specialist_role_label(specialist)
 	var phase := StringName(specialist.get("phase", &""))
 	var current := _point_from_model(model, StringName(specialist.get("current_point_id", &"")))
 	var target := _point_from_model(model, StringName(specialist.get("target_point_id", &"")))
-	if _scout_target_mode:
-		_specialist_status_label.text = "侦察：%s 待命，等待地图目标。" % str(current.get("display_name", "当前位置"))
+	if _scout_target_mode and StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT:
+		_specialist_status_label.text = "%s：待命于%s，等待地图目标。" % [role_label, str(current.get("display_name", "当前位置"))]
 	elif phase == FieldTacticsState.SPECIALIST_MOVING:
-		_specialist_status_label.text = "侦察：在途 → %s" % str(target.get("display_name", specialist.get("target_point_id", "目标")))
+		_specialist_status_label.text = "%s：在途 → %s" % [role_label, str(target.get("display_name", specialist.get("target_point_id", "目标")))]
 	else:
-		_specialist_status_label.text = "侦察：已抵达 %s，等待下一项安排。" % str(current.get("display_name", specialist.get("current_point_id", "当前位置")))
+		_specialist_status_label.text = "%s：%s · %s" % [role_label, _specialist_phase_label(specialist), str(current.get("display_name", specialist.get("current_point_id", "当前位置")))]
+
+
+func _specialist_role_label(specialist: Dictionary) -> String:
+	return "侦察兵" if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else "工程师"
+
+
+func _specialist_phase_label(specialist: Dictionary) -> String:
+	match StringName(specialist.get("phase", &"")):
+		FieldTacticsState.SPECIALIST_MOVING:
+			return "在途"
+		FieldTacticsState.SPECIALIST_BUILDING:
+			return "施工中"
+		FieldTacticsState.SPECIALIST_REPAIRING:
+			return "维修中"
+		FieldTacticsState.SPECIALIST_BLOCKED:
+			return "受阻等待"
+		FieldTacticsState.SPECIALIST_LOST:
+			return "已失联"
+		_:
+			return "待命"
 
 
 func _dispatch_engineer() -> void:
@@ -1053,13 +1095,28 @@ func _damaged_road_id_at_screen(field: Dictionary, screen_position: Vector2) -> 
 func _specialist_id_at_screen(field: Dictionary, screen_position: Vector2) -> StringName:
 	var specialist_ids: Array = Dictionary(field.get("specialists_by_id", {})).keys()
 	specialist_ids.sort()
+	var hits: Array[StringName] = []
 	for specialist_id_value in specialist_ids:
 		var specialist: Dictionary = Dictionary(field.specialists_by_id[specialist_id_value])
 		if not bool(specialist.get("alive", false)):
 			continue
 		if _world_to_screen(Vector2(specialist.get("world_position", Vector2.ZERO))).distance_to(screen_position) <= 18.0:
-			return StringName(specialist_id_value)
-	return &""
+			hits.append(StringName(specialist_id_value))
+	if hits.is_empty():
+		_last_specialist_hit_position = Vector2.INF
+		_specialist_hit_cycle_index = 0
+		return &""
+	if screen_position.distance_to(_last_specialist_hit_position) <= 6.0:
+		# Reserve one step after every specialist for the army beneath them.  A
+		# city may contain an army, a scout, and an engineer at the same anchor;
+		# none should become unreachable through normal map input.
+		_specialist_hit_cycle_index = posmod(_specialist_hit_cycle_index + 1, hits.size() + 1)
+	else:
+		_last_specialist_hit_position = screen_position
+		_specialist_hit_cycle_index = 0
+	if _specialist_hit_cycle_index >= hits.size():
+		return &""
+	return hits[_specialist_hit_cycle_index]
 
 
 func _can_draw_route() -> bool:
@@ -1315,7 +1372,10 @@ func _sync_low_poly_presentation(model: Dictionary) -> void:
 	if not enabled:
 		return
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
-	_low_poly_presentation.sync(THEATER, model, field, _camera_center, _camera_zoom, _selected_army_id, _selected_specialist_id)
+	# A map interaction has one current subject. Do not retain an army's 3D
+	# command pennant while a specialist is selected at the same gate or camp.
+	var presentation_army_id := &"" if _selected_specialist_id != &"" else _selected_army_id
+	_low_poly_presentation.sync(THEATER, model, field, _camera_center, _camera_zoom, presentation_army_id, _selected_specialist_id)
 
 
 func _toggle_low_poly_presentation() -> void:
@@ -1547,13 +1607,15 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 			continue
 		var progress := float(display_route.get("progress_millis", 0)) / maxf(float(display_route.get("total_millis", 1)), 1.0)
 		var screen := _world_to_screen(_point_along_route(points, progress))
-		var selected := StringName(army.get("army_id", &"")) == _selected_army_id
+		var selected := _selected_specialist_id == &"" and StringName(army.get("army_id", &"")) == _selected_army_id
 		canvas.draw_arc(screen, 20.0 if selected else 16.0, 0.0, TAU, 24, Color("fff2bf") if selected else Color("342b27", 0.72), 2.0, true)
-		canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-24, 31), "%d 人" % _army_member_count(army), HORIZONTAL_ALIGNMENT_CENTER, 48, 12, Color("fff0c5"))
 		if selected:
 			# The 3D pennant remains visible through occluding scenery; this overlay
 			# keeps the player-facing count tied to the same authoritative army.
 			canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-34, -31), "已选 · %d 人" % _army_member_count(army), HORIZONTAL_ALIGNMENT_CENTER, 68, 12, Color("fff4c4"))
+		else:
+			canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-24, 31), "%d 人" % _army_member_count(army), HORIZONTAL_ALIGNMENT_CENTER, 48, 12, Color("fff0c5"))
+	_draw_selected_specialist_overlay(canvas, field)
 	for project_value in Dictionary(field.get("projects_by_id", {})).values():
 		var project: Dictionary = Dictionary(project_value)
 		if StringName(project.get("phase", &"")) == &"COMPLETE":
@@ -1579,6 +1641,21 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 		_draw_point_label(canvas, rect, center, str(point.get("display_name", "据点")), 92, Color("fff4d3"))
 	canvas.draw_rect(rect, Color("e7d7a8", 0.92), false, 2.0)
 	_draw_minimap(canvas)
+
+
+func _draw_selected_specialist_overlay(canvas: Control, field: Dictionary) -> void:
+	if _selected_specialist_id == &"":
+		return
+	var specialist := Dictionary(Dictionary(field.get("specialists_by_id", {})).get(_selected_specialist_id, {}))
+	if specialist.is_empty() or not bool(specialist.get("alive", false)):
+		return
+	var screen := _world_to_screen(Vector2(specialist.get("world_position", Vector2.ZERO)))
+	var scout := StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT
+	var accent := Color("73d7ed") if scout else Color("f2b86e")
+	canvas.draw_arc(screen, 19.0, 0.0, TAU, 28, accent, 3.0, true)
+	canvas.draw_arc(screen, 23.0, 0.0, TAU, 28, Color("fff4d3", 0.88), 1.5, true)
+	var label := "已选·%s·%s" % [_specialist_role_label(specialist), _specialist_phase_label(specialist)]
+	canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-58, -31), label, HORIZONTAL_ALIGNMENT_CENTER, 116, 12, Color("fff4d3"))
 
 
 func _draw_engineering_draft_overlay(canvas: Control, rect: Rect2) -> void:

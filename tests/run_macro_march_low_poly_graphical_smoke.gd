@@ -23,6 +23,7 @@ func _run() -> void:
 	await _check_formal_art_assets()
 	await _record_render_baseline()
 	await _check_dynamic_actor_and_mode_switch()
+	await _check_gui_specialist_selection_overlays()
 	await _check_engineering_input()
 	_finish()
 
@@ -303,6 +304,150 @@ func _check_engineering_input() -> void:
 	)
 	scene.queue_free()
 	await process_frame
+
+
+func _check_gui_specialist_selection_overlays() -> void:
+	root.size = Vector2i(1152, 648)
+	var scene := CITY_SCENE.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var city: Node = scene.get_node("ConstructionController")
+	city.food = 80
+	scene.open_macro_march_r0()
+	await process_frame
+	var macro: MacroMarchR0 = scene.get_node("UI/MacroMarchR0")
+	# Build a real marching subject first, then select it through the map input
+	# after it has left the city gate.  Specialist dispatch is fixture setup;
+	# every selection below uses the same GUI event entrypoint as a player.
+	var route: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
+	var formation_id := StringName(Dictionary(city.get_formation_roster().front()).get("formation_id", &""))
+	macro._selected_formation_ids = [formation_id]
+	_draw_route_with_gui(macro, Array(route.get("points", [])))
+	macro._confirm_button.emit_signal("pressed")
+	macro.refresh()
+	var army: Dictionary = Dictionary(macro._selected_army(macro._model()))
+	var army_id := StringName(army.get("army_id", &""))
+	var order: Dictionary = Dictionary(army.get("macro_march", {}))
+	city.advance_macro_march_time(army_id, StringName(order.get("order_id", &"")), 0, 1000)
+	macro.refresh()
+	# The issued command is fixture state.  Clear only the view selection before
+	# using map GUI input to select the real marching army again.
+	macro._selected_formation_ids.clear()
+	macro._selected_army_id = &""
+	var marching_army := Dictionary(Array(macro._model().get("armies", [])).front())
+	var army_position := _army_screen_position(macro, marching_army)
+	var before_army_selection := await _capture_viewport_image()
+	_click_map(macro, army_position, MOUSE_BUTTON_LEFT)
+	await process_frame
+	var army_selection := await _capture_viewport_image()
+	var army_overlay_pixels := _changed_pixels(before_army_selection, army_selection, Rect2(army_position - Vector2(56, 46), Vector2(112, 76)))
+	var selected_army_after_click := macro._selected_army_id
+	var army_selected := selected_army_after_click == army_id and macro._selected_specialist_id == &"" and army_overlay_pixels > 30
+	var scout_dispatch: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_SCOUT)
+	var engineer_dispatch: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var scout_id := StringName(Dictionary(scout_dispatch.get("specialist", {})).get("specialist_id", &""))
+	var engineer_id := StringName(Dictionary(engineer_dispatch.get("specialist", {})).get("specialist_id", &""))
+	macro.refresh()
+	var city_position := macro._world_to_screen(Vector2(THEATER.get_point(&"blackstone_city").get("world_position", Vector2.ZERO)))
+	var before_selection := await _capture_viewport_image()
+	_click_map(macro, city_position, MOUSE_BUTTON_LEFT)
+	await process_frame
+	var first_specialist_selection := await _capture_viewport_image()
+	var first_specialist_id := macro._selected_specialist_id
+	var first_specialist: Dictionary = Dictionary(city.get_field_tactics_read_model().get("specialists_by_id", {}).get(first_specialist_id, {}))
+	var first_role := "侦察兵" if StringName(first_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else "工程师"
+	var first_selected := first_specialist_id in [scout_id, engineer_id] and macro._detail_label.text.contains("当前选择：%s" % first_role) and macro._specialist_status_label.text.begins_with(first_role)
+	_click_map(macro, city_position, MOUSE_BUTTON_LEFT)
+	await process_frame
+	var second_specialist_selection := await _capture_viewport_image()
+	var second_specialist_id := macro._selected_specialist_id
+	var second_specialist: Dictionary = Dictionary(city.get_field_tactics_read_model().get("specialists_by_id", {}).get(second_specialist_id, {}))
+	var second_role := "侦察兵" if StringName(second_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else "工程师"
+	var second_selected := second_specialist_id in [scout_id, engineer_id] and second_specialist_id != first_specialist_id and macro._detail_label.text.contains("当前选择：%s" % second_role) and macro._specialist_status_label.text.begins_with(second_role)
+	_click_map(macro, city_position, MOUSE_BUTTON_RIGHT)
+	await process_frame
+	var cleared_selection := await _capture_viewport_image()
+	var selection_rect := Rect2(city_position - Vector2(72, 56), Vector2(144, 92))
+	var first_overlay_pixels := _changed_pixels(before_selection, first_specialist_selection, selection_rect)
+	var second_overlay_pixels := _changed_pixels(first_specialist_selection, second_specialist_selection, selection_rect)
+	var cleared_overlay_pixels := _changed_pixels(second_specialist_selection, cleared_selection, selection_rect)
+	var specialist_markers_cleared := true
+	for specialist_node_value in macro._low_poly_presentation._specialist_nodes.values():
+		var specialist_node := specialist_node_value as Node3D
+		if specialist_node != null and specialist_node.find_child("SpecialistSelectionMarker", true, false) != null:
+			specialist_markers_cleared = false
+	var cleared := macro._selected_specialist_id == &"" and macro._specialist_status_label.text == "专员：未选择" and specialist_markers_cleared
+	_check(
+		bool(scout_dispatch.get("success", false))
+			and bool(engineer_dispatch.get("success", false))
+			and army_selected
+			and first_selected
+			and second_selected
+			and [first_role, second_role].has("侦察兵")
+			and [first_role, second_role].has("工程师")
+			and cleared
+			and first_overlay_pixels > 30
+			and second_overlay_pixels > 30
+			and cleared_overlay_pixels > 30,
+		"图形进程通过 GUI 鼠标事件依次选中军队、同城侦察兵与工程师，并从完整界面截图确认低模二维空心圈/角色状态提示出现与取消（军队=%d，%s=%d，%s=%d，取消=%d 像素变化）；不以私有选中 ID 或没有 SelectionRing 网格代替交互证据" % [army_overlay_pixels, first_role, first_overlay_pixels, second_role, second_overlay_pixels, cleared_overlay_pixels]
+	)
+	scene.queue_free()
+	await process_frame
+
+
+func _draw_route_with_gui(macro: MacroMarchR0, points: Array) -> void:
+	if points.is_empty():
+		return
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = macro._world_to_screen(Vector2(points.front()))
+	macro._on_gui_input(press)
+	for point_value in points.slice(1):
+		var motion := InputEventMouseMotion.new()
+		motion.position = macro._world_to_screen(Vector2(point_value))
+		macro._on_gui_input(motion)
+	var release := InputEventMouseButton.new()
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.pressed = false
+	release.position = macro._world_to_screen(Vector2(points.back()))
+	macro._on_gui_input(release)
+
+
+func _click_map(macro: MacroMarchR0, position: Vector2, button_index: MouseButton) -> void:
+	var event := InputEventMouseButton.new()
+	event.button_index = button_index
+	event.pressed = true
+	event.position = position
+	macro._on_gui_input(event)
+
+
+func _army_screen_position(macro: MacroMarchR0, army: Dictionary) -> Vector2:
+	var display_route := macro._display_route_for_army(army)
+	return macro._world_to_screen(macro._point_along_route(
+		Array(display_route.get("points", [])),
+		float(display_route.get("progress_millis", 0)) / maxf(float(display_route.get("total_millis", 1)), 1.0)
+	))
+
+
+func _capture_viewport_image() -> Image:
+	await process_frame
+	await RenderingServer.frame_post_draw
+	return root.get_texture().get_image()
+
+
+func _changed_pixels(before: Image, after: Image, rect: Rect2) -> int:
+	var clip := rect.intersection(Rect2(Vector2.ZERO, Vector2(root.size)))
+	var changes := 0
+	for y in range(int(clip.position.y), int(clip.end.y)):
+		for x in range(int(clip.position.x), int(clip.end.x)):
+			var first := before.get_pixel(x, y)
+			var second := after.get_pixel(x, y)
+			var difference := absf(first.r - second.r) + absf(first.g - second.g) + absf(first.b - second.b) + absf(first.a - second.a)
+			if difference > 0.08:
+				changes += 1
+	return changes
 
 
 func _projection_anchors() -> Array[Vector2]:

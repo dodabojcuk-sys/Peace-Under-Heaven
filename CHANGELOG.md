@@ -14,6 +14,20 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 Blackstone specialist-selection overlay
+
+- Added a renderer-independent low-poly map overlay for a selected living
+  scout or engineer. It uses the authoritative specialist world position and
+  the existing map projection to show hollow rings plus a concise role/phase
+  label through scenery, while preserving the compact 3D pennant.
+- Made the side panel and map share the selected specialist as their one
+  current subject. Army strength is shown once; specialist state shows actual
+  role and phase. Right-click cancels only the selection and does not create a
+  command, food transaction, or save-owner change.
+- Made same-anchor input cycle scout, engineer, then army. Extended the
+  non-headless graphical smoke with GUI mouse events and full-viewport image
+  comparison for army/scout/engineer selection and specialist cancellation.
+
 ### FIELD_TACTICS_R2 Blackstone targeted render fixes
 
 - Corrected only the seven selected Kenney natural-material runtime variants:

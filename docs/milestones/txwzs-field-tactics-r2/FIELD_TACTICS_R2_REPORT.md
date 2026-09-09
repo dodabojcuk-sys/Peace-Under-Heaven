@@ -34,6 +34,26 @@ transaction and persistence-checkpoint caller.
 
 #### Targeted material and selection-marker repair (current worktree)
 
+#### GUI specialist-selection overlay finish (current worktree)
+
+The low-poly mode now adds a renderer-independent 2D overlay for the actual
+selected living specialist. The overlay projects Field's authoritative
+`world_position` through the same map transform used for input, showing hollow
+rings and a concise role/phase label above building occlusion. The compact 3D
+pennant is retained, but the concurrent army selected marker/count is hidden
+while a specialist is current; member counts otherwise render once. The side
+panel and map now read the same selected specialist, rather than using a scout
+target ID as a proxy for engineer selection.
+
+At a shared gate, normal map clicks cycle scout, engineer, then army. A
+right-click clears the specialist selection and leaves command, resource,
+combat, fog, clock, and persistence authority untouched. The graphical smoke
+drives those selections through GUI mouse events and compares whole-viewport
+image changes for army, scout, engineer, and cancellation. The city-gate
+captures in `evidence/20260909-specialist-selection-overlay/` are genuine
+Godot engine-viewport/GUI-event evidence, not normal OS-input video or player
+acceptance. Acceptance remains OPEN.
+
 The seven selected Kenney source GLBs were independently inspected: every
 active imported `BaseMaterial3D` surface reports `metallic=1.00`. That is not a
 credible response for Blackstone trees, riverbank grass and rocks. The

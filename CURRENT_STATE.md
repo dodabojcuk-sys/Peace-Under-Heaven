@@ -2,6 +2,30 @@
 
 ## FIELD_TACTICS_R2 Blackstone sample-theatre candidate (2026-09-09)
 
+### GUI specialist-selection overlay finish (current worktree)
+
+Low-poly mode now treats the selected map subject as a single player-facing
+selection. A living selected scout or engineer is rendered on the transparent
+2D map canvas at its authoritative `world_position`: two hollow rings and a
+short `已选 · 角色 · 状态` label remain readable through the gate, camp, bridge,
+or tree meshes. The compact 3D pennant remains, but selected-specialist state
+suppresses the army's competing selected count/pennant; unselected armies
+retain one compact member count. The side panel uses the same selected
+specialist as the map and identifies role, actual phase, current location, and
+task target. A right-click clears this selection without publishing a command
+or resource transaction.
+
+When an army, scout, and engineer share one city anchor, repeated normal map
+clicks cycle scout, engineer, then army. This keeps all three reachable without
+adding a new interaction owner. The non-headless graphical smoke now sends GUI
+mouse events to select an in-flight army and both same-gate specialist roles,
+then compares whole-viewport image changes for selection and cancellation;
+private IDs and the absence of a `SelectionRing` mesh are supplementary state
+checks only. Engine-viewport captures are under
+`evidence/20260909-specialist-selection-overlay/`; they are GUI-event/render
+evidence, not normal desktop-system-input footage. Player acceptance remains
+OPEN.
+
 ### Targeted natural-material and selection-marker repair (current worktree)
 
 The seven selected Kenney GLBs import their source surfaces with
