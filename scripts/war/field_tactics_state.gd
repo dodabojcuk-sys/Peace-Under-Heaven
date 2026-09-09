@@ -292,6 +292,15 @@ func preview_road_project(
 	var resolved_target_point_id := target_point_id
 	var reserved_camp_id: StringName = &""
 	if build_camp:
+		var camp_position := Vector2i(canonical_route_world_points.back())
+		# A new camp is a persistent runtime point. Do not reserve an identity for a
+		# marker outside the theatre or in water: preview and commit both use this
+		# same authority path, so the map cannot show a place that the project later
+		# refuses to create.
+		if not world_bounds.has_point(camp_position):
+			return {"valid": false, "error": "新驻点必须位于战区范围内"}
+		if _point_is_in_water(camp_position):
+			return {"valid": false, "error": "新驻点必须落在可通行陆地"}
 		reserved_camp_id = StringName("camp.%06d" % next_camp_sequence)
 		if resolved_target_point_id == &"":
 			resolved_target_point_id = StringName("camp.site.%06d" % next_camp_sequence)

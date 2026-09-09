@@ -119,6 +119,28 @@ func _run_field_tactics_contract() -> void:
 		StringName(bridge_engineer.specialist_id), &"blackstone_city", &"camp.site.bridge",
 		[Vector2i(150, 430), Vector2i(475, 420), Vector2i(710, 410)], FieldTacticsState.ROAD_NORMAL, true
 	)
+	var camp_validation_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	camp_validation_state.initialize_from_theater(THEATER.get_points(), THEATER.get_routes(), [Rect2i(515, 350, 120, 145)])
+	var camp_validation_engineer := camp_validation_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"blackstone_city")
+	var camp_validation_before: Dictionary = camp_validation_state.get_snapshot()
+	var outside_camp_preview := camp_validation_state.preview_road_project(
+		StringName(camp_validation_engineer.specialist_id), &"blackstone_city", &"", [Vector2i(150, 430), Vector2i(-300, 430)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var water_camp_preview := camp_validation_state.preview_road_project(
+		StringName(camp_validation_engineer.specialist_id), &"blackstone_city", &"", [Vector2i(150, 430), Vector2i(550, 425)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var rejected_camp_submit := camp_validation_state.begin_road_project(
+		StringName(camp_validation_engineer.specialist_id), &"blackstone_city", &"", [Vector2i(150, 430), Vector2i(550, 425)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	_check(
+		not bool(outside_camp_preview.get("valid", true))
+			and str(outside_camp_preview.get("error", "")).contains("战区范围")
+			and not bool(water_camp_preview.get("valid", true))
+			and str(water_camp_preview.get("error", "")).contains("可通行陆地")
+			and not bool(rejected_camp_submit.get("success", false))
+			and camp_validation_state.get_snapshot() == camp_validation_before,
+		"新驻点在越界或水域时由同一权威预览和正式提交拒绝，且不保留营地、道路或资源副作用"
+	)
 	_check(
 		StringName(bridge_project.get("road_kind", &"")) == FieldTacticsState.ROAD_NORMAL
 			and Array(bridge_project.get("segment_plans", [])).size() == 3

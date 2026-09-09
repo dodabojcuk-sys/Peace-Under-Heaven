@@ -27,6 +27,7 @@ func _run() -> void:
 	await _check_draft_confirmation_priority()
 	await _check_long_hold_draw_interaction()
 	await _check_engineering_input()
+	await _check_continuous_engineering_strokes()
 	_finish()
 
 
@@ -84,25 +85,18 @@ func _check_dynamic_actor_and_mode_switch() -> void:
 	var route: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
 	var formation_id := StringName(Dictionary(city.get_formation_roster().front()).get("formation_id", &""))
 	macro._selected_formation_ids = [formation_id]
-	var press := InputEventMouseButton.new()
-	press.button_index = MOUSE_BUTTON_LEFT
-	press.pressed = true
-	press.position = macro._world_to_screen(Vector2(Array(route.get("points", [])).front()))
-	macro._on_gui_input(press)
-	for point_value in Array(route.get("points", [])).slice(1):
-		var motion := InputEventMouseMotion.new()
-		motion.position = macro._world_to_screen(Vector2(point_value))
-		macro._on_gui_input(motion)
-	var release := InputEventMouseButton.new()
-	release.button_index = MOUSE_BUTTON_LEFT
-	release.pressed = false
-	release.position = macro._world_to_screen(Vector2(Array(route.get("points", [])).back()))
-	macro._on_gui_input(release)
-	var drafted_correct_route := not macro._draft_route.is_empty() and Array(macro._draft_route.get("points", [])).size() >= 2
-	macro._confirm_button.emit_signal("pressed")
+	_draw_route_with_gui(macro, Array(route.get("points", [])))
+	var drafted_correct_route := not macro._draft_route.is_empty() and Array(macro._draft_route.get("points", [])).size() >= 2 \
+		and StringName(macro._draft_route.get("required_road_id", &"")) == &"road.blackstone.northwatch.ridge"
+	await _click_control_with_gui_input(macro._confirm_button)
 	macro.refresh()
+	var route_constraint_cleared_after_confirm := macro._selected_route_road_id == &"" and macro._draft_route.is_empty()
 	var army: Dictionary = Dictionary(macro._selected_army(macro._model()))
 	var army_id := StringName(army.get("army_id", &""))
+	macro._selected_army_id = &""
+	var displayed_army: Dictionary = Dictionary(macro._selected_army(macro._model()))
+	var default_army_is_view_only := not displayed_army.is_empty() and macro._selected_army_id == &"" and not macro._has_explicit_command_subject(macro._model(), displayed_army)
+	macro._selected_army_id = army_id
 	var presentation: MacroMarchLowPolyPresentation = macro._low_poly_presentation
 	var actor: Node3D = presentation._army_nodes.get(army_id, null)
 	var before := actor.global_position if actor != null else Vector3.ZERO
@@ -118,7 +112,9 @@ func _check_dynamic_actor_and_mode_switch() -> void:
 	var two_dimensional_visible := not presentation.visible
 	macro._toggle_low_poly_presentation()
 	_check(
-			drafted_correct_route
+				drafted_correct_route
+				and route_constraint_cleared_after_confirm
+				and default_army_is_view_only
 			and actor != null
 			and has_selection_marker
 			and selection_marker_is_hollow
@@ -339,6 +335,13 @@ func _check_long_hold_draw_interaction() -> void:
 	await _click_control_with_gui_input(formation_button)
 	var route: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
 	var route_points: Array = Array(route.get("points", []))
+	var field_roads := Dictionary(macro._dispatch_adapter.get_field_tactics_read_model().get("roads_by_id", {}))
+	var road_markers := macro._road_choice_markers(field_roads)
+	var ridge_marker_visible := false
+	for marker_value in road_markers:
+		if StringName(Dictionary(marker_value).get("road_id", &"")) == &"road.blackstone.northwatch.ridge":
+			ridge_marker_visible = true
+			break
 	var source_screen := macro._world_to_screen(Vector2(route_points.front()))
 	var initial_food := int(city.food)
 	var initial_armies := Array(macro._model().get("armies", [])).size()
@@ -350,24 +353,38 @@ func _check_long_hold_draw_interaction() -> void:
 	_send_map_release(macro, source_screen)
 	var tap_remains_selection := not macro._draw_hold_pending and not macro._is_drawing \
 		and macro._draw_points.is_empty() and macro._draft_route.is_empty()
+	# Moving beyond the allowed jitter before the hold completes cancels rather
+	# than silently turning a click into an unrelated route draft.
+	_send_map_press(macro, source_screen)
+	_send_map_motion(macro, source_screen + Vector2(18.0, 0.0))
+	var early_drag_cancels := not macro._draw_hold_pending and not macro._is_drawing and macro._draw_points.is_empty() and macro._draft_route.is_empty()
 
-	# Small jitter remains a selection gesture; a real drag starts immediately
-	# once it exceeds the screen-space threshold.
+	# Small jitter remains a valid long-press candidate. Planning only starts
+	# after elapsed UI time reaches the hold threshold.
 	_send_map_press(macro, source_screen)
 	_send_map_motion(macro, source_screen + Vector2(5.0, 3.0))
 	var jitter_remains_pending := macro._draw_hold_pending and not macro._is_drawing
+	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
 	for point_value in route_points.slice(1):
 		_send_map_motion(macro, macro._world_to_screen(Vector2(point_value)))
 	var live_route_matches := not macro._draw_preview_route.is_empty()
+	var ridge_constraint_matches := macro._selected_route_road_id == &"road.blackstone.northwatch.ridge"
 	var endpoint_follows_pointer: bool = not macro._draw_points.is_empty() and Vector2(macro._draw_points.back()).distance_to(Vector2(route_points.back())) <= 0.1
 	_send_map_release(macro, macro._world_to_screen(Vector2(route_points.back())))
 	var valid_draft_ready := not macro._draft_route.is_empty() \
 		and macro._confirm_button.is_inside_tree() and macro._confirm_button.visible and not macro._confirm_button.disabled \
+		and StringName(macro._draft_route.get("required_road_id", &"")) == &"road.blackstone.northwatch.ridge" \
 		and int(city.food) == initial_food and Array(macro._model().get("armies", [])).size() == initial_armies
+	# Switching the command subject discards only this unconfirmed intent. It
+	# cannot leak a road constraint into the next formation's order.
+	await _click_control_with_gui_input(formation_button)
+	var subject_switch_clears_route_constraint := macro._draft_route.is_empty() and macro._selected_route_road_id == &""
+	await _click_control_with_gui_input(formation_button)
 
 	# Cancel is a complete terminal state: later mouse movement must not revive
 	# a stale path, and a focus-loss notification shares the same cleanup path.
 	_send_map_press(macro, macro._world_to_screen(Vector2(route_points.front())))
+	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
 	_send_map_motion(macro, macro._world_to_screen(Vector2(route_points[1])))
 	_send_map_right_click(macro, macro._world_to_screen(Vector2(route_points[1])))
 	_send_map_motion(macro, macro._world_to_screen(Vector2(route_points.back())))
@@ -376,6 +393,7 @@ func _check_long_hold_draw_interaction() -> void:
 	# Start another gesture near the map edge. The camera displacement is driven
 	# by elapsed UI time, not by the number of mouse motion events.
 	_send_map_press(macro, source_screen)
+	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
 	var edge_position := Vector2(macro._map_rect().end.x - 1.0, macro._map_rect().get_center().y)
 	_send_map_motion(macro, edge_position)
 	var camera_before_edge_scroll := macro._camera_center
@@ -391,22 +409,27 @@ func _check_long_hold_draw_interaction() -> void:
 	macro._camera_zoom = 1.0
 	source_screen = macro._world_to_screen(Vector2(route_points.front()))
 	_send_map_press(macro, source_screen)
+	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
 	_send_map_motion(macro, macro._map_rect().position + Vector2(12, 12))
 	_send_map_release(macro, macro._map_rect().position + Vector2(12, 12))
 	var off_road_is_rejected := macro._draft_route.is_empty() and macro._draw_points.is_empty() \
 		and macro._status_label.text.contains("终点")
-	print("DRAW_HOLD_INTERACTION tap=%s preview=%s endpoint=%s draft=%s cancel=%s edge=%s focus=%s offroad=%s status=%s" % [
-		tap_remains_selection, live_route_matches, endpoint_follows_pointer, valid_draft_ready,
+	print("DRAW_HOLD_INTERACTION tap=%s early_cancel=%s preview=%s endpoint=%s draft=%s cancel=%s edge=%s focus=%s offroad=%s status=%s" % [
+		tap_remains_selection, early_drag_cancels, live_route_matches, endpoint_follows_pointer, valid_draft_ready,
 		cancel_stops_following, edge_scroll_uses_elapsed_time, focus_loss_stops_following,
 		off_road_is_rejected, macro._status_label.text,
 	])
 	_check(
-		formation_button != null
-			and tap_remains_selection
-			and jitter_remains_pending
-			and live_route_matches
-			and endpoint_follows_pointer
-			and valid_draft_ready
+			formation_button != null
+				and tap_remains_selection
+				and early_drag_cancels
+		and jitter_remains_pending
+		and ridge_marker_visible
+		and live_route_matches
+		and ridge_constraint_matches
+				and endpoint_follows_pointer
+				and valid_draft_ready
+				and subject_switch_clears_route_constraint
 			and cancel_stops_following
 			and edge_scroll_uses_elapsed_time
 			and focus_loss_stops_following
@@ -443,18 +466,15 @@ func _check_engineering_input() -> void:
 	var engineer_visual: Node3D = macro._low_poly_presentation._specialist_nodes.get(engineer_id, null)
 	var engineer_marker_visible := engineer_visual != null and engineer_visual.find_child("SpecialistSelectionMarker", true, false) != null
 	var engineer_marker_is_hollow := engineer_visual != null and engineer_visual.find_child("SelectionRing", true, false) == null and engineer_visual.find_child("SelectionPennant", true, false) != null
-	macro._side_road_button.emit_signal("pressed")
+	await _click_control_with_gui_input(macro._side_road_button)
 	var source_click := InputEventMouseButton.new()
 	source_click.button_index = MOUSE_BUTTON_LEFT
 	source_click.pressed = true
 	source_click.position = macro._world_to_screen(Vector2(THEATER.get_point(&"blackstone_city").get("world_position", Vector2.ZERO)))
 	macro._on_gui_input(source_click)
 	var construction_points := [Vector2(150, 650), Vector2(430, 605), Vector2(610, 565), Vector2(760, 610)]
-	var press := InputEventMouseButton.new()
-	press.button_index = MOUSE_BUTTON_LEFT
-	press.pressed = true
-	press.position = macro._world_to_screen(construction_points.front())
-	macro._on_gui_input(press)
+	_send_map_press(macro, macro._world_to_screen(construction_points.front()))
+	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
 	var engineering_drag_activated := false
 	for point in construction_points.slice(1):
 		var motion := InputEventMouseMotion.new()
@@ -462,11 +482,7 @@ func _check_engineering_input() -> void:
 		macro._on_gui_input(motion)
 		engineering_drag_activated = engineering_drag_activated or macro._is_drawing
 	var engineering_live_preview := not macro._draw_preview_route.is_empty() and not Array(macro._draw_preview_route.get("segment_plans", [])).is_empty()
-	var release := InputEventMouseButton.new()
-	release.button_index = MOUSE_BUTTON_LEFT
-	release.pressed = false
-	release.position = macro._world_to_screen(construction_points.back())
-	macro._on_gui_input(release)
+	_send_map_release(macro, macro._world_to_screen(construction_points.back()))
 	var draft := macro._engineering_draft.duplicate(true)
 	var overlay_segments := macro._engineering_overlay_segments(draft)
 	var planned_normal := 0
@@ -477,7 +493,7 @@ func _check_engineering_input() -> void:
 		else:
 			planned_normal += 1
 	var food_before := int(city.food)
-	macro._confirm_button.emit_signal("pressed")
+	await _click_control_with_gui_input(macro._confirm_button)
 	city.advance_war_loop_time(2500)
 	macro.refresh()
 	var has_active_road := _has_named_descendant(macro._low_poly_presentation._project_root, "ProjectRoadSegment")
@@ -505,6 +521,71 @@ func _check_engineering_input() -> void:
 			and int(city.food) < food_before
 			and not Dictionary(field.get("projects_by_id", {})).is_empty(),
 		"图形进程为选中侦察兵和工程师保留旗帜配合空心圈的可见标记，并在低模模式保留松手后的工程草稿、按权威陆路-桥梁-陆路计划显示分段施工"
+	)
+	scene.queue_free()
+	await process_frame
+
+
+func _check_continuous_engineering_strokes() -> void:
+	_clear_isolated_campaign_generations()
+	root.size = Vector2i(1152, 648)
+	var scene := CITY_SCENE.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var city: Node = scene.get_node("ConstructionController")
+	city.food = 80
+	scene.open_macro_march_r0()
+	await process_frame
+	var macro: MacroMarchR0 = scene.get_node("UI/MacroMarchR0")
+	var dispatch: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var engineer_id := StringName(Dictionary(dispatch.get("specialist", {})).get("specialist_id", &""))
+	var city_screen := macro._world_to_screen(Vector2(THEATER.get_point(&"blackstone_city").get("world_position", Vector2.ZERO)))
+	var engineer_selected := await _select_specialist_role_with_gui(macro, city, city_screen, FieldTacticsState.SPECIALIST_ENGINEER)
+	await _click_control_with_gui_input(macro._side_road_button)
+	var first_stroke := [Vector2(135, 650), Vector2(300, 630), Vector2(430, 605), Vector2(610, 565), Vector2(760, 610)]
+	_draw_world_path_with_gui(macro, first_stroke, 24)
+	await process_frame
+	var first_draft: Dictionary = macro._engineering_draft.duplicate(true)
+	var first_points: Array = Array(first_draft.get("route_world_points", [])).duplicate(true)
+	var first_turns_preserved := _contains_world_point_near(first_points, Vector2(430, 605), 5.0) and _contains_world_point_near(first_points, Vector2(610, 565), 5.0)
+	var food_before := int(city.food)
+	var projects_before := Dictionary(city.get_field_tactics_read_model().get("projects_by_id", {})).size()
+	var continuation := [Vector2(760, 610), Vector2(830, 630), Vector2(900, 660), Vector2(1010, 675)]
+	_draw_world_path_with_gui(macro, continuation, 18)
+	await process_frame
+	var continued_draft: Dictionary = macro._engineering_draft.duplicate(true)
+	var continued_points: Array = Array(continued_draft.get("route_world_points", [])).duplicate(true)
+	var continuation_has_shape := continued_points.size() > first_points.size() and _contains_world_point_near(continued_points, Vector2(900, 660), 5.0)
+	await _click_control_with_gui_input(macro._engineering_undo_button)
+	await process_frame
+	var undo_returns_full_stroke := Array(macro._engineering_draft.get("route_world_points", [])) == first_points and macro._engineering_strokes.size() == 1
+	# New camp endpoints are validated by the same Field preview used by the
+	# visible draft before any resource or project transaction. An outside-the-map
+	# endpoint cannot be emitted by a real map mouse event, so keep this focused
+	# authority check separate from the GUI stroke above.
+	macro._clear_engineering_draft()
+	var invalid_before: Dictionary = city.export_v5_campaign_snapshot()
+	var outside_preview: Dictionary = macro._dispatch_adapter.preview_field_road_project(
+		engineer_id, &"blackstone_city", &"", [Vector2(135, 650), Vector2(-40, 650)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var outside_rejected := not bool(outside_preview.get("valid", true)) and str(outside_preview.get("error", "")).contains("战区范围")
+	var water_preview: Dictionary = macro._dispatch_adapter.preview_field_road_project(
+		engineer_id, &"blackstone_city", &"", [Vector2(135, 650), Vector2(600, 500)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var water_rejected := not bool(water_preview.get("valid", true)) and str(water_preview.get("error", "")).contains("可通行陆地")
+	var invalid_has_no_side_effect: bool = city.export_v5_campaign_snapshot() == invalid_before and int(city.food) == food_before and Dictionary(city.get_field_tactics_read_model().get("projects_by_id", {})).size() == projects_before
+	_check(
+		bool(dispatch.get("success", false))
+			and engineer_selected
+			and not first_draft.is_empty()
+			and first_turns_preserved
+			and continuation_has_shape
+			and undo_returns_full_stroke
+			and outside_rejected
+			and water_rejected
+			and invalid_has_no_side_effect,
+		"图形进程用连续细小 GUI 移动保留工程转折和实时笔尖；续画撤销整笔而非一个采样点，范围外或水中新驻点在预览即拒绝且不扣资源、不建项目"
 	)
 	scene.queue_free()
 	await process_frame
@@ -642,6 +723,26 @@ func _draw_route_with_gui(macro: MacroMarchR0, points: Array) -> void:
 	release.pressed = false
 	release.position = macro._world_to_screen(Vector2(points.back()))
 	macro._on_gui_input(release)
+
+
+func _draw_world_path_with_gui(macro: MacroMarchR0, points: Array, samples_per_segment: int) -> void:
+	if points.size() < 2:
+		return
+	_send_map_press(macro, macro._world_to_screen(Vector2(points.front())))
+	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
+	for index in range(1, points.size()):
+		var start := Vector2(points[index - 1])
+		var end := Vector2(points[index])
+		for sample in range(1, samples_per_segment + 1):
+			_send_map_motion(macro, macro._world_to_screen(start.lerp(end, float(sample) / float(samples_per_segment))))
+	_send_map_release(macro, macro._world_to_screen(Vector2(points.back())))
+
+
+func _contains_world_point_near(points: Array, expected: Vector2, tolerance: float) -> bool:
+	for point_value in points:
+		if Vector2(point_value).distance_to(expected) <= tolerance:
+			return true
+	return false
 
 
 func _send_map_press(macro: MacroMarchR0, position: Vector2) -> void:

@@ -14,10 +14,10 @@ const CAMERA_MAX_ZOOM := 2.4
 const CAMERA_ZOOM_STEP := 1.18
 const OBLIQUE_X_SKEW := 0.20
 const OBLIQUE_Y_SCALE := 0.72
-const DRAW_HOLD_SECONDS := 0.50 # Legacy test compatibility; drawing is immediate.
+const DRAW_HOLD_SECONDS := 0.50
 const DRAW_HOLD_JITTER_PIXELS := 8.0
-const DRAW_DRAG_THRESHOLD_PIXELS := 8.0
-const ROAD_CHOICE_RADIUS_PIXELS := 24.0
+const ROAD_CHOICE_RADIUS_PIXELS := 12.0
+const ENGINEERING_SAMPLE_SPACING_WORLD := 3.0
 const DRAW_EDGE_SCROLL_MARGIN := 28.0
 const DRAW_EDGE_SCROLL_MAX_PIXELS_PER_SECOND := 360.0
 
@@ -25,6 +25,8 @@ var _dispatch_adapter: V5ArmyDispatchAdapter
 var _draft_route: Dictionary = {}
 var _engineering_draft: Dictionary = {}
 var _engineering_planned_points: Array[Vector2] = []
+var _engineering_strokes: Array[Array] = []
+var _engineering_live_endpoint := Vector2.INF
 var _selected_formation_ids: Array[StringName] = []
 var _draw_points: Array[Vector2] = []
 var _is_drawing := false
@@ -495,6 +497,7 @@ func _toggle_formation(formation_id: StringName) -> void:
 	if not _selected_formation_ids.is_empty():
 		_selected_specialist_id = &""
 		_selected_scout_id = &""
+	_reset_march_draft()
 	refresh()
 
 
@@ -661,15 +664,8 @@ func _on_gui_input(event: InputEvent) -> void:
 		if _draw_hold_pending:
 			_draw_cursor_screen = event.position
 			_draw_previous_screen = event.position
-			if event.position.distance_to(_draw_press_screen) >= DRAW_DRAG_THRESHOLD_PIXELS:
-				_draw_hold_pending = false
-				_is_drawing = true
-				if not _engineering_mode:
-					_update_selected_road_from_sweep(_draw_press_screen, event.position)
-				_append_draw_point(event.position)
-				_update_march_draw_preview()
-			queue_redraw()
-			_map_canvas.queue_redraw()
+			if event.position.distance_to(_draw_press_screen) >= DRAW_HOLD_JITTER_PIXELS:
+				_cancel_draw_interaction("请按住 0.5 秒激活规划；移动过早已取消本次操作。")
 			accept_event()
 			return
 		if _is_drawing:
@@ -695,6 +691,8 @@ func _on_gui_input(event: InputEvent) -> void:
 			_engineering_mode = false
 			_engineering_engineer_id = &""
 			_engineering_source_point_id = &""
+			_engineering_planned_points.clear()
+			_engineering_strokes.clear()
 			_selected_damaged_road_id = &""
 			_selected_route_road_id = &""
 			_status_label.text = "已取消当前专员选择；没有资源、编队或军令写入。" if had_specialist_selection else "路线草稿已取消；没有资源、编队或军令写入。"
@@ -735,21 +733,26 @@ func _on_gui_input(event: InputEvent) -> void:
 			accept_event()
 			return
 		if _engineering_mode:
-			var clicked_engineering_source := _point_id_at_screen(event.position)
-			if _is_legal_engineering_source(clicked_engineering_source) and clicked_engineering_source != _engineering_source_point_id:
-				_engineering_source_point_id = clicked_engineering_source
-				_engineering_draft = {}
-				_engineering_planned_points.clear()
-				_begin_draw_interaction(event.position, clicked_engineering_source)
-				accept_event()
-				return
+			# A confirmed endpoint can itself be a legal camp. Prefer continuing the
+			# existing project at that visible endpoint before treating the same click
+			# as a request to replace the project source.
 			if not _engineering_draft.is_empty():
 				var existing_points: Array = Array(_engineering_draft.get("route_world_points", []))
 				if not existing_points.is_empty() and event.position.distance_to(_world_to_screen(Vector2(existing_points.back()))) <= 52.0:
 					_begin_draw_interaction(event.position, _engineering_source_point_id)
 					_draw_points = [Vector2(existing_points.back())]
+					_engineering_live_endpoint = Vector2(existing_points.back())
 					accept_event()
 					return
+			var clicked_engineering_source := _point_id_at_screen(event.position)
+			if _is_legal_engineering_source(clicked_engineering_source) and clicked_engineering_source != _engineering_source_point_id:
+				_engineering_source_point_id = clicked_engineering_source
+				_engineering_draft = {}
+				_engineering_planned_points.clear()
+				_engineering_strokes.clear()
+				_begin_draw_interaction(event.position, clicked_engineering_source)
+				accept_event()
+				return
 			var engineering_source := _point_from_model(_model(), _engineering_source_point_id)
 			var engineering_source_position := _world_to_screen(Vector2(engineering_source.get("world_position", Vector2.ZERO)))
 			if event.position.distance_to(engineering_source_position) > 52.0:
@@ -764,7 +767,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			var command_source_id := _source_point_id(_model(), command_army)
 			var direct_target_id := _point_id_at_screen(event.position)
 			if direct_target_id != &"" and direct_target_id != command_source_id:
-				_create_march_draft(command_source_id, direct_target_id)
+				_create_march_draft_with_constraint(command_source_id, direct_target_id, &"")
 				accept_event()
 				return
 		# A specialist at a city or camp stays selectable even when a stationed
@@ -800,6 +803,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			return
 		var selected_id := _army_id_at_screen(_model(), event.position)
 		if selected_id != &"":
+			_reset_march_draft()
 			_selected_army_id = selected_id
 			_selected_specialist_id = &""
 			_selected_formation_ids.clear()
@@ -837,12 +841,12 @@ func _append_draw_point(screen_position: Vector2) -> void:
 		queue_redraw()
 		_map_canvas.queue_redraw()
 		return
-	if _draw_points.is_empty() or _draw_points.back().distance_to(world) >= 12.0:
+	# An engineering stroke has two distinct facts: committed bend samples and a
+	# live endpoint. Replacing the last committed sample on every tiny movement
+	# used to erase slow turns (and occasionally the source itself).
+	_engineering_live_endpoint = world
+	if _draw_points.is_empty() or _draw_points.back().distance_to(world) >= ENGINEERING_SAMPLE_SPACING_WORLD:
 		_draw_points.append(world)
-	else:
-		# Keep the live endpoint glued to the pointer; older samples describe route
-		# intent, but never get to leave the visible tip behind.
-		_draw_points[_draw_points.size() - 1] = world
 	queue_redraw()
 	_map_canvas.queue_redraw()
 
@@ -858,12 +862,24 @@ func _begin_draw_interaction(screen_position: Vector2, source_point_id: StringNa
 	_draw_source_point_id = source_point_id
 	var source := _point_from_model(_model(), source_point_id)
 	_draw_points = [Vector2(source.get("world_position", _screen_to_world(screen_position)))]
+	_engineering_live_endpoint = Vector2(_draw_points.front())
 	_status_label.text = "拖动规划%s；轻点只保留当前选择。" % ("施工" if _engineering_mode else "行军")
 	queue_redraw()
 	_map_canvas.queue_redraw()
 
 
 func _update_draw_interaction(delta: float) -> void:
+	if _draw_hold_pending:
+		_draw_hold_elapsed += maxf(delta, 0.0)
+		if _draw_hold_elapsed >= DRAW_HOLD_SECONDS:
+			_draw_hold_pending = false
+			_is_drawing = true
+			_append_draw_point(_draw_cursor_screen)
+			if not _engineering_mode:
+				_update_march_draw_preview()
+			_status_label.text = "已激活%s规划；沿路线拖动后松手查看草稿。" % ("施工" if _engineering_mode else "行军")
+			queue_redraw()
+			_map_canvas.queue_redraw()
 	if _is_drawing:
 		_pan_while_drawing(_draw_cursor_screen, delta)
 
@@ -881,6 +897,7 @@ func _cancel_draw_interaction(message: String) -> void:
 	_draw_points.clear()
 	_draw_preview_route = {}
 	_draw_preview_error = ""
+	_engineering_live_endpoint = Vector2.INF
 	if had_interaction and not message.is_empty():
 		_status_label.text = message
 	queue_redraw()
@@ -911,13 +928,11 @@ func _update_engineering_draw_preview() -> void:
 		return
 	var model := _model()
 	var source_id := _engineering_source_point_id
-	var target_id := _nearest_engineering_target_at_draw_end(source_id)
-	var route_points: Array = _engineering_planned_points.duplicate(true)
-	if route_points.is_empty():
-		route_points = _draw_points.duplicate(true)
-	else:
-		route_points.pop_back()
-		route_points.append_array(_draw_points)
+	var live_end := _engineering_live_endpoint if _engineering_live_endpoint != Vector2.INF else Vector2(_draw_points.back())
+	var target_id := _nearest_engineering_target_for_world(live_end, source_id)
+	var route_points := _engineering_route_points_with_live_stroke()
+	if route_points.size() < 2:
+		return
 	route_points[0] = Vector2(_point_from_model(model, source_id).get("world_position", route_points[0]))
 	if target_id != &"":
 		route_points[route_points.size() - 1] = Vector2(_point_from_model(model, target_id).get("world_position", route_points.back()))
@@ -1034,19 +1049,30 @@ func _finish_draw() -> void:
 
 
 func _create_march_draft(source_id: StringName, target_id: StringName) -> void:
+	_create_march_draft_with_constraint(source_id, target_id, _selected_route_road_id)
+
+
+func _create_march_draft_with_constraint(source_id: StringName, target_id: StringName, required_road_id: StringName) -> void:
 	var model := _model()
 	if source_id == &"" or target_id == &"" or source_id == target_id:
 		_status_label.text = "终点必须是另一处驻扎点或可进攻的敌城。"
 		return
+	_selected_route_road_id = required_road_id
 	var decision := _choose_runtime_route(model, source_id, target_id)
 	if not bool(decision.get("valid", false)):
+		_selected_route_road_id = &""
 		_draft_route = {}
 		_draw_points.clear()
 		_status_label.text = str(decision.get("error", "路线不可用"))
 		queue_redraw()
 		return
 	_draft_route = _ui_route_draft(Dictionary(decision.get("route", {})))
-	_draft_route.required_road_id = _selected_route_road_id
+	_draft_route.source_point_id = source_id
+	_draft_route.required_road_id = required_road_id
+	var preview := _dispatch_adapter.get_macro_march_command_preview(
+		_selected_formation_ids, StringName(_selected_army(model).get("army_id", &"")) if _selected_formation_ids.is_empty() else &""
+	) if _dispatch_adapter != null else {}
+	_draft_route.food_cost = int(preview.get("food_cost", 0))
 	_draw_points.clear()
 	_status_label.text = "路线草稿：%s；确认后军令和粮食将锁定。" % str(_point_from_model(model, StringName(_draft_route.get("target_point_id", &""))).get("display_name", _draft_route.get("target_point_id", &"")))
 	refresh()
@@ -1058,17 +1084,17 @@ func _finish_engineering_draw(model: Dictionary, source_id: StringName) -> void:
 		_status_label.text = "工程路线至少需要两个位置。"
 		queue_redraw()
 		return
-	var target_id := _nearest_engineering_target_at_draw_end(source_id)
+	var live_end := _engineering_live_endpoint if _engineering_live_endpoint != Vector2.INF else Vector2(_draw_points.back())
+	var target_id := _nearest_engineering_target_for_world(live_end, source_id)
 	# Water crossing is an attribute of the physical segment plan, not the
 	# player's selected land material. FieldTacticsState turns only the water
 	# spans into bridges when the confirmed project is built.
 	var road_kind := FieldTacticsState.ROAD_NORMAL
-	var route_points: Array = _engineering_planned_points.duplicate(true)
-	if route_points.is_empty():
-		route_points = _draw_points.duplicate(true)
-	else:
-		route_points.pop_back()
-		route_points.append_array(_draw_points)
+	var route_points := _engineering_route_points_with_live_stroke()
+	if route_points.size() < 2:
+		_draw_points.clear()
+		_status_label.text = "工程路线至少需要两个位置。"
+		return
 	route_points[0] = Vector2(_point_from_model(model, source_id).get("world_position", route_points[0]))
 	if target_id != &"":
 		route_points[route_points.size() - 1] = Vector2(_point_from_model(model, target_id).get("world_position", route_points.back()))
@@ -1077,19 +1103,55 @@ func _finish_engineering_draw(model: Dictionary, source_id: StringName) -> void:
 		_engineering_engineer_id, source_id, target_id, route_points, road_kind, build_camp
 	)
 	if not bool(preview.get("valid", false)):
-		_engineering_draft = {}
 		_draw_points.clear()
+		_engineering_live_endpoint = Vector2.INF
 		_status_label.text = str(preview.get("error", "工程路线无法施工"))
 		refresh()
 		return
 	_engineering_draft = preview.duplicate(true)
 	_engineering_draft.requested_target_point_id = target_id
-	_engineering_planned_points.clear()
-	for point_value in route_points:
-		_engineering_planned_points.append(Vector2(point_value))
+	_record_engineering_stroke(route_points)
 	_draw_points.clear()
+	_engineering_live_endpoint = Vector2.INF
 	_status_label.text = "工程草稿已生成：%s；确认施工才会扣除资源并派工程师前往。" % ("连接已有驻点" if not build_camp else "新建工程驻点")
 	refresh()
+
+
+func _engineering_route_points_with_live_stroke() -> Array[Vector2]:
+	var stroke := _engineering_live_stroke_points()
+	var result: Array[Vector2] = _engineering_planned_points.duplicate(true)
+	for point_value in stroke:
+		var point := Vector2(point_value)
+		if result.is_empty() or result.back().distance_to(point) > 0.01:
+			result.append(point)
+	return result
+
+
+func _engineering_live_stroke_points() -> Array[Vector2]:
+	var result: Array[Vector2] = []
+	for point_value in _draw_points:
+		var point := Vector2(point_value)
+		if result.is_empty() or result.back().distance_to(point) > 0.01:
+			result.append(point)
+	if _engineering_live_endpoint != Vector2.INF and (result.is_empty() or result.back().distance_to(_engineering_live_endpoint) > 0.01):
+		result.append(_engineering_live_endpoint)
+	return result
+
+
+func _record_engineering_stroke(route_points: Array) -> void:
+	var start_index := maxi(_engineering_planned_points.size() - 1, 0)
+	var stroke: Array = []
+	for index in range(start_index, route_points.size()):
+		var point := Vector2(route_points[index])
+		if stroke.is_empty() or stroke.back().distance_to(point) > 0.01:
+			stroke.append(point)
+	if stroke.size() >= 2:
+		_engineering_strokes.append(stroke)
+	_engineering_planned_points.clear()
+	for point_value in route_points:
+		var point := Vector2(point_value)
+		if _engineering_planned_points.is_empty() or _engineering_planned_points.back().distance_to(point) > 0.01:
+			_engineering_planned_points.append(point)
 
 
 func _engineering_segment_summary(draft: Dictionary) -> String:
@@ -1120,6 +1182,7 @@ func _confirm_draft() -> void:
 			return
 		_engineering_draft = {}
 		_engineering_planned_points.clear()
+		_engineering_strokes.clear()
 		_engineering_mode = false
 		_engineering_engineer_id = &""
 		_engineering_source_point_id = &""
@@ -1144,9 +1207,10 @@ func _confirm_draft() -> void:
 	if not bool(result.get("success", false)):
 		_status_label.text = str(result.get("error", "军令确认失败"))
 		return
+	_selected_army_id = StringName(Dictionary(result.get("army", {})).get("army_id", &""))
 	_selected_formation_ids.clear()
 	_draw_points.clear()
-	_draft_route = {}
+	_reset_march_draft()
 	refresh()
 
 
@@ -1363,8 +1427,7 @@ func _can_draw_route() -> bool:
 		_engineering_mode
 		or
 		not _selected_formation_ids.is_empty()
-		or army.is_empty()
-		or StringName(army.phase) == ARMY_REGISTRY.PHASE_STATIONED
+		or _has_explicit_command_subject(_model(), army)
 	)
 
 
@@ -1385,9 +1448,10 @@ func _selected_army(model: Dictionary) -> Dictionary:
 			return army.duplicate(true)
 	var armies: Array = model.get("armies", [])
 	if armies.is_empty():
-		_selected_army_id = &""
 		return {}
-	_selected_army_id = StringName(Dictionary(armies.front()).get("army_id", &""))
+	# The first army is a read-only default for overview copy. It is not a player
+	# command selection: assigning its ID here made an inspected army steal the
+	# next specialist or engineering interaction.
 	return Dictionary(armies.front()).duplicate(true)
 
 
@@ -1537,14 +1601,13 @@ func _update_selected_road_from_sweep(start_screen: Vector2, end_screen: Vector2
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
 	var best_road_id: StringName = &""
 	var best_distance := INF
-	for road_value in Dictionary(field.get("roads_by_id", {})).values():
-		var road: Dictionary = Dictionary(road_value)
-		var points: Array = Array(road.get("route_world_points", []))
-		for index in range(1, points.size()):
-			var distance := _screen_segment_distance(start_screen, end_screen, _world_to_screen(Vector2(points[index - 1])), _world_to_screen(Vector2(points[index])))
-			if distance <= ROAD_CHOICE_RADIUS_PIXELS and (distance < best_distance - 0.01 or (is_equal_approx(distance, best_distance) and String(road.get("road_id", &"")) < String(best_road_id))):
-				best_distance = distance
-				best_road_id = StringName(road.get("road_id", &""))
+	for choice in _road_choice_markers(Dictionary(field.get("roads_by_id", {}))):
+		var marker := Vector2(choice.screen_position)
+		var distance := _distance_to_segment(marker, start_screen, end_screen)
+		var road_id := StringName(choice.road_id)
+		if distance <= ROAD_CHOICE_RADIUS_PIXELS and (distance < best_distance - 0.01 or (is_equal_approx(distance, best_distance) and String(road_id) < String(best_road_id))):
+			best_distance = distance
+			best_road_id = road_id
 	if best_road_id != &"" and best_road_id != _selected_route_road_id:
 		_selected_route_road_id = best_road_id
 		_status_label.text = "已选择道路：%s；拖到目标后会强制经过它。" % String(best_road_id)
@@ -1554,6 +1617,13 @@ func _screen_segment_distance(a_start: Vector2, a_end: Vector2, b_start: Vector2
 	if Geometry2D.segment_intersects_segment(a_start, a_end, b_start, b_end) != null:
 		return 0.0
 	return minf(minf(_distance_to_segment(a_start, b_start, b_end), _distance_to_segment(a_end, b_start, b_end)), minf(_distance_to_segment(b_start, a_start, a_end), _distance_to_segment(b_end, a_start, a_end)))
+
+
+func _reset_march_draft() -> void:
+	_draft_route = {}
+	_draw_preview_route = {}
+	_draw_preview_error = ""
+	_selected_route_road_id = &""
 
 
 func _restore_default_route() -> void:
@@ -1567,17 +1637,25 @@ func _restore_default_route() -> void:
 
 
 func _undo_engineering_draft() -> void:
-	if _engineering_planned_points.size() <= 2:
+	if _engineering_strokes.is_empty():
 		_status_label.text = "工程草稿没有可撤销的上一段。"
 		return
-	_engineering_planned_points.pop_back()
+	_engineering_strokes.pop_back()
+	_engineering_planned_points.clear()
+	for stroke_value in _engineering_strokes:
+		for point_value in Array(stroke_value):
+			var point := Vector2(point_value)
+			if _engineering_planned_points.is_empty() or _engineering_planned_points.back().distance_to(point) > 0.01:
+				_engineering_planned_points.append(point)
 	_rebuild_engineering_draft_from_planned_points()
 
 
 func _clear_engineering_draft() -> void:
 	_engineering_draft = {}
 	_engineering_planned_points.clear()
+	_engineering_strokes.clear()
 	_draw_points.clear()
+	_engineering_live_endpoint = Vector2.INF
 	_status_label.text = "工程草稿已清除；尚未扣除资源。"
 	refresh()
 
@@ -1886,6 +1964,8 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 	_draw_march_draft_or_live_preview(canvas)
 	_draw_engineering_draft_overlay(canvas, rect)
 	_draw_project_construction_overlays(canvas, Dictionary(field.get("projects_by_id", {})))
+	if not _engineering_mode and _has_explicit_command_subject(_model(), _selected_army(_model())):
+		_draw_road_choice_points(canvas, Dictionary(field.get("roads_by_id", {})))
 	for army_value in Array(_model().get("armies", [])):
 		var army: Dictionary = Dictionary(army_value)
 		var display_route := _display_route_for_army(army)
@@ -1932,24 +2012,48 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 
 
 func _draw_road_choice_points(canvas: Control, roads_by_id: Dictionary) -> void:
-	var road_ids: Array = roads_by_id.keys()
-	road_ids.sort()
-	for road_id_value in road_ids:
-		var road_id := StringName(road_id_value)
-		var road := Dictionary(roads_by_id.get(road_id, {}))
-		var points: Array = Array(road.get("route_world_points", []))
-		if points.size() < 2:
-			continue
-		var midpoint := _point_along_route(points, 0.5)
-		var screen := _world_to_screen(midpoint)
+	for marker_value in _road_choice_markers(roads_by_id):
+		var marker: Dictionary = marker_value
+		var road_id := StringName(marker.road_id)
+		var screen := Vector2(marker.screen_position)
 		var selected := road_id == _selected_route_road_id
 		canvas.draw_circle(screen, 6.0 if selected else 4.0, Color("fff2bf") if selected else Color("77f0ef", 0.70))
 		canvas.draw_arc(screen, 9.0 if selected else 7.0, 0.0, TAU, 16, Color("fff2bf", 0.95) if selected else Color("20302c", 0.72), 1.5, true)
 
 
+func _road_choice_markers(roads_by_id: Dictionary) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var road_ids: Array = roads_by_id.keys()
+	road_ids.sort()
+	for road_id_value in road_ids:
+		var road_id := StringName(road_id_value)
+		var road := Dictionary(roads_by_id.get(road_id, {}))
+		if StringName(road.get("state", &"")) != FieldTacticsState.ROAD_OPEN:
+			continue
+		var points: Array = Array(road.get("route_world_points", []))
+		if points.size() < 2:
+			continue
+		result.append({
+			"road_id": road_id,
+			"screen_position": _world_to_screen(_point_along_route(points, 0.5)),
+		})
+	return result
+
+
 func _draw_march_draft_or_live_preview(canvas: Control) -> void:
 	if not _draft_route.is_empty():
-		_draw_route_preview(canvas, Array(_draft_route.get("points", [])), Color("54d7df"), 5.0, true)
+		var draft_points: Array = Array(_draft_route.get("points", []))
+		_draw_route_preview(canvas, draft_points, Color("54d7df"), 3.0, true)
+		var source_id := StringName(_draft_route.get("source_point_id", _draw_source_point_id))
+		var target_id := StringName(_draft_route.get("target_point_id", &""))
+		var target := _point_from_model(_model(), target_id)
+		var target_screen := _world_to_screen(Vector2(target.get("world_position", Vector2.ZERO)))
+		_draw_command_arrow(canvas, source_id, target_screen)
+		canvas.draw_arc(target_screen, 17.0, 0.0, TAU, 24, Color("fff2bf"), 2.5, true)
+		var target_name := str(target.get("display_name", target_id))
+		var duration_seconds := float(_draft_route.get("duration_milliseconds", 0)) / 1000.0
+		var food_cost := int(_draft_route.get("food_cost", 0))
+		canvas.draw_string(ThemeDB.fallback_font, target_screen + Vector2(-84, -28), "%s · %0.1f 秒 · 粮 %d" % [target_name, duration_seconds, food_cost], HORIZONTAL_ALIGNMENT_CENTER, 168, 12, Color("fff4d3"))
 		return
 	if _is_drawing and not _engineering_mode and not _draw_preview_route.is_empty():
 		_draw_route_preview(canvas, Array(_draw_preview_route.get("points", [])), Color("77f0ef", 0.42), 2.0, false)
@@ -1965,6 +2069,8 @@ func _draw_march_draft_or_live_preview(canvas: Control) -> void:
 		var raw_points := PackedVector2Array()
 		for point in _draw_points:
 			raw_points.append(_world_to_screen(point))
+		if _engineering_live_endpoint != Vector2.INF and (raw_points.is_empty() or raw_points[raw_points.size() - 1].distance_to(_world_to_screen(_engineering_live_endpoint)) > 0.01):
+			raw_points.append(_world_to_screen(_engineering_live_endpoint))
 		for index in range(1, raw_points.size()):
 			canvas.draw_dashed_line(raw_points[index - 1], raw_points[index], Color("f2b86e"), 4.0, 8.0, true)
 		return
@@ -1978,11 +2084,14 @@ func _draw_march_draft_or_live_preview(canvas: Control) -> void:
 
 
 func _draw_pointer_command_arrow(canvas: Control, color: Color = Color("77f0ef")) -> void:
-	if _draw_source_point_id == &"":
+	_draw_command_arrow(canvas, _draw_source_point_id, _draw_cursor_screen, color)
+
+
+func _draw_command_arrow(canvas: Control, source_point_id: StringName, end: Vector2, color: Color = Color("77f0ef")) -> void:
+	if source_point_id == &"":
 		return
-	var source := _point_from_model(_model(), _draw_source_point_id)
+	var source := _point_from_model(_model(), source_point_id)
 	var start := _world_to_screen(Vector2(source.get("world_position", Vector2.ZERO)))
-	var end := _draw_cursor_screen
 	if start.distance_to(end) < 2.0:
 		return
 	canvas.draw_dashed_line(start, end, color, 3.0, 9.0, true)
@@ -1997,7 +2106,7 @@ func _draw_route_preview(canvas: Control, world_points: Array, color: Color, wid
 	var points := PackedVector2Array()
 	for point in world_points:
 		points.append(_world_to_screen(Vector2(point)))
-	canvas.draw_polyline(points, Color(color, 0.96 if committed else 0.82), width, true)
+	canvas.draw_polyline(points, Color(color, 0.54 if committed else 0.82), width, true)
 	for index in range(1, points.size()):
 		var start := points[index - 1]
 		var end := points[index]

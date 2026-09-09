@@ -4,28 +4,33 @@
 
 ### Direct command and engineering planning (current worktree)
 
-Macro March now separates selection from planning without a hold delay. A
-selected city formation or stationed army may click a legal destination for the
-authority's shortest completed route, or drag from its source after an
-eight-screen-pixel threshold. A normal drag is only a target/road-choice
-gesture: crossing a displayed physical-road point records that `road_id` as a
-hard authority constraint; raw pointer samples never become an army route.
+Macro March now separates selection from planning with one shared 0.5-second
+UI-time hold gate. A selected city formation or stationed army may click a
+legal destination for the authority's shortest completed route, or hold at its
+source before drawing. Movement beyond eight screen pixels before activation
+cancels instead of becoming an accidental order. A normal drag is only a
+target/road-choice gesture: only a visible physical-road choice point can
+change the recorded `road_id` hard authority constraint; raw pointer samples
+never become an army route.
 An unfinished or damaged chosen road rejects rather than silently changing the
 route or charging food. The side panel provides an explicit restore-default
 action.
 
 Engineering remains the separate polyline interaction. Its selected engineer
 defaults to a legal friendly source, another friendly source can be pressed and
-dragged directly, and an uncommitted plan may continue from its endpoint or
-undo its final point before confirmation. These UI-only edits neither reserve a
+held before drawing, and an uncommitted plan may continue from its endpoint or
+undo its final continuation stroke before confirmation. Committed bend samples
+and the live pointer endpoint are separate, so slow drawing and turns do not
+erase the existing line. New-camp preview and confirmation share the field
+authority's bounds and land validation. These UI-only edits neither reserve a
 camp nor charge food; the existing field preview and confirmation transaction
 remain authoritative.
 
 Right-click, focus loss, and leaving the battle clear transient pointer state.
-Graphical GUI-event evidence and its 5.18-second engine recording are in
+Graphical GUI-event evidence and its 4.77-second engine recording are in
 `docs/milestones/txwzs-field-tactics-r2/evidence/20260910-command-engineering-interaction/`.
 This is engine GUI-event evidence, not desktop-system-mouse or player-feel
-acceptance. Macro March (30), Field R2 (70), graphical low-poly (16),
+acceptance. Macro March (30), Field R2 (71), graphical low-poly (17),
 cross-process R2 persistence, and both formal playthrough routes pass on the
 current worktree.
 

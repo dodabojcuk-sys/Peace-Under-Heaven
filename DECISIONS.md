@@ -84,6 +84,15 @@
 	constraint, not a pointer-proximity score. If that road becomes unfinished or
 	damaged, confirmation rejects without substituting another route or charging
 	food. Engineering remains the separate free-polyline planning interaction.
+- Macro drawing has a single UI-time hold gate: pressing for 0.5 seconds starts
+	planning, while a pre-activation displacement above eight screen pixels
+	cancels. It is independent of world pause and speed. Road identity can change
+	only at the same visible choice points that accept the hit; a formation/army
+	subject switch or successful confirmation clears the draft-only road choice.
+- Engineering stores committed strokes separately from the live pointer end.
+	Undo removes one complete continuation rather than an arbitrary sample. New
+	camps use FieldTacticsState's bounds and land checks at preview and commit,
+	so the map does not reserve an impossible endpoint.
 - A newly issued macro order persists the directed physical road segments that
 	the field authority validated. This is immutable command intent, whereas
 progress remains the existing single shared-clock value. Snapshot validation

@@ -218,7 +218,9 @@ func _run_map_draft_contract() -> void:
 			and THEATER.route_crosses_water(Array(macro_screen._engineering_draft.get("route_world_points", []))),
 		"自动化地图工程绘线保留陆地材料，并将跨水事实交给权威分段规划"
 	)
-	macro_screen._engineering_draft = {}
+	# Start a distinct fixture operation exactly as the UI's clear action does;
+	# a valid uncommitted stroke otherwise remains an intentional continuation.
+	macro_screen._clear_engineering_draft()
 	var construction_food_before: int = city.food
 	macro_screen._engineering_mode = true
 	macro_screen._engineering_engineer_id = engineer_id
