@@ -14,6 +14,21 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 low-poly Blackstone sample
+
+- Added a switchable, render-only low-poly `SubViewport` for the Blackstone
+  outer map. Its orthographic camera displays authoritative 2D theatre, army,
+  specialist, patrol, road, bridge, and project facts without introducing a
+  second simulation or persistence owner.
+- Kept the clipped 2D map as a visible fallback; existing hit testing, route
+  drafting, minimap, pan, and zoom retain their original coordinate authority.
+- Clarified dispatched formations in the player UI: a depleted city row now
+  says `已出征（当前 N 人）`, selected armies show their live snapshot strength and
+  latest patrol loss, and active orders retain their original source/target.
+- Added a Macro March formal UI contract proving that a dispatched
+  seven-member formation is unavailable in the city while still represented as
+  seven members in its active army snapshot.
+
 ### FIELD_TACTICS_R2 Blackstone sample theatre
 
 - Split the player-facing Blackstone level from the historical regression

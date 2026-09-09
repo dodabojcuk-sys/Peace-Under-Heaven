@@ -407,6 +407,10 @@ func _run_camera_and_layout_contract() -> void:
 	root.size = Vector2i(1152, 648)
 	await process_frame
 	macro_screen.refresh()
+	# Exercise zoom/pan from a stable interior view rather than coupling this
+	# input contract to the player-facing sample theatre's opening framing.
+	macro_screen._camera_center = Vector2(500, 325)
+	macro_screen._camera_zoom = 0.78
 	var anchor := macro_screen._map_rect().get_center() + Vector2(80, -35)
 	var world_before_zoom := macro_screen._screen_to_world(anchor)
 	var wheel := InputEventMouseButton.new()
@@ -471,6 +475,25 @@ func _run_camera_and_layout_contract() -> void:
 		StringName(macro_screen._draft_route.get("route_id", &"")) == StringName(route.route_id)
 			and not macro_screen._map_rect().intersects(macro_screen._return_button.get_global_rect()),
 		"自动化鼠标拖线在正式地图入口生成可确认草稿，右侧控件不会向地图点击穿透"
+	)
+	macro_screen._draw_points.clear()
+	macro_screen._draft_route = {}
+	var seven_member_formation_id := StringName(Dictionary(city.get_formation_roster().front()).get("formation_id", &""))
+	var seven_member_count := int(Dictionary(city.get_formation_roster().front()).get("member_count", 0))
+	var issued: Dictionary = city.commit_macro_march_from_city(
+		[seven_member_formation_id], &"northwatch_garrison", StringName(route.get("route_id", &"")), Array(route.get("points", []))
+	)
+	macro_screen.refresh()
+	var active_army: Dictionary = Dictionary(issued.get("army", {}))
+	var formation_label := str(macro_screen._formation_buttons.front().text)
+	_check(
+		bool(issued.get("success", false))
+			and seven_member_count == 7
+			and int(Dictionary(city.get_formation_roster().front()).get("member_count", -1)) == 0
+			and macro_screen._army_member_count(active_army) == seven_member_count
+			and formation_label.contains("已出征（当前 7 人）")
+			and macro_screen._status_label.text.contains("黑石城 → 北望驻扎点"),
+		"正式地图将城内编队的 0 人标为已出征，按军队快照显示当前 7 人，并保留原军令起点与目标"
 	)
 	await _drop_scene(scene)
 

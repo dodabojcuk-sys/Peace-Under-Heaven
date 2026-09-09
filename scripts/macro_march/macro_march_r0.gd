@@ -7,6 +7,7 @@ signal return_to_city_requested
 const THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
 const ARMY_REGISTRY = preload("res://scripts/army/army_registry.gd")
 const MAP_CANVAS = preload("res://scripts/macro_march/macro_march_map_canvas.gd")
+const LOW_POLY_PRESENTATION = preload("res://scripts/macro_march/macro_march_low_poly_presentation.gd")
 
 const CAMERA_MIN_ZOOM := 0.62
 const CAMERA_MAX_ZOOM := 2.4
@@ -33,13 +34,17 @@ var _last_army_hit_position := Vector2.INF
 var _army_hit_cycle_index := 0
 var _formation_buttons: Array[Button] = []
 var _formation_signature := ""
-var _camera_center := Vector2(500, 325)
-var _camera_zoom := 0.78
+# Start on the authored playable segment (gate, river and forest garrison),
+# while retaining the same pan/zoom transform for all command input.
+var _camera_center := Vector2(440, 540)
+var _camera_zoom := 0.68
 var _is_panning := false
 var _last_pan_position := Vector2.ZERO
 
 var _title_label := Label.new()
 var _map_canvas := MAP_CANVAS.new()
+var _low_poly_presentation := LOW_POLY_PRESENTATION.new()
+var _low_poly_enabled := true
 var _legend_label := Label.new()
 var _status_label := Label.new()
 var _detail_label := Label.new()
@@ -56,6 +61,7 @@ var _side_road_button := Button.new()
 var _resume_project_button := Button.new()
 var _interrupted_project_selector := OptionButton.new()
 var _return_button := Button.new()
+var _presentation_toggle_button := Button.new()
 var _interrupted_project_selector_signature := ""
 
 
@@ -82,9 +88,10 @@ func refresh() -> void:
 		return
 	var model := _model()
 	var army := _selected_army(model)
-	_refresh_formation_controls(Array(model.get("formations", [])), army)
+	_refresh_formation_controls(Array(model.get("formations", [])), army, Array(model.get("armies", [])))
 	_refresh_copy(model, army)
 	_layout_ui()
+	_sync_low_poly_presentation(model)
 	queue_redraw()
 	_map_canvas.queue_redraw()
 
@@ -97,8 +104,12 @@ func _process(delta: float) -> void:
 
 
 func _build_ui() -> void:
+	_low_poly_presentation.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_low_poly_presentation.z_index = 0
+	add_child(_low_poly_presentation)
 	_map_canvas.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_map_canvas.clip_contents = true
+	_map_canvas.z_index = 1
 	_map_canvas.renderer = _draw_map_canvas
 	add_child(_map_canvas)
 	for label in [_title_label, _status_label, _detail_label, _specialist_status_label]:
@@ -125,7 +136,7 @@ func _build_ui() -> void:
 	_formation_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_formation_scroll.add_child(_formation_list)
 	add_child(_formation_scroll)
-	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _return_button]:
+	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _return_button, _presentation_toggle_button]:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
 	_interrupted_project_selector.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -141,6 +152,7 @@ func _build_ui() -> void:
 	_resume_project_button.visible = false
 	_interrupted_project_selector.visible = false
 	_return_button.text = "返回黑石城"
+	_presentation_toggle_button.text = "切换为二维战区"
 	_confirm_button.pressed.connect(_confirm_draft)
 	_retreat_button.pressed.connect(_request_retreat)
 	_scout_button.pressed.connect(_dispatch_scout)
@@ -149,6 +161,7 @@ func _build_ui() -> void:
 	_resume_project_button.pressed.connect(_resume_selected_interrupted_project)
 	_interrupted_project_selector.item_selected.connect(_select_interrupted_project)
 	_return_button.pressed.connect(func(): return_to_city_requested.emit())
+	_presentation_toggle_button.pressed.connect(_toggle_low_poly_presentation)
 
 
 func _layout_ui() -> void:
@@ -166,6 +179,11 @@ func _layout_ui() -> void:
 	var map_rect := _map_rect()
 	_map_canvas.position = map_rect.position
 	_map_canvas.size = map_rect.size
+	_low_poly_presentation.position = map_rect.position
+	_low_poly_presentation.size = map_rect.size
+	_presentation_toggle_button.position = map_rect.position + Vector2(12.0, map_rect.size.y - 42.0)
+	_presentation_toggle_button.size = Vector2(132.0, 30.0)
+	_presentation_toggle_button.visible = _low_poly_available()
 	_legend_label.position = Vector2(map_rect.position.x, map_rect.end.y + 2.0)
 	_legend_label.size = Vector2(map_rect.size.x, 20.0)
 	_title_label.position = Vector2(22, 12)
@@ -192,11 +210,13 @@ func _layout_ui() -> void:
 	_recover_button.size = Vector2(panel_inner.size.x, action_height)
 
 
-func _refresh_formation_controls(formations: Array, army: Dictionary) -> void:
+func _refresh_formation_controls(formations: Array, army: Dictionary, armies: Array) -> void:
 	var signature_parts: Array[String] = [str(not army.is_empty()), str(bool(_model().get("can_issue_from_city", false)))]
+	var deployed_members := _deployed_members_by_formation(armies)
 	for formation_value in formations:
 		var formation: Dictionary = formation_value
-		signature_parts.append("%s:%d" % [String(formation.get("formation_id", &"")), int(formation.get("member_count", 0))])
+		var formation_id := StringName(formation.get("formation_id", &""))
+		signature_parts.append("%s:%d:%d" % [String(formation_id), int(formation.get("member_count", 0)), int(deployed_members.get(formation_id, 0))])
 	var next_signature := "|".join(signature_parts)
 	if next_signature == _formation_signature:
 		for button in _formation_buttons:
@@ -213,7 +233,8 @@ func _refresh_formation_controls(formations: Array, army: Dictionary) -> void:
 		var formation: Dictionary = formation_value
 		var formation_id := StringName(formation.formation_id)
 		var button := Button.new()
-		button.text = "%s · %d 人" % [str(formation.display_name), int(formation.member_count)]
+		var deployed_count := int(deployed_members.get(formation_id, 0))
+		button.text = "%s · 已出征（当前 %d 人）" % [str(formation.display_name), deployed_count] if deployed_count > 0 else "%s · %d 人" % [str(formation.display_name), int(formation.member_count)]
 		button.disabled = int(formation.member_count) <= 0
 		button.toggle_mode = true
 		button.button_pressed = formation_id in _selected_formation_ids
@@ -221,6 +242,18 @@ func _refresh_formation_controls(formations: Array, army: Dictionary) -> void:
 		button.pressed.connect(_toggle_formation.bind(formation_id))
 		_formation_list.add_child(button)
 		_formation_buttons.append(button)
+
+
+func _deployed_members_by_formation(armies: Array) -> Dictionary:
+	var deployed: Dictionary = {}
+	for army_value in armies:
+		var macro: Dictionary = Dictionary(Dictionary(army_value).get("macro_march", {}))
+		for formation_value in Array(macro.get("formation_snapshots", [])):
+			var formation: Dictionary = Dictionary(formation_value)
+			var formation_id := StringName(formation.get("formation_id", &""))
+			if formation_id != &"":
+				deployed[formation_id] = int(deployed.get(formation_id, 0)) + int(formation.get("member_count", 0))
+	return deployed
 
 
 func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
@@ -303,6 +336,12 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		]
 	else:
 		var macro: Dictionary = army.macro_march
+		# An active order keeps its original departure point for reporting.  The
+		# target only becomes the source after arrival, when a new order may start.
+		var order_source_id := StringName(macro.get("source_point_id", source_id))
+		if StringName(army.get("phase", &"")) == ARMY_REGISTRY.PHASE_STATIONED:
+			order_source_id = source_id
+		var order_source := _point_from_model(model, order_source_id)
 		var target := _point_from_model(model, StringName(macro.target_point_id))
 		var phase_text := "行军中"
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED:
@@ -326,7 +365,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			phase_text = "自动攻城中"
 		elif StringName(army.phase) == ARMY_REGISTRY.PHASE_RETREATING:
 			phase_text = "有损撤逃中"
-		_status_label.text = "%s：%s → %s" % [phase_text, str(source.get("display_name", source_id)), str(target.get("display_name", macro.target_point_id))]
+		_status_label.text = "%s：%s → %s" % [phase_text, str(order_source.get("display_name", order_source_id)), str(target.get("display_name", macro.target_point_id))]
 		var war: Dictionary = model.get("war_loop", {})
 		var siege := _siege_for_army(war, StringName(army.get("army_id", &"")))
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING:
@@ -337,7 +376,12 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 				var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
 				var transfer_target := _point_from_model(model, StringName(transfer.get("target_point_id", &"")))
 				blocked_detail = "\n受阻路段：%d；当前处置：%s%s" % [int(macro.get("blocked_segment_index", -1)) + 1, _blocked_transfer_label(StringName(transfer.get("phase", &""))), (" → %s" % str(transfer_target.get("display_name", "友方驻点"))) if StringName(transfer.get("target_point_id", &"")) != &"" else ""]
-			_detail_label.text = "原军令进度：%d%%\n粮食已扣：%d\n%s%s" % [roundi(float(macro.progress_millis) / maxf(float(macro.total_millis), 1.0) * 100.0), int(macro.food_cost), ("工程师维修后会沿实际道路接续原军令，不再扣粮。" if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED else "到达后可从驻扎点发出下一道军令。"), blocked_detail]
+			var current_members := _army_member_count(army)
+			var encounter_copy := _latest_encounter_copy(field, StringName(army.get("army_id", &"")))
+			var battle_line := "最近战报：暂无"
+			if not encounter_copy.is_empty():
+				battle_line = "最近战报：遭遇%s，损失 %d 人，剩余 %d 人" % [str(encounter_copy.get("patrol_name", "巡逻")), int(encounter_copy.get("losses", 0)), current_members]
+			_detail_label.text = "当前军队：%d 人\n原军令进度：%d%%\n粮食已扣：%d\n%s\n%s%s" % [current_members, roundi(float(macro.progress_millis) / maxf(float(macro.total_millis), 1.0) * 100.0), int(macro.food_cost), battle_line, ("工程师维修后会沿实际道路接续原军令，不再扣粮。" if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED else "到达后可从驻扎点发出下一道军令。"), blocked_detail]
 		_confirm_button.disabled = true
 		_block_button.visible = false
 		_recover_button.visible = false
@@ -376,6 +420,34 @@ func _selected_formation_member_count(formations: Array) -> int:
 		if StringName(formation.get("formation_id", &"")) in _selected_formation_ids:
 			total += int(formation.get("member_count", 0))
 	return total
+
+
+func _army_member_count(army: Dictionary) -> int:
+	var total := 0
+	for formation_value in Array(Dictionary(army.get("macro_march", {})).get("formation_snapshots", [])):
+		total += int(Dictionary(formation_value).get("member_count", 0))
+	return total
+
+
+func _latest_encounter_copy(field: Dictionary, army_id: StringName) -> Dictionary:
+	var latest: Dictionary = {}
+	for patrol_value in Dictionary(field.get("visible_patrols_by_id", {})).values():
+		var patrol: Dictionary = Dictionary(patrol_value)
+		var encounter: Dictionary = Dictionary(patrol.get("last_engagement", {}))
+		if encounter.is_empty() or army_id not in Array(encounter.get("army_ids", [])):
+			continue
+		var losses := 0
+		var losses_by_army: Dictionary = Dictionary(encounter.get("formation_losses_by_army", {}))
+		var formation_losses: Dictionary = Dictionary(losses_by_army.get(army_id, {}))
+		for formation_loss in formation_losses.values():
+			losses += int(formation_loss)
+		if latest.is_empty() or int(encounter.get("world_milliseconds", 0)) > int(latest.get("world_milliseconds", -1)):
+			latest = {
+				"world_milliseconds": int(encounter.get("world_milliseconds", 0)),
+				"losses": losses,
+				"patrol_name": str(patrol.get("display_name", "巡逻")),
+			}
+	return latest
 
 
 func _count_available_specialists(specialists: Dictionary, role: StringName) -> int:
@@ -1176,6 +1248,28 @@ func _model() -> Dictionary:
 	return _dispatch_adapter.get_macro_march_read_model() if _dispatch_adapter != null else {"army": {}, "formations": [], "food": 0}
 
 
+func _low_poly_available() -> bool:
+	return DisplayServer.get_name() != "headless" and THEATER.get_definition_id() == &"blackstone_playable_r2"
+
+
+func _sync_low_poly_presentation(model: Dictionary) -> void:
+	var enabled := _low_poly_enabled and _low_poly_available()
+	_low_poly_presentation.visible = enabled
+	_presentation_toggle_button.text = "切换为二维战区" if enabled else "切换为低模战区"
+	if not enabled:
+		return
+	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+	_low_poly_presentation.sync(THEATER, model, field, _camera_center, _camera_zoom)
+
+
+func _toggle_low_poly_presentation() -> void:
+	if not _low_poly_available():
+		return
+	_low_poly_enabled = not _low_poly_enabled
+	_status_label.text = "已切换为%s；军令、施工、战斗和存档仍使用同一战区状态。" % ("低模战区表现" if _low_poly_enabled else "二维战区基线")
+	refresh()
+
+
 func _map_rect() -> Rect2:
 	var panel_width := clampf(size.x * 0.28, 272.0, 340.0)
 	return Rect2(Vector2(22, 96), Vector2(maxf(size.x - panel_width - 44.0, 400.0), maxf(size.y - 122.0, 360.0)))
@@ -1278,11 +1372,14 @@ func _draw_map_canvas(canvas: Control) -> void:
 	# World drawing keeps the parent's screen-space transform, while the child
 	# canvas clips every primitive to the actual map viewport.
 	canvas.draw_set_transform(-rect.position)
+	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+	if _low_poly_enabled and _low_poly_available():
+		_draw_low_poly_overlays(canvas, rect, field)
+		return
 	canvas.draw_rect(rect, Color(palette.get("ground_color", Color("728b67"))))
 	_draw_terrain(canvas, rect)
 	for water_region in THEATER.get_water_regions():
 		_draw_water_region(canvas, water_region, palette)
-	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
 	for route_value in Dictionary(field.get("roads_by_id", {})).values():
 		var route: Dictionary = route_value
 		var points := PackedVector2Array()
@@ -1366,6 +1463,59 @@ func _draw_map_canvas(canvas: Control) -> void:
 			_draw_garrison_marker(canvas, center)
 		var label_position := Vector2(clampf(center.x - 38.0, rect.position.x + 2.0, rect.end.x - 82.0), clampf(center.y + 47.0, rect.position.y + 16.0, rect.end.y - 6.0))
 		canvas.draw_string(ThemeDB.fallback_font, label_position, str(point.display_name), HORIZONTAL_ALIGNMENT_CENTER, 80, 14, Color.WHITE)
+	_draw_minimap(canvas)
+
+
+func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) -> void:
+	# The low-poly layer renders terrain and units through an orthographic
+	# SubViewport.  This transparent canvas retains only interaction affordances
+	# using the same 2D projection that receives input.
+	if not _draft_route.is_empty():
+		var draft_points := PackedVector2Array()
+		for point in _draft_route.points:
+			draft_points.append(_world_to_screen(Vector2(point)))
+		canvas.draw_polyline(draft_points, Color("54d7df"), 5.0, true)
+	elif not _draw_points.is_empty():
+		var drawn := PackedVector2Array()
+		for point in _draw_points:
+			drawn.append(_world_to_screen(point))
+		canvas.draw_polyline(drawn, Color("54d7df"), 4.0, true)
+	for army_value in Array(_model().get("armies", [])):
+		var army: Dictionary = Dictionary(army_value)
+		var display_route := _display_route_for_army(army)
+		var points: Array = Array(display_route.get("points", []))
+		if points.is_empty():
+			continue
+		var progress := float(display_route.get("progress_millis", 0)) / maxf(float(display_route.get("total_millis", 1)), 1.0)
+		var screen := _world_to_screen(_point_along_route(points, progress))
+		var selected := StringName(army.get("army_id", &"")) == _selected_army_id
+		canvas.draw_arc(screen, 20.0 if selected else 16.0, 0.0, TAU, 24, Color("fff2bf") if selected else Color("342b27", 0.72), 2.0, true)
+		canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-24, 31), "%d 人" % _army_member_count(army), HORIZONTAL_ALIGNMENT_CENTER, 48, 12, Color("fff0c5"))
+	for project_value in Dictionary(field.get("projects_by_id", {})).values():
+		var project: Dictionary = Dictionary(project_value)
+		if StringName(project.get("phase", &"")) == &"COMPLETE":
+			continue
+		var engineer := Dictionary(Dictionary(field.get("specialists_by_id", {})).get(StringName(project.get("engineer_id", &"")), {}))
+		var project_points: Array = Array(project.get("route_world_points", []))
+		var fallback := Vector2(project_points.front()) if not project_points.is_empty() else Vector2.ZERO
+		var screen := _world_to_screen(Vector2(engineer.get("world_position", fallback)))
+		var progress := float(project.get("progress_milliseconds", 0)) / maxf(float(project.get("required_milliseconds", 1)), 1.0)
+		var progress_rect := Rect2(screen + Vector2(-25, 17), Vector2(50, 6))
+		canvas.draw_rect(progress_rect, Color("20302c", 0.88), true)
+		canvas.draw_rect(Rect2(progress_rect.position, Vector2(progress_rect.size.x * clampf(progress, 0.0, 1.0), progress_rect.size.y)), Color("f2b86e"), true)
+		canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-32, 38), "施工中" if StringName(project.get("phase", &"")) == &"BUILDING" else "赴工中", HORIZONTAL_ALIGNMENT_CENTER, 64, 12, Color("fff0c5"))
+	for patrol_value in Dictionary(field.get("visible_patrols_by_id", {})).values():
+		var patrol: Dictionary = Dictionary(patrol_value)
+		var patrol_screen := _world_to_screen(Vector2(patrol.get("last_known_world_position", Vector2.ZERO)))
+		canvas.draw_arc(patrol_screen, 19.0, 0.0, TAU, 24, Color("ffd166"), 2.0, true)
+		if not Dictionary(patrol.get("last_engagement", {})).is_empty():
+			canvas.draw_string(ThemeDB.fallback_font, patrol_screen + Vector2(-40, 30), "遭遇已结算", HORIZONTAL_ALIGNMENT_CENTER, 80, 12, Color("fff0c5"))
+	for point_value in _all_points(_model()).values():
+		var point: Dictionary = point_value
+		var center := _world_to_screen(Vector2(point.get("world_position", Vector2.ZERO)))
+		var label_position := Vector2(clampf(center.x - 45.0, rect.position.x + 2.0, rect.end.x - 92.0), clampf(center.y + 43.0, rect.position.y + 16.0, rect.end.y - 6.0))
+		canvas.draw_string(ThemeDB.fallback_font, label_position, str(point.get("display_name", "据点")), HORIZONTAL_ALIGNMENT_CENTER, 92, 14, Color("fff4d3"))
+	canvas.draw_rect(rect, Color("e7d7a8", 0.92), false, 2.0)
 	_draw_minimap(canvas)
 
 

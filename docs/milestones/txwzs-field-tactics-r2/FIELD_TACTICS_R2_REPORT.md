@@ -28,6 +28,38 @@ transaction and persistence-checkpoint caller.
 
 ## Delivered engineering evidence
 
+### Low-poly presentation checkpoint (current worktree)
+
+The Blackstone outer map now offers a render-only low-poly mode backed by an
+orthographic `Camera3D` and `SubViewport`. It projects the existing 2D world
+coordinates into a small 3D scene and consumes the established Macro March and
+Field read models. `ConstructionController`, `ArmyRegistry`, `FieldTacticsState`
+and V5 persistence retain their existing ownership; this presentation does not
+advance a second clock, resolve a second battle, or write a separate save.
+
+The implementation uses only Godot built-in primitives and materials. It
+renders city walls/gates, camps, terrain markers, roads, bridge decks/breaks,
+formations, specialists, patrols, and construction scaffolds. The existing
+clipped 2D renderer remains selectable, and all input continues through the
+same 2D coordinate transform. This is a sample for the Blackstone gate-road-
+river-forest-garrison segment, not final art coverage for every theatre.
+
+The map's roster copy was corrected at the same boundary. A zero count in the
+city roster after dispatch means that the formation was transferred into an
+active army, not that it was eliminated. The panel now says `已出征（当前 N 人）`,
+reports the selected army's current snapshot strength and latest stored patrol
+loss, and shows the original order direction while marching. Macro March smoke
+adds a 30th assertion for a formal seven-member dispatch: city availability
+becomes zero while the active army remains seven, with `黑石城 → 北望驻扎点`
+visible in the status. Encounter-specific survivor counts remain facts of the
+saved encounter/army state; they are never inferred from city availability.
+
+An isolated Godot process rendered the low-poly map on the target Mac. Desktop
+automation did not receive accessible child controls for its custom drawing
+canvas, so this work has visual runtime inspection but not new normal-system-
+input footage. That media gap is reported separately and does not change the
+logic verification boundary.
+
 ### Blackstone sample-theatre candidate
 
 The player-facing sample is now independent of the regression fixture. Its

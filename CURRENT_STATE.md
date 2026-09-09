@@ -2,6 +2,34 @@
 
 ## FIELD_TACTICS_R2 Blackstone sample-theatre candidate (2026-09-09)
 
+### Low-poly sample and battle-report correction (current worktree checkpoint)
+
+The Macro March screen now has a render-only low-poly miniature mode for the
+Blackstone sample theatre. An orthographic `Camera3D` inside a `SubViewport`
+reads the same 2D world positions and Field/Army read models as the established
+map; it does not own a second movement, combat, resource, clock, or save state.
+The legacy clipped 2D map remains selectable as a baseline. Built-in Godot
+primitive meshes presently provide the city-gate, camp, tree, rock, road,
+bridge, formation, specialist, patrol, and active-work silhouettes. This is an
+operational art-direction sample, not a claim that the whole campaign has final
+3D art.
+
+The former observation that a seven-member team was eliminated because its city
+row became `0` was incorrect. A city row is an available-garrison count: formal
+dispatch transfers the seven members into an active army snapshot. The panel
+now distinguishes `已出征（当前 7 人）` from city availability, displays the
+selected army's current survivors and latest engagement loss, and retains the
+original `黑石城 → 北望驻扎点` order direction while it is active. The exact
+survivor count after a particular encounter must still be read from that
+encounter's stored result; it must not be inferred from a city roster.
+
+Macro March smoke now has 30 assertions, including this formal dispatch/UI
+contract. A separately launched low-poly viewport was visually inspected on
+the target Mac. Its custom canvas controls were not exposed as accessible
+desktop targets, so this is not normal-system-input media and no video is
+claimed for the new candidate. See
+`docs/design/BLACKSTONE_LOW_POLY_SAMPLE_R2.md` for the presentation boundary.
+
 The current R2 candidate separates the historical regression fixture from a
 new Resource-owned Blackstone sample theatre. The playable definition now owns
 its 1500x980 battlefield, seven named points, northern and lowland approaches,
