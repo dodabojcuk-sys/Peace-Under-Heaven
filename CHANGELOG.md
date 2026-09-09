@@ -28,6 +28,10 @@
 - Added a Macro March formal UI contract proving that a dispatched
   seven-member formation is unavailable in the city while still represented as
   seven members in its active army snapshot.
+- Corrected low-poly road/bridge lifecycle and the camera-basis ground mapping.
+  A non-headless graphical smoke now proves 2D/3D anchor alignment, actual
+  segment geometry, route drafting, engineering confirmation, actor movement,
+  and a non-mutating presentation-mode switch across three resolutions.
 
 ### FIELD_TACTICS_R2 Blackstone sample theatre
 

@@ -24,10 +24,15 @@ survivor count after a particular encounter must still be read from that
 encounter's stored result; it must not be inferred from a city roster.
 
 Macro March smoke now has 30 assertions, including this formal dispatch/UI
-contract. A separately launched low-poly viewport was visually inspected on
-the target Mac. Its custom canvas controls were not exposed as accessible
-desktop targets, so this is not normal-system-input media and no video is
-claimed for the new candidate. See
+contract. A dedicated graphical smoke runs outside headless mode at 1152x648,
+1280x720 and 1920x1080: `Camera3D.unproject_position()` differs from the 2D
+anchor calculation by at most 0.22 pixels, and the actual road/bridge segment
+midpoint/facing error is 0. The same graphical process also drives Macro March
+route and engineering UI handlers and verifies animated army nodes plus a
+non-mutating 2D/3D switch. A separately launched low-poly viewport was visually
+inspected on the target Mac. Its custom canvas controls were not exposed as
+accessible desktop targets, so this is not normal-system-input media and no
+video is claimed for the new candidate. See
 `docs/design/BLACKSTONE_LOW_POLY_SAMPLE_R2.md` for the presentation boundary
 and `docs/milestones/txwzs-field-tactics-r2/evidence/20260909-low-poly-sample/`
 for the isolated runtime still and its provenance.

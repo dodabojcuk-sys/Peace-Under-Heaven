@@ -89,6 +89,8 @@ func sync(
 	if points_signature != _point_signature:
 		_point_signature = points_signature
 		_rebuild_points(model, field)
+	# Positions and progress change every world tick, while point ownership rarely
+	# changes. Keep the visual actors synchronized independently of point rebuilds.
 	_sync_armies(Array(model.get("armies", [])))
 	_sync_specialists(Dictionary(field.get("specialists_by_id", {})))
 	_sync_patrols(Dictionary(field.get("visible_patrols_by_id", {})))
@@ -136,19 +138,33 @@ func _update_camera(center: Vector2, zoom: float) -> void:
 	if size.y <= 1.0:
 		return
 	var target := _ground_position(center)
-	var horizontal := Vector3(sin(CAMERA_YAW) * cos(CAMERA_PITCH), 0.0, cos(CAMERA_YAW) * cos(CAMERA_PITCH))
-	var forward := Vector3(horizontal.x, -sin(CAMERA_PITCH), horizontal.z).normalized()
+	var forward := _camera_forward()
 	_camera.position = target - forward * CAMERA_DISTANCE
 	_camera.look_at(target, Vector3.UP)
 	_camera.size = size.y / maxf(zoom, 0.01)
 
 
+func project_world_to_viewport(world_position: Vector2, elevation := 0.0) -> Vector2:
+	# Camera3D is the independent reference for renderer/overlay alignment.
+	# The returned coordinates are local to this SubViewport, not the host Control.
+	return _camera.unproject_position(_ground_position(world_position, elevation))
+
+
 func _ground_position(world_position: Vector2, elevation := 0.0) -> Vector3:
+	# Build the presentation ground in the camera's screen basis.  This makes the
+	# renderer's orthographic projection exactly match MacroMarchR0's authoritative
+	# 2D transform: right is x + skew*y and screen-down is y*scale.
+	var forward := _camera_forward()
+	var right := forward.cross(Vector3.UP).normalized()
+	var camera_up := right.cross(forward).normalized()
 	var horizontal := world_position.x + world_position.y * OBLIQUE_X_SKEW
-	var vertical := -world_position.y * OBLIQUE_Y_SCALE / sin(CAMERA_PITCH)
-	var cosine := cos(CAMERA_YAW)
-	var sine := sin(CAMERA_YAW)
-	return Vector3(cosine * horizontal + sine * vertical, elevation, -sine * horizontal + cosine * vertical)
+	var vertical := world_position.y * OBLIQUE_Y_SCALE
+	return right * horizontal - camera_up * vertical + Vector3.UP * elevation
+
+
+func _camera_forward() -> Vector3:
+	var horizontal := Vector3(sin(CAMERA_YAW) * cos(CAMERA_PITCH), 0.0, cos(CAMERA_YAW) * cos(CAMERA_PITCH))
+	return Vector3(horizontal.x, -sin(CAMERA_PITCH), horizontal.z).normalized()
 
 
 func _rebuild_static_theater() -> void:
@@ -282,9 +298,11 @@ func _add_road_segment(parent: Node3D, start: Vector2, end: Vector2, color: Colo
 		return
 	var segment := Node3D.new()
 	segment.name = "BridgeSegment" if bridge else "RoadSegment"
-	segment.position = start_3d.lerp(end_3d, 0.5)
-	segment.look_at(end_3d, Vector3.UP)
 	parent.add_child(segment)
+	segment.global_position = start_3d.lerp(end_3d, 0.5)
+	segment.look_at(end_3d, Vector3.UP)
+	segment.set_meta("road_start", start_3d)
+	segment.set_meta("road_end", end_3d)
 	var deck_width := 9.5 if bridge else 8.0
 	var deck_height := 1.7 if bridge else 0.7
 	_add_box(segment, Vector3(deck_width, deck_height, distance + 2.0), Vector3.ZERO, color, "Deck")

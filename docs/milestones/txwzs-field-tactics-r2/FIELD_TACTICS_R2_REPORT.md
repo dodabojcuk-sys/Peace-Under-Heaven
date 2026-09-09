@@ -60,6 +60,17 @@ canvas, so this work has visual runtime inspection but not new normal-system-
 input footage. That media gap is reported separately and does not change the
 logic verification boundary.
 
+Follow-up graphical validation corrects the original camera mapping and
+road-segment transform. The presentation ground now uses the actual Camera3D
+right/up basis, so `unproject_position()` is an independent renderer-side check
+against the authoritative 2D map. At 1152x648, 1280x720, and 1920x1080, named
+points, bridge heads, and a road midpoint stay within 0.22 pixels; segment
+midpoint/facing error is 0. The graphical runner also uses the Macro March UI
+event path to draft and confirm a military route, create a cross-river
+engineering project, advance a visible army, and toggle presentation modes
+without mutating campaign state. It is graphical UI-event evidence, not an OS
+mouse recording.
+
 ### Blackstone sample-theatre candidate
 
 The player-facing sample is now independent of the regression fixture. Its

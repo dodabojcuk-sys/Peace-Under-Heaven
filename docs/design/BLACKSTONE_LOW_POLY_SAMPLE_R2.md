@@ -21,6 +21,21 @@ route drafting, and every command continue to use the established invertible
 2D map transform. The 3D layer uses the inverse-compatible ground mapping only
 to display those same coordinates.
 
+## Projection contract
+
+The low-poly ground is constructed in the active camera's right/up basis. Its
+orthographic projection therefore equals the authoritative 2D expression
+`(x + 0.20y, 0.72y)` for every ground anchor, rather than relying on manual
+per-location offsets. `Camera3D.unproject_position()` is the renderer-side
+reference, and the host converts its SubViewport-local result back through the
+map rectangle only when comparing it to the 2D map coordinate.
+
+Road and bridge segments are attached to their scene parent before their global
+midpoint and `look_at()` transform are applied. Runtime actors and projects
+also synchronize every world refresh, independently of the less-frequent point
+ownership rebuild; a moving army cannot remain visually frozen merely because
+no garrison changed owner.
+
 ## Rendering approach
 
 - A `SubViewport` holds an orthographic `Camera3D`, one directional light, and
@@ -48,6 +63,14 @@ inferred from an emptied city row.
 Headless Macro March smoke verifies the formal UI model after dispatch: a
 seven-member city formation becomes a zero-member city row while the active
 army remains seven members and the status reports `黑石城 → 北望驻扎点`.
+
+`tests/run_macro_march_low_poly_graphical_smoke.gd` deliberately requires a
+non-headless Godot process. At 1152x648, 1280x720, and 1920x1080 it compares
+named points, bridge heads, and a road midpoint against `Camera3D` projection,
+checks actual segment midpoint/facing, drives route drawing and engineering
+confirmation through the Macro March input handlers, verifies a moving army
+updates its rendered node, and confirms switching 2D/3D does not mutate the
+campaign snapshot. Headless suites do not claim this rendering coverage.
 
 The sample 3D viewport was launched in a separate Godot process for visual
 inspection. It is render evidence only. The current desktop automation surface
