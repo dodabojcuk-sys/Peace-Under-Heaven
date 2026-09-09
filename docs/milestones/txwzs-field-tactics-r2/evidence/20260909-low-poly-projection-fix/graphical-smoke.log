@@ -1,0 +1,13 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+Metal 3.2 - Forward+ - Using Device #0: Apple - Apple M4 (Apple9)
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 图形进程 1152×648 中 Camera3D 与二维锚点最大误差 0.220 像素
+PASS: 图形进程 1152×648 中道路与桥段按实际端点居中、朝向，最大几何误差 0.0000
+PASS: 图形进程 1280×720 中 Camera3D 与二维锚点最大误差 0.000 像素
+PASS: 图形进程 1280×720 中道路与桥段按实际端点居中、朝向，最大几何误差 0.0000
+PASS: 图形进程 1920×1080 中 Camera3D 与二维锚点最大误差 0.000 像素
+PASS: 图形进程 1920×1080 中道路与桥段按实际端点居中、朝向，最大几何误差 0.0000
+PASS: 图形进程在低模模式接收鼠标绘线、确认军令并更新军队位置，二维/三维切换不重发军令或改写状态
+PASS: 图形进程在低模模式通过工程师选择、可见施工起点、跨河拖线与确认创建权威道路桥梁工程
+MACRO_MARCH_LOW_POLY_GRAPHICAL_SMOKE PASS assertions=8
