@@ -39,6 +39,13 @@ for the earlier isolated runtime still and its provenance. The corrected
 projection/interaction runner and its explicit normal-input media gap are
 recorded in
 `docs/milestones/txwzs-field-tactics-r2/evidence/20260909-low-poly-projection-fix/`.
+The corrected candidate was then normally pushed as
+`12fa9edbc6c9ca03c172fc9cecc09d3b7a186773`. Its identified formal window and
+current engine-viewport route, march, engineering-preview, and construction
+states are recorded in
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-low-poly-candidate-12fa9ed/`.
+Those screenshots demonstrate the rendered candidate but are GUI-event/engine
+viewport evidence; normal-system-input video is still an explicit gap.
 
 The current R2 candidate separates the historical regression fixture from a
 new Resource-owned Blackstone sample theatre. The playable definition now owns

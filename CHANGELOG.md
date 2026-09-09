@@ -32,6 +32,10 @@
   A non-headless graphical smoke now proves 2D/3D anchor alignment, actual
   segment geometry, route drafting, engineering confirmation, actor movement,
   and a non-mutating presentation-mode switch across three resolutions.
+- Recorded the pushed `12fa9ed` candidate's identified formal-window launch and
+  current engine-viewport overview, route draft, march, engineering preview,
+  and construction-progress evidence. The record keeps its GUI-event source
+  separate from the still-missing normal-system-input video.
 
 ### FIELD_TACTICS_R2 Blackstone sample theatre
 
