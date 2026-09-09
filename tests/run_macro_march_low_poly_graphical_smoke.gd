@@ -28,6 +28,7 @@ func _run() -> void:
 	await _check_long_hold_draw_interaction()
 	await _check_engineering_input()
 	await _check_continuous_engineering_strokes()
+	await _check_replanning_and_specialist_switch_state()
 	_finish()
 
 
@@ -311,6 +312,128 @@ func _check_draft_confirmation_priority() -> void:
 		"图形进程经 GUI 事件完成工程师选中→绘线与专员选中→城市编队绘线；两种有效草稿都在场景树中显示可用确认按钮，并通过实际按钮输入各只提交一次资源事务"
 	)
 	marching_scene.queue_free()
+	await process_frame
+
+
+func _check_replanning_and_specialist_switch_state() -> void:
+	_clear_isolated_campaign_generations()
+	root.size = Vector2i(1152, 648)
+	var scene := CITY_SCENE.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var city: Node = scene.get_node("ConstructionController")
+	city.food = 80
+	scene.open_macro_march_r0()
+	await process_frame
+	var macro: MacroMarchR0 = scene.get_node("UI/MacroMarchR0")
+	# This contract exercises the shared 2D input/overlay layer. Keep the
+	# unrelated active-project 3D reconstruction out of this state-isolated UI
+	# fixture; dedicated low-poly checks above cover that presentation path.
+	macro._low_poly_enabled = false
+	macro.refresh()
+	var formation_button: Button = null
+	for candidate_value in macro._formation_buttons:
+		var candidate := candidate_value as Button
+		if candidate != null and not candidate.disabled:
+			formation_button = candidate
+			break
+	await _click_control_with_gui_input(formation_button)
+	var ridge: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
+	var lowland: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.lowland")
+	_draw_route_with_gui(macro, Array(ridge.get("points", [])))
+	await process_frame
+	var food_before_replan := int(city.food)
+	var armies_before_replan := Array(macro._model().get("armies", [])).size()
+	var first_draft_is_ridge := StringName(macro._draft_route.get("required_road_id", &"")) == &"road.blackstone.northwatch.ridge"
+	var lowland_points: Array = Array(lowland.get("points", []))
+	_send_map_press(macro, macro._world_to_screen(Vector2(lowland_points.front())))
+	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
+	for point_value in lowland_points.slice(1):
+		_send_map_motion(macro, macro._world_to_screen(Vector2(point_value)))
+	macro.refresh()
+	var live_replan_has_priority := macro._is_drawing \
+		and StringName(macro._draft_route.get("required_road_id", &"")) == &"road.blackstone.northwatch.ridge" \
+		and macro._selected_route_road_id == &"road.blackstone.northwatch.lowland" \
+		and not macro._draw_preview_route.is_empty() \
+		and not macro._confirm_button.visible \
+		and macro._detail_label.text.contains("正在重规划军令")
+	_send_map_release(macro, macro._world_to_screen(Vector2(lowland_points.back())))
+	await process_frame
+	var replacement_draft_ready := StringName(macro._draft_route.get("required_road_id", &"")) == &"road.blackstone.northwatch.lowland" \
+		and macro._confirm_button.is_inside_tree() and macro._confirm_button.visible and not macro._confirm_button.disabled \
+		and int(city.food) == food_before_replan and Array(macro._model().get("armies", [])).size() == armies_before_replan
+	scene.queue_free()
+	await process_frame
+
+	_clear_isolated_campaign_generations()
+	var stationed_scene := CITY_SCENE.instantiate()
+	root.add_child(stationed_scene)
+	await process_frame
+	await process_frame
+	var stationed_city: Node = stationed_scene.get_node("ConstructionController")
+	stationed_city.food = 80
+	stationed_city.city_time_paused = false
+	stationed_city.city_time_speed = 1.0
+	stationed_scene.open_macro_march_r0()
+	await process_frame
+	var stationed_macro: MacroMarchR0 = stationed_scene.get_node("UI/MacroMarchR0")
+	stationed_macro._low_poly_enabled = false
+	stationed_macro.refresh()
+	var stationed_formation_button: Button = null
+	for candidate_value in stationed_macro._formation_buttons:
+		var candidate := candidate_value as Button
+		if candidate != null and not candidate.disabled:
+			stationed_formation_button = candidate
+			break
+	await _click_control_with_gui_input(stationed_formation_button)
+	_draw_route_with_gui(stationed_macro, Array(ridge.get("points", [])))
+	await _click_control_with_gui_input(stationed_macro._confirm_button)
+	await process_frame
+	var stationed_army: Dictionary = Dictionary(stationed_macro._selected_army(stationed_macro._model()))
+	var stationed_army_id := StringName(stationed_army.get("army_id", &""))
+	var stationed_order: Dictionary = Dictionary(stationed_army.get("macro_march", {}))
+	var stationed_arrival: Dictionary = stationed_city.advance_macro_march_time(
+		stationed_army_id, StringName(stationed_order.get("order_id", &"")), int(stationed_order.get("progress_millis", 0)), int(stationed_order.get("total_millis", 0))
+	)
+	stationed_macro.refresh()
+	stationed_army = Dictionary(stationed_macro._selected_army(stationed_macro._model()))
+	var arrived_stationed := bool(stationed_arrival.get("success", false)) and StringName(stationed_army.get("phase", &"")) == &"STATIONED"
+	var forest_screen := stationed_macro._world_to_screen(Vector2(THEATER.get_point(&"forest_garrison").get("world_position", Vector2.ZERO)))
+	_send_map_press(stationed_macro, forest_screen)
+	_send_map_release(stationed_macro, forest_screen)
+	await process_frame
+	var stationed_draft_ready := not stationed_macro._draft_route.is_empty() and stationed_macro._confirm_button.visible and not stationed_macro._confirm_button.disabled
+	var scout_dispatch: Dictionary = stationed_city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_SCOUT)
+	stationed_macro.refresh()
+	var city_screen := stationed_macro._world_to_screen(Vector2(THEATER.get_point(&"blackstone_city").get("world_position", Vector2.ZERO)))
+	# Freeze world time only for the no-side-effect comparison; this keeps the
+	# assertion about selection UI rather than a background simulation tick.
+	stationed_city.city_time_paused = true
+	var snapshot_before_specialist_switch: Dictionary = stationed_city.export_v5_campaign_snapshot()
+	_send_map_press(stationed_macro, city_screen)
+	_send_map_release(stationed_macro, city_screen)
+	await process_frame
+	var selected_specialist: Dictionary = Dictionary(stationed_city.get_field_tactics_read_model().get("specialists_by_id", {}).get(stationed_macro._selected_specialist_id, {}))
+	var specialist_switch_clears_command_view: bool = bool(scout_dispatch.get("success", false)) \
+		and not selected_specialist.is_empty() \
+		and StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT \
+		and stationed_macro._selected_army_id == &"" \
+		and stationed_macro._draft_route.is_empty() \
+		and stationed_macro._selected_route_road_id == &"" \
+		and stationed_macro._selected_formation_ids.is_empty() \
+		and not stationed_macro._confirm_button.visible \
+		and stationed_city.export_v5_campaign_snapshot() == snapshot_before_specialist_switch
+	_check(
+		first_draft_is_ridge
+			and live_replan_has_priority
+			and replacement_draft_ready
+			and arrived_stationed
+			and stationed_draft_ready
+			and specialist_switch_clears_command_view,
+		"图形进程经连续 GUI 按下→长按→拖动→松开验证：已有山脊草稿重规划时实时低地预览与面板优先、确认按钮不会提交旧草稿；驻扎军队切换侦察兵后清除仅未确认的发令视图，军令、路线、确认入口与资源均无残留副作用"
+	)
+	stationed_scene.queue_free()
 	await process_frame
 
 

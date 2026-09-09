@@ -2,6 +2,21 @@
 
 ## 2026-09-10
 
+- Made a live Macro March replanning gesture take display and action-panel
+  priority over its cancel-safe prior draft. The old confirm control is hidden
+  while a replacement route is resolving, then the released route alone
+  receives a new enabled confirmation.
+- Made a specialist map selection clear only stale unconfirmed stationed-army
+  command intent (army view subject, route draft and road constraint). Existing
+  specialist tasks and all authority-owned resource/formation facts remain
+  untouched.
+- Unified march and engineering hold copy and the hold-progress ring. The
+  engine GUI capture now waits through real scene frames for activation and
+  fails if either hold does not activate.
+- Added the graphical continuous-operation contract for draft replacement and
+  stationed-army-to-specialist cleanup; refreshed the associated evidence
+  capture (344 frames at 60 FPS).
+
 - Restored one real 0.5-second UI-time hold gate for troop and engineering
   drawing. Taps remain selection, pre-activation movement past eight pixels
   cancels, and pause or speed never changes the UI-time threshold.

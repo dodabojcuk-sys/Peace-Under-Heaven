@@ -30,9 +30,20 @@ Right-click, focus loss, and leaving the battle clear transient pointer state.
 Graphical GUI-event evidence and its 4.77-second engine recording are in
 `docs/milestones/txwzs-field-tactics-r2/evidence/20260910-command-engineering-interaction/`.
 This is engine GUI-event evidence, not desktop-system-mouse or player-feel
-acceptance. Macro March (30), Field R2 (71), graphical low-poly (17),
+acceptance. Macro March (30), Field R2 (71), graphical low-poly (18),
 cross-process R2 persistence, and both formal playthrough routes pass on the
 current worktree.
+
+When a player starts another long-press route while a valid march draft is
+already visible, the old route remains only as a cancel-safe fallback. The
+live candidate path and replan panel take visual priority and hide confirmation
+until release creates the replacement draft. Clicking a specialist from a
+stationed-army planning view clears the unconfirmed army route, road constraint
+and command subject, while leaving the specialist's real task untouched. The
+shared hold text and pointer progress ring now use the same 0.5-second wording
+for march and engineering. Graphical low-poly verification is now 18 checks;
+the refreshed Movie Maker evidence naturally waits through the hold instead of
+calling the map's process method directly. Player acceptance remains **OPEN**.
 
 ### GUI specialist-selection overlay finish (current worktree)
 

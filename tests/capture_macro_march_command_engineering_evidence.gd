@@ -39,8 +39,7 @@ func _run() -> void:
 	var ridge_points: Array = Array(ridge.get("points", []))
 	var source := macro._world_to_screen(Vector2(ridge_points.front()))
 	_send_press(macro, source)
-	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
-	await _frames(2)
+	var march_hold_activated := await _wait_for_draw_activation(macro)
 	for point_value in ridge_points.slice(1):
 		_send_motion(macro, macro._world_to_screen(Vector2(point_value)))
 		await _frames(10)
@@ -65,8 +64,7 @@ func _run() -> void:
 	await _frames(2)
 	var construction_points := [Vector2(150, 650), Vector2(430, 605), Vector2(610, 565), Vector2(760, 610)]
 	_send_press(macro, macro._world_to_screen(construction_points.front()))
-	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
-	await _frames(2)
+	var engineering_hold_activated := await _wait_for_draw_activation(macro)
 	for point_value in construction_points.slice(1):
 		_send_motion(macro, macro._world_to_screen(point_value))
 		await _frames(10)
@@ -85,14 +83,14 @@ func _run() -> void:
 		macro.refresh()
 		await _frames(8)
 	var project_count := Dictionary(city.get_field_tactics_read_model().get("projects_by_id", {})).size()
-	var passed := route_ready and march_committed_once and bool(engineer_dispatch.get("success", false)) and engineer_selected and engineering_ready and engineering_committed_once
+	var passed := march_hold_activated and route_ready and march_committed_once and bool(engineer_dispatch.get("success", false)) and engineer_selected and engineering_hold_activated and engineering_ready and engineering_committed_once
 	if not passed:
-		push_error("COMMAND_ENGINEERING_ENGINE_GUI_EVIDENCE FAIL route_ready=%s march_once=%s engineer_selected=%s engineering_ready=%s engineering_once=%s projects=%d" % [route_ready, march_committed_once, engineer_selected, engineering_ready, engineering_committed_once, project_count])
+		push_error("COMMAND_ENGINEERING_ENGINE_GUI_EVIDENCE FAIL march_hold=%s route_ready=%s march_once=%s engineer_selected=%s engineering_hold=%s engineering_ready=%s engineering_once=%s projects=%d" % [march_hold_activated, route_ready, march_committed_once, engineer_selected, engineering_hold_activated, engineering_ready, engineering_committed_once, project_count])
 		scene.queue_free()
 		await process_frame
 		quit(1)
 		return
-	print("COMMAND_ENGINEERING_ENGINE_GUI_EVIDENCE PASS route=road.blackstone.northwatch.ridge march_once=true engineering_once=true projects=%d" % project_count)
+	print("COMMAND_ENGINEERING_ENGINE_GUI_EVIDENCE PASS natural_hold=true route=road.blackstone.northwatch.ridge march_once=true engineering_once=true projects=%d" % project_count)
 	scene.queue_free()
 	await process_frame
 	quit(0)
@@ -101,6 +99,18 @@ func _run() -> void:
 func _frames(count: int) -> void:
 	for _index in range(count):
 		await process_frame
+
+
+func _wait_for_draw_activation(macro: MacroMarchR0) -> bool:
+	# Keep the press held through real scene frames. This deliberately avoids
+	# calling MacroMarchR0._process() directly so the evidence captures the same
+	# elapsed-time gate that the visible candidate uses.
+	var deadline := Time.get_ticks_msec() + ceili((MacroMarchR0.DRAW_HOLD_SECONDS + 0.35) * 1000.0)
+	while Time.get_ticks_msec() <= deadline:
+		await process_frame
+		if macro._is_drawing:
+			return true
+	return false
 
 
 func _send_click(macro: MacroMarchR0, position: Vector2) -> void:

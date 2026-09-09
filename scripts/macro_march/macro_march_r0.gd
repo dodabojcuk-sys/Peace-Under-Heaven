@@ -16,6 +16,8 @@ const OBLIQUE_X_SKEW := 0.20
 const OBLIQUE_Y_SCALE := 0.72
 const DRAW_HOLD_SECONDS := 0.50
 const DRAW_HOLD_JITTER_PIXELS := 8.0
+const DRAW_HOLD_PROMPT := "按住 %0.1f 秒后拖动规划%s；轻点仅选择。"
+const DRAW_ACTIVE_PROMPT := "正在规划%s；松手后查看草稿。"
 const ROAD_CHOICE_RADIUS_PIXELS := 12.0
 const ENGINEERING_SAMPLE_SPACING_WORLD := 3.0
 const DRAW_EDGE_SCROLL_MARGIN := 28.0
@@ -348,6 +350,23 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		)
 		return
 	var selected_specialist := Dictionary(specialists.get(_selected_specialist_id, {}))
+	# Replanning keeps the last valid draft as a safe fallback until mouse-up,
+	# but its confirmation cannot remain actionable while the live gesture is
+	# resolving a replacement route. The live preview owns both map and panel.
+	if _is_drawing and not _engineering_mode:
+		_confirm_button.visible = false
+		_block_button.visible = false
+		_recover_button.visible = false
+		_retreat_button.visible = false
+		var live_source_id := _source_point_id(model, army)
+		var live_source := _point_from_model(model, live_source_id)
+		var live_target_id := StringName(_draw_preview_route.get("target_point_id", &""))
+		var live_target_label := _point_display_name(model, live_target_id, "沿道路选择目标")
+		_status_label.text = "正在重规划行军；松手后以当前道路草稿替换待确认路线。"
+		_detail_label.text = "正在重规划军令\n起点：%s\n候选目标：%s\n当前待确认的旧路线不会在拖动中提交。" % [
+			str(live_source.get("display_name", live_source_id)), live_target_label,
+		]
+		return
 	# A selected specialist remains the current world subject while the player
 	# plans an action.  The action itself owns the side panel, though: otherwise
 	# its confirm button is hidden behind the specialist detail after mouse-up.
@@ -665,7 +684,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			_draw_cursor_screen = event.position
 			_draw_previous_screen = event.position
 			if event.position.distance_to(_draw_press_screen) >= DRAW_HOLD_JITTER_PIXELS:
-				_cancel_draw_interaction("请按住 0.5 秒激活规划；移动过早已取消本次操作。")
+				_cancel_draw_interaction(_draw_hold_prompt() + "移动过早已取消本次操作。")
 			accept_event()
 			return
 		if _is_drawing:
@@ -763,13 +782,6 @@ func _on_gui_input(event: InputEvent) -> void:
 			return
 		var command_army := _selected_army(_model())
 		var has_explicit_command_subject := _has_explicit_command_subject(_model(), command_army)
-		if has_explicit_command_subject:
-			var command_source_id := _source_point_id(_model(), command_army)
-			var direct_target_id := _point_id_at_screen(event.position)
-			if direct_target_id != &"" and direct_target_id != command_source_id:
-				_create_march_draft_with_constraint(command_source_id, direct_target_id, &"")
-				accept_event()
-				return
 		# A specialist at a city or camp stays selectable even when a stationed
 		# army at the same anchor is eligible to begin a route draft. An explicit
 		# formation selection is already an intentional city-command mode, so it
@@ -779,14 +791,28 @@ func _on_gui_input(event: InputEvent) -> void:
 			specialist_id = &""
 		if specialist_id != &"" and specialist_id != _selected_specialist_id:
 			var selected_specialist := Dictionary(_dispatch_adapter.get_field_tactics_read_model().get("specialists_by_id", {}).get(specialist_id, {}))
+			# Changing to a specialist changes only the command view. Keep their
+			# field task intact, but discard an unconfirmed stationed-army draft so
+			# its route and confirm button cannot survive into this new operation.
+			_reset_march_draft()
+			_selected_army_id = &""
 			_selected_specialist_id = specialist_id
 			_selected_formation_ids.clear()
 			if StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT:
 				_selected_scout_id = specialist_id
+			else:
+				_selected_scout_id = &""
 			_status_label.text = "已选中%s；右栏操作将优先作用于该专家。" % ("侦察兵" if StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else "工程师")
 			refresh()
 			accept_event()
 			return
+		if has_explicit_command_subject:
+			var command_source_id := _source_point_id(_model(), command_army)
+			var direct_target_id := _point_id_at_screen(event.position)
+			if direct_target_id != &"" and direct_target_id != command_source_id:
+				_create_march_draft_with_constraint(command_source_id, direct_target_id, &"")
+				accept_event()
+				return
 		if has_explicit_command_subject:
 			var command_source := _point_from_model(_model(), _source_point_id(_model(), command_army))
 			var command_source_position := _world_to_screen(Vector2(command_source.get("world_position", Vector2.ZERO)))
@@ -863,7 +889,7 @@ func _begin_draw_interaction(screen_position: Vector2, source_point_id: StringNa
 	var source := _point_from_model(_model(), source_point_id)
 	_draw_points = [Vector2(source.get("world_position", _screen_to_world(screen_position)))]
 	_engineering_live_endpoint = Vector2(_draw_points.front())
-	_status_label.text = "拖动规划%s；轻点只保留当前选择。" % ("施工" if _engineering_mode else "行军")
+	_status_label.text = _draw_hold_prompt()
 	queue_redraw()
 	_map_canvas.queue_redraw()
 
@@ -877,7 +903,7 @@ func _update_draw_interaction(delta: float) -> void:
 			_append_draw_point(_draw_cursor_screen)
 			if not _engineering_mode:
 				_update_march_draw_preview()
-			_status_label.text = "已激活%s规划；沿路线拖动后松手查看草稿。" % ("施工" if _engineering_mode else "行军")
+			_status_label.text = _draw_active_prompt()
 			queue_redraw()
 			_map_canvas.queue_redraw()
 	if _is_drawing:
@@ -902,6 +928,18 @@ func _cancel_draw_interaction(message: String) -> void:
 		_status_label.text = message
 	queue_redraw()
 	_map_canvas.queue_redraw()
+
+
+func _draw_plan_label() -> String:
+	return "施工" if _engineering_mode else "行军"
+
+
+func _draw_hold_prompt() -> String:
+	return DRAW_HOLD_PROMPT % [DRAW_HOLD_SECONDS, _draw_plan_label()]
+
+
+func _draw_active_prompt() -> String:
+	return DRAW_ACTIVE_PROMPT % _draw_plan_label()
 
 
 func _update_march_draw_preview() -> void:
@@ -2041,6 +2079,25 @@ func _road_choice_markers(roads_by_id: Dictionary) -> Array[Dictionary]:
 
 
 func _draw_march_draft_or_live_preview(canvas: Control) -> void:
+	# A previous draft remains available if the new drag is cancelled, but while
+	# a replacement gesture is active its live path is the only player-facing
+	# route. Rendering it first prevents the old bright path from appearing to
+	# win over the pointer's current plan.
+	if _is_drawing and not _engineering_mode:
+		if not _draw_preview_route.is_empty():
+			_draw_route_preview(canvas, Array(_draw_preview_route.get("points", [])), Color("77f0ef", 0.42), 2.0, false)
+			_draw_pointer_command_arrow(canvas)
+			var live_target := _point_from_model(_model(), StringName(_draw_preview_route.get("target_point_id", &"")))
+			var live_target_screen := _world_to_screen(Vector2(live_target.get("world_position", Vector2.ZERO)))
+			canvas.draw_arc(live_target_screen, 17.0, 0.0, TAU, 24, Color("fff2bf"), 2.5, true)
+			return
+		if not _draw_preview_error.is_empty():
+			_draw_pointer_command_arrow(canvas, Color("e26452", 0.76))
+			canvas.draw_circle(_draw_cursor_screen, 7.0, Color("e26452", 0.9))
+			canvas.draw_string(ThemeDB.fallback_font, _draw_cursor_screen + Vector2(12, -12), _draw_preview_error, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("fff2bf"))
+			return
+		_draw_pointer_command_arrow(canvas)
+		return
 	if not _draft_route.is_empty():
 		var draft_points: Array = Array(_draft_route.get("points", []))
 		_draw_route_preview(canvas, draft_points, Color("54d7df"), 3.0, true)
@@ -2055,13 +2112,6 @@ func _draw_march_draft_or_live_preview(canvas: Control) -> void:
 		var food_cost := int(_draft_route.get("food_cost", 0))
 		canvas.draw_string(ThemeDB.fallback_font, target_screen + Vector2(-84, -28), "%s · %0.1f 秒 · 粮 %d" % [target_name, duration_seconds, food_cost], HORIZONTAL_ALIGNMENT_CENTER, 168, 12, Color("fff4d3"))
 		return
-	if _is_drawing and not _engineering_mode and not _draw_preview_route.is_empty():
-		_draw_route_preview(canvas, Array(_draw_preview_route.get("points", [])), Color("77f0ef", 0.42), 2.0, false)
-		_draw_pointer_command_arrow(canvas)
-		var target := _point_from_model(_model(), StringName(_draw_preview_route.get("target_point_id", &"")))
-		var target_screen := _world_to_screen(Vector2(target.get("world_position", Vector2.ZERO)))
-		canvas.draw_arc(target_screen, 17.0, 0.0, TAU, 24, Color("fff2bf"), 2.5, true)
-		return
 	if _is_drawing and _engineering_mode and not _draw_preview_route.is_empty():
 		_draw_engineering_preview_overlay(canvas, _draw_preview_route)
 		return
@@ -2075,12 +2125,8 @@ func _draw_march_draft_or_live_preview(canvas: Control) -> void:
 			canvas.draw_dashed_line(raw_points[index - 1], raw_points[index], Color("f2b86e"), 4.0, 8.0, true)
 		return
 	if _is_drawing and not _draw_preview_error.is_empty():
-		if not _engineering_mode:
-			_draw_pointer_command_arrow(canvas, Color("e26452", 0.76))
 		canvas.draw_circle(_draw_cursor_screen, 7.0, Color("e26452", 0.9))
 		canvas.draw_string(ThemeDB.fallback_font, _draw_cursor_screen + Vector2(12, -12), _draw_preview_error, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("fff2bf"))
-	elif _is_drawing and not _engineering_mode:
-		_draw_pointer_command_arrow(canvas)
 
 
 func _draw_pointer_command_arrow(canvas: Control, color: Color = Color("77f0ef")) -> void:
@@ -2124,8 +2170,9 @@ func _draw_route_preview(canvas: Control, world_points: Array, color: Color, wid
 
 func _draw_draw_hold_feedback(canvas: Control) -> void:
 	if _draw_hold_pending:
-		canvas.draw_arc(_draw_press_screen, 14.0, 0.0, TAU, 20, Color("f2b86e", 0.75), 2.0, true)
-		canvas.draw_string(ThemeDB.fallback_font, _draw_press_screen + Vector2(-42, -24), "拖动规划", HORIZONTAL_ALIGNMENT_CENTER, 84, 12, Color("fff4d3"))
+		var progress := clampf(_draw_hold_elapsed / DRAW_HOLD_SECONDS, 0.0, 1.0)
+		canvas.draw_arc(_draw_press_screen, 14.0, -PI * 0.5, TAU * progress - PI * 0.5, 20, Color("f2b86e", 0.92), 2.5, true)
+		canvas.draw_string(ThemeDB.fallback_font, _draw_press_screen + Vector2(-54, -24), "按住 %0.1f 秒" % DRAW_HOLD_SECONDS, HORIZONTAL_ALIGNMENT_CENTER, 108, 12, Color("fff4d3"))
 	elif _is_drawing:
 		canvas.draw_circle(_draw_cursor_screen, 5.0, Color("f2b86e") if _engineering_mode else Color("77f0ef"))
 
