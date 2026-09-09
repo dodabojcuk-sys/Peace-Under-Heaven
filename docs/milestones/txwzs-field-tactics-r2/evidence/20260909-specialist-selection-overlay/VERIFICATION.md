@@ -41,10 +41,11 @@ MACRO_MARCH_LOW_POLY_GRAPHICAL_SMOKE PASS assertions=14
 
 The added assertion uses GUI mouse events to select a moving army plus both
 same-gate specialist roles. It checks side-panel role/status text, selection
-cleanup, compact 3D markers, and whole-viewport image deltas: army 529,
-scout 2222, engineer 983, cancellation 2624 changed pixels in the fixed
-selection regions. No `SelectionRing` mesh is only a supplementary regression
-check; it is not treated as selection proof.
+cleanup, compact 3D markers, and whole-viewport image deltas above the fixed
+30-pixel threshold in every selection region. Exact changed-pixel counts may
+vary slightly with Metal frame composition and are not a product metric. No
+`SelectionRing` mesh is only a supplementary regression check; it is not
+treated as selection proof.
 
 ## Remaining boundary
 

@@ -91,6 +91,9 @@ unselected armies keep a single compact member count. At a shared city anchor,
 successive normal map clicks cycle scout, engineer, then army. This replaces the
 former opaque 3D ground disc without adding a game position, hit target,
 visibility knowledge, or simulation responsibility.
+When the player has explicitly selected city formations to issue a new order,
+that intentional command mode retains the city-gate route-drafting click; it
+does not get replaced by a coincident specialist selection.
 
 ## Player information correction
 

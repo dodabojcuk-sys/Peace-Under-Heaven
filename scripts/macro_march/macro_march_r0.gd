@@ -669,8 +669,12 @@ func _on_gui_input(event: InputEvent) -> void:
 			accept_event()
 			return
 		# A specialist at a city or camp stays selectable even when a stationed
-		# army at the same anchor is eligible to begin a route draft.
+		# army at the same anchor is eligible to begin a route draft. An explicit
+		# formation selection is already an intentional city-command mode, so it
+		# remains the one case that starts the confirmed formation's route instead.
 		var specialist_id := _specialist_id_at_screen(_dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}, event.position)
+		if not _selected_formation_ids.is_empty():
+			specialist_id = &""
 		if specialist_id != &"" and specialist_id != _selected_specialist_id:
 			var selected_specialist := Dictionary(_dispatch_adapter.get_field_tactics_read_model().get("specialists_by_id", {}).get(specialist_id, {}))
 			_selected_specialist_id = specialist_id

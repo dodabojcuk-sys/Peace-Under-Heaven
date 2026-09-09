@@ -26,6 +26,10 @@ checks only. Engine-viewport captures are under
 evidence, not normal desktop-system-input footage. Player acceptance remains
 OPEN.
 
+An explicit city-formation selection remains a deliberate route-drafting mode:
+its city-gate click begins that confirmed formation's draft instead of selecting
+a coincident specialist.
+
 ### Targeted natural-material and selection-marker repair (current worktree)
 
 The seven selected Kenney GLBs import their source surfaces with
