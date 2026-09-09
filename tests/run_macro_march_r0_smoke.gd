@@ -253,6 +253,7 @@ func _run_map_draft_contract() -> void:
 	remote_press.pressed = true
 	remote_press.position = macro_screen._world_to_screen(Vector2(Array(remote_route.points).front()))
 	macro_screen._on_gui_input(remote_press)
+	macro_screen._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
 	for remote_point in Array(remote_route.points).slice(1):
 		var remote_motion := InputEventMouseMotion.new()
 		remote_motion.position = macro_screen._world_to_screen(Vector2(remote_point))
@@ -463,6 +464,7 @@ func _run_camera_and_layout_contract() -> void:
 	press.pressed = true
 	press.position = macro_screen._world_to_screen(Vector2(Array(route.points).front()))
 	macro_screen._on_gui_input(press)
+	macro_screen._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
 	for point_value in Array(route.points).slice(1):
 		var motion := InputEventMouseMotion.new()
 		motion.position = macro_screen._world_to_screen(Vector2(point_value))

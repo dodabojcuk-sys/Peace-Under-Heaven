@@ -14,6 +14,20 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 Draw-hold route planning
+
+- Replaced immediate map drawing with one shared 0.5-second UI-time hold
+  gesture for troop planning and post-source engineering planning. Taps keep
+  their selection role; early release, excessive pre-hold movement, right-click
+  and focus loss cannot leave a route or construction transaction behind.
+- Made live troop previews read the authority road graph and directed route
+  selection, with arrows and target feedback. Engineering live previews read
+  the same authoritative land/bridge segment plan used by the released draft.
+- Updated edge scrolling to use elapsed UI time and made the latest cursor
+  position overwrite stale draw samples. Added graphical GUI-event contracts,
+  a short Godot Movie Maker capture, and updated formal smoke helpers to pass
+  through the real hold gate.
+
 ### FIELD_TACTICS_R2 Draft-confirmation UI priority
 
 - Made engineering actions and accepted engineering drafts own the Macro March

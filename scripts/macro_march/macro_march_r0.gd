@@ -14,6 +14,10 @@ const CAMERA_MAX_ZOOM := 2.4
 const CAMERA_ZOOM_STEP := 1.18
 const OBLIQUE_X_SKEW := 0.20
 const OBLIQUE_Y_SCALE := 0.72
+const DRAW_HOLD_SECONDS := 0.50
+const DRAW_HOLD_JITTER_PIXELS := 8.0
+const DRAW_EDGE_SCROLL_MARGIN := 28.0
+const DRAW_EDGE_SCROLL_MAX_PIXELS_PER_SECOND := 360.0
 
 var _dispatch_adapter: V5ArmyDispatchAdapter
 var _draft_route: Dictionary = {}
@@ -21,6 +25,12 @@ var _engineering_draft: Dictionary = {}
 var _selected_formation_ids: Array[StringName] = []
 var _draw_points: Array[Vector2] = []
 var _is_drawing := false
+var _draw_hold_pending := false
+var _draw_hold_elapsed := 0.0
+var _draw_hold_start_screen := Vector2.ZERO
+var _draw_cursor_screen := Vector2.ZERO
+var _draw_preview_route: Dictionary = {}
+var _draw_preview_error := ""
 var _engineering_mode := false
 var _engineering_engineer_id: StringName = &""
 var _engineering_source_point_id: StringName = &""
@@ -105,6 +115,12 @@ func _process(delta: float) -> void:
 	# only, so changing map frame rate or observing two armies cannot tick them
 	# twice.
 	refresh()
+	_update_draw_interaction(delta)
+
+
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		_cancel_draw_interaction("窗口失去焦点，已取消当前规划。")
 
 
 func _build_ui() -> void:
@@ -166,7 +182,10 @@ func _build_ui() -> void:
 	_side_road_button.pressed.connect(_build_side_road)
 	_resume_project_button.pressed.connect(_resume_selected_interrupted_project)
 	_interrupted_project_selector.item_selected.connect(_select_interrupted_project)
-	_return_button.pressed.connect(func(): return_to_city_requested.emit())
+	_return_button.pressed.connect(func():
+		_cancel_draw_interaction("")
+		return_to_city_requested.emit()
+	)
 	_presentation_toggle_button.pressed.connect(_toggle_low_poly_presentation)
 	_overview_button.pressed.connect(_reset_camera_overview)
 	_focus_subject_button.pressed.connect(_focus_selected_subject)
@@ -616,15 +635,26 @@ func _on_gui_input(event: InputEvent) -> void:
 			_last_pan_position = event.position
 			accept_event()
 			return
+		if _draw_hold_pending:
+			_draw_cursor_screen = event.position
+			if event.position.distance_to(_draw_hold_start_screen) > DRAW_HOLD_JITTER_PIXELS:
+				_cancel_draw_interaction("按住期间移动过远，未开始规划。")
+			else:
+				queue_redraw()
+				_map_canvas.queue_redraw()
+			accept_event()
+			return
 		if _is_drawing:
 			_append_draw_point(event.position)
-			_pan_while_drawing(event.position)
+			_draw_cursor_screen = event.position
+			_update_march_draw_preview()
 			accept_event()
 			return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		if _scout_target_mode or not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty() or _selected_damaged_road_id != &"" or _selected_specialist_id != &"":
+		if _draw_hold_pending or _is_drawing or _scout_target_mode or not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty() or _selected_damaged_road_id != &"" or _selected_specialist_id != &"":
 			var had_specialist_selection := _selected_specialist_id != &""
 			var had_scout_target_mode := _scout_target_mode
+			_cancel_draw_interaction("")
 			_scout_target_mode = false
 			if had_specialist_selection or had_scout_target_mode:
 				_selected_specialist_id = &""
@@ -635,7 +665,6 @@ func _on_gui_input(event: InputEvent) -> void:
 			_engineering_engineer_id = &""
 			_engineering_source_point_id = &""
 			_selected_damaged_road_id = &""
-			_draw_points.clear()
 			_status_label.text = "已取消当前专员选择；没有资源、编队或军令写入。" if had_specialist_selection else "路线草稿已取消；没有资源、编队或军令写入。"
 			refresh()
 			accept_event()
@@ -680,8 +709,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			if event.position.distance_to(engineering_source_position) > 52.0:
 				_status_label.text = "请从已选施工起点开始拖线。"
 				return
-			_is_drawing = true
-			_draw_points = [Vector2(engineering_source.get("world_position", _screen_to_world(event.position)))]
+			_begin_draw_hold(event.position, Vector2(engineering_source.get("world_position", _screen_to_world(event.position))))
 			accept_event()
 			return
 		# A specialist at a city or camp stays selectable even when a stationed
@@ -711,8 +739,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			var command_source := _point_from_model(_model(), _source_point_id(_model(), command_army))
 			var command_source_position := _world_to_screen(Vector2(command_source.get("world_position", Vector2.ZERO)))
 			if event.position.distance_to(command_source_position) <= 52.0:
-				_is_drawing = true
-				_draw_points = [Vector2(command_source.get("world_position", _screen_to_world(event.position)))]
+				_begin_draw_hold(event.position, Vector2(command_source.get("world_position", _screen_to_world(event.position))))
 				accept_event()
 				return
 		var damaged_road_id := _damaged_road_id_at_screen(_dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}, event.position)
@@ -739,14 +766,19 @@ func _on_gui_input(event: InputEvent) -> void:
 		if event.position.distance_to(source_position) > 52.0:
 			_status_label.text = "请从当前驻点开始画线。"
 			return
-		_is_drawing = true
-		_draw_points = [Vector2(source.get("world_position", _screen_to_world(event.position)))]
+		_begin_draw_hold(event.position, Vector2(source.get("world_position", _screen_to_world(event.position))))
 		accept_event()
 	else:
+		if _draw_hold_pending:
+			_cancel_draw_interaction("按住未满 0.5 秒，保持当前选择。")
+			accept_event()
+			return
 		if not _is_drawing:
 			return
 		_is_drawing = false
 		_append_draw_point(event.position)
+		_draw_preview_route = {}
+		_draw_preview_error = ""
 		_finish_draw()
 		accept_event()
 
@@ -755,7 +787,109 @@ func _append_draw_point(screen_position: Vector2) -> void:
 	var world := _screen_to_world(screen_position)
 	if _draw_points.is_empty() or _draw_points.back().distance_to(world) >= 12.0:
 		_draw_points.append(world)
-		queue_redraw()
+	else:
+		# Keep the live endpoint glued to the pointer; older samples describe route
+		# intent, but never get to leave the visible tip behind.
+		_draw_points[_draw_points.size() - 1] = world
+	queue_redraw()
+	_map_canvas.queue_redraw()
+
+
+func _begin_draw_hold(screen_position: Vector2, source_world: Vector2) -> void:
+	_cancel_draw_interaction("")
+	_draw_hold_pending = true
+	_draw_hold_elapsed = 0.0
+	_draw_hold_start_screen = screen_position
+	_draw_cursor_screen = screen_position
+	_draw_points = [source_world]
+	_status_label.text = "按住 0.5 秒后拖动规划%s。" % ("施工" if _engineering_mode else "行军")
+	queue_redraw()
+	_map_canvas.queue_redraw()
+
+
+func _update_draw_interaction(delta: float) -> void:
+	if _draw_hold_pending:
+		_draw_hold_elapsed += maxf(delta, 0.0)
+		if _draw_hold_elapsed >= DRAW_HOLD_SECONDS:
+			_draw_hold_pending = false
+			_is_drawing = true
+			_draw_hold_elapsed = DRAW_HOLD_SECONDS
+			_status_label.text = "拖动规划%s；松手后检查草稿，右键可取消。" % ("施工" if _engineering_mode else "行军")
+			queue_redraw()
+			_map_canvas.queue_redraw()
+		return
+	if _is_drawing:
+		_pan_while_drawing(_draw_cursor_screen, delta)
+
+
+func _cancel_draw_interaction(message: String) -> void:
+	var had_interaction := _draw_hold_pending or _is_drawing or not _draw_points.is_empty()
+	_draw_hold_pending = false
+	_draw_hold_elapsed = 0.0
+	_draw_hold_start_screen = Vector2.ZERO
+	_draw_cursor_screen = Vector2.ZERO
+	_is_drawing = false
+	_draw_points.clear()
+	_draw_preview_route = {}
+	_draw_preview_error = ""
+	if had_interaction and not message.is_empty():
+		_status_label.text = message
+	queue_redraw()
+	_map_canvas.queue_redraw()
+
+
+func _update_march_draw_preview() -> void:
+	_draw_preview_route = {}
+	_draw_preview_error = ""
+	if _engineering_mode:
+		_update_engineering_draw_preview()
+		return
+	var model := _model()
+	var army := _selected_army(model)
+	var source_id := _source_point_id(model, army)
+	var target_id := _nearest_target_at_draw_end(source_id)
+	if target_id == &"":
+		if not _is_near_open_road(_draw_cursor_screen):
+			_draw_preview_error = "请沿道路拖动"
+		return
+	var decision := _choose_runtime_route_from_draw(model, source_id, target_id, _draw_points)
+	if bool(decision.get("valid", false)):
+		_draw_preview_route = _ui_route_draft(Dictionary(decision.get("route", {})))
+	else:
+		_draw_preview_error = "请沿道路拖动"
+
+
+func _update_engineering_draw_preview() -> void:
+	if _engineering_engineer_id == &"" or _engineering_source_point_id == &"" or _draw_points.size() < 2:
+		return
+	var model := _model()
+	var source_id := _engineering_source_point_id
+	var target_id := _nearest_engineering_target_at_draw_end(source_id)
+	var route_points := _draw_points.duplicate(true)
+	route_points[0] = Vector2(_point_from_model(model, source_id).get("world_position", route_points[0]))
+	if target_id != &"":
+		route_points[route_points.size() - 1] = Vector2(_point_from_model(model, target_id).get("world_position", route_points.back()))
+	var preview := _dispatch_adapter.preview_field_road_project(
+		_engineering_engineer_id, source_id, target_id, route_points, FieldTacticsState.ROAD_NORMAL, target_id == &""
+	)
+	if bool(preview.get("valid", false)):
+		_draw_preview_route = preview.duplicate(true)
+		_draw_preview_route.requested_target_point_id = target_id
+	else:
+		_draw_preview_error = str(preview.get("error", "工程路线无法施工"))
+
+
+func _is_near_open_road(screen_position: Vector2) -> bool:
+	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+	for road_value in Dictionary(field.get("roads_by_id", {})).values():
+		var road: Dictionary = Dictionary(road_value)
+		if StringName(road.get("state", &"")) != FieldTacticsState.ROAD_OPEN:
+			continue
+		var points: Array = Array(road.get("route_world_points", []))
+		for index in range(1, points.size()):
+			if _distance_to_segment(screen_position, _world_to_screen(Vector2(points[index - 1])), _world_to_screen(Vector2(points[index]))) <= 28.0:
+				return true
+	return false
 
 
 func _zoom_at_screen_position(screen_position: Vector2, requested_zoom: float) -> void:
@@ -804,22 +938,29 @@ func _focus_selected_subject() -> void:
 	refresh()
 
 
-func _pan_while_drawing(screen_position: Vector2) -> void:
+func _pan_while_drawing(screen_position: Vector2, delta_seconds: float) -> void:
 	var rect := _map_rect()
-	var edge := 24.0
+	var edge := DRAW_EDGE_SCROLL_MARGIN
 	var delta := Vector2.ZERO
 	if screen_position.x <= rect.position.x + edge:
-		delta.x = -12.0
+		delta.x = -_edge_scroll_speed(rect.position.x + edge - screen_position.x, edge, delta_seconds)
 	elif screen_position.x >= rect.end.x - edge:
-		delta.x = 12.0
+		delta.x = _edge_scroll_speed(screen_position.x - (rect.end.x - edge), edge, delta_seconds)
 	if screen_position.y <= rect.position.y + edge:
-		delta.y = -12.0
+		delta.y = -_edge_scroll_speed(rect.position.y + edge - screen_position.y, edge, delta_seconds)
 	elif screen_position.y >= rect.end.y - edge:
-		delta.y = 12.0
+		delta.y = _edge_scroll_speed(screen_position.y - (rect.end.y - edge), edge, delta_seconds)
 	if not delta.is_zero_approx():
 		_camera_center = _unproject_world(_project_world(_camera_center) + delta / _camera_zoom)
 		_clamp_camera()
 		queue_redraw()
+		_map_canvas.queue_redraw()
+
+
+func _edge_scroll_speed(depth: float, edge: float, delta_seconds: float) -> float:
+	var normalized := clampf(depth / maxf(edge, 1.0), 0.0, 1.0)
+	# Smooth quadratic acceleration prevents event-rate-dependent camera jumps.
+	return DRAW_EDGE_SCROLL_MAX_PIXELS_PER_SECOND * normalized * normalized * maxf(delta_seconds, 0.0)
 
 
 func _finish_draw() -> void:
@@ -832,23 +973,28 @@ func _finish_draw() -> void:
 	var target_id := _nearest_target_at_draw_end(source_id)
 	if target_id == &"":
 		_draft_route = {}
+		_draw_points.clear()
 		_status_label.text = "终点必须是另一处驻扎点或可进攻的敌城。"
 		queue_redraw()
 		return
 	var decision := _choose_runtime_route_from_draw(model, source_id, target_id, _draw_points)
 	if not bool(decision.valid):
 		_draft_route = {}
+		_draw_points.clear()
 		_status_label.text = str(decision.error)
 		queue_redraw()
 		return
 	_draft_route = _ui_route_draft(Dictionary(decision.route))
+	_draw_points.clear()
 	_status_label.text = "路线草稿已吸附到%s；确认后军令和粮食将锁定。" % str(_point_from_model(model, StringName(_draft_route.get("target_point_id", &""))).get("display_name", _draft_route.get("target_point_id", &"")))
 	refresh()
 
 
 func _finish_engineering_draw(model: Dictionary, source_id: StringName) -> void:
 	if _engineering_engineer_id == &"" or _draw_points.size() < 2:
+		_draw_points.clear()
 		_status_label.text = "工程路线至少需要两个位置。"
+		queue_redraw()
 		return
 	var target_id := _nearest_engineering_target_at_draw_end(source_id)
 	# Water crossing is an attribute of the physical segment plan, not the
@@ -1534,16 +1680,7 @@ func _draw_map_canvas(canvas: Control) -> void:
 			_draw_road_damage(canvas, Array(points))
 	_draw_engineering_draft_overlay(canvas, rect)
 	_draw_project_construction_overlays(canvas, Dictionary(field.get("projects_by_id", {})))
-	if not _draft_route.is_empty():
-		var draft_points := PackedVector2Array()
-		for point in _draft_route.points:
-			draft_points.append(_world_to_screen(Vector2(point)))
-		canvas.draw_polyline(draft_points, Color("54d7df"), 5.0, true)
-	elif not _draw_points.is_empty():
-		var drawn := PackedVector2Array()
-		for point in _draw_points:
-			drawn.append(_world_to_screen(point))
-		canvas.draw_polyline(drawn, Color("54d7df"), 4.0, true)
+	_draw_march_draft_or_live_preview(canvas)
 	for army_value in Array(_model().get("armies", [])):
 		_draw_army_marker(canvas, Dictionary(army_value))
 	for camp_value in Dictionary(field.get("camps_by_id", {})).values():
@@ -1600,22 +1737,14 @@ func _draw_map_canvas(canvas: Control) -> void:
 			_draw_garrison_marker(canvas, center)
 		_draw_point_label(canvas, rect, center, str(point.display_name), 80, Color.WHITE)
 	_draw_minimap(canvas)
+	_draw_draw_hold_feedback(canvas)
 
 
 func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) -> void:
 	# The low-poly layer renders terrain and units through an orthographic
 	# SubViewport.  This transparent canvas retains only interaction affordances
 	# using the same 2D projection that receives input.
-	if not _draft_route.is_empty():
-		var draft_points := PackedVector2Array()
-		for point in _draft_route.points:
-			draft_points.append(_world_to_screen(Vector2(point)))
-		canvas.draw_polyline(draft_points, Color("54d7df"), 5.0, true)
-	elif not _draw_points.is_empty():
-		var drawn := PackedVector2Array()
-		for point in _draw_points:
-			drawn.append(_world_to_screen(point))
-		canvas.draw_polyline(drawn, Color("54d7df"), 4.0, true)
+	_draw_march_draft_or_live_preview(canvas)
 	_draw_engineering_draft_overlay(canvas, rect)
 	_draw_project_construction_overlays(canvas, Dictionary(field.get("projects_by_id", {})))
 	for army_value in Array(_model().get("armies", [])):
@@ -1660,6 +1789,64 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 		_draw_point_label(canvas, rect, center, str(point.get("display_name", "据点")), 92, Color("fff4d3"))
 	canvas.draw_rect(rect, Color("e7d7a8", 0.92), false, 2.0)
 	_draw_minimap(canvas)
+	_draw_draw_hold_feedback(canvas)
+
+
+func _draw_march_draft_or_live_preview(canvas: Control) -> void:
+	if not _draft_route.is_empty():
+		_draw_route_preview(canvas, Array(_draft_route.get("points", [])), Color("54d7df"), 5.0, true)
+		return
+	if _is_drawing and not _engineering_mode and not _draw_preview_route.is_empty():
+		_draw_route_preview(canvas, Array(_draw_preview_route.get("points", [])), Color("77f0ef"), 4.0, false)
+		var target := _point_from_model(_model(), StringName(_draw_preview_route.get("target_point_id", &"")))
+		var target_screen := _world_to_screen(Vector2(target.get("world_position", Vector2.ZERO)))
+		canvas.draw_arc(target_screen, 17.0, 0.0, TAU, 24, Color("fff2bf"), 2.5, true)
+		return
+	if _is_drawing and _engineering_mode and not _draw_preview_route.is_empty():
+		_draw_engineering_preview_overlay(canvas, _draw_preview_route)
+		return
+	if _is_drawing and _engineering_mode and _draw_points.size() >= 2:
+		var raw_points := PackedVector2Array()
+		for point in _draw_points:
+			raw_points.append(_world_to_screen(point))
+		for index in range(1, raw_points.size()):
+			canvas.draw_dashed_line(raw_points[index - 1], raw_points[index], Color("f2b86e"), 4.0, 8.0, true)
+		return
+	if _is_drawing and not _draw_preview_error.is_empty():
+		canvas.draw_circle(_draw_cursor_screen, 7.0, Color("e26452", 0.9))
+		canvas.draw_string(ThemeDB.fallback_font, _draw_cursor_screen + Vector2(12, -12), _draw_preview_error, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("fff2bf"))
+
+
+func _draw_route_preview(canvas: Control, world_points: Array, color: Color, width: float, committed: bool) -> void:
+	if world_points.size() < 2:
+		return
+	var points := PackedVector2Array()
+	for point in world_points:
+		points.append(_world_to_screen(Vector2(point)))
+	canvas.draw_polyline(points, Color(color, 0.96 if committed else 0.82), width, true)
+	for index in range(1, points.size()):
+		var start := points[index - 1]
+		var end := points[index]
+		var direction := (end - start).normalized()
+		if direction.length_squared() <= 0.001:
+			continue
+		var center := start.lerp(end, 0.58)
+		var normal := Vector2(-direction.y, direction.x)
+		canvas.draw_colored_polygon(PackedVector2Array([
+			center + direction * 8.0,
+			center - direction * 5.0 + normal * 4.0,
+			center - direction * 5.0 - normal * 4.0,
+		]), Color("fff2bf"))
+
+
+func _draw_draw_hold_feedback(canvas: Control) -> void:
+	if _draw_hold_pending:
+		var fraction := clampf(_draw_hold_elapsed / DRAW_HOLD_SECONDS, 0.0, 1.0)
+		canvas.draw_arc(_draw_hold_start_screen, 18.0, -PI * 0.5, -PI * 0.5 + TAU * fraction, 24, Color("f2b86e"), 3.0, true)
+		canvas.draw_arc(_draw_hold_start_screen, 18.0, 0.0, TAU, 24, Color("20302c", 0.85), 1.5, true)
+		canvas.draw_string(ThemeDB.fallback_font, _draw_hold_start_screen + Vector2(-36, -27), "按住规划", HORIZONTAL_ALIGNMENT_CENTER, 72, 12, Color("fff4d3"))
+	elif _is_drawing:
+		canvas.draw_circle(_draw_cursor_screen, 5.0, Color("f2b86e") if _engineering_mode else Color("77f0ef"))
 
 
 func _draw_selected_specialist_overlay(canvas: Control, field: Dictionary) -> void:
@@ -1682,11 +1869,15 @@ func _draw_engineering_draft_overlay(canvas: Control, rect: Rect2) -> void:
 	# drawn from Field's authoritative segment plan, not the transient pointer list.
 	if _engineering_draft.is_empty():
 		return
-	for segment in _engineering_overlay_segments(_engineering_draft):
+	_draw_engineering_preview_overlay(canvas, _engineering_draft)
+
+
+func _draw_engineering_preview_overlay(canvas: Control, draft: Dictionary) -> void:
+	for segment in _engineering_overlay_segments(draft):
 		_draw_engineering_segment(canvas, Array(segment.get("points", [])), StringName(segment.get("road_kind", &"")), Color("80e8e0"), 0.92, false)
-	var route_points: Array = Array(_engineering_draft.get("route_world_points", []))
+	var route_points: Array = Array(draft.get("route_world_points", []))
 	var source := Vector2(route_points.front()) if not route_points.is_empty() else Vector2.ZERO
-	source = Vector2(_engineering_draft.get("source_world_position", source))
+	source = Vector2(draft.get("source_world_position", source))
 	var target := Vector2(route_points.back()) if not route_points.is_empty() else source
 	var source_screen := _world_to_screen(source)
 	var target_screen := _world_to_screen(target)

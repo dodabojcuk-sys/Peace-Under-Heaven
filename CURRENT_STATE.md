@@ -2,6 +2,28 @@
 
 ## FIELD_TACTICS_R2 Blackstone sample-theatre candidate (2026-09-09)
 
+### Draw-hold route planning and live feedback (current worktree)
+
+Macro March now separates selection from planning. A map press becomes a route
+or engineering draw only after a 0.5-second UI-time hold; tap, early release,
+or more than eight pixels of pre-activation movement leave no draft or
+transaction. Troop previews use the authority road graph, direction arrows,
+and target highlight rather than pretending the raw pointer trace is a legal
+route. Engineering keeps click-to-select-source, then shows its authoritative
+land/bridge segment preview during the held drag and after release.
+
+The current endpoint is updated on every motion, while edge scrolling advances
+from elapsed UI time, so pointer feedback does not depend on mouse event rate.
+Right-click, focus loss, and leaving the battle clear all transient drawing
+state; valid released drafts retain their visible confirmation controls.
+Graphical GUI-event evidence, its continuous engine recording, commands and
+scope boundary are in
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-draw-hold-route-feedback/`.
+This is not desktop-system-mouse or player-feel evidence; acceptance remains
+OPEN. The input change passes graphical (16), Macro March (30), and Field R2
+(69) checks. The separate Route B natural-ambush playthrough assertion still
+fails without an input-layer workaround and is explicitly left open.
+
 ### GUI specialist-selection overlay finish (current worktree)
 
 ### Draft-confirmation panel priority repair (current worktree)

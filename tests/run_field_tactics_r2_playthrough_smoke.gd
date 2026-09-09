@@ -333,6 +333,7 @@ func _ui_draw_world_route(macro_screen: MacroMarchR0, points: Array) -> void:
 	press.pressed = true
 	press.position = macro_screen._world_to_screen(Vector2(points.front()))
 	macro_screen._on_gui_input(press)
+	macro_screen._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
 	for point in points.slice(1):
 		var motion := InputEventMouseMotion.new()
 		motion.position = macro_screen._world_to_screen(Vector2(point))
