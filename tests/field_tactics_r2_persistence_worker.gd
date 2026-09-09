@@ -6,6 +6,7 @@ const THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
 
 
 func _initialize() -> void:
+	THEATER.use_regression_definition_for_tests()
 	call_deferred("_run")
 
 

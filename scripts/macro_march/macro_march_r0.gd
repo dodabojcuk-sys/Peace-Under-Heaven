@@ -11,6 +11,8 @@ const MAP_CANVAS = preload("res://scripts/macro_march/macro_march_map_canvas.gd"
 const CAMERA_MIN_ZOOM := 0.62
 const CAMERA_MAX_ZOOM := 2.4
 const CAMERA_ZOOM_STEP := 1.18
+const OBLIQUE_X_SKEW := 0.20
+const OBLIQUE_Y_SCALE := 0.72
 
 var _dispatch_adapter: V5ArmyDispatchAdapter
 var _draft_route: Dictionary = {}
@@ -222,7 +224,7 @@ func _refresh_formation_controls(formations: Array, army: Dictionary) -> void:
 
 
 func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
-	_title_label.text = "黑石外城战区 · 军令与攻城"
+	_title_label.text = "%s · 军令与攻城" % THEATER.get_theater_name()
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
 	var specialists: Dictionary = field.get("specialists_by_id", {})
 	var projects: Dictionary = field.get("projects_by_id", {})
@@ -251,9 +253,9 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		_scout_button.text = "取消侦察目标选择"
 		_status_label.text = "侦察目标模式：单击地图上的城池或驻点；右键或按钮取消。"
 		var scout := Dictionary(specialists.get(_selected_scout_id, {}))
-		_detail_label.text = "侦察兵：%s\n当前位置：%s\n尚未下达移动命令；取消不会产生新的资源事务。" % [
-			String(_selected_scout_id), String(scout.get("current_point_id", "野外")),
-		]
+		_detail_label.text = "侦察兵待命\n当前位置：%s\n尚未下达移动命令；取消不会产生新的资源事务。" % _point_display_name(
+			model, StringName(scout.get("current_point_id", &"")), "野外"
+		)
 		return
 	var source_id := _source_point_id(model, army)
 	var source := _point_from_model(model, source_id)
@@ -269,6 +271,11 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		var draft_kind_label := ("加固路" if draft_kind == FieldTacticsState.ROAD_REINFORCED else "普通路") + ("（含桥梁）" if draft_contains_bridge else "")
 		var draft_cost := int(_engineering_draft.get("food_cost", 0))
 		var draft_seconds := float(_engineering_draft.get("required_milliseconds", 0)) / 1000.0
+		var travel_seconds := float(_engineering_draft.get("travel_milliseconds", 0)) / 1000.0
+		var source_label := _point_display_name(model, StringName(_engineering_source_point_id), "待选择")
+		var target_label := "新建工程驻点" if bool(_engineering_draft.get("build_camp", false)) else _point_display_name(
+			model, StringName(_engineering_draft.get("target_point_id", &"")), "待选择"
+		)
 		_confirm_button.visible = true
 		_confirm_button.text = "确认施工"
 		_confirm_button.disabled = _engineering_draft.is_empty()
@@ -276,8 +283,8 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		_recover_button.visible = false
 		_retreat_button.visible = false
 		_status_label.text = "工程草稿待确认；右键取消不会扣除资源。" if not _engineering_draft.is_empty() else ("工程绘线：从所选起点拖到已有驻点或新驻点位置。" if _engineering_source_point_id != &"" else "工程模式：先在地图上选择施工起点。")
-		_detail_label.text = "工程师：%s\n施工起点：%s · 路径点：%d\n路线类型：%s\n预计施工：%0.1f 秒 · 粮食：%d；确认后才会扣除。" % [
-			String(_engineering_engineer_id), String(_engineering_source_point_id), Array(_engineering_draft.get("route_world_points", _draw_points)).size(), draft_kind_label, draft_seconds, draft_cost,
+		_detail_label.text = "工程师施工计划\n%s → %s · 路径点：%d\n路线类型：%s\n到场 %0.1f 秒 · 施工 %0.1f 秒 · 粮食 %d；确认后才会扣除。" % [
+			source_label, target_label, Array(_engineering_draft.get("route_world_points", _draw_points)).size(), draft_kind_label, travel_seconds, draft_seconds, draft_cost,
 		]
 		return
 	if army.is_empty():
@@ -329,7 +336,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED:
 				var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
 				var transfer_target := _point_from_model(model, StringName(transfer.get("target_point_id", &"")))
-				blocked_detail = "\n受阻路段：%d；临时状态：%s%s" % [int(macro.get("blocked_segment_index", -1)) + 1, String(transfer.get("phase", "NONE")), (" → %s" % str(transfer_target.get("display_name", transfer.get("target_point_id", "")))) if StringName(transfer.get("target_point_id", &"")) != &"" else ""]
+				blocked_detail = "\n受阻路段：%d；当前处置：%s%s" % [int(macro.get("blocked_segment_index", -1)) + 1, _blocked_transfer_label(StringName(transfer.get("phase", &""))), (" → %s" % str(transfer_target.get("display_name", "友方驻点"))) if StringName(transfer.get("target_point_id", &"")) != &"" else ""]
 			_detail_label.text = "原军令进度：%d%%\n粮食已扣：%d\n%s%s" % [roundi(float(macro.progress_millis) / maxf(float(macro.total_millis), 1.0) * 100.0), int(macro.food_cost), ("工程师维修后会沿实际道路接续原军令，不再扣粮。" if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED else "到达后可从驻扎点发出下一道军令。"), blocked_detail]
 		_confirm_button.disabled = true
 		_block_button.visible = false
@@ -631,13 +638,14 @@ func _append_draw_point(screen_position: Vector2) -> void:
 func _zoom_at_screen_position(screen_position: Vector2, requested_zoom: float) -> void:
 	var anchor_world := _screen_to_world(screen_position)
 	_camera_zoom = clampf(requested_zoom, CAMERA_MIN_ZOOM, CAMERA_MAX_ZOOM)
-	_camera_center = anchor_world - (screen_position - _map_rect().get_center()) / _camera_zoom
+	var projected_center := _project_world(anchor_world) - (screen_position - _map_rect().get_center()) / _camera_zoom
+	_camera_center = _unproject_world(projected_center)
 	_clamp_camera()
 	queue_redraw()
 
 
 func _pan_by_screen_delta(screen_delta: Vector2) -> void:
-	_camera_center -= screen_delta / _camera_zoom
+	_camera_center = _unproject_world(_project_world(_camera_center) - screen_delta / _camera_zoom)
 	_clamp_camera()
 	queue_redraw()
 
@@ -655,7 +663,7 @@ func _pan_while_drawing(screen_position: Vector2) -> void:
 	elif screen_position.y >= rect.end.y - edge:
 		delta.y = 12.0
 	if not delta.is_zero_approx():
-		_camera_center += delta / _camera_zoom
+		_camera_center = _unproject_world(_project_world(_camera_center) + delta / _camera_zoom)
 		_clamp_camera()
 		queue_redraw()
 
@@ -1038,7 +1046,25 @@ func _all_points(model: Dictionary) -> Dictionary:
 	var points := THEATER.get_points()
 	for point_id_value in Dictionary(model.get("runtime_points", {})):
 		points[StringName(point_id_value)] = Dictionary(model.runtime_points[point_id_value]).duplicate(true)
+	var cities := Dictionary(Dictionary(model.get("war_loop", {})).get("cities_by_id", {}))
+	for city_id_value in cities:
+		var city_id := StringName(city_id_value)
+		if not points.has(city_id):
+			continue
+		var point := Dictionary(points[city_id])
+		point.military_controller_faction_id = StringName(Dictionary(cities[city_id]).get("military_controller_faction_id", &"enemy"))
+		points[city_id] = point
 	return points
+
+
+func _blocked_transfer_label(phase: StringName) -> String:
+	match phase:
+		&"TO_CAMP": return "转移至驻点"
+		&"TO_CAMP_BLOCKED": return "转移路线受阻"
+		&"WAITING": return "驻点等待维修"
+		&"TO_RESUME": return "返回原路线"
+		&"TO_RESUME_BLOCKED": return "返回路线受阻"
+		_: return "原地等待"
 
 
 func _point_from_model(model: Dictionary, point_id: StringName) -> Dictionary:
@@ -1169,22 +1195,31 @@ func _minimap_rect() -> Rect2:
 
 
 func _visible_world_rect() -> Rect2:
-	return Rect2(_camera_center - _map_rect().size / _camera_zoom * 0.5, _map_rect().size / _camera_zoom)
+	var half_screen := _map_rect().size / _camera_zoom * 0.5
+	var projected_center := _project_world(_camera_center)
+	var corners := [
+		_unproject_world(projected_center - half_screen),
+		_unproject_world(projected_center + Vector2(half_screen.x, -half_screen.y)),
+		_unproject_world(projected_center + Vector2(-half_screen.x, half_screen.y)),
+		_unproject_world(projected_center + half_screen),
+	]
+	var minimum := Vector2(INF, INF)
+	var maximum := Vector2(-INF, -INF)
+	for corner in corners:
+		minimum = minimum.min(corner)
+		maximum = maximum.max(corner)
+	return Rect2(minimum, maximum - minimum)
 
 
 func _clamp_camera() -> void:
-	var visible_size := _visible_world_rect().size
-	var world_bounds := THEATER.get_world_bounds()
-	var minimum_center := world_bounds.position + visible_size * 0.5
-	var maximum_center := world_bounds.end - visible_size * 0.5
-	if minimum_center.x > maximum_center.x:
-		_camera_center.x = world_bounds.get_center().x
-	else:
-		_camera_center.x = clampf(_camera_center.x, minimum_center.x, maximum_center.x)
-	if minimum_center.y > maximum_center.y:
-		_camera_center.y = world_bounds.get_center().y
-	else:
-		_camera_center.y = clampf(_camera_center.y, minimum_center.y, maximum_center.y)
+	var projected_bounds := _projected_world_bounds()
+	var half_view := _map_rect().size / _camera_zoom * 0.5
+	var projected_center := _project_world(_camera_center)
+	for axis in 2:
+		var minimum_center: float = projected_bounds.position[axis] + half_view[axis]
+		var maximum_center: float = projected_bounds.end[axis] - half_view[axis]
+		projected_center[axis] = projected_bounds.get_center()[axis] if minimum_center > maximum_center else clampf(projected_center[axis], minimum_center, maximum_center)
+	_camera_center = _unproject_world(projected_center)
 
 
 func _center_camera_from_minimap(screen_position: Vector2) -> void:
@@ -1196,11 +1231,40 @@ func _center_camera_from_minimap(screen_position: Vector2) -> void:
 
 
 func _world_to_screen(world: Vector2) -> Vector2:
-	return _map_rect().get_center() + (world - _camera_center) * _camera_zoom
+	return _map_rect().get_center() + (_project_world(world) - _project_world(_camera_center)) * _camera_zoom
 
 
 func _screen_to_world(screen: Vector2) -> Vector2:
-	return _camera_center + (screen - _map_rect().get_center()) / _camera_zoom
+	return _unproject_world(_project_world(_camera_center) + (screen - _map_rect().get_center()) / _camera_zoom)
+
+
+func _project_world(world: Vector2) -> Vector2:
+	return Vector2(world.x + world.y * OBLIQUE_X_SKEW, world.y * OBLIQUE_Y_SCALE)
+
+
+func _unproject_world(projected: Vector2) -> Vector2:
+	var world_y := projected.y / OBLIQUE_Y_SCALE
+	return Vector2(projected.x - world_y * OBLIQUE_X_SKEW, world_y)
+
+
+func _projected_world_bounds() -> Rect2:
+	var bounds := THEATER.get_world_bounds()
+	var projected_corners := [
+		_project_world(bounds.position), _project_world(Vector2(bounds.end.x, bounds.position.y)),
+		_project_world(Vector2(bounds.position.x, bounds.end.y)), _project_world(bounds.end),
+	]
+	var minimum := Vector2(INF, INF)
+	var maximum := Vector2(-INF, -INF)
+	for corner in projected_corners:
+		minimum = minimum.min(corner)
+		maximum = maximum.max(corner)
+	return Rect2(minimum, maximum - minimum)
+
+
+func _point_display_name(model: Dictionary, point_id: StringName, fallback: String) -> String:
+	if point_id == &"":
+		return fallback
+	return str(_point_from_model(model, point_id).get("display_name", fallback))
 
 
 func _draw() -> void:
@@ -1295,7 +1359,7 @@ func _draw_map_canvas(canvas: Control) -> void:
 	for point_value in _all_points(_model()).values():
 		var point: Dictionary = point_value
 		var center := _world_to_screen(Vector2(point.world_position))
-		var enemy := StringName(point.get("point_kind", &"")) == &"ENEMY_CITY"
+		var enemy := StringName(point.get("point_kind", &"")) == &"ENEMY_CITY" and StringName(point.get("military_controller_faction_id", &"enemy")) != &"player"
 		if StringName(point.get("point_kind", &"")) in [&"ENEMY_CITY", &""] and StringName(point.get("point_id", &"")) in [&"blackstone_city", &"redcliff_city", &"silverford_city"]:
 			_draw_city_marker(canvas, center, enemy, palette)
 		else:
@@ -1310,11 +1374,20 @@ func _draw_terrain(canvas: Control, rect: Rect2) -> void:
 	# ambush rules; this method only projects those same facts to screen space.
 	for terrain_value in THEATER.get_terrain_regions():
 		var terrain: Dictionary = terrain_value
-		if StringName(terrain.get("kind", &"")) != &"FOREST":
+		if StringName(terrain.get("kind", &"")) == &"WATER":
 			continue
 		var forest := Rect2(terrain.get("rect", Rect2i()))
-		var forest_rect := Rect2(_world_to_screen(forest.position), forest.size * _camera_zoom)
-		canvas.draw_rect(forest_rect, Color("38533b", 0.24), true)
+		var terrain_polygon := _world_rect_screen_polygon(forest)
+		if StringName(terrain.get("kind", &"")) == &"ROCKS":
+			canvas.draw_colored_polygon(terrain_polygon, Color("6b715f", 0.12))
+			for rock_offset in [Vector2(24, 48), Vector2(60, 27), Vector2(93, 66), Vector2(126, 38)]:
+				if rock_offset.x >= forest.size.x or rock_offset.y >= forest.size.y:
+					continue
+				_draw_rock(canvas, _world_to_screen(forest.position + rock_offset), 7.0 + fmod(rock_offset.x, 5.0))
+			continue
+		if StringName(terrain.get("kind", &"")) != &"FOREST":
+			continue
+		canvas.draw_colored_polygon(terrain_polygon, Color("38533b", 0.24))
 		var tree_offsets := [
 			Vector2(18, 24), Vector2(48, 46), Vector2(77, 20), Vector2(108, 48),
 			Vector2(138, 25), Vector2(30, 88), Vector2(65, 105), Vector2(102, 82),
@@ -1323,28 +1396,47 @@ func _draw_terrain(canvas: Control, rect: Rect2) -> void:
 		for offset in tree_offsets:
 			if offset.x >= forest.size.x - 5 or offset.y >= forest.size.y - 5:
 				continue
-			var tree := _world_to_screen(forest.position + offset)
-			canvas.draw_line(tree + Vector2(0, 4), tree + Vector2(0, 12), Color("59442d"), maxf(2.0, 2.5 * _camera_zoom))
-			canvas.draw_circle(tree, maxf(5.0, 10.0 * _camera_zoom), Color("315a3b"))
-			canvas.draw_circle(tree + Vector2(-3, -3), maxf(3.0, 6.0 * _camera_zoom), Color("5f8249"))
+			_draw_tree(canvas, _world_to_screen(forest.position + offset), maxf(0.72, _camera_zoom))
 	canvas.draw_rect(rect, Color("d9cfaa"), false, 2.0)
 
 
 func _draw_water_region(canvas: Control, water_region: Rect2i, palette: Dictionary) -> void:
-	var top_left := _world_to_screen(Vector2(water_region.position))
-	var bottom_right := _world_to_screen(Vector2(water_region.end))
-	var width := bottom_right.x - top_left.x
-	var height := bottom_right.y - top_left.y
-	var bank := PackedVector2Array([
-		top_left + Vector2(0, 5), top_left + Vector2(width * 0.32, 0), top_left + Vector2(width * 0.68, 8), top_left + Vector2(width, 3),
-		bottom_right + Vector2(0, -5), top_left + Vector2(width * 0.68, height), top_left + Vector2(width * 0.30, height - 7), top_left + Vector2(0, height - 2),
-	])
+	var water_rect := Rect2(water_region)
+	var bank := _world_rect_screen_polygon(water_rect)
 	canvas.draw_colored_polygon(bank, Color(palette.get("water_color", Color("4c95b5"))))
-	canvas.draw_polyline(PackedVector2Array([bank[0], bank[1], bank[2], bank[3]]), Color("c9c88d"), 4.0, true)
-	canvas.draw_polyline(PackedVector2Array([bank[4], bank[5], bank[6], bank[7]]), Color("c9c88d"), 4.0, true)
+	canvas.draw_polyline(PackedVector2Array([bank[0], bank[1]]), Color("d5d09d"), 4.0, true)
+	canvas.draw_polyline(PackedVector2Array([bank[3], bank[2]]), Color("d5d09d"), 4.0, true)
 	for ratio in [0.22, 0.52, 0.78]:
-		var y: float = top_left.y + height * float(ratio)
-		canvas.draw_line(Vector2(top_left.x + 9, y), Vector2(bottom_right.x - 9, y + 3), Color(palette.get("water_highlight_color", Color("8bcbd0")), 0.7), 2.0)
+		var left := _world_to_screen(Vector2(water_rect.position.x, lerpf(water_rect.position.y, water_rect.end.y, float(ratio))))
+		var right := _world_to_screen(Vector2(water_rect.end.x, lerpf(water_rect.position.y, water_rect.end.y, float(ratio))))
+		canvas.draw_line(left.lerp(right, 0.08), left.lerp(right, 0.88), Color(palette.get("water_highlight_color", Color("8bcbd0")), 0.7), 2.0)
+
+
+func _world_rect_screen_polygon(world_rect: Rect2) -> PackedVector2Array:
+	return PackedVector2Array([
+		_world_to_screen(world_rect.position),
+		_world_to_screen(Vector2(world_rect.end.x, world_rect.position.y)),
+		_world_to_screen(world_rect.end),
+		_world_to_screen(Vector2(world_rect.position.x, world_rect.end.y)),
+	])
+
+
+func _draw_tree(canvas: Control, base: Vector2, scale: float) -> void:
+	canvas.draw_circle(base + Vector2(5, 9) * scale, 7.0 * scale, Color("23362b", 0.28))
+	canvas.draw_line(base + Vector2(0, 1) * scale, base + Vector2(0, 13) * scale, Color("59442d"), 3.0 * scale)
+	canvas.draw_circle(base + Vector2(0, -5) * scale, 10.0 * scale, Color("315a3b"))
+	canvas.draw_circle(base + Vector2(-4, -9) * scale, 6.5 * scale, Color("5f8249"))
+	canvas.draw_circle(base + Vector2(5, -8) * scale, 5.5 * scale, Color("789a55"))
+
+
+func _draw_rock(canvas: Control, center: Vector2, radius: float) -> void:
+	var rock := PackedVector2Array([
+		center + Vector2(-radius, radius * 0.45), center + Vector2(-radius * 0.55, -radius * 0.65),
+		center + Vector2(radius * 0.2, -radius), center + Vector2(radius, -radius * 0.1),
+		center + Vector2(radius * 0.65, radius * 0.65),
+	])
+	canvas.draw_colored_polygon(rock, Color("817b68"))
+	canvas.draw_polyline(PackedVector2Array([rock[0], rock[1], rock[2], rock[3], rock[4], rock[0]]), Color("4d4b43"), 1.5, true)
 
 
 func _draw_bridge_deck(canvas: Control, points: PackedVector2Array, damaged: bool) -> void:
@@ -1372,19 +1464,27 @@ func _draw_road_damage(canvas: Control, screen_points: Array) -> void:
 func _draw_city_marker(canvas: Control, center: Vector2, enemy: bool, palette: Dictionary) -> void:
 	var wall_color := Color("633631") if enemy else Color("354845")
 	var banner_color := Color(palette.get("enemy_color" if enemy else "friendly_color", Color("c65a42") if enemy else Color("d7b465")))
-	canvas.draw_rect(Rect2(center - Vector2(23, 18), Vector2(46, 36)), wall_color, true)
-	for tower_offset in [Vector2(-22, -17), Vector2(22, -17), Vector2(-22, 17), Vector2(22, 17)]:
-		canvas.draw_circle(center + tower_offset, 7.0, Color("8b6750"))
-	canvas.draw_rect(Rect2(center - Vector2(15, 11), Vector2(30, 22)), banner_color, true)
-	canvas.draw_rect(Rect2(center + Vector2(-6, 8), Vector2(12, 13)), Color("241f1c"), true)
+	canvas.draw_colored_polygon(PackedVector2Array([center + Vector2(-28, 19), center + Vector2(31, 19), center + Vector2(39, 27), center + Vector2(-18, 29)]), Color("1f2b27", 0.34))
+	canvas.draw_colored_polygon(PackedVector2Array([center + Vector2(-25, -13), center + Vector2(24, -13), center + Vector2(30, -5), center + Vector2(-19, -5)]), Color("9c7a56"))
+	canvas.draw_rect(Rect2(center + Vector2(-19, -5), Vector2(49, 27)), wall_color, true)
+	for tower_offset in [Vector2(-19, -8), Vector2(27, -8)]:
+		canvas.draw_rect(Rect2(center + tower_offset - Vector2(6, 9), Vector2(12, 25)), Color("806248"), true)
+		canvas.draw_colored_polygon(PackedVector2Array([center + tower_offset + Vector2(-9, -9), center + tower_offset + Vector2(0, -17), center + tower_offset + Vector2(9, -9)]), Color("3f4b48" if not enemy else "6b3d35"))
+	canvas.draw_rect(Rect2(center + Vector2(-13, -3), Vector2(27, 17)), banner_color, true)
+	canvas.draw_rect(Rect2(center + Vector2(-5, 8), Vector2(11, 14)), Color("241f1c"), true)
 	canvas.draw_line(center + Vector2(4, -29), center + Vector2(4, -8), Color("2d2924"), 2.0)
 	canvas.draw_colored_polygon(PackedVector2Array([center + Vector2(5, -28), center + Vector2(20, -23), center + Vector2(5, -17)]), banner_color)
+	if not enemy:
+		canvas.draw_arc(center, 36.0, PI * 0.1, PI * 0.9, 18, Color("f4d477", 0.5), 2.0, true)
 
 
 func _draw_garrison_marker(canvas: Control, center: Vector2) -> void:
-	canvas.draw_colored_polygon(PackedVector2Array([center + Vector2(-18, 13), center, center + Vector2(18, 13)]), Color("d6aa63"))
-	canvas.draw_colored_polygon(PackedVector2Array([center + Vector2(-12, 10), center + Vector2(-4, -12), center + Vector2(4, 10)]), Color("efe0b7"))
+	canvas.draw_circle(center + Vector2(4, 14), 20.0, Color("26342e", 0.28))
+	canvas.draw_colored_polygon(PackedVector2Array([center + Vector2(-20, 13), center, center + Vector2(21, 13)]), Color("d6aa63"))
+	canvas.draw_colored_polygon(PackedVector2Array([center + Vector2(-13, 10), center + Vector2(-4, -13), center + Vector2(5, 10)]), Color("efe0b7"))
 	canvas.draw_line(center + Vector2(-21, 15), center + Vector2(21, 15), Color("4b3927"), 3.0)
+	canvas.draw_line(center + Vector2(11, -13), center + Vector2(11, 10), Color("342b27"), 2.0)
+	canvas.draw_colored_polygon(PackedVector2Array([center + Vector2(12, -12), center + Vector2(23, -8), center + Vector2(12, -4)]), Color("e5bf58"))
 
 
 func _draw_camp_marker(canvas: Control, center: Vector2) -> void:

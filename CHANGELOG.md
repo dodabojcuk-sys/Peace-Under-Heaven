@@ -14,6 +14,29 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 Blackstone sample theatre
+
+- Split the player-facing Blackstone level from the historical regression
+  fixture. The new Resource owns a 1500x980 battlefield, distinct river reaches,
+  forests and rocks, seven named points, two meaningful approaches, and an
+  authored finite ridge patrol.
+- Added one invertible fixed-oblique projection for battlefield drawing, camera
+  navigation, minimap selection, hit testing, and route drawing. Upgraded the
+  clipped presentation with river banks, tree and rock groups, walled city and
+  camp silhouettes, faction flags, road width, bridge decks, and road damage.
+- Made playable patrol strength, patrol itinerary, and scout visibility Resource
+  data while preserving legacy defaults for focused regression tests.
+- Added timed construction-work traces. Contact during active construction now
+  interrupts at the contact time and removes only roads or camp state that would
+  have opened later in the same world step.
+- Reworked the natural engineering campaign around one useful central crossing
+  and a forest ambush. Current formal results are 39.40 seconds / 12 food / four
+  casualties for the northern route and 79.30 seconds / 36 food / three
+  casualties / no specialist loss / one ambush for the engineering route.
+- Added identified normal-system-input evidence for route drawing, confirmation,
+  automatic march, engineering preview, and active road/bridge construction.
+  This evidence is a review aid, not player acceptance.
+
 ### FIELD_TACTICS_R2 formal operations, time, and map experience
 
 - Added time-aligned specialist/patrol contact and contact-time guard sampling,
@@ -40,15 +63,13 @@
   bends and stationary arrival intervals. Encounter checks now require spatial
   proximity during an overlapping time interval, preventing same-direction or
   different-time trace overlap from creating false combat.
-- Removed route-B army-only time advancement. Both full routes now use the formal
+- Removed route-B army-only time advancement. Both full routes use the formal
   shared world-clock entry and aggregate all army casualties, specialist losses,
-  food transactions, and elapsed field time. Current results are 35.90 seconds,
-  12 food spent, and four casualties for route A; 73.00 seconds, 61 food spent,
-  three army casualties, two specialist losses, and one ambush for route B.
-- Reworked route B around a useful bridge and two-stage side-road connection;
-  engineer loss and repair are recoverable consequences rather than scripted
-  prerequisites. Exact remaining food is not an acceptance assertion, and the
-  injected road-damage event remains explicitly labelled as test evidence.
+  food transactions, and elapsed field time. The latest natural route metrics
+  are recorded in the sample-theatre section above.
+- Kept engineer loss, road damage, repair, and blocked-transfer recovery in the
+  fault-regression suite rather than requiring them in the natural engineering
+  playthrough. Exact remaining food is not an acceptance assertion.
 - Routed both campaigns' initial dispatch and every stationed-army continuation,
   including both siege destinations, through the map draw-and-confirm event chain.
 - Verified Field R2 68 assertions, both playthroughs, audited field persistence,

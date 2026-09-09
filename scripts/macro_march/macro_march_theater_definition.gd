@@ -7,9 +7,11 @@ const NORTHWATCH_GARRISON := &"northwatch_garrison"
 const REEDBANK_GARRISON := &"reedbank_garrison"
 const REDCLIFF_CITY := &"redcliff_city"
 const SILVERFORD_CITY := &"silverford_city"
+const FOREST_GARRISON := &"forest_garrison"
 
 
 @export var theater_name := "黑石战区"
+@export var scout_visibility_range := 2
 @export var presentation_profile: Dictionary = {
 	"ground_color": Color("7e966c"),
 	"ground_patch_color": Color("91a878"),
@@ -88,6 +90,16 @@ const SILVERFORD_CITY := &"silverford_city"
 	{"terrain_id": &"forest.east", "kind": &"FOREST", "rect": Rect2i(690, 330, 160, 115)},
 	{"terrain_id": &"forest.south", "kind": &"FOREST", "rect": Rect2i(50, 510, 190, 125)},
 ]
+
+
+@export var patrol_configs: Array[Dictionary] = [{
+	"patrol_id": &"patrol.ridge.001",
+	"display_name": "北岭巡骑",
+	"route_point_ids": [&"northwatch_garrison", &"reedbank_garrison"],
+	"start_point_id": &"northwatch_garrison",
+	"strength": 5,
+	"wait_milliseconds": 2400,
+}]
 
 
 # The ridge road is the indestructible main road. The lowland road is a

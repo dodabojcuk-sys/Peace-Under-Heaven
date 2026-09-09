@@ -41,12 +41,22 @@ var next_specialist_sequence := 1
 var next_project_sequence := 1
 var next_camp_sequence := 1
 var _specialist_path_migration_pending := false
+var scout_visibility_range := 2
 
 
-func initialize_from_theater(points: Dictionary, routes: Dictionary, water_regions_value: Array[Rect2i] = [], world_bounds_value: Rect2i = Rect2i(-260, -180, 1520, 1040), terrain_regions_value: Array[Dictionary] = []) -> void:
+func initialize_from_theater(
+	points: Dictionary,
+	routes: Dictionary,
+	water_regions_value: Array[Rect2i] = [],
+	world_bounds_value: Rect2i = Rect2i(-260, -180, 1520, 1040),
+	terrain_regions_value: Array[Dictionary] = [],
+	patrol_configs: Array[Dictionary] = [],
+	scout_visibility_range_value := 2
+) -> void:
 	water_regions = water_regions_value.duplicate()
 	world_bounds = world_bounds_value
 	terrain_regions = terrain_regions_value.duplicate(true)
+	scout_visibility_range = maxi(int(scout_visibility_range_value), 1)
 	for point_id_value in points:
 		var point: Dictionary = Dictionary(points[point_id_value])
 		point_positions_by_id[StringName(point_id_value)] = Vector2i(point.get("world_position", Vector2i.ZERO))
@@ -70,30 +80,55 @@ func initialize_from_theater(points: Dictionary, routes: Dictionary, water_regio
 			"built": true,
 			"project_id": &"",
 		}
-	# A finite patrol is a real persistent participant, not a UI warning.  It
-	# begins hidden until a player observer sees its node or current road.
-	if patrols_by_id.is_empty() and points.has(&"northwatch_garrison"):
-		var patrol_plan: Dictionary = plan_runtime_path(&"northwatch_garrison", &"reedbank_garrison")
-		patrols_by_id[&"patrol.ridge.001"] = {
-			"patrol_id": &"patrol.ridge.001",
-			"current_point_id": &"northwatch_garrison",
-			"strength": 5,
-			"phase": &"PATROL",
-			"route_point_ids": [&"northwatch_garrison", &"reedbank_garrison"],
-			"target_route_index": 1,
-			"wait_remaining_milliseconds": 2400,
-			"move_total_milliseconds": int(patrol_plan.get("duration_milliseconds", 4000)),
-			"move_elapsed_milliseconds": 0,
-			"move_start_position": _point_position(&"northwatch_garrison"),
-			"move_route_world_points": Array(patrol_plan.get("points", [_point_position(&"northwatch_garrison"), _point_position(&"reedbank_garrison")])).duplicate(true),
-			"last_known_target_id": &"",
-			"last_known_at_milliseconds": 0,
-			"world_position": _point_position(&"northwatch_garrison"),
-			"resolved_army_ids": [],
-			"ambush_consumed_army_ids": [],
-			"exposed": false,
-			"last_engagement": {},
-		}
+	# Finite patrols are Resource-owned participants, not presentation warnings.
+	# Tests that initialize the legacy fixture without explicit configuration keep
+	# the old patrol so historical focused coverage remains stable.
+	if patrols_by_id.is_empty():
+		var configured_patrols := patrol_configs.duplicate(true)
+		if configured_patrols.is_empty() and points.has(&"northwatch_garrison") and points.has(&"reedbank_garrison"):
+			configured_patrols = [{
+				"patrol_id": &"patrol.ridge.001", "display_name": "北岭巡骑",
+				"route_point_ids": [&"northwatch_garrison", &"reedbank_garrison"],
+				"start_point_id": &"northwatch_garrison", "strength": 5,
+				"wait_milliseconds": 2400,
+			}]
+		for config_value in configured_patrols:
+			var config: Dictionary = Dictionary(config_value)
+			var patrol_id := StringName(config.get("patrol_id", &""))
+			var route_point_ids: Array = Array(config.get("route_point_ids", []))
+			if patrol_id == &"" or route_point_ids.size() < 2:
+				continue
+			var start_point_id := StringName(config.get("start_point_id", route_point_ids.front()))
+			var start_index := route_point_ids.find(start_point_id)
+			if start_index < 0:
+				start_index = 0
+				start_point_id = StringName(route_point_ids.front())
+			var target_index := (start_index + 1) % route_point_ids.size()
+			var target_point_id := StringName(route_point_ids[target_index])
+			var patrol_plan: Dictionary = plan_runtime_path(start_point_id, target_point_id)
+			if patrol_plan.is_empty():
+				continue
+			patrols_by_id[patrol_id] = {
+				"patrol_id": patrol_id,
+				"display_name": str(config.get("display_name", "敌军巡逻")),
+				"current_point_id": start_point_id,
+				"strength": maxi(int(config.get("strength", 5)), 0),
+				"phase": &"PATROL",
+				"route_point_ids": route_point_ids.duplicate(true),
+				"target_route_index": target_index,
+				"wait_remaining_milliseconds": maxi(int(config.get("wait_milliseconds", 1200)), 0),
+				"move_total_milliseconds": int(patrol_plan.get("duration_milliseconds", 4000)),
+				"move_elapsed_milliseconds": 0,
+				"move_start_position": _point_position(start_point_id),
+				"move_route_world_points": Array(patrol_plan.get("points", [_point_position(start_point_id), _point_position(target_point_id)])).duplicate(true),
+				"last_known_target_id": &"",
+				"last_known_at_milliseconds": 0,
+				"world_position": _point_position(start_point_id),
+				"resolved_army_ids": [],
+				"ambush_consumed_army_ids": [],
+				"exposed": false,
+				"last_engagement": {},
+			}
 
 
 func dispatch_specialist(role: StringName, source_point_id: StringName) -> Dictionary:
@@ -114,7 +149,9 @@ func dispatch_specialist(role: StringName, source_point_id: StringName) -> Dicti
 		"move_route_world_points": [_point_position(source_point_id)],
 		"world_position": _point_position(source_point_id),
 		"target_world_position": _point_position(source_point_id),
-		"visibility_range": 2 if role == SPECIALIST_SCOUT else 1,
+		# The playable Resource can give scouts a useful lookout radius while the
+		# regression fixture keeps its historical exact-contact behavior.
+		"visibility_range": scout_visibility_range if role == SPECIALIST_SCOUT else 1,
 		"project_id": &"",
 		"alive": true,
 	}
@@ -1131,6 +1168,8 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 	var engagements: Array[Dictionary] = []
 	var patrol_movements: Array[Dictionary] = []
 	var specialist_movements: Dictionary = {}
+	var specialist_project_ids: Dictionary = {}
+	var project_step_facts: Dictionary = {}
 	# A repair may begin in the middle of this world step. Keep the unused part
 	# of the step for its work progress so one long advance and split advances
 	# produce identical durable state.
@@ -1169,7 +1208,9 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 			maxi(int(moving.get("move_total_milliseconds", 1)), 1), 0
 		)
 		var specialist_move_milliseconds := mini(move_remaining_before, delta_milliseconds)
-		if specialist_trace.is_empty() or specialist_move_milliseconds < delta_milliseconds:
+		var arrived_project_id := StringName(moving.get("project_id", &""))
+		var continues_as_project := int(project_arrival_work_milliseconds.get(arrived_project_id, 0)) > 0
+		if specialist_trace.is_empty() or (specialist_move_milliseconds < delta_milliseconds and not continues_as_project):
 			var final_position := Vector2(moving.get("world_position", specialist_start_position))
 			specialist_trace.append({
 				"from": final_position, "to": final_position,
@@ -1191,14 +1232,44 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 		var project_delta_milliseconds := int(project_arrival_work_milliseconds.get(project_id, delta_milliseconds))
 		if project_delta_milliseconds <= 0:
 			continue
+		var progress_before := int(project.get("progress_milliseconds", 0))
+		var work_start_offset := delta_milliseconds - project_delta_milliseconds
+		var work_consumed := mini(project_delta_milliseconds, maxi(int(project.get("required_milliseconds", 0)) - progress_before, 0))
+		var engineer_id := StringName(project.engineer_id)
+		specialist_project_ids[engineer_id] = project_id
+		project_step_facts[project_id] = {
+			"progress_before": progress_before,
+			"work_start_offset": work_start_offset,
+			"work_consumed": work_consumed,
+		}
 		project.progress_milliseconds = mini(
-			int(project.progress_milliseconds) + project_delta_milliseconds,
+			progress_before + project_delta_milliseconds,
 			int(project.required_milliseconds)
 		)
 		if StringName(project.get("project_kind", &"")) != &"REPAIR":
 			_update_engineer_construction_position(engineer, project)
-			specialists_by_id[StringName(project.engineer_id)] = engineer
+			specialists_by_id[engineer_id] = engineer
 			opened_road_ids.append_array(_open_completed_construction_segments(project_id, project))
+		var construction_trace := _timed_project_work_records(
+			engineer_id, project, progress_before, int(project.progress_milliseconds), work_start_offset
+		)
+		if construction_trace.is_empty():
+			var work_position := Vector2(engineer.get("world_position", Vector2.ZERO))
+			construction_trace.append({
+				"from": work_position, "to": work_position,
+				"start_offset_milliseconds": work_start_offset,
+				"end_offset_milliseconds": work_start_offset + work_consumed,
+			})
+		if work_start_offset + work_consumed < delta_milliseconds:
+			var final_work_position := Vector2(engineer.get("world_position", Vector2.ZERO))
+			construction_trace.append({
+				"from": final_work_position, "to": final_work_position,
+				"start_offset_milliseconds": work_start_offset + work_consumed,
+				"end_offset_milliseconds": delta_milliseconds,
+			})
+		var existing_trace: Array = Array(specialist_movements.get(engineer_id, []))
+		existing_trace.append_array(construction_trace)
+		specialist_movements[engineer_id] = existing_trace
 		if int(project.progress_milliseconds) == int(project.required_milliseconds):
 			project.phase = &"COMPLETE"
 			if StringName(project.get("project_kind", &"")) == &"REPAIR":
@@ -1222,7 +1293,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 				# engineer at the zero vector for one persistence frame.
 				engineer.world_position = Vector2i(_road_endpoint_position(StringName(project.get("road_id", &""))))
 			engineer.project_id = &""
-			specialists_by_id[StringName(project.engineer_id)] = engineer
+			specialists_by_id[engineer_id] = engineer
 			if bool(project.build_camp):
 				_create_completed_camp(
 					StringName(project.target_point_id), StringName(project.road_id),
@@ -1334,10 +1405,24 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 				if guard_army_ids.is_empty():
 					specialist.alive = false
 					specialist.phase = SPECIALIST_LOST
-					var project_id := StringName(specialist.get("project_id", &""))
+					var project_id := StringName(specialist_project_ids.get(specialist_id, specialist.get("project_id", &"")))
 					if projects_by_id.has(project_id):
 						var interrupted_project := Dictionary(projects_by_id[project_id])
-						if StringName(interrupted_project.get("phase", &"")) in [&"TRAVELING", &"BUILDING"]:
+						var step_fact: Dictionary = Dictionary(project_step_facts.get(project_id, {}))
+						if not step_fact.is_empty():
+							var work_before_contact := clampi(
+								roundi(contact_milliseconds - float(step_fact.work_start_offset)),
+								0, int(step_fact.work_consumed)
+							)
+							var contact_progress := mini(
+								int(step_fact.progress_before) + work_before_contact,
+								int(interrupted_project.get("required_milliseconds", 0))
+							)
+							if contact_progress < int(interrupted_project.get("progress_milliseconds", 0)):
+								interrupted_project.progress_milliseconds = contact_progress
+								_remove_project_roads_opened_after(project_id, interrupted_project, contact_progress, opened_road_ids)
+								completed.erase(project_id)
+						if StringName(interrupted_project.get("phase", &"")) in [&"TRAVELING", &"BUILDING", &"COMPLETE"] and int(interrupted_project.get("progress_milliseconds", 0)) < int(interrupted_project.get("required_milliseconds", 0)):
 							interrupted_project.phase = &"INTERRUPTED"
 							interrupted_project.interruption_reason = &"ENGINEER_LOST"
 							projects_by_id[project_id] = interrupted_project
@@ -1405,6 +1490,68 @@ func _update_engineer_construction_position(engineer: Dictionary, project: Dicti
 			return
 		engineer.world_position = Vector2i(_position_along_points(points, local_progress))
 		return
+
+
+func _timed_project_work_records(
+	engineer_id: StringName,
+	project: Dictionary,
+	start_progress: int,
+	end_progress: int,
+	step_start_offset: int
+) -> Array[Dictionary]:
+	var records: Array[Dictionary] = []
+	var accumulated := 0
+	for segment_value in Array(project.get("segment_plans", [])):
+		var segment: Dictionary = Dictionary(segment_value)
+		var duration := maxi(int(segment.get("required_milliseconds", 0)), 1)
+		var segment_start := accumulated
+		var segment_end := accumulated + duration
+		accumulated = segment_end
+		var overlap_start := maxi(start_progress, segment_start)
+		var overlap_end := mini(end_progress, segment_end)
+		if overlap_end <= overlap_start:
+			continue
+		var points: Array = Array(segment.get("route_world_points", []))
+		if points.is_empty():
+			continue
+		var local_start := overlap_start - segment_start
+		var local_end := overlap_end - segment_start
+		var record_offset := step_start_offset + overlap_start - start_progress
+		if StringName(segment.get("road_kind", &"")) == ROAD_BRIDGE:
+			var bank := Vector2(points.front())
+			records.append({
+				"patrol_id": engineer_id, "from": bank, "to": bank,
+				"start_offset_milliseconds": record_offset,
+				"end_offset_milliseconds": record_offset + local_end - local_start,
+			})
+			continue
+		records.append_array(_timed_route_movement_records(
+			engineer_id, points, local_start, local_end, duration, record_offset
+		))
+	return records
+
+
+func _remove_project_roads_opened_after(
+	project_id: StringName,
+	project: Dictionary,
+	progress_milliseconds: int,
+	opened_road_ids: Array[StringName]
+) -> void:
+	var accumulated := 0
+	for segment_value in Array(project.get("segment_plans", [])):
+		var segment: Dictionary = Dictionary(segment_value)
+		accumulated += int(segment.get("required_milliseconds", 0))
+		var road_id := StringName(segment.get("road_id", &""))
+		if accumulated <= progress_milliseconds or road_id == &"":
+			continue
+		var road := Dictionary(roads_by_id.get(road_id, {}))
+		if StringName(road.get("project_id", &"")) == project_id:
+			roads_by_id.erase(road_id)
+		opened_road_ids.erase(road_id)
+	if progress_milliseconds < int(project.get("required_milliseconds", 0)) and bool(project.get("build_camp", false)):
+		var reserved_camp_id := StringName(project.get("camp_id", &""))
+		if reserved_camp_id != &"":
+			camps_by_id.erase(reserved_camp_id)
 
 
 func _position_along_points(points: Array, progress: float) -> Vector2:

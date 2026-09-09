@@ -13,6 +13,7 @@ var assertions := 0
 
 
 func _initialize() -> void:
+	THEATER.use_regression_definition_for_tests()
 	call_deferred("_run")
 
 
@@ -1056,6 +1057,65 @@ func _run_patrol_encounter_contract() -> void:
 		not bool(Dictionary(guard_left.specialists_by_id[timed_scout_id]).get("alive", true))
 			and bool(Dictionary(guard_arrived.specialists_by_id[timed_scout_id]).get("alive", false)),
 		"护卫是否生效取决于接敌时刻的位置：提前离开不保护，及时抵达才参与"
+	)
+
+	var construction_base: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	var construction_points := {
+		&"work.west": {"world_position": Vector2i(0, 0)},
+		&"work.east": {"world_position": Vector2i(100, 0)},
+	}
+	construction_base.initialize_from_theater(construction_points, {})
+	var working_engineer := construction_base.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"work.west")
+	var working_engineer_id := StringName(working_engineer.specialist_id)
+	var working_state := Dictionary(construction_base.specialists_by_id[working_engineer_id])
+	working_state.phase = FieldTacticsState.SPECIALIST_BUILDING
+	working_state.project_id = &"project.timed.work"
+	construction_base.specialists_by_id[working_engineer_id] = working_state
+	construction_base.projects_by_id[&"project.timed.work"] = {
+		"project_id": &"project.timed.work", "project_kind": &"CONSTRUCTION",
+		"engineer_id": working_engineer_id, "road_id": &"road.timed.work",
+		"source_point_id": &"work.west", "target_point_id": &"work.east",
+		"route_world_points": [Vector2i(0, 0), Vector2i(100, 0)], "road_kind": FieldTacticsState.ROAD_NORMAL,
+		"progress_milliseconds": 0, "required_milliseconds": 1000, "max_durability": 100,
+		"segment_plans": [{
+			"road_id": &"road.timed.work", "source_point_id": &"work.west", "target_point_id": &"work.east",
+			"route_world_points": [Vector2i(0, 0), Vector2i(100, 0)], "road_kind": FieldTacticsState.ROAD_NORMAL,
+			"required_milliseconds": 1000, "max_durability": 100,
+		}],
+		"build_camp": false, "camp_id": &"", "phase": &"BUILDING",
+	}
+	construction_base.patrols_by_id[&"patrol.timed.work"] = {
+		"patrol_id": &"patrol.timed.work", "display_name": "测试巡逻",
+		"current_point_id": &"work.east", "strength": 5, "phase": &"PATROL",
+		"route_point_ids": [&"work.east", &"work.west"], "target_route_index": 1,
+		"wait_remaining_milliseconds": 0, "move_total_milliseconds": 1000,
+		"move_elapsed_milliseconds": 0, "move_start_position": Vector2i(100, 0),
+		"move_route_world_points": [Vector2i(100, 0), Vector2i(0, 0)],
+		"world_position": Vector2i(100, 0), "resolved_army_ids": [],
+		"ambush_consumed_army_ids": [], "exposed": false, "last_engagement": {},
+	}
+	var construction_large: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	construction_large.restore_snapshot(construction_base.get_snapshot())
+	construction_large.initialize_from_theater(construction_points, {})
+	var construction_split: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	construction_split.restore_snapshot(construction_base.get_snapshot())
+	construction_split.initialize_from_theater(construction_points, {})
+	var large_result := construction_large.advance_world(1000)
+	var split_engagements: Array = []
+	for _step in 10:
+		split_engagements.append_array(Array(construction_split.advance_world(100).get("engagements", [])))
+	var large_project := Dictionary(construction_large.projects_by_id[&"project.timed.work"])
+	var split_project := Dictionary(construction_split.projects_by_id[&"project.timed.work"])
+	_check(
+		not bool(Dictionary(construction_large.specialists_by_id[working_engineer_id]).get("alive", true))
+			and not bool(Dictionary(construction_split.specialists_by_id[working_engineer_id]).get("alive", true))
+			and StringName(large_project.get("phase", &"")) == &"INTERRUPTED"
+			and large_project == split_project
+			and not Array(large_result.get("engagements", [])).is_empty()
+			and not split_engagements.is_empty()
+			and not construction_large.roads_by_id.has(&"road.timed.work")
+			and not construction_split.roads_by_id.has(&"road.timed.work"),
+		"施工人员沿作业路线生成带时间轨迹；同一接敌在大步与拆分推进下于相同进度中断且不会提前开路"
 	)
 
 	var unguarded: FieldTacticsState = FIELD_TACTICS_STATE.new()

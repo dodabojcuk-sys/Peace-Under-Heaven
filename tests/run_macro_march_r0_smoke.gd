@@ -9,6 +9,7 @@ var assertions := 0
 
 
 func _initialize() -> void:
+	THEATER.use_regression_definition_for_tests()
 	call_deferred("_run")
 
 

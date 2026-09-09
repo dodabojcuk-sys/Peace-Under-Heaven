@@ -5372,7 +5372,9 @@ func _ensure_war_loop_initialized() -> void:
 		MACRO_MARCH_THEATER.get_points(), MACRO_MARCH_THEATER.get_routes(),
 		MACRO_MARCH_THEATER.get_water_regions(),
 		Rect2i(MACRO_MARCH_THEATER.get_world_bounds()),
-		MACRO_MARCH_THEATER.get_terrain_regions()
+		MACRO_MARCH_THEATER.get_terrain_regions(),
+		MACRO_MARCH_THEATER.get_patrol_configs(),
+		MACRO_MARCH_THEATER.get_scout_visibility_range()
 	)
 
 

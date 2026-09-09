@@ -9,11 +9,24 @@ var assertions := 0
 
 
 func _initialize() -> void:
+	THEATER.use_playable_definition()
 	call_deferred("_run")
 
 
 func _run() -> void:
 	root.size = Vector2i(1152, 648)
+	var terrain_kinds: Array[StringName] = []
+	for terrain_value in THEATER.get_terrain_regions():
+		terrain_kinds.append(StringName(Dictionary(terrain_value).get("kind", &"")))
+	_check(
+		THEATER.get_definition_id() == &"blackstone_playable_r2"
+			and THEATER.get_points().has(&"forest_garrison")
+			and THEATER.get_points().has(&"ridge_watch")
+			and THEATER.get_water_regions().size() == 3
+			and &"FOREST" in terrain_kinds and &"ROCKS" in terrain_kinds
+			and not THEATER.get_route(&"road.forest.silverford.approach").is_empty(),
+		"正式试玩加载独立战区 Resource，而不是只换色的综合回归布局"
+	)
 	await _run_main_road_route()
 	await _run_engineering_route()
 	_finish()
@@ -38,7 +51,7 @@ func _run_main_road_route() -> void:
 	_advance_until_phase(city, army_id, ArmyRegistry.PHASE_STATIONED, 30000)
 	var patrol := Dictionary(city._war_loop_state.field_tactics.patrols_by_id[&"patrol.ridge.001"])
 	var patrol_wait := 0
-	while army_id not in Array(patrol.get("resolved_army_ids", [])) and patrol_wait < 30000:
+	while army_id not in Array(patrol.get("resolved_army_ids", [])) and patrol_wait < 60000:
 		city._process(0.1)
 		patrol_wait += 100
 		patrol = Dictionary(city._war_loop_state.field_tactics.patrols_by_id[&"patrol.ridge.001"])
@@ -77,39 +90,55 @@ func _run_engineering_route() -> void:
 	scene.open_macro_march_r0()
 	var initial_food: int = city.food
 	var roster: Array[Dictionary] = city.get_formation_roster()
-	# Both specialists enter through the visible actions. The scout then receives
-	# a real map target instead of being advanced by a test-only state mutation.
+	# Both specialists enter through visible actions. The scout receives a real
+	# map target before the player commits to the central crossing.
 	macro_screen._scout_button.emit_signal("pressed")
 	var scout_id := macro_screen._selected_scout_id
 	var scout_dispatch := {"success": scout_id != &""}
+	_ui_frame_world_points(macro_screen, [
+		Vector2(THEATER.get_point(&"blackstone_city").world_position),
+		Vector2(THEATER.get_point(&"ridge_watch").world_position),
+	])
 	var scout_target_click := InputEventMouseButton.new()
 	scout_target_click.button_index = MOUSE_BUTTON_LEFT
 	scout_target_click.pressed = true
-	scout_target_click.position = macro_screen._world_to_screen(Vector2(THEATER.get_point(&"northwatch_garrison").world_position))
+	scout_target_click.position = macro_screen._world_to_screen(Vector2(THEATER.get_point(&"ridge_watch").world_position))
+	macro_screen._on_gui_input(scout_target_click)
+	scout_target_click = scout_target_click.duplicate()
+	scout_target_click.pressed = false
 	macro_screen._on_gui_input(scout_target_click)
 	var scout_order := {
 		"success": StringName(Dictionary(city._war_loop_state.field_tactics.specialists_by_id.get(scout_id, {})).get("phase", &"")) == FieldTacticsState.SPECIALIST_MOVING,
 	}
 	var scouting_elapsed := 0
-	while scouting_elapsed < 30000:
+	while scouting_elapsed < 12000:
 		city._process(0.1)
 		scouting_elapsed += 100
 		var intel: Dictionary = city._war_loop_state.field_tactics.observe_subject(&"patrol.ridge.001")
 		if StringName(intel.get("fog_state", &"")) != FieldTacticsState.FOG_UNOBSERVED:
 			break
+	# The reconnaissance route includes a real return order. The scout does not
+	# linger on the patrol's departure point merely to manufacture a casualty.
+	_advance_until_specialist_phase(city, scout_id, FieldTacticsState.SPECIALIST_IDLE, 16000)
+	macro_screen._scout_button.emit_signal("pressed")
+	_ui_frame_world_points(macro_screen, [
+		Vector2(THEATER.get_point(&"ridge_watch").world_position),
+		Vector2(THEATER.get_point(&"blackstone_city").world_position),
+	])
+	_ui_click_world(macro_screen, Vector2(THEATER.get_point(&"blackstone_city").world_position))
+	_advance_until_specialist_phase(city, scout_id, FieldTacticsState.SPECIALIST_IDLE, 16000)
 	macro_screen._engineer_button.emit_signal("pressed")
 	var engineer_id := _active_engineer_id(city)
 	var engineer_dispatch := {"success": engineer_id != &""}
 	var bridge_points: Array = [
-		Vector2i(150, 430), Vector2i(360, 430), Vector2i(500, 430),
-		Vector2i(650, 430), Vector2i(710, 400),
+		Vector2i(135, 650), Vector2i(340, 635), Vector2i(500, 625),
+		Vector2i(620, 615), Vector2i(760, 610),
 	]
 	var bridge_ui := _ui_confirm_engineering(
-		macro_screen, engineer_id, &"blackstone_city", &"", bridge_points
+		macro_screen, engineer_id, &"blackstone_city", &"forest_garrison", bridge_points
 	)
 	var bridge_project: Dictionary = Dictionary(bridge_ui.get("project", {}))
 	var bridge_project_id := StringName(bridge_project.get("project_id", &""))
-	var camp_site := StringName(Dictionary(bridge_ui.get("draft", {})).get("target_point_id", &""))
 	_advance_until_project_phase(city, bridge_project_id, &"COMPLETE", 40000)
 	var completed_project := Dictionary(city._war_loop_state.field_tactics.projects_by_id.get(bridge_project_id, {}))
 	var bridge_segment_ids: Array[StringName] = []
@@ -117,7 +146,7 @@ func _run_engineering_route() -> void:
 		var segment: Dictionary = Dictionary(segment_value)
 		if StringName(segment.get("road_kind", &"")) == FieldTacticsState.ROAD_BRIDGE:
 			bridge_segment_ids.append(StringName(segment.get("road_id", &"")))
-	var forest_plan: Dictionary = city.plan_field_path(&"blackstone_city", camp_site, bridge_points)
+	var forest_plan: Dictionary = city.plan_field_path(&"blackstone_city", &"forest_garrison", bridge_points)
 	var field_issue: Dictionary = _ui_confirm_march_from_city(
 		macro_screen, [StringName(roster[0].formation_id), StringName(roster[1].formation_id), StringName(roster[2].formation_id)],
 		Array(forest_plan.get("points", []))
@@ -126,95 +155,33 @@ func _run_engineering_route() -> void:
 	var field_initial_count: int = city._macro_army_member_count(Dictionary(field_issue.get("army", {})))
 	_advance_until_phase(city, field_army_id, ArmyRegistry.PHASE_STATIONED, 30000)
 	var ambush_wait := 0
-	while ambush_wait < 30000:
+	while ambush_wait < 40000:
 		var patrol := Dictionary(city._war_loop_state.field_tactics.patrols_by_id[&"patrol.ridge.001"])
 		if field_army_id in Array(patrol.get("ambush_consumed_army_ids", [])):
 			break
 		city._process(0.1)
 		ambush_wait += 100
 	var patrol_after_ambush := Dictionary(city._war_loop_state.field_tactics.patrols_by_id[&"patrol.ridge.001"])
-	if _active_engineer_id(city) == &"":
-		# If the unguarded bridge crew met the patrol before the army reached the
-		# forest camp, the player uses the normal replacement action. This is a
-		# recoverable enemy consequence, not a scripted prerequisite for the route.
-		macro_screen._engineer_button.emit_signal("pressed")
-
-	# The stationed army now guards a two-segment field connection. The relay
-	# camp gives the route a meaningful recovery point and lets the test damage a
-	# genuinely future segment instead of declaring the road under the army gone.
-	var relay_points: Array = [Vector2i(710, 400), Vector2i(770, 445)]
-	var relay_ui := _ui_confirm_engineering(
-		macro_screen, _active_engineer_id(city), camp_site, &"", relay_points
-	)
-	var relay_project: Dictionary = Dictionary(relay_ui.get("project", {}))
-	var relay_project_id := StringName(relay_project.get("project_id", &""))
-	var relay_camp_site := StringName(Dictionary(relay_ui.get("draft", {})).get("target_point_id", &""))
-	_advance_until_project_phase(city, relay_project_id, &"COMPLETE", 20000)
-	var connector_points: Array = [Vector2i(770, 445), Vector2i(850, 505)]
-	var connector_ui := _ui_confirm_engineering(
-		macro_screen, _active_engineer_id(city), relay_camp_site, &"reedbank_garrison", connector_points
-	)
-	var connector_project: Dictionary = Dictionary(connector_ui.get("project", {}))
-	var connector_project_id := StringName(connector_project.get("project_id", &""))
-	_advance_until_project_phase(city, connector_project_id, &"COMPLETE", 20000)
-	var connector_road_id := StringName(Dictionary(city._war_loop_state.field_tactics.projects_by_id.get(connector_project_id, {})).get("road_id", &""))
-	# Enemy road damage is not yet a player-authored command. This explicit test
-	# event drives the formal blocked-transfer and repair flow without bypassing
-	# its movement, resource, or persistence owners.
-	var connector_drawn_points: Array = relay_points.duplicate(true)
-	connector_drawn_points.append(connector_points.back())
-	var connector_plan: Dictionary = city.plan_field_path(camp_site, &"reedbank_garrison", connector_drawn_points)
-	var reedbank_issue: Dictionary = _ui_confirm_march_from_station(macro_screen, field_army_id, Array(connector_plan.get("points", [])))
-	_advance_world_milliseconds(city, maxi(int(connector_plan.get("duration_milliseconds", 0)) / 10, 1))
-	var before_damage: Dictionary = city._army_registry.get_army(field_army_id)
-	city._war_loop_state.field_tactics.damage_road(connector_road_id, 999999)
-	city._process(0.1)
-	var blocked: Dictionary = city._army_registry.get_army(field_army_id)
-	var blocked_transfer := Dictionary(Dictionary(blocked.get("macro_march", {})).get("blocked_transfer", {}))
-	_advance_until_blocked_waiting(city, field_army_id, 30000)
-	var waiting_army: Dictionary = city._army_registry.get_army(field_army_id)
-	var waiting_transfer := Dictionary(Dictionary(waiting_army.get("macro_march", {})).get("blocked_transfer", {}))
-	var combined_snapshot: Dictionary = city.export_v5_campaign_snapshot()
-	var restored_scene := CITY_SCENE.instantiate()
-	root.add_child(restored_scene)
-	await process_frame
-	await process_frame
-	var restored_city: Node = restored_scene.get_node("ConstructionController")
-	restored_city.set_process(false)
-	var combined_restore: Dictionary = restored_city.restore_v5_campaign_snapshot(combined_snapshot)
-	var restored_waiting_army: Dictionary = restored_city._army_registry.get_army(field_army_id)
-	var restored_waiting_transfer := Dictionary(Dictionary(restored_waiting_army.get("macro_march", {})).get("blocked_transfer", {}))
-	var combined_restored: bool = (
-		bool(combined_restore.get("success", false))
-		and StringName(restored_waiting_transfer.get("phase", &"")) == &"WAITING"
-		and restored_waiting_army == waiting_army
-		and restored_city._war_loop_state.field_tactics.get_snapshot()
-			== Dictionary(combined_snapshot.get("war_loop", {})).get("field_tactics", {})
-	)
-	context.scene.queue_free()
-	await process_frame
-	context = {"scene": restored_scene, "city": restored_city}
-	city = restored_city
-	var repair: Dictionary = city.begin_field_road_repair(_active_engineer_id(city), connector_road_id)
-	var repair_project_id := StringName(Dictionary(repair.get("project", {})).get("project_id", &""))
-	_advance_until_project_phase(city, repair_project_id, &"COMPLETE", 30000)
-	_advance_until_phase(city, field_army_id, ArmyRegistry.PHASE_STATIONED, 40000)
-	var silver_route: Dictionary = THEATER.get_route(&"road.reedbank.silverford")
-	var macro_screen_after_restore: MacroMarchR0 = restored_scene.get_node("UI/MacroMarchR0")
-	restored_scene.open_macro_march_r0()
-	var silver_issue: Dictionary = _ui_confirm_march_from_station(macro_screen_after_restore, field_army_id, Array(silver_route.points))
+	# The natural sample route now uses the completed crossing and the authored
+	# eastern approach. Damage injection and recovery remain in their dedicated
+	# fault-regression suite, so these metrics describe an actual player choice.
+	var silver_route: Dictionary = THEATER.get_route(&"road.forest.silverford.approach")
+	var silver_issue: Dictionary = _ui_confirm_march_from_station(macro_screen, field_army_id, Array(silver_route.points))
 	_advance_until_city_owned(city, &"silverford_city", 30000)
 	var red_reverse_points := Array(THEATER.get_route(&"road.redcliff.silverford").points).duplicate(true)
 	red_reverse_points.reverse()
 	var red_plan: Dictionary = city.plan_field_path(&"silverford_city", &"redcliff_city", red_reverse_points)
-	var red_issue: Dictionary = _ui_confirm_march_from_station(macro_screen_after_restore, field_army_id, Array(red_plan.get("points", [])))
+	var red_issue: Dictionary = _ui_confirm_march_from_station(macro_screen, field_army_id, Array(red_plan.get("points", [])))
 	_advance_until_city_owned(city, &"redcliff_city", 40000)
 	var final_army: Dictionary = city._army_registry.get_army(field_army_id)
 	var army_casualties: int = field_initial_count - city._macro_army_member_count(final_army)
 	var specialist_losses := 0
+	var lost_specialist_roles: Array[String] = []
 	for specialist_value in city._war_loop_state.field_tactics.specialists_by_id.values():
-		if not bool(Dictionary(specialist_value).get("alive", false)):
+		var specialist: Dictionary = Dictionary(specialist_value)
+		if not bool(specialist.get("alive", false)):
 			specialist_losses += 1
+			lost_specialist_roles.append(String(specialist.get("role", &"UNKNOWN")))
 	var elapsed := int(city._war_loop_state.field_tactics.world_milliseconds) - route_start_world
 	var food_spent: int = initial_food - int(city.food)
 	var patrol_resolved := int(patrol_after_ambush.get("strength", -1)) == 0
@@ -223,25 +190,17 @@ func _run_engineering_route() -> void:
 		initial_food == 80 and bool(engineer_dispatch.get("success", false))
 			and bool(scout_dispatch.get("success", false)) and bool(scout_order.get("success", false))
 			and not bridge_project.is_empty() and StringName(completed_project.get("phase", &"")) == &"COMPLETE" and not bridge_segment_ids.is_empty()
-			and not relay_project.is_empty() and not connector_project.is_empty()
 			and bool(field_issue.get("success", false))
 			and patrol_resolved and ambush_count > 0
-			and bool(reedbank_issue.get("success", false))
-			and Array(connector_plan.get("segments", [])).size() == 2
-			and not before_damage.is_empty()
-			and StringName(blocked_transfer.get("phase", &"")) == &"TO_CAMP"
-			and StringName(waiting_transfer.get("phase", &"")) == &"WAITING"
-			and combined_restored
-			and bool(repair.get("success", false))
 			and bool(silver_issue.get("success", false)) and bool(red_issue.get("success", false))
 			and bool(city.get_macro_march_read_model().get("level_cleared", false))
 			and elapsed > 0 and food_spent > 0 and city.food >= 0
-			and army_casualties > 0 and specialist_losses >= 0
+			and army_casualties >= 0 and specialist_losses >= 0
 			and StringName(final_army.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED,
-		"工程正式路线从默认资源完成侦察、界面修桥、林地伏击、护卫施工、断路驻扎维修续行及双城结算"
+		"工程自然路线从默认资源完成侦察、界面修桥、林地伏击及双城结算，不依赖断路注入或强制专家损失"
 	)
-	print("R2_PLAYTHROUGH_ROUTE_B elapsed_ms=%d food_remaining=%d food_spent=%d army_casualties=%d specialist_losses=%d ambushes=%d" % [
-		elapsed, city.food, food_spent, army_casualties, specialist_losses, ambush_count,
+	print("R2_PLAYTHROUGH_ROUTE_B elapsed_ms=%d food_remaining=%d food_spent=%d army_casualties=%d specialist_losses=%d lost_roles=%s ambushes=%d" % [
+		elapsed, city.food, food_spent, army_casualties, specialist_losses, str(lost_specialist_roles), ambush_count,
 	])
 	await _drop(context.scene)
 
@@ -255,11 +214,8 @@ func _ui_confirm_engineering(
 ) -> Dictionary:
 	macro_screen._selected_specialist_id = engineer_id
 	macro_screen._build_side_road()
-	var source_click := InputEventMouseButton.new()
-	source_click.button_index = MOUSE_BUTTON_LEFT
-	source_click.pressed = true
-	source_click.position = macro_screen._world_to_screen(Vector2(points.front()))
-	macro_screen._on_gui_input(source_click)
+	_ui_frame_world_points(macro_screen, points)
+	_ui_click_world(macro_screen, Vector2(points.front()))
 	_ui_draw_world_route(macro_screen, points)
 	var draft := macro_screen._engineering_draft.duplicate(true)
 	var requested_target := StringName(draft.get("requested_target_point_id", &""))
@@ -272,10 +228,50 @@ func _ui_confirm_engineering(
 	return {"draft": draft, "project": project}
 
 
+func _ui_click_world(macro_screen: MacroMarchR0, world_position: Vector2) -> void:
+	var click := InputEventMouseButton.new()
+	click.button_index = MOUSE_BUTTON_LEFT
+	click.pressed = true
+	click.position = macro_screen._world_to_screen(world_position)
+	macro_screen._on_gui_input(click)
+	click = click.duplicate()
+	click.pressed = false
+	macro_screen._on_gui_input(click)
+
+
+func _ui_frame_world_points(macro_screen: MacroMarchR0, points: Array) -> void:
+	if points.is_empty():
+		return
+	var minimum := Vector2(INF, INF)
+	var maximum := Vector2(-INF, -INF)
+	for point_value in points:
+		minimum = minimum.min(Vector2(point_value))
+		maximum = maximum.max(Vector2(point_value))
+	var world_center := (minimum + maximum) * 0.5
+	var bounds := THEATER.get_world_bounds()
+	var normalized := (world_center - bounds.position) / bounds.size
+	var minimap := macro_screen._minimap_rect()
+	var minimap_click := InputEventMouseButton.new()
+	minimap_click.button_index = MOUSE_BUTTON_LEFT
+	minimap_click.pressed = true
+	minimap_click.position = minimap.position + normalized * minimap.size
+	macro_screen._on_gui_input(minimap_click)
+	minimap_click = minimap_click.duplicate()
+	minimap_click.pressed = false
+	macro_screen._on_gui_input(minimap_click)
+	for _step in 4:
+		var wheel := InputEventMouseButton.new()
+		wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+		wheel.pressed = true
+		wheel.position = macro_screen._map_rect().get_center()
+		macro_screen._on_gui_input(wheel)
+
+
 func _ui_confirm_march_from_city(macro_screen: MacroMarchR0, formation_ids: Array[StringName], points: Array) -> Dictionary:
 	macro_screen._selected_army_id = &""
 	macro_screen._selected_formation_ids = formation_ids.duplicate()
 	var before_ids: Array = macro_screen._dispatch_adapter.get_macro_march_read_model().armies.map(func(value): return StringName(Dictionary(value).get("army_id", &"")))
+	_ui_frame_world_points(macro_screen, points)
 	_ui_draw_world_route(macro_screen, points)
 	macro_screen._confirm_draft()
 	for army_value in Array(macro_screen._dispatch_adapter.get_macro_march_read_model().armies):
@@ -292,12 +288,20 @@ func _ui_confirm_march_from_station(macro_screen: MacroMarchR0, army_id: StringN
 	macro_screen._selected_formation_ids.clear()
 	var before := macro_screen._dispatch_adapter.get_macro_march_read_model()
 	var previous_order := StringName(Dictionary(Array(before.armies).filter(func(value): return StringName(Dictionary(value).get("army_id", &"")) == army_id).front()).macro_march.order_id)
+	_ui_frame_world_points(macro_screen, points)
 	_ui_draw_world_route(macro_screen, points)
 	macro_screen._confirm_draft()
 	for army_value in Array(macro_screen._dispatch_adapter.get_macro_march_read_model().armies):
 		var army: Dictionary = Dictionary(army_value)
 		if StringName(army.get("army_id", &"")) == army_id and StringName(Dictionary(army.get("macro_march", {})).get("order_id", &"")) != previous_order:
 			return {"success": true, "army": army}
+	var failed_army := Dictionary(macro_screen._dispatch_adapter.get_macro_march_read_model().armies.filter(
+		func(value): return StringName(Dictionary(value).get("army_id", &"")) == army_id
+	).front())
+	print("R2_STATION_ISSUE_FAIL army=%s phase=%s point=%s previous_order=%s draft=%s status=%s requested_points=%s" % [
+		String(army_id), String(failed_army.get("phase", &"")), String(failed_army.get("current_point_id", &"")),
+		String(previous_order), str(macro_screen._draft_route), macro_screen._status_label.text, str(points),
+	])
 	return {"success": false}
 
 
@@ -344,6 +348,16 @@ func _advance_until_project_phase(city: Node, project_id: StringName, phase: Str
 	while elapsed < budget_milliseconds:
 		var project := Dictionary(city._war_loop_state.field_tactics.projects_by_id.get(project_id, {}))
 		if StringName(project.get("phase", &"")) == phase:
+			return
+		city._process(0.1)
+		elapsed += 100
+
+
+func _advance_until_specialist_phase(city: Node, specialist_id: StringName, phase: StringName, budget_milliseconds: int) -> void:
+	var elapsed := 0
+	while elapsed < budget_milliseconds:
+		var specialist := Dictionary(city._war_loop_state.field_tactics.specialists_by_id.get(specialist_id, {}))
+		if StringName(specialist.get("phase", &"")) == phase:
 			return
 		city._process(0.1)
 		elapsed += 100

@@ -5,6 +5,192 @@
 [resource]
 script = ExtResource("1_definition")
 theater_name = "黑石战区·试玩"
+scout_visibility_range = 190
+world_bounds = Rect2i(0, 0, 1500, 980)
+points = {
+&"blackstone_city": {
+"display_name": "黑石城",
+"point_id": &"blackstone_city",
+"world_position": Vector2i(135, 650)
+},
+&"forest_garrison": {
+"display_name": "林间驻点",
+"point_id": &"forest_garrison",
+"point_kind": &"FRIENDLY_GARRISON",
+"world_position": Vector2i(760, 610)
+},
+&"northwatch_garrison": {
+"display_name": "北望驻点",
+"point_id": &"northwatch_garrison",
+"point_kind": &"FRIENDLY_GARRISON",
+"world_position": Vector2i(680, 210)
+},
+&"reedbank_garrison": {
+"display_name": "芦湾驻点",
+"point_id": &"reedbank_garrison",
+"point_kind": &"FRIENDLY_GARRISON",
+"world_position": Vector2i(1010, 675)
+},
+&"ridge_watch": {
+"display_name": "北岭瞭望台",
+"point_id": &"ridge_watch",
+"point_kind": &"FRIENDLY_GARRISON",
+"world_position": Vector2i(530, 275)
+},
+&"redcliff_city": {
+"defender_armor_per_member": 1,
+"defender_attack_per_member": 6,
+"defender_count": 6,
+"defender_hp_per_member": 100,
+"display_name": "赤崖城",
+"gate_hp": 240,
+"military_controller_faction_id": &"border_rebels",
+"point_id": &"redcliff_city",
+"point_kind": &"ENEMY_CITY",
+"required_for_victory": true,
+"story_owner_faction_id": &"river_lords",
+"surrender_allowed": false,
+"world_position": Vector2i(1280, 235)
+},
+&"silverford_city": {
+"defender_armor_per_member": 0,
+"defender_attack_per_member": 2,
+"defender_count": 4,
+"defender_hp_per_member": 50,
+"display_name": "银渡城",
+"gate_hp": 180,
+"military_controller_faction_id": &"river_lords",
+"point_id": &"silverford_city",
+"point_kind": &"ENEMY_CITY",
+"required_for_victory": true,
+"story_owner_faction_id": &"river_lords",
+"surrender_allowed": true,
+"world_position": Vector2i(1300, 760)
+}
+}
+terrain_regions = Array[Dictionary]([{
+"kind": &"WATER",
+"rect": Rect2i(505, 0, 118, 245),
+"terrain_id": &"river.north"
+}, {
+"kind": &"WATER",
+"rect": Rect2i(535, 330, 135, 280),
+"terrain_id": &"river.central"
+}, {
+"kind": &"WATER",
+"rect": Rect2i(585, 575, 145, 405),
+"terrain_id": &"river.south"
+}, {
+"kind": &"FOREST",
+"rect": Rect2i(690, 500, 245, 245),
+"terrain_id": &"forest.central"
+}, {
+"kind": &"FOREST",
+"rect": Rect2i(170, 80, 250, 180),
+"terrain_id": &"forest.northwest"
+}, {
+"kind": &"FOREST",
+"rect": Rect2i(1040, 420, 210, 170),
+"terrain_id": &"forest.east"
+}, {
+"kind": &"ROCKS",
+"rect": Rect2i(350, 80, 150, 105),
+"terrain_id": &"rocks.northbank"
+}, {
+"kind": &"ROCKS",
+"rect": Rect2i(820, 780, 165, 110),
+"terrain_id": &"rocks.southbank"
+}])
+patrol_configs = Array[Dictionary]([{
+"display_name": "北岭巡骑",
+"patrol_id": &"patrol.ridge.001",
+"route_point_ids": Array[StringName]([&"northwatch_garrison", &"forest_garrison", &"redcliff_city"]),
+"start_point_id": &"northwatch_garrison",
+"strength": 6,
+"wait_milliseconds": 48000
+}])
+routes = {
+&"road.blackstone.northwatch.ridge": {
+"blockable_segment_index": -1,
+"display_name": "北岭主道",
+"points": Array[Vector2i]([Vector2i(135, 650), Vector2i(245, 470), Vector2i(360, 315), Vector2i(520, 225), Vector2i(680, 210)]),
+"route_id": &"road.blackstone.northwatch.ridge",
+"source_point_id": &"blackstone_city",
+"target_point_id": &"northwatch_garrison"
+},
+&"road.blackstone.northwatch.lowland": {
+"blockable_segment_index": 2,
+"display_name": "河湾旧道",
+"points": Array[Vector2i]([Vector2i(135, 650), Vector2i(285, 735), Vector2i(455, 720), Vector2i(615, 600), Vector2i(680, 210)]),
+"route_id": &"road.blackstone.northwatch.lowland",
+"source_point_id": &"blackstone_city",
+"target_point_id": &"northwatch_garrison"
+},
+&"road.forest.redcliff.approach": {
+"blockable_segment_index": -1,
+"display_name": "林间北进道",
+"points": Array[Vector2i]([Vector2i(760, 610), Vector2i(880, 500), Vector2i(1040, 395), Vector2i(1280, 235)]),
+"route_id": &"road.forest.redcliff.approach",
+"source_point_id": &"forest_garrison",
+"target_point_id": &"redcliff_city"
+},
+&"road.forest.silverford.approach": {
+"blockable_segment_index": -1,
+"display_name": "林间南进道",
+"points": Array[Vector2i]([Vector2i(760, 610), Vector2i(910, 650), Vector2i(1080, 700), Vector2i(1300, 760)]),
+"route_id": &"road.forest.silverford.approach",
+"source_point_id": &"forest_garrison",
+"target_point_id": &"silverford_city"
+},
+&"road.northwatch.reedbank": {
+"blockable_segment_index": -1,
+"display_name": "东岸联络道",
+"points": Array[Vector2i]([Vector2i(680, 210), Vector2i(800, 345), Vector2i(900, 520), Vector2i(1010, 675)]),
+"route_id": &"road.northwatch.reedbank",
+"source_point_id": &"northwatch_garrison",
+"target_point_id": &"reedbank_garrison"
+},
+&"road.northwatch.forest": {
+"blockable_segment_index": -1,
+"display_name": "东岸林道",
+"points": Array[Vector2i]([Vector2i(680, 210), Vector2i(745, 350), Vector2i(790, 485), Vector2i(760, 610)]),
+"route_id": &"road.northwatch.forest",
+"source_point_id": &"northwatch_garrison",
+"target_point_id": &"forest_garrison"
+},
+&"road.reedbank.northwatch": {
+"blockable_segment_index": -1,
+"display_name": "东岸联络道（返程）",
+"points": Array[Vector2i]([Vector2i(1010, 675), Vector2i(900, 520), Vector2i(800, 345), Vector2i(680, 210)]),
+"route_id": &"road.reedbank.northwatch",
+"source_point_id": &"reedbank_garrison",
+"target_point_id": &"northwatch_garrison"
+},
+&"road.northwatch.redcliff": {
+"blockable_segment_index": -1,
+"display_name": "赤崖攻城道",
+"points": Array[Vector2i]([Vector2i(680, 210), Vector2i(885, 185), Vector2i(1080, 205), Vector2i(1280, 235)]),
+"route_id": &"road.northwatch.redcliff",
+"source_point_id": &"northwatch_garrison",
+"target_point_id": &"redcliff_city"
+},
+&"road.reedbank.silverford": {
+"blockable_segment_index": -1,
+"display_name": "银渡攻城道",
+"points": Array[Vector2i]([Vector2i(1010, 675), Vector2i(1150, 715), Vector2i(1300, 760)]),
+"route_id": &"road.reedbank.silverford",
+"source_point_id": &"reedbank_garrison",
+"target_point_id": &"silverford_city"
+},
+&"road.redcliff.silverford": {
+"blockable_segment_index": -1,
+"display_name": "双城官道",
+"points": Array[Vector2i]([Vector2i(1280, 235), Vector2i(1225, 410), Vector2i(1245, 590), Vector2i(1300, 760)]),
+"route_id": &"road.redcliff.silverford",
+"source_point_id": &"redcliff_city",
+"target_point_id": &"silverford_city"
+}
+}
 presentation_profile = {
 "enemy_color": Color(0.78, 0.29, 0.22, 1),
 "friendly_color": Color(0.91, 0.73, 0.32, 1),

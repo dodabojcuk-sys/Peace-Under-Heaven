@@ -2,11 +2,13 @@ extends SceneTree
 
 
 const WORKER_PATH := "res://tests/macro_march_r0_persistence_worker.gd"
+const THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
 
 var failures: Array[String] = []
 
 
 func _initialize() -> void:
+	THEATER.use_regression_definition_for_tests()
 	call_deferred("_run")
 
 

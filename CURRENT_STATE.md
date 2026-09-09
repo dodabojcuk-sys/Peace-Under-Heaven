@@ -1,89 +1,67 @@
 # 当前状态
 
-## FIELD_TACTICS_R2 Blackstone playable-theatre candidate (2026-09-09)
+## FIELD_TACTICS_R2 Blackstone sample-theatre candidate (2026-09-09)
 
-The current R2 candidate completes two isolated, normal-resource outer-city
-routes through the formal city and map drawing/confirmation input, Controller, resource, encounter,
-siege, and V5 owners. The main-road route dispatches the full 20-person roster,
-meets one finite moving patrol, writes four casualties back to the real
-formations, and captures both required cities in 35.90 seconds with 68 food
-remaining (12 spent). The engineering route uses visible scout and engineer
-actions, map target selection, remote-start construction, a generated
-road-bridge-road, two connected field-road stages, forest deployment, a one-use
-ambush, and a deliberately labelled test road-damage event. The army then
-transfers to a reachable camp, survives formal V5 cold restore, waits for
-repair, returns to its frozen route position, resumes the same order, and
-captures both required cities. It completes in 73.00 seconds with 19 food
-remaining (61 spent), three army casualties, and two specialist losses; normal
-replacement actions keep the route playable after those losses.
+The current R2 candidate separates the historical regression fixture from a
+new Resource-owned Blackstone sample theatre. The playable definition now owns
+its 1500x980 battlefield, seven named points, northern and lowland approaches,
+three river reaches, three forests, two rocky banks, a finite ridge patrol, and
+the two required enemy cities. Regression runners explicitly select the legacy
+fixture, so the new level does not invalidate their established geometry.
 
-Both records advance every participant through the same formal world-clock
-entry. Route success checks resource-transaction integrity and non-negative
-balances instead of an exact remaining-food constant; reported time, food,
-casualties, and specialist losses are observations for play-balance review.
+Two isolated normal-resource routes now complete through the formal city,
+visible map input, Controller, resource, encounter, siege, and V5 authorities:
 
-The combined engineering route exports and strictly restores a formal V5
-snapshot while the army is waiting at camp after patrol resolution and road damage.
-The restored army, immutable order, blocked-transfer state, field roads,
-patrol/ambush facts, formation losses, specialist/project ownership, and resource
-state must match before repair and victory continue. Existing audited disk
-chains additionally cover transfer, waiting, return, temporary-route rebreak,
-and return completion in independent processes.
+- The northern route spends 12 food, runs for 39.40 world seconds, takes four
+  real formation casualties, and captures Redcliff and Silverford.
+- The scout/engineering route spends 36 food, runs for 79.30 world seconds,
+  takes three army casualties and no specialist loss, consumes one natural
+  forest ambush, and captures both cities. It uses the visible scout target,
+  remote engineering start, a generated road-bridge-road connection, the
+  authored Forest garrison, and reverse travel. It does not inject road damage
+  or force an engineer death.
 
-Player-facing projection now has an explicit scout target mode. Dispatch creates
-an idle scout and says that it is waiting; a later map click writes the real
-movement order through the Controller adapter, while cancellation creates no
-movement transaction. Selected-scout feedback distinguishes waiting, moving,
-arrived, and lost states. The outer-city map renders world objects inside a
-dedicated clipped canvas, keeps the side rail separate, clamps city labels,
-moves the legend out of the world layer, and packs only visible actions. The
-shared draw/hit/draft transform remains authoritative for camera projection.
-Automated layout checks cover 1152x648, 1280x720, and 1920x1080.
+These observations establish a playable trade-off rather than a final balance:
+the main road is cheaper and faster but loses more troops, while the engineering
+route invests time and food to preserve one additional soldier and create a
+reusable central crossing. Fault injection, engineer replacement, broken-road
+camp transfer, repair, and cold recovery remain covered by the separate
+regression and disk suites.
 
-Engineering input now uses a two-stage map interaction: select an idle engineer,
-choose a legal remote construction point, then drag to an existing friendly
-station or open ground for a new camp. One authoritative preview supplies the
-snapped geometry, road/bridge stages, travel and build duration, cost, and
-affordability; confirmation revalidates that result before a transaction. Army
-and specialist selection can cycle when they overlap at a station, and selected
-stationed armies can start a continuation line without losing the input to an
-overlapping marker. Runtime construction geometry is canonicalized to integer
-world points so a dynamic-road order is valid for immediate persistence.
+The map uses one invertible fixed-oblique projection for drawing, hit testing,
+minimap navigation, camera control, and line input. Water banks, forests, rocks,
+walled cities, faction banners, tent camps, road width, bridge planks, road
+damage, armies, and specialists are drawn inside the clipped battlefield while
+the action rail remains independent. Player copy uses place names and readable
+phases. Automated layout/input checks cover 1152x648, 1280x720, and 1920x1080.
 
-Patrol contact now compares simultaneous positions for armies, specialists, and
-guards rather than only overlapping geometric traces. Timed paths retain road
-vertices and stationary arrival intervals, so opposing movers and arrival
-boundaries contact while same-direction separation and visits at different
-times do not. A guard only participates when it is near the specialist at the
-actual contact time. No second combat clock was added.
+Construction workers now contribute timed movement records while advancing an
+active segment. Specialist/patrol contact, guard position, road opening, and
+project interruption are evaluated on the same world-time interval. If an
+unguarded engineer is contacted mid-step, later work is rolled back before the
+project is interrupted; a large step and equivalent split steps preserve the
+same death, progress, and unopened-road result.
 
-The playable Resource retains the established tactical topology while applying
-a dedicated presentation profile. The clipped map now renders irregular water
-with banks, tree groups instead of terrain rectangles, city walls, gates,
-towers and faction banners, tent-shaped camps, bridge planks, damaged-road
-breaks, and the existing army/specialist markers without changing traversal
-facts.
+Current identified system-input evidence is under
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-blackstone-sample-final/`.
+PID 64981 and window 12727 displayed
+`CITY · codex/txwzs-field-tactics-r2@8c35afa · DEBUG · DIRTY` while an isolated
+save was used. The 23.99-second H.264 window recording shows formation selection,
+route drawing, confirmation, and continuous movement to Northwatch. Stills show
+the map overview, snapped route draft, automatic march, arrival, engineering
+preview, and active road/bridge construction. This is real system-input evidence
+for the candidate window, not a recording of both complete campaigns and not
+player acceptance.
 
-Historical media remains separated from the current candidate. The current
-evidence directory contains a clean-title capture, a 1152x648 playable-theatre
-capture, and a 4.98-second system-input recording that enters the outer-city map.
-The process was locked by PID and window ID and displays
-`codex/txwzs-field-tactics-r2@404e4f8` in the title. This proves the captured
-build identity and visible transition; it is not a recording of either complete
-route, and player acceptance remains open.
-
-Focused verification currently covers Field R2 68 assertions, both formal
+Final focused verification covers Field R2 69 assertions, both formal
 playthrough routes, audited field persistence, Macro March 29 assertions and
-its three-process recovery chain, War Loop R1 16 assertions, formal scene 10,
-arrival persistence 3, V5 army state/campaign persistence/encounter writeback,
-R1E 50 assertions, C0 presentation, editor import, four scene starts, and
-`git diff --check`. Current raw logs are under
-`/tmp/txwzs-r2-playable-20260909/`.
-`run_blackstone_playable_mvp_smoke.gd` is a pre-existing obsolete runner which
-still requests removed `BlackstoneExpeditionMvp` nodes and hangs after script
-errors; it is not counted as a passing full-repository sweep. User playtesting,
-full-route normal-input media, user playtesting, and final balance acceptance
-remain open.
+its disk chain, War Loop R1 16 assertions, formal scene 10, arrival and disk
+recovery, V5 army/campaign/encounter recovery, R1E 50 assertions, C0
+presentation, editor import, four scene starts, and `git diff --check`. Raw logs
+are under `/tmp/txwzs-r2-sample-final-logs/`.
+`run_blackstone_playable_mvp_smoke.gd` remains obsolete historical test debt and
+is not counted as a passing full-repository sweep. Final art, full-route normal-
+input media, player playtesting, and balance acceptance remain open.
 
 The sections below are chronological engineering checkpoints. Their open-item
 lists describe what was missing at that checkpoint and do not override the

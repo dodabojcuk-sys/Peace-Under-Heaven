@@ -20,8 +20,19 @@ var next_siege_sequence := 1
 var field_tactics: FieldTacticsState = FieldTacticsState.new()
 
 
-func initialize_from_theater(theater_points: Dictionary, theater_routes: Dictionary = {}, theater_water_regions: Array[Rect2i] = [], theater_world_bounds: Rect2i = Rect2i(-260, -180, 1520, 1040), theater_terrain_regions: Array[Dictionary] = []) -> void:
-	field_tactics.initialize_from_theater(theater_points, theater_routes, theater_water_regions, theater_world_bounds, theater_terrain_regions)
+func initialize_from_theater(
+	theater_points: Dictionary,
+	theater_routes: Dictionary = {},
+	theater_water_regions: Array[Rect2i] = [],
+	theater_world_bounds: Rect2i = Rect2i(-260, -180, 1520, 1040),
+	theater_terrain_regions: Array[Dictionary] = [],
+	theater_patrol_configs: Array[Dictionary] = [],
+	theater_scout_visibility_range := 2
+) -> void:
+	field_tactics.initialize_from_theater(
+		theater_points, theater_routes, theater_water_regions, theater_world_bounds,
+		theater_terrain_regions, theater_patrol_configs, theater_scout_visibility_range
+	)
 	if not cities_by_id.is_empty():
 		return
 	for point_id_value in theater_points:

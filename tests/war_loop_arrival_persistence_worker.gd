@@ -9,6 +9,7 @@ var failures: Array[String] = []
 
 
 func _initialize() -> void:
+	THEATER.use_regression_definition_for_tests()
 	call_deferred("_run")
 
 
