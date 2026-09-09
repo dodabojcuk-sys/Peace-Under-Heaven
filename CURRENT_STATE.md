@@ -28,7 +28,9 @@ contract. A separately launched low-poly viewport was visually inspected on
 the target Mac. Its custom canvas controls were not exposed as accessible
 desktop targets, so this is not normal-system-input media and no video is
 claimed for the new candidate. See
-`docs/design/BLACKSTONE_LOW_POLY_SAMPLE_R2.md` for the presentation boundary.
+`docs/design/BLACKSTONE_LOW_POLY_SAMPLE_R2.md` for the presentation boundary
+and `docs/milestones/txwzs-field-tactics-r2/evidence/20260909-low-poly-sample/`
+for the isolated runtime still and its provenance.
 
 The current R2 candidate separates the historical regression fixture from a
 new Resource-owned Blackstone sample theatre. The playable definition now owns
