@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-10
+
+- Replaced Macro March's 0.5-second hold-to-draw command gesture with explicit
+  formation/army selection, destination click, and an eight-pixel drag
+  threshold. Road crossings now select a persisted physical-road hard
+  constraint; restoring the default route is explicit.
+- Added uncommitted engineering continuation and final-point undo, and repaired
+  low-poly camp rendering when a runtime camp uses a `StringName` identifier.
+- Added authority hard-constraint coverage plus graphical GUI-event and
+  continuous-engine-recording evidence for command and engineering planning.
+
 ## M1A.1 normal entry authority and cold-restore UI repair
 
 - Allowed the current mainline to reserve any real non-empty dispatchable

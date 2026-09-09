@@ -510,7 +510,7 @@ func _rebuild_points(model: Dictionary, field: Dictionary) -> void:
 		if kind == &"ENEMY_CITY" or point_id in [&"blackstone_city", &"redcliff_city", &"silverford_city"]:
 			_add_city(_point_root, position, controller != &"player")
 		else:
-			_add_garrison(_point_root, position, bool(point.get("camp_id", false)), point_id)
+			_add_garrison(_point_root, position, StringName(point.get("camp_id", &"")) != &"", point_id)
 
 
 func _add_city(parent: Node3D, position: Vector2, enemy: bool) -> void:

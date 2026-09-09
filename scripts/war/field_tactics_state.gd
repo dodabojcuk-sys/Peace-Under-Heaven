@@ -729,9 +729,42 @@ func runtime_route_duration_milliseconds(route_id: StringName) -> int:
 	return maxi(6000, ceili(length * 20.0))
 
 
-func plan_runtime_path(source_point_id: StringName, target_point_id: StringName, preferred_world_points: Array = []) -> Dictionary:
+func plan_runtime_path(source_point_id: StringName, target_point_id: StringName, preferred_world_points: Array = [], required_road_id: StringName = &"") -> Dictionary:
 	if source_point_id == &"" or target_point_id == &"" or source_point_id == target_point_id:
 		return {"valid": false, "error": "起点和目标必须是不同的合法据点"}
+	# A route choice is an explicit physical-road requirement, not a best-effort
+	# cursor-proximity hint.  Resolve both directions through the same open-road
+	# graph, then choose the shorter lawful composition.  This keeps persistence
+	# on real road ids/directions and never silently substitutes another road.
+	if required_road_id != &"":
+		var required_road := Dictionary(roads_by_id.get(required_road_id, {}))
+		if required_road.is_empty() or not bool(required_road.get("built", false)):
+			return {"valid": false, "error": "指定道路尚未完成"}
+		if StringName(required_road.get("state", &"")) != ROAD_OPEN:
+			return {"valid": false, "error": "指定道路当前不可通行"}
+		var required_points: Array = Array(required_road.get("route_world_points", []))
+		if required_points.size() < 2:
+			return {"valid": false, "error": "指定道路几何无效"}
+		var candidates: Array[Dictionary] = []
+		for forward in [true, false]:
+			var entry_id := StringName(required_road.get("source_point_id", &"")) if forward else StringName(required_road.get("target_point_id", &""))
+			var exit_id := StringName(required_road.get("target_point_id", &"")) if forward else StringName(required_road.get("source_point_id", &""))
+			var before := {"valid": true, "segments": [], "points": [required_points.front()]} if source_point_id == entry_id else plan_runtime_path(source_point_id, entry_id)
+			var after := {"valid": true, "segments": [], "points": [required_points.back()]} if exit_id == target_point_id else plan_runtime_path(exit_id, target_point_id)
+			if not bool(before.get("valid", false)) or not bool(after.get("valid", false)):
+				continue
+			var segments: Array = Array(before.get("segments", [])).duplicate(true)
+			segments.append({"road_id": required_road_id, "forward": forward})
+			segments.append_array(Array(after.get("segments", [])))
+			var points := _path_world_points_from_segments(segments)
+			if points.size() < 2:
+				continue
+			candidates.append({"valid": true, "route_id": _path_id(segments), "segments": segments, "points": points, "duration_milliseconds": _path_duration_milliseconds(points)})
+		if candidates.is_empty():
+			return {"valid": false, "error": "指定道路无法连接当前起点与目标"}
+		candidates.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+			return int(left.get("duration_milliseconds", 0)) < int(right.get("duration_milliseconds", 0)) or (int(left.get("duration_milliseconds", 0)) == int(right.get("duration_milliseconds", 0)) and String(left.get("route_id", &"")) < String(right.get("route_id", &""))))
+		return candidates.front()
 	var frontier: Array[Dictionary] = [{"point_id": source_point_id, "segments": [], "cost": 0.0}]
 	var best_cost_by_point: Dictionary = {source_point_id: 0.0}
 	while not frontier.is_empty():

@@ -77,9 +77,13 @@
 - A runtime path is an ordered traversal of physical roads, not a newly merged
 	road record. Its handle encodes road identity and direction for validation;
 	damage and repairs still belong to the physical road records.
-- Player drawing is a route-choice constraint. The route planner may complete
-	connections only by the candidate closest to the drawn world path; the map
-	displays the authoritative selected geometry and duration.
+- A normal macro command requires an explicit selected city formation or
+	stationed army. Clicking a legal destination uses the authority's shortest
+	completed path. Dragging from that subject may cross a displayed physical-road
+	choice point; the latest crossed `road_id` is then a hard authority
+	constraint, not a pointer-proximity score. If that road becomes unfinished or
+	damaged, confirmation rejects without substituting another route or charging
+	food. Engineering remains the separate free-polyline planning interaction.
 - A newly issued macro order persists the directed physical road segments that
 	the field authority validated. This is immutable command intent, whereas
 progress remains the existing single shared-clock value. Snapshot validation

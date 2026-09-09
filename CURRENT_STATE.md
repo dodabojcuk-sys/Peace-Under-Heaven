@@ -2,27 +2,32 @@
 
 ## FIELD_TACTICS_R2 Blackstone sample-theatre candidate (2026-09-09)
 
-### Draw-hold route planning and live feedback (current worktree)
+### Direct command and engineering planning (current worktree)
 
-Macro March now separates selection from planning. A map press becomes a route
-or engineering draw only after a 0.5-second UI-time hold; tap, early release,
-or more than eight pixels of pre-activation movement leave no draft or
-transaction. Troop previews use the authority road graph, direction arrows,
-and target highlight rather than pretending the raw pointer trace is a legal
-route. Engineering keeps click-to-select-source, then shows its authoritative
-land/bridge segment preview during the held drag and after release.
+Macro March now separates selection from planning without a hold delay. A
+selected city formation or stationed army may click a legal destination for the
+authority's shortest completed route, or drag from its source after an
+eight-screen-pixel threshold. A normal drag is only a target/road-choice
+gesture: crossing a displayed physical-road point records that `road_id` as a
+hard authority constraint; raw pointer samples never become an army route.
+An unfinished or damaged chosen road rejects rather than silently changing the
+route or charging food. The side panel provides an explicit restore-default
+action.
 
-The current endpoint is updated on every motion, while edge scrolling advances
-from elapsed UI time, so pointer feedback does not depend on mouse event rate.
-Right-click, focus loss, and leaving the battle clear all transient drawing
-state; valid released drafts retain their visible confirmation controls.
-Graphical GUI-event evidence, its continuous engine recording, commands and
-scope boundary are in
-`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-draw-hold-route-feedback/`.
-This is not desktop-system-mouse or player-feel evidence; acceptance remains
-OPEN. The input change passes graphical (16), Macro March (30), and Field R2
-(69) checks. The separate Route B natural-ambush playthrough assertion still
-fails without an input-layer workaround and is explicitly left open.
+Engineering remains the separate polyline interaction. Its selected engineer
+defaults to a legal friendly source, another friendly source can be pressed and
+dragged directly, and an uncommitted plan may continue from its endpoint or
+undo its final point before confirmation. These UI-only edits neither reserve a
+camp nor charge food; the existing field preview and confirmation transaction
+remain authoritative.
+
+Right-click, focus loss, and leaving the battle clear transient pointer state.
+Graphical GUI-event evidence and its 5.18-second engine recording are in
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260910-command-engineering-interaction/`.
+This is engine GUI-event evidence, not desktop-system-mouse or player-feel
+acceptance. Macro March (30), Field R2 (70), graphical low-poly (16),
+cross-process R2 persistence, and both formal playthrough routes pass on the
+current worktree.
 
 ### GUI specialist-selection overlay finish (current worktree)
 

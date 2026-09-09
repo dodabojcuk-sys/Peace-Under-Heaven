@@ -293,20 +293,28 @@ func _run_field_tactics_contract() -> void:
 	var lowland_points: Array = Array(Dictionary(state.roads_by_id[&"road.blackstone.northwatch.lowland"]).get("route_world_points", [])).duplicate(true)
 	var ridge_points: Array = Array(Dictionary(state.roads_by_id[&"road.blackstone.northwatch.ridge"]).get("route_world_points", [])).duplicate(true)
 	var northwatch_reedbank_points: Array = Array(Dictionary(state.roads_by_id[&"road.northwatch.reedbank"]).get("route_world_points", [])).duplicate(true)
-	var lowland_draw := lowland_points.duplicate(true)
-	lowland_draw.pop_back()
-	lowland_draw.append_array(northwatch_reedbank_points)
-	var ridge_draw := ridge_points.duplicate(true)
-	ridge_draw.pop_back()
-	ridge_draw.append_array(northwatch_reedbank_points)
-	var lowland_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison", lowland_draw)
-	var ridge_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison", ridge_draw)
+	var lowland_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison", [], &"road.blackstone.northwatch.lowland")
+	var ridge_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison", [], &"road.blackstone.northwatch.ridge")
 	_check(
 		bool(lowland_path.get("valid", false))
 			and bool(ridge_path.get("valid", false))
 			and StringName(Dictionary(Array(lowland_path.get("segments", [])).front()).get("road_id", &"")) == &"road.blackstone.northwatch.lowland"
 			and StringName(Dictionary(Array(ridge_path.get("segments", [])).front()).get("road_id", &"")) == &"road.blackstone.northwatch.ridge",
-		"同一起终点的两条多段路线按玩家绘线选择对应道路序列"
+		"同一起终点的两条多段路线按明确道路身份选择对应道路序列"
+	)
+	var explicit_ridge_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison", [], &"road.blackstone.northwatch.ridge")
+	var original_ridge := Dictionary(state.roads_by_id[&"road.blackstone.northwatch.ridge"]).duplicate(true)
+	var damaged_ridge := original_ridge.duplicate(true)
+	damaged_ridge.state = FieldTacticsState.ROAD_DAMAGED
+	state.roads_by_id[&"road.blackstone.northwatch.ridge"] = damaged_ridge
+	var explicit_damaged_ridge := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison", [], &"road.blackstone.northwatch.ridge")
+	state.roads_by_id[&"road.blackstone.northwatch.ridge"] = original_ridge
+	_check(
+		bool(explicit_ridge_path.get("valid", false))
+			and StringName(Dictionary(Array(explicit_ridge_path.get("segments", [])).front()).get("road_id", &"")) == &"road.blackstone.northwatch.ridge"
+			and not bool(explicit_damaged_ridge.get("valid", false))
+			and str(explicit_damaged_ridge.get("error", "")).contains("指定道路"),
+		"显式道路选择是权威硬约束：指定道路受损时拒绝，不静默回退到另一条同端点道路"
 	)
 	var long_path_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
 	var previous_point_id: StringName = &"long.route.00"

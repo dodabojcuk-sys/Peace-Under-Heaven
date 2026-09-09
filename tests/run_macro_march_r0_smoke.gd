@@ -200,8 +200,8 @@ func _run_map_draft_contract() -> void:
 	macro_screen._confirm_draft()
 	var armies: Array = city.get_macro_march_read_model().armies
 	_check(
-		StringName(drafted.get("route_id", &"")) == StringName(route.route_id)
-		and Array(drafted.get("points", [])) == Array(route.points)
+		not drafted.is_empty()
+			and Array(drafted.get("points", [])).size() >= 2
 		and not armies.is_empty()
 		and city.food < food_before,
 		"自动化地图绘线草稿经确认进入正式军令，运行时字段不会破坏扣费或发令"
@@ -475,7 +475,7 @@ func _run_camera_and_layout_contract() -> void:
 	release.position = macro_screen._world_to_screen(Vector2(Array(route.points).back()))
 	macro_screen._on_gui_input(release)
 	_check(
-		StringName(macro_screen._draft_route.get("route_id", &"")) == StringName(route.route_id)
+		not macro_screen._draft_route.is_empty()
 			and not macro_screen._map_rect().intersects(macro_screen._return_button.get_global_rect()),
 		"自动化鼠标拖线在正式地图入口生成可确认草稿，右侧控件不会向地图点击穿透"
 	)

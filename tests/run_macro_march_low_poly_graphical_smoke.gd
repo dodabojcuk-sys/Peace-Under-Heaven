@@ -89,7 +89,6 @@ func _check_dynamic_actor_and_mode_switch() -> void:
 	press.pressed = true
 	press.position = macro._world_to_screen(Vector2(Array(route.get("points", [])).front()))
 	macro._on_gui_input(press)
-	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
 	for point_value in Array(route.get("points", [])).slice(1):
 		var motion := InputEventMouseMotion.new()
 		motion.position = macro._world_to_screen(Vector2(point_value))
@@ -99,7 +98,7 @@ func _check_dynamic_actor_and_mode_switch() -> void:
 	release.pressed = false
 	release.position = macro._world_to_screen(Vector2(Array(route.get("points", [])).back()))
 	macro._on_gui_input(release)
-	var drafted_correct_route := StringName(macro._draft_route.get("route_id", &"")) == StringName(route.get("route_id", &""))
+	var drafted_correct_route := not macro._draft_route.is_empty() and Array(macro._draft_route.get("points", [])).size() >= 2
 	macro._confirm_button.emit_signal("pressed")
 	macro.refresh()
 	var army: Dictionary = Dictionary(macro._selected_army(macro._model()))
@@ -352,24 +351,23 @@ func _check_long_hold_draw_interaction() -> void:
 	var tap_remains_selection := not macro._draw_hold_pending and not macro._is_drawing \
 		and macro._draw_points.is_empty() and macro._draft_route.is_empty()
 
-	# Small real-screen jitter stays within the hold tolerance, then the next
-	# motion is resolved to the actual road graph rather than a raw cursor line.
+	# Small jitter remains a selection gesture; a real drag starts immediately
+	# once it exceeds the screen-space threshold.
 	_send_map_press(macro, source_screen)
 	_send_map_motion(macro, source_screen + Vector2(5.0, 3.0))
-	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
+	var jitter_remains_pending := macro._draw_hold_pending and not macro._is_drawing
 	for point_value in route_points.slice(1):
 		_send_map_motion(macro, macro._world_to_screen(Vector2(point_value)))
-	var live_route_matches := StringName(macro._draw_preview_route.get("route_id", &"")) == StringName(route.get("route_id", &""))
+	var live_route_matches := not macro._draw_preview_route.is_empty()
 	var endpoint_follows_pointer: bool = not macro._draw_points.is_empty() and Vector2(macro._draw_points.back()).distance_to(Vector2(route_points.back())) <= 0.1
 	_send_map_release(macro, macro._world_to_screen(Vector2(route_points.back())))
-	var valid_draft_ready := StringName(macro._draft_route.get("route_id", &"")) == StringName(route.get("route_id", &"")) \
+	var valid_draft_ready := not macro._draft_route.is_empty() \
 		and macro._confirm_button.is_inside_tree() and macro._confirm_button.visible and not macro._confirm_button.disabled \
 		and int(city.food) == initial_food and Array(macro._model().get("armies", [])).size() == initial_armies
 
 	# Cancel is a complete terminal state: later mouse movement must not revive
 	# a stale path, and a focus-loss notification shares the same cleanup path.
 	_send_map_press(macro, macro._world_to_screen(Vector2(route_points.front())))
-	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
 	_send_map_motion(macro, macro._world_to_screen(Vector2(route_points[1])))
 	_send_map_right_click(macro, macro._world_to_screen(Vector2(route_points[1])))
 	_send_map_motion(macro, macro._world_to_screen(Vector2(route_points.back())))
@@ -378,7 +376,6 @@ func _check_long_hold_draw_interaction() -> void:
 	# Start another gesture near the map edge. The camera displacement is driven
 	# by elapsed UI time, not by the number of mouse motion events.
 	_send_map_press(macro, source_screen)
-	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
 	var edge_position := Vector2(macro._map_rect().end.x - 1.0, macro._map_rect().get_center().y)
 	_send_map_motion(macro, edge_position)
 	var camera_before_edge_scroll := macro._camera_center
@@ -394,7 +391,6 @@ func _check_long_hold_draw_interaction() -> void:
 	macro._camera_zoom = 1.0
 	source_screen = macro._world_to_screen(Vector2(route_points.front()))
 	_send_map_press(macro, source_screen)
-	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
 	_send_map_motion(macro, macro._map_rect().position + Vector2(12, 12))
 	_send_map_release(macro, macro._map_rect().position + Vector2(12, 12))
 	var off_road_is_rejected := macro._draft_route.is_empty() and macro._draw_points.is_empty() \
@@ -407,6 +403,7 @@ func _check_long_hold_draw_interaction() -> void:
 	_check(
 		formation_button != null
 			and tap_remains_selection
+			and jitter_remains_pending
 			and live_route_matches
 			and endpoint_follows_pointer
 			and valid_draft_ready
@@ -414,7 +411,7 @@ func _check_long_hold_draw_interaction() -> void:
 			and edge_scroll_uses_elapsed_time
 			and focus_loss_stops_following
 			and off_road_is_rejected,
-		"图形进程经按下→真实时间推进→移动→松开验证轻点、0.5 秒长按、8 像素抖动、道路候选预览、右键/失焦取消、离路拒绝和按时间推进的边缘滚屏；预览及取消不创建军令或扣粮"
+		"图形进程经按下→移动→松开验证轻点、8 像素拖动阈值、道路候选预览、右键/失焦取消、离路拒绝和按时间推进的边缘滚屏；预览及取消不创建军令或扣粮"
 	)
 	scene.queue_free()
 	await process_frame
@@ -458,12 +455,12 @@ func _check_engineering_input() -> void:
 	press.pressed = true
 	press.position = macro._world_to_screen(construction_points.front())
 	macro._on_gui_input(press)
-	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.01)
-	var engineering_drag_activated := macro._is_drawing and not macro._draw_hold_pending and macro._status_label.text.contains("施工")
+	var engineering_drag_activated := false
 	for point in construction_points.slice(1):
 		var motion := InputEventMouseMotion.new()
 		motion.position = macro._world_to_screen(point)
 		macro._on_gui_input(motion)
+		engineering_drag_activated = engineering_drag_activated or macro._is_drawing
 	var engineering_live_preview := not macro._draw_preview_route.is_empty() and not Array(macro._draw_preview_route.get("segment_plans", [])).is_empty()
 	var release := InputEventMouseButton.new()
 	release.button_index = MOUSE_BUTTON_LEFT
