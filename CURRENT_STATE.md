@@ -16,8 +16,11 @@ and the Ridge Watch tower remain lightweight authored assemblies around the
 same authoritative anchors, using the generated gatehouse image only as a
 non-runtime visual reference. The non-headless graphical smoke now validates
 actual imported asset instances and anchors at the existing three review sizes.
-The two known R2 gameplay regressions remain open at this presentation
-checkpoint and are intentionally handled separately.
+The two R2 smoke failures reported against this checkpoint were caused by
+same-process test scenarios restoring each other's normal V5 publications,
+not empty transfer-path or ambush gameplay facts.  The fixture isolation repair
+is recorded in the accompanying verification evidence; the Field smoke and
+both formal routes now pass from one clean baseline per scenario.
 
 The low-poly map now derives the established oblique screen projection from a
 horizontal XZ ground plane. World north/south coordinates no longer change
@@ -46,13 +49,14 @@ and released-draft segmented-construction checks. This evidence uses Godot GUI
 events and engine viewport capture, not normal desktop input; the recording
 constraint remains an explicit media gap and is not player acceptance.
 
-Wider R2 rechecks are currently mixed and must not be summarized as a complete
-green candidate: the isolated field-persistence chain passes, but the main
-Field R2 smoke reaches an empty `blocked_transfer.route_segments` test fixture
-at line 887 before later assertions fail, and the engineering playthrough's
-natural-ambush expectation reports `ambushes=0`. These are tracked as separate
-gameplay/test blockers in the new verification record, not as failures hidden
-by this presentation checkpoint.
+The focused recheck is now consistent when each independent scenario restores
+the same clean V5 baseline: Field R2 smoke passes 69 assertions and the two
+formal routes pass from empty isolated stores.  The engineering route naturally
+records one forest ambush rather than inheriting Route A's already-resolved
+patrol.  See
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-blackstone-art-integration/VERIFICATION.md`
+for the command boundary and exact automated results.  This closes the two
+reported regression failures, not the separate player-acceptance/media gates.
 
 The Macro March screen now has a render-only low-poly miniature mode for the
 Blackstone sample theatre. An orthographic `Camera3D` inside a `SubViewport`
@@ -109,7 +113,7 @@ visible map input, Controller, resource, encounter, siege, and V5 authorities:
 
 - The northern route spends 12 food, runs for 39.40 world seconds, takes four
   real formation casualties, and captures Redcliff and Silverford.
-- The scout/engineering route spends 36 food, runs for 79.30 world seconds,
+- The scout/engineering route spends 36 food, runs for 79.40 world seconds,
   takes three army casualties and no specialist loss, consumes one natural
   forest ambush, and captures both cities. It uses the visible scout target,
   remote engineering start, a generated road-bridge-road connection, the

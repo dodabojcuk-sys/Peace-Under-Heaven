@@ -307,3 +307,18 @@ Road-damage checks start at
   Legacy snapshots with no road placements restore an empty delta.
 - R2B excludes road deletion/upgrades, traffic/pathfinding, bridges/slopes,
   curved roads, full-map rotation, organic city generation, final art, and G4.
+
+## Blackstone formal art integration and R2 scenario isolation
+
+- The low-poly presentation is strictly a read-only adapter over theatre,
+  army, project and fog facts. Imported models may replace static visual
+  geometry, but never own passability, selection, timing, combat, resource, or
+  V5 persistence state. The 2D map remains the rollback path.
+- Only selected, traceable third-party files belong in the runtime tree. Asset
+  source, license, archive/file checksums and modifications are recorded next
+  to the selected files; generated imagery is a non-runtime design reference
+  unless a separate asset approval explicitly changes that boundary.
+- Field R2 same-process scenario tests restore one pristine production V5
+  snapshot per independent scenario. This prevents normal persistence
+  publication from leaking one test route's armies or patrol results into the
+  next one; dedicated multi-process workers continue to prove disk recovery.

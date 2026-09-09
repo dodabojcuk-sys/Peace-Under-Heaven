@@ -10,6 +10,7 @@ const WAR_LOOP_RULES: WarLoopRules = preload("res://resources/war/war_loop_r1_ru
 
 var failures: Array[String] = []
 var assertions := 0
+var _scenario_seed_snapshot: Dictionary = {}
 
 
 func _initialize() -> void:
@@ -21,12 +22,45 @@ func _run() -> void:
 	_run_parallel_army_contract()
 	_run_field_tactics_contract()
 	_run_r1_war_snapshot_migration()
+	await _capture_scenario_seed_snapshot()
 	await _run_formal_controller_contract()
 	await _run_damaged_road_resume_contract()
 	await _run_mid_segment_camp_transfer_contract()
 	await _run_temporary_rebreak_and_time_contract()
 	await _run_patrol_encounter_contract()
 	_finish()
+
+
+## The formal controller contracts are deliberately independent scenarios.
+## When an explicit V5 directory is supplied, each scene would otherwise load
+## the previous scenario's auto-published campaign and turn a later setup
+## failure into an unrelated empty route assertion.  Capture one fresh
+## canonical campaign, then restore it through the production V5 boundary for
+## every scenario.  Cross-process persistence remains covered by its worker.
+func _capture_scenario_seed_snapshot() -> void:
+	var seed_scene := CITY_SCENE.instantiate()
+	root.add_child(seed_scene)
+	await process_frame
+	await process_frame
+	var seed_city: Node = seed_scene.get_node("ConstructionController")
+	_scenario_seed_snapshot = seed_city.export_v5_campaign_snapshot()
+	if _scenario_seed_snapshot.is_empty():
+		failures.append("Field R2 正式场景无法导出独立测试基线快照")
+	seed_scene.queue_free()
+	await process_frame
+
+
+func _new_scenario_city() -> Dictionary:
+	var scene := CITY_SCENE.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var city: Node = scene.get_node("ConstructionController")
+	if not _scenario_seed_snapshot.is_empty():
+		var restored: Dictionary = city.restore_v5_campaign_snapshot(_scenario_seed_snapshot)
+		if not bool(restored.get("success", false)):
+			failures.append("Field R2 正式场景无法恢复独立测试基线快照")
+	return {"scene": scene, "city": city}
 
 
 func _run_parallel_army_contract() -> void:
@@ -477,11 +511,9 @@ func _run_r1_war_snapshot_migration() -> void:
 
 
 func _run_formal_controller_contract() -> void:
-	var scene := CITY_SCENE.instantiate()
-	root.add_child(scene)
-	await process_frame
-	await process_frame
-	var city: Node = scene.get_node("ConstructionController")
+	var context := await _new_scenario_city()
+	var scene: Node = context.scene
+	var city: Node = context.city
 	city.set_process(false)
 	city.food = 120
 	var roster: Array[Dictionary] = city.get_formation_roster()
@@ -577,11 +609,9 @@ func _run_formal_controller_contract() -> void:
 	restored_scene.queue_free()
 	await process_frame
 
-	var ambush_scene := CITY_SCENE.instantiate()
-	root.add_child(ambush_scene)
-	await process_frame
-	await process_frame
-	var ambush_city: Node = ambush_scene.get_node("ConstructionController")
+	var ambush_context := await _new_scenario_city()
+	var ambush_scene: Node = ambush_context.scene
+	var ambush_city: Node = ambush_context.city
 	ambush_city.set_process(false)
 	ambush_city.food = 200
 	var ambush_field: FieldTacticsState = ambush_city._war_loop_state.field_tactics
@@ -656,11 +686,9 @@ func _run_formal_controller_contract() -> void:
 
 
 func _run_formal_multisegment_march_contract() -> void:
-	var scene := CITY_SCENE.instantiate()
-	root.add_child(scene)
-	await process_frame
-	await process_frame
-	var city: Node = scene.get_node("ConstructionController")
+	var context := await _new_scenario_city()
+	var scene: Node = context.scene
+	var city: Node = context.city
 	city.set_process(false)
 	city.food = 120
 	var roster: Array[Dictionary] = city.get_formation_roster()
@@ -705,11 +733,9 @@ func _run_formal_multisegment_march_contract() -> void:
 
 
 func _run_damaged_road_resume_contract() -> void:
-	var scene := CITY_SCENE.instantiate()
-	root.add_child(scene)
-	await process_frame
-	await process_frame
-	var city: Node = scene.get_node("ConstructionController")
+	var context := await _new_scenario_city()
+	var scene: Node = context.scene
+	var city: Node = context.city
 	city.set_process(false)
 	city.food = 140
 	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
@@ -755,11 +781,9 @@ func _run_damaged_road_resume_contract() -> void:
 ## position and physically return along that curve before entering the camp
 ## branch.
 func _run_mid_segment_camp_transfer_contract() -> void:
-	var scene := CITY_SCENE.instantiate()
-	root.add_child(scene)
-	await process_frame
-	await process_frame
-	var city: Node = scene.get_node("ConstructionController")
+	var context := await _new_scenario_city()
+	var scene: Node = context.scene
+	var city: Node = context.city
 	city.set_process(false)
 	city.food = 200
 	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
@@ -844,11 +868,9 @@ func _run_mid_segment_camp_transfer_contract() -> void:
 
 
 func _run_temporary_rebreak_and_time_contract() -> void:
-	var scene := CITY_SCENE.instantiate()
-	root.add_child(scene)
-	await process_frame
-	await process_frame
-	var city: Node = scene.get_node("ConstructionController")
+	var context := await _new_scenario_city()
+	var scene: Node = context.scene
+	var city: Node = context.city
 	city.set_process(false)
 	city.food = 240
 	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
@@ -972,11 +994,9 @@ func _test_points_length(points: Array) -> float:
 
 
 func _run_patrol_encounter_contract() -> void:
-	var geometry_scene := CITY_SCENE.instantiate()
-	root.add_child(geometry_scene)
-	await process_frame
-	await process_frame
-	var geometry_city: Node = geometry_scene.get_node("ConstructionController")
+	var geometry_context := await _new_scenario_city()
+	var geometry_scene: Node = geometry_context.scene
+	var geometry_city: Node = geometry_context.city
 	geometry_city.set_process(false)
 	var opposing: bool = geometry_city._timed_movement_segments_within_distance(
 		[{"from": Vector2(0, 0), "to": Vector2(100, 0), "start_milliseconds": 0, "end_milliseconds": 1000}],
@@ -1135,11 +1155,9 @@ func _run_patrol_encounter_contract() -> void:
 		"移动中的专家会被巡逻实际接触；有效距离内的军队护卫会阻止专家被直接击杀"
 	)
 
-	var scene := CITY_SCENE.instantiate()
-	root.add_child(scene)
-	await process_frame
-	await process_frame
-	var city: Node = scene.get_node("ConstructionController")
+	var context := await _new_scenario_city()
+	var scene: Node = context.scene
+	var city: Node = context.city
 	city.set_process(false)
 	city.food = 240
 	var roster: Array[Dictionary] = city.get_formation_roster()
@@ -1211,11 +1229,9 @@ func _run_patrol_encounter_contract() -> void:
 	restored_scene.queue_free()
 	await process_frame
 
-	var crossing_scene := CITY_SCENE.instantiate()
-	root.add_child(crossing_scene)
-	await process_frame
-	await process_frame
-	var crossing_city: Node = crossing_scene.get_node("ConstructionController")
+	var crossing_context := await _new_scenario_city()
+	var crossing_scene: Node = crossing_context.scene
+	var crossing_city: Node = crossing_context.city
 	crossing_city.set_process(false)
 	crossing_city.food = 120
 	var crossing_roster: Array[Dictionary] = crossing_city.get_formation_roster()

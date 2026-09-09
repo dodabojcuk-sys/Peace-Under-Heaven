@@ -37,12 +37,16 @@ Field read models. `ConstructionController`, `ArmyRegistry`, `FieldTacticsState`
 and V5 persistence retain their existing ownership; this presentation does not
 advance a second clock, resolve a second battle, or write a separate save.
 
-The implementation uses only Godot built-in primitives and materials. It
-renders city walls/gates, camps, terrain markers, roads, bridge decks/breaks,
-formations, specialists, patrols, and construction scaffolds. The existing
-clipped 2D renderer remains selectable, and all input continues through the
-same 2D coordinate transform. This is a sample for the Blackstone gate-road-
-river-forest-garrison segment, not final art coverage for every theatre.
+The first formal art batch uses seven selected CC0 Kenney Nature Kit GLBs for
+trees, rocks and riverbank grass. The authored city gate/wall, camp and Ridge
+Watch tower remain lightweight Godot assemblies so their foundations stay on
+the same authoritative anchors. The generated gatehouse image is a non-runtime
+design reference, never a texture or gameplay screenshot. Asset source,
+license, checksums and modification boundary are recorded in
+`assets/blackstone_art/ASSET_MANIFEST.md`. The existing clipped 2D renderer
+remains selectable, and all input continues through the same 2D coordinate
+transform. This is a sample for the Blackstone gate-road-river-forest-garrison
+segment, not final art coverage for every theatre.
 
 The map's roster copy was corrected at the same boundary. A zero count in the
 city roster after dispatch means that the formation was transferred into an
@@ -61,9 +65,10 @@ input footage. That media gap is reported separately and does not change the
 logic verification boundary.
 
 Follow-up graphical validation corrects the original camera mapping and
-road-segment transform. The presentation ground now uses the actual Camera3D
-right/up basis, so `unproject_position()` is an independent renderer-side check
-against the authoritative 2D map. At 1152x648, 1280x720, and 1920x1080, named
+road-segment transform. The presentation ground now remains on a horizontal XZ
+plane while bridge elevation is explicit; `unproject_position()` is an
+independent renderer-side check against the authoritative 2D map. At
+1152x648, 1280x720, and 1920x1080, named
 points, bridge heads, and a road midpoint stay within 0.22 pixels; segment
 midpoint/facing error is 0. The graphical runner also uses the Macro March UI
 event path to draft and confirm a military route, create a cross-river
@@ -88,7 +93,7 @@ resource, and V5 owners.
 | Route | Formal result |
 | --- | --- |
 | Northern road | 39.40 world seconds, 12 food spent, 68 remaining, four real formation casualties, Redcliff and Silverford captured. |
-| Scout/engineering | 79.30 world seconds, 36 food spent, 44 remaining, three army casualties, no specialist loss, one natural forest ambush, generated road-bridge-road, both cities captured. |
+| Scout/engineering | 79.40 world seconds, 36 food spent, 44 remaining, three army casualties, no specialist loss, one natural forest ambush, generated road-bridge-road, both cities captured. |
 
 The natural engineering route does not inject road damage, force an engineer
 death, or require meaningless bridge crossings. Road damage, replacement,
@@ -111,7 +116,8 @@ or camp state are removed, and the project is interrupted at the contact time.
 Equivalent split steps produce the same specialist survival, project progress,
 and road state.
 
-Current system-input evidence is under
+Historical system-input evidence, captured before the current formal-art batch,
+is under
 `evidence/20260909-blackstone-sample-final/`:
 
 - `00-overview.png`: identified 1280x720 sample-theatre overview;
@@ -121,7 +127,10 @@ Current system-input evidence is under
 - `04-engineering-plan.png`: authoritative road-bridge-road preview and cost;
 - `05-construction-progress.png`: engineer position and active work geometry;
 - `blackstone-route-command.mov`: 23.99-second H.264 window-only recording of
-  formation selection, route drawing, confirmation, and continuous movement.
+formation selection, route drawing, confirmation, and continuous movement.
+The current art batch instead records actual engine-viewport/GUI-event stills
+under `evidence/20260909-blackstone-art-integration/`; it does not claim a new
+normal-system-input recording or player acceptance.
 
 The evidence window was locked to PID 64981 and window 12727 with the visible
 title `CITY · codex/txwzs-field-tactics-r2@8c35afa · DEBUG · DIRTY`, and used an

@@ -27,8 +27,12 @@
   than during the frame update.
 - Extended the non-headless low-poly graphical smoke to prove selected asset
   instances, authoritative ground anchors, a city gate, and the watchtower at
-  1152x648, 1280x720, and 1920x1080.  The two known gameplay regressions are
-  intentionally tracked in a separate follow-up checkpoint.
+  1152x648, 1280x720, and 1920x1080.
+- Restored one clean production V5 snapshot before each independent Field R2
+  scenario and formal route.  This prevents an explicit isolated-save run from
+  leaking a dispatched formation or resolved patrol into the next scenario,
+  which had surfaced as an empty blocked-transfer route and a false
+  `ambushes=0` Route B failure.
 
 ### FIELD_TACTICS_R2 low-poly Blackstone sample
 
@@ -86,7 +90,7 @@
   have opened later in the same world step.
 - Reworked the natural engineering campaign around one useful central crossing
   and a forest ambush. Current formal results are 39.40 seconds / 12 food / four
-  casualties for the northern route and 79.30 seconds / 36 food / three
+  casualties for the northern route and 79.40 seconds / 36 food / three
   casualties / no specialist loss / one ambush for the engineering route.
 - Added identified normal-system-input evidence for route drawing, confirmation,
   automatic march, engineering preview, and active road/bridge construction.

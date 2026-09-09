@@ -6,6 +6,7 @@ const THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
 
 var failures: Array[String] = []
 var assertions := 0
+var _route_seed_snapshot: Dictionary = {}
 
 
 func _initialize() -> void:
@@ -27,9 +28,28 @@ func _run() -> void:
 			and not THEATER.get_route(&"road.forest.silverford.approach").is_empty(),
 		"正式试玩加载独立战区 Resource，而不是只换色的综合回归布局"
 	)
+	await _capture_route_seed_snapshot()
 	await _run_main_road_route()
 	await _run_engineering_route()
 	_finish()
+
+
+## Route A and Route B must begin with the same authored theatre facts.  A
+## configured V5 directory is useful for persistence workers, but its normal
+## event publication would otherwise let Route B inherit Route A's resolved
+## patrol and dispatched formations.  Restore one clean production snapshot at
+## the start of each route; cross-process persistence remains separately tested.
+func _capture_route_seed_snapshot() -> void:
+	var seed_scene := CITY_SCENE.instantiate()
+	root.add_child(seed_scene)
+	await process_frame
+	await process_frame
+	var seed_city: Node = seed_scene.get_node("ConstructionController")
+	_route_seed_snapshot = seed_city.export_v5_campaign_snapshot()
+	if _route_seed_snapshot.is_empty():
+		failures.append("正式试玩无法导出两条路线共用的干净 V5 基线")
+	seed_scene.queue_free()
+	await process_frame
 
 
 func _run_main_road_route() -> void:
@@ -416,6 +436,10 @@ func _new_city() -> Dictionary:
 	await process_frame
 	await process_frame
 	var city: Node = scene.get_node("ConstructionController")
+	if not _route_seed_snapshot.is_empty():
+		var restored: Dictionary = city.restore_v5_campaign_snapshot(_route_seed_snapshot)
+		if not bool(restored.get("success", false)):
+			failures.append("正式试玩路线无法恢复共用的干净 V5 基线")
 	city.set_process(false)
 	return {"scene": scene, "city": city}
 
