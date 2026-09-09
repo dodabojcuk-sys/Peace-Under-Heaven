@@ -4,6 +4,26 @@
 
 ### GUI specialist-selection overlay finish (current worktree)
 
+### Draft-confirmation panel priority repair (current worktree)
+
+An active engineering operation or valid engineering draft now owns the action
+panel even while its engineer remains selected on the map.  The plan and
+enabled `确认施工` control therefore remain visible after drawing is released.
+Clicking an enabled city formation is explicit command intent: it clears only
+the conflicting specialist *view* selection, so the city march plan and its
+enabled `确认并锁定军令` control appear normally without cancelling the
+specialist's actual field task or moving it.
+
+The graphical smoke uses map GUI events and real mouse press/release input on
+the confirmation controls to prove each draft creates exactly one authority
+transaction and one food deduction.  Its independent UI contracts now clear
+only temporary V5 generations between scenes, preventing previous fixture
+commands from leaking deployed formations into a later contract.  Candidate
+viewport evidence and exact commands are in
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-draft-confirmation-priority/`.
+These are engine-viewport/GUI-event records, not desktop-system-input video;
+player acceptance remains OPEN.
+
 Low-poly mode now treats the selected map subject as a single player-facing
 selection. A living selected scout or engineer is rendered on the transparent
 2D map canvas at its authoritative `world_position`: two hollow rings and a

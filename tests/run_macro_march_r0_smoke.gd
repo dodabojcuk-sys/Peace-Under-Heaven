@@ -484,6 +484,10 @@ func _run_camera_and_layout_contract() -> void:
 	var issued: Dictionary = city.commit_macro_march_from_city(
 		[seven_member_formation_id], &"northwatch_garrison", StringName(route.get("route_id", &"")), Array(route.get("points", []))
 	)
+	# This fixture calls the authority directly rather than through MacroMarch's
+	# confirm button. Mirror the real UI's successful-confirm cleanup so the
+	# remaining selected formation cannot be interpreted as a new city draft.
+	macro_screen._selected_formation_ids.clear()
 	macro_screen.refresh()
 	var active_army: Dictionary = Dictionary(issued.get("army", {}))
 	var formation_label := str(macro_screen._formation_buttons.front().text)

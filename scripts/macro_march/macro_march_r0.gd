@@ -304,7 +304,13 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		)
 		return
 	var selected_specialist := Dictionary(specialists.get(_selected_specialist_id, {}))
-	if not selected_specialist.is_empty() and bool(selected_specialist.get("alive", false)):
+	# A selected specialist remains the current world subject while the player
+	# plans an action.  The action itself owns the side panel, though: otherwise
+	# its confirm button is hidden behind the specialist detail after mouse-up.
+	var has_pending_command := _engineering_mode \
+		or not _engineering_draft.is_empty() \
+		or not _selected_formation_ids.is_empty()
+	if not has_pending_command and not selected_specialist.is_empty() and bool(selected_specialist.get("alive", false)):
 		_confirm_button.visible = false
 		_block_button.visible = false
 		_recover_button.visible = false
@@ -347,7 +353,11 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			source_label, target_label, segment_summary, draft_kind_label, travel_seconds, draft_seconds, draft_cost,
 		]
 		return
-	if army.is_empty():
+	# An explicit city formation selection starts a new city command even when
+	# another deployed army is selected for inspection.  Its draft therefore
+	# must use the city-command panel rather than inheriting that army's disabled
+	# confirmation state.
+	if army.is_empty() or not _selected_formation_ids.is_empty():
 		_status_label.text = ("工程绘线：从%s拖到可施工位置，确认后工程师前往施工。" if _engineering_mode else "从%s按住左键沿道路画到驻扎点或敌城；草稿可取消，确认后不可改道。") % str(source.get("display_name", source_id))
 		var draft_duration := _runtime_draft_duration() if not _draft_route.is_empty() else 0
 		var preview := _dispatch_adapter.get_macro_march_command_preview(_selected_formation_ids) if _dispatch_adapter != null else {}
@@ -437,6 +447,12 @@ func _toggle_formation(formation_id: StringName) -> void:
 		_selected_formation_ids.erase(formation_id)
 	else:
 		_selected_formation_ids.append(formation_id)
+	# A formation button is an explicit intent to command city troops.  Clear
+	# only the view selection so it cannot obscure the route draft; the
+	# specialist's actual field task and position stay in FieldTacticsState.
+	if not _selected_formation_ids.is_empty():
+		_selected_specialist_id = &""
+		_selected_scout_id = &""
 	refresh()
 
 

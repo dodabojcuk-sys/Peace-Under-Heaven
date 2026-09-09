@@ -14,6 +14,19 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 Draft-confirmation UI priority
+
+- Made engineering actions and accepted engineering drafts own the Macro March
+  side panel, so a selected engineer no longer hides the plan or its enabled
+  `确认施工` control after the player releases a route.
+- Made an explicit city-formation button clear only conflicting specialist view
+  selection.  The actual specialist task remains authoritative while the city
+  route draft gets its normal visible, enabled march confirmation control.
+- Added graphical GUI-event contracts that prove both confirmation controls are
+  visible/enabled in the scene tree and each real mouse click publishes exactly
+  one project or army/food transaction.  Isolated temporary V5 generations
+  between independent graphical UI fixtures; no player save is cleared.
+
 ### FIELD_TACTICS_R2 Blackstone specialist-selection overlay
 
 - Added a renderer-independent low-poly map overlay for a selected living

@@ -24,11 +24,13 @@ func _run() -> void:
 	await _record_render_baseline()
 	await _check_dynamic_actor_and_mode_switch()
 	await _check_gui_specialist_selection_overlays()
+	await _check_draft_confirmation_priority()
 	await _check_engineering_input()
 	_finish()
 
 
 func _check_projection_at_size(viewport_size: Vector2i) -> void:
+	_clear_isolated_campaign_generations()
 	root.size = viewport_size
 	var scene := CITY_SCENE.instantiate()
 	root.add_child(scene)
@@ -67,6 +69,7 @@ func _check_projection_at_size(viewport_size: Vector2i) -> void:
 
 
 func _check_dynamic_actor_and_mode_switch() -> void:
+	_clear_isolated_campaign_generations()
 	root.size = Vector2i(1152, 648)
 	var scene := CITY_SCENE.instantiate()
 	root.add_child(scene)
@@ -129,6 +132,7 @@ func _check_dynamic_actor_and_mode_switch() -> void:
 
 
 func _check_formal_art_assets() -> void:
+	_clear_isolated_campaign_generations()
 	root.size = Vector2i(1280, 720)
 	var scene := CITY_SCENE.instantiate()
 	root.add_child(scene)
@@ -189,6 +193,7 @@ func _check_formal_art_assets() -> void:
 
 
 func _record_render_baseline() -> void:
+	_clear_isolated_campaign_generations()
 	root.size = Vector2i(1280, 720)
 	var scene := CITY_SCENE.instantiate()
 	root.add_child(scene)
@@ -219,7 +224,101 @@ func _record_render_baseline() -> void:
 	await process_frame
 
 
+func _check_draft_confirmation_priority() -> void:
+	_clear_isolated_campaign_generations()
+	root.size = Vector2i(1152, 648)
+	var engineering_scene := CITY_SCENE.instantiate()
+	root.add_child(engineering_scene)
+	await process_frame
+	await process_frame
+	var engineering_city: Node = engineering_scene.get_node("ConstructionController")
+	engineering_city.food = 80
+	engineering_scene.open_macro_march_r0()
+	await process_frame
+	var engineering_macro: MacroMarchR0 = engineering_scene.get_node("UI/MacroMarchR0")
+	var engineer_dispatch: Dictionary = engineering_city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var city_screen := engineering_macro._world_to_screen(Vector2(THEATER.get_point(&"blackstone_city").get("world_position", Vector2.ZERO)))
+	var engineer_selected_by_gui := await _select_specialist_role_with_gui(
+		engineering_macro, engineering_city, city_screen, FieldTacticsState.SPECIALIST_ENGINEER
+	)
+	await _click_control_with_gui_input(engineering_macro._side_road_button)
+	_click_map(engineering_macro, city_screen, MOUSE_BUTTON_LEFT)
+	_draw_route_with_gui(engineering_macro, [Vector2(150, 650), Vector2(430, 605), Vector2(610, 565), Vector2(760, 610)])
+	await process_frame
+	var engineering_draft: Dictionary = engineering_macro._engineering_draft.duplicate(true)
+	var engineering_confirm_ready := engineering_macro._confirm_button.is_inside_tree() \
+		and engineering_macro._confirm_button.visible \
+		and not engineering_macro._confirm_button.disabled \
+		and engineering_macro._confirm_button.text == "确认施工"
+	var engineering_food_before := int(engineering_city.food)
+	var engineering_projects_before := Dictionary(engineering_city.get_field_tactics_read_model().get("projects_by_id", {})).size()
+	await _click_control_with_gui_input(engineering_macro._confirm_button)
+	await process_frame
+	var engineering_projects_after := Dictionary(engineering_city.get_field_tactics_read_model().get("projects_by_id", {})).size()
+	var engineering_committed_once := engineering_projects_after == engineering_projects_before + 1 \
+		and int(engineering_city.food) == engineering_food_before - int(engineering_draft.get("food_cost", 0))
+	engineering_scene.queue_free()
+	await process_frame
+	_clear_isolated_campaign_generations()
+
+	var marching_scene := CITY_SCENE.instantiate()
+	root.add_child(marching_scene)
+	await process_frame
+	await process_frame
+	var marching_city: Node = marching_scene.get_node("ConstructionController")
+	marching_city.food = 80
+	marching_scene.open_macro_march_r0()
+	await process_frame
+	var marching_macro: MacroMarchR0 = marching_scene.get_node("UI/MacroMarchR0")
+	var scout_dispatch: Dictionary = marching_city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_SCOUT)
+	var march_city_screen := marching_macro._world_to_screen(Vector2(THEATER.get_point(&"blackstone_city").get("world_position", Vector2.ZERO)))
+	var scout_selected_by_gui := await _select_specialist_role_with_gui(
+		marching_macro, marching_city, march_city_screen, FieldTacticsState.SPECIALIST_SCOUT
+	)
+	var formation_button: Button = null
+	for candidate_value in marching_macro._formation_buttons:
+		var candidate := candidate_value as Button
+		if candidate != null and not candidate.disabled:
+			formation_button = candidate
+			break
+	await _click_control_with_gui_input(formation_button)
+	var formation_selected := not marching_macro._selected_formation_ids.is_empty() and marching_macro._selected_specialist_id == &""
+	var march_route: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
+	_draw_route_with_gui(marching_macro, Array(march_route.get("points", [])))
+	await process_frame
+	var marching_draft: Dictionary = marching_macro._draft_route.duplicate(true)
+	var marching_confirm_ready := marching_macro._confirm_button.is_inside_tree() \
+		and marching_macro._confirm_button.visible \
+		and not marching_macro._confirm_button.disabled \
+		and marching_macro._confirm_button.text == "确认并锁定军令"
+	var marching_preview: Dictionary = marching_city.get_macro_march_command_preview(marching_macro._selected_formation_ids)
+	var marching_food_before := int(marching_city.food)
+	var armies_before := Array(marching_macro._model().get("armies", [])).size()
+	await _click_control_with_gui_input(marching_macro._confirm_button)
+	await process_frame
+	var armies_after := Array(marching_macro._model().get("armies", [])).size()
+	var marching_committed_once := armies_after == armies_before + 1 \
+		and int(marching_city.food) == marching_food_before - int(marching_preview.get("food_cost", 0))
+	_check(
+		bool(engineer_dispatch.get("success", false))
+			and engineer_selected_by_gui
+			and not engineering_draft.is_empty()
+			and engineering_confirm_ready
+			and engineering_committed_once
+			and bool(scout_dispatch.get("success", false))
+			and scout_selected_by_gui
+			and formation_selected
+			and not marching_draft.is_empty()
+			and marching_confirm_ready
+			and marching_committed_once,
+		"图形进程经 GUI 事件完成工程师选中→绘线与专员选中→城市编队绘线；两种有效草稿都在场景树中显示可用确认按钮，并通过实际按钮输入各只提交一次资源事务"
+	)
+	marching_scene.queue_free()
+	await process_frame
+
+
 func _check_engineering_input() -> void:
+	_clear_isolated_campaign_generations()
 	root.size = Vector2i(1152, 648)
 	var scene := CITY_SCENE.instantiate()
 	root.add_child(scene)
@@ -307,6 +406,7 @@ func _check_engineering_input() -> void:
 
 
 func _check_gui_specialist_selection_overlays() -> void:
+	_clear_isolated_campaign_generations()
 	root.size = Vector2i(1152, 648)
 	var scene := CITY_SCENE.instantiate()
 	root.add_child(scene)
@@ -396,6 +496,29 @@ func _check_gui_specialist_selection_overlays() -> void:
 	await process_frame
 
 
+func _clear_isolated_campaign_generations() -> void:
+	# Each graphical check creates and publishes real runtime state.  Clear only
+	# generations in the caller-supplied temporary store so a previous check
+	# cannot remove city formations from the next fixture.
+	var save_directory := ""
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--txwzs-v5-save-dir="):
+			save_directory = argument.trim_prefix("--txwzs-v5-save-dir=")
+			break
+	if save_directory.is_empty() or not save_directory.begins_with(OS.get_temp_dir().path_join("")):
+		return
+	var directory := DirAccess.open(save_directory)
+	if directory == null:
+		return
+	directory.list_dir_begin()
+	var entry := directory.get_next()
+	while not entry.is_empty():
+		if not directory.current_is_dir() and (entry.begins_with("campaign_") or entry.begins_with(".pending_")):
+			DirAccess.remove_absolute(save_directory.path_join(entry))
+		entry = directory.get_next()
+	directory.list_dir_end()
+
+
 func _draw_route_with_gui(macro: MacroMarchR0, points: Array) -> void:
 	if points.is_empty():
 		return
@@ -421,6 +544,42 @@ func _click_map(macro: MacroMarchR0, position: Vector2, button_index: MouseButto
 	event.pressed = true
 	event.position = position
 	macro._on_gui_input(event)
+
+
+func _click_control_with_gui_input(control: Control) -> void:
+	if control == null:
+		return
+	var position := control.get_global_rect().get_center()
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = position
+	press.global_position = position
+	Input.parse_input_event(press)
+	await process_frame
+	var release := InputEventMouseButton.new()
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.pressed = false
+	release.position = position
+	release.global_position = position
+	Input.parse_input_event(release)
+	await process_frame
+
+
+func _select_specialist_role_with_gui(
+	macro: MacroMarchR0,
+	city: Node,
+	position: Vector2,
+	role: StringName
+) -> bool:
+	for attempt in range(4):
+		_click_map(macro, position, MOUSE_BUTTON_LEFT)
+		await process_frame
+		var field: Dictionary = city.get_field_tactics_read_model()
+		var specialist := Dictionary(Dictionary(field.get("specialists_by_id", {})).get(macro._selected_specialist_id, {}))
+		if StringName(specialist.get("role", &"")) == role:
+			return true
+	return false
 
 
 func _army_screen_position(macro: MacroMarchR0, army: Dictionary) -> Vector2:
