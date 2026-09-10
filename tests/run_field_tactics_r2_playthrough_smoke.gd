@@ -78,10 +78,10 @@ func _run_main_road_route() -> void:
 	var after_patrol: Dictionary = city._army_registry.get_army(army_id)
 	var count_after_patrol: int = city._macro_army_member_count(after_patrol)
 	var red_route: Dictionary = THEATER.get_route(&"road.northwatch.redcliff")
-	var red_issue: Dictionary = _ui_confirm_march_from_station(macro_screen, army_id, Array(red_route.points))
+	var red_issue: Dictionary = await _ui_confirm_march_from_station(macro_screen, army_id, Array(red_route.points))
 	_advance_until_city_owned(city, &"redcliff_city", 30000)
 	var silver_route: Dictionary = THEATER.get_route(&"road.redcliff.silverford")
-	var silver_issue: Dictionary = _ui_confirm_march_from_station(macro_screen, army_id, Array(silver_route.points))
+	var silver_issue: Dictionary = await _ui_confirm_march_from_station(macro_screen, army_id, Array(silver_route.points))
 	_advance_until_city_owned(city, &"silverford_city", 30000)
 	var final_army: Dictionary = city._army_registry.get_army(army_id)
 	var elapsed := int(city._war_loop_state.field_tactics.world_milliseconds) - route_start_world
@@ -186,12 +186,12 @@ func _run_engineering_route() -> void:
 	# eastern approach. Damage injection and recovery remain in their dedicated
 	# fault-regression suite, so these metrics describe an actual player choice.
 	var silver_route: Dictionary = THEATER.get_route(&"road.forest.silverford.approach")
-	var silver_issue: Dictionary = _ui_confirm_march_from_station(macro_screen, field_army_id, Array(silver_route.points))
+	var silver_issue: Dictionary = await _ui_confirm_march_from_station(macro_screen, field_army_id, Array(silver_route.points))
 	_advance_until_city_owned(city, &"silverford_city", 30000)
 	var red_reverse_points := Array(THEATER.get_route(&"road.redcliff.silverford").points).duplicate(true)
 	red_reverse_points.reverse()
 	var red_plan: Dictionary = city.plan_field_path(&"silverford_city", &"redcliff_city", red_reverse_points)
-	var red_issue: Dictionary = _ui_confirm_march_from_station(macro_screen, field_army_id, Array(red_plan.get("points", [])))
+	var red_issue: Dictionary = await _ui_confirm_march_from_station(macro_screen, field_army_id, Array(red_plan.get("points", [])))
 	_advance_until_city_owned(city, &"redcliff_city", 40000)
 	var final_army: Dictionary = city._army_registry.get_army(field_army_id)
 	var army_casualties: int = field_initial_count - city._macro_army_member_count(final_army)
@@ -304,25 +304,146 @@ func _ui_confirm_march_from_city(macro_screen: MacroMarchR0, formation_ids: Arra
 func _ui_confirm_march_from_station(macro_screen: MacroMarchR0, army_id: StringName, points: Array) -> Dictionary:
 	if army_id == &"" or points.size() < 2:
 		return {"success": false}
-	macro_screen._selected_army_id = army_id
-	macro_screen._selected_formation_ids.clear()
-	var before := macro_screen._dispatch_adapter.get_macro_march_read_model()
-	var previous_order := StringName(Dictionary(Array(before.armies).filter(func(value): return StringName(Dictionary(value).get("army_id", &"")) == army_id).front()).macro_march.order_id)
 	_ui_frame_world_points(macro_screen, points)
-	_ui_draw_world_route(macro_screen, points)
-	macro_screen._confirm_draft()
-	for army_value in Array(macro_screen._dispatch_adapter.get_macro_march_read_model().armies):
-		var army: Dictionary = Dictionary(army_value)
-		if StringName(army.get("army_id", &"")) == army_id and StringName(Dictionary(army.get("macro_march", {})).get("order_id", &"")) != previous_order:
-			return {"success": true, "army": army}
-	var failed_army := Dictionary(macro_screen._dispatch_adapter.get_macro_march_read_model().armies.filter(
-		func(value): return StringName(Dictionary(value).get("army_id", &"")) == army_id
-	).front())
-	print("R2_STATION_ISSUE_FAIL army=%s phase=%s point=%s previous_order=%s draft=%s status=%s requested_points=%s" % [
-		String(army_id), String(failed_army.get("phase", &"")), String(failed_army.get("current_point_id", &"")),
-		String(previous_order), str(macro_screen._draft_route), macro_screen._status_label.text, str(points),
+	var source_world := Vector2(points.front())
+	var target_world := Vector2(points.back())
+	var before := _station_command_snapshot(macro_screen, army_id)
+	print("R2_STATION_CONTINUATION_TRACE stage=before %s" % _station_command_trace(before, macro_screen))
+
+	# The release-to-issue UI has no confirm button. First reject a locked army
+	# released on its own camp, proving that the failed continuation has no food
+	# or order side effect before the real Silverford/Redcliff release.
+	var rejected := await _ui_direct_station_dispatch(macro_screen, army_id, source_world, source_world)
+	var after_reject := _station_command_snapshot(macro_screen, army_id)
+	var rejected_without_side_effect := not bool(rejected.get("success", false)) \
+		and StringName(after_reject.get("order_id", &"")) == StringName(before.get("order_id", &"")) \
+		and int(after_reject.get("food", -1)) == int(before.get("food", -2)) \
+		and not macro_screen._direct_dispatch_pending \
+		and macro_screen._draft_route.is_empty()
+	print("R2_STATION_CONTINUATION_TRACE stage=rejected %s no_side_effect=%s" % [
+		_station_command_trace(after_reject, macro_screen), str(rejected_without_side_effect),
 	])
-	return {"success": false}
+
+	var issued := await _ui_direct_station_dispatch(macro_screen, army_id, source_world, target_world)
+	var after_issue := _station_command_snapshot(macro_screen, army_id)
+	var expected_food_spent := int(issued.get("food_cost", 0))
+	var success := bool(issued.get("success", false)) \
+		and StringName(after_issue.get("army_id", &"")) == army_id \
+		and StringName(after_issue.get("order_id", &"")) != StringName(before.get("order_id", &"")) \
+		and int(before.get("food", -1)) - int(after_issue.get("food", -1)) == expected_food_spent \
+		and rejected_without_side_effect
+	print("R2_STATION_CONTINUATION_TRACE stage=issued %s success=%s expected_food_spent=%d" % [
+		_station_command_trace(after_issue, macro_screen), str(success), expected_food_spent,
+	])
+	return {"success": success, "army": Dictionary(after_issue.get("army", {})), "rejected_without_side_effect": rejected_without_side_effect}
+
+
+func _ui_direct_station_dispatch(
+	macro_screen: MacroMarchR0,
+	army_id: StringName,
+	source_world: Vector2,
+	target_world: Vector2
+) -> Dictionary:
+	var source_screen := macro_screen._world_to_screen(source_world)
+	var target_screen := macro_screen._world_to_screen(target_world)
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	press.position = source_screen
+	macro_screen._on_gui_input(press)
+	# Let the running scene consume real elapsed hold time. Calling a private
+	# _process shortcut here would bypass the long-press contract under test.
+	await create_timer(MacroMarchR0.DRAW_HOLD_SECONDS + 0.08).timeout
+	await process_frame
+	var option_index := -1
+	for index in range(macro_screen._direct_dispatch_options.size()):
+		var option: Dictionary = Dictionary(macro_screen._direct_dispatch_options[index])
+		if StringName(option.get("kind", &"")) == &"ARMY" and StringName(option.get("army_id", &"")) == army_id:
+			option_index = index
+			break
+	if option_index < 0:
+		var missing := {"success": false, "error": "驻军未出现在长按选择条"}
+		print("R2_STATION_CONTINUATION_TRACE stage=picker_missing options=%s" % str(macro_screen._direct_dispatch_options))
+		return missing
+	var option_motion := InputEventMouseMotion.new()
+	option_motion.position = macro_screen._direct_dispatch_option_rect(option_index).get_center()
+	macro_screen._on_gui_input(option_motion)
+	var hovered_expected_army := macro_screen._direct_dispatch_hover_index == option_index
+	var target_motion := InputEventMouseMotion.new()
+	target_motion.position = target_screen
+	macro_screen._on_gui_input(target_motion)
+	var preview_food_cost := int(macro_screen._direct_dispatch_preview.get("food_cost", 0))
+	# The expected destination comes from the authored theatre, independently of
+	# the map hit-test used to drive this GUI gesture.  This prevents a mirrored
+	# or stale projection from quietly certifying a different city as correct.
+	var expected_target_id := _theater_point_id_at_world(target_world)
+	var locked_expected_army := StringName(macro_screen._direct_dispatch_locked.get("army_id", &"")) == army_id
+	var release := InputEventMouseButton.new()
+	release.button_index = MOUSE_BUTTON_LEFT
+	release.pressed = false
+	release.position = target_screen
+	macro_screen._on_gui_input(release)
+	await process_frame
+	var army := _army_from_macro_model(macro_screen, army_id)
+	var order := Dictionary(army.get("macro_march", {}))
+	return {
+		"success": StringName(army.get("army_id", &"")) == army_id
+			and StringName(army.get("phase", &"")) == ArmyRegistry.PHASE_MARCHING
+			and StringName(order.get("target_point_id", &"")) == expected_target_id
+			and hovered_expected_army and locked_expected_army,
+		"army": army,
+		"food_cost": preview_food_cost,
+		"error": macro_screen._status_label.text,
+	}
+
+
+func _station_command_snapshot(macro_screen: MacroMarchR0, army_id: StringName) -> Dictionary:
+	var model := macro_screen._dispatch_adapter.get_macro_march_read_model()
+	var army := _army_from_macro_model(macro_screen, army_id)
+	var order := Dictionary(army.get("macro_march", {}))
+	return {
+		"army": army,
+		"army_id": StringName(army.get("army_id", &"")),
+		"phase": StringName(army.get("phase", &"")),
+		"target_node_id": StringName(army.get("target_node_id", &"")),
+		"current_point_id": StringName(army.get("current_point_id", &"")),
+		"order_id": StringName(order.get("order_id", &"")),
+		"order_source": StringName(order.get("source_point_id", &"")),
+		"order_target": StringName(order.get("target_point_id", &"")),
+		"route_id": StringName(order.get("route_id", &"")),
+		"food": int(model.get("food", -1)),
+		"selected_army_id": macro_screen._selected_army_id,
+		"selected_formation_ids": macro_screen._selected_formation_ids.duplicate(),
+		"model_source_point_id": StringName(model.get("source_point_id", &"")),
+	}
+
+
+func _station_command_trace(snapshot: Dictionary, macro_screen: MacroMarchR0) -> String:
+	return "army=%s phase=%s target_node=%s current_point=%s order=%s order_source=%s order_target=%s route=%s selected_army=%s formations=%s direct_pending=%s picker=%s locked=%s preview=%s error=%s status=%s" % [
+		String(snapshot.get("army_id", &"")), String(snapshot.get("phase", &"")), String(snapshot.get("target_node_id", &"")), String(snapshot.get("current_point_id", &"")),
+		String(snapshot.get("order_id", &"")), String(snapshot.get("order_source", &"")), String(snapshot.get("order_target", &"")), String(snapshot.get("route_id", &"")),
+		String(macro_screen._selected_army_id), str(macro_screen._selected_formation_ids), str(macro_screen._direct_dispatch_pending), str(macro_screen._direct_dispatch_picker_open),
+		str(macro_screen._direct_dispatch_locked), str(macro_screen._direct_dispatch_preview), macro_screen._direct_dispatch_error, macro_screen._status_label.text,
+	]
+
+
+func _army_from_macro_model(macro_screen: MacroMarchR0, army_id: StringName) -> Dictionary:
+	for army_value in Array(macro_screen._dispatch_adapter.get_macro_march_read_model().get("armies", [])):
+		var army: Dictionary = Dictionary(army_value)
+		if StringName(army.get("army_id", &"")) == army_id:
+			return army
+	return {}
+
+
+func _theater_point_id_at_world(world_position: Vector2) -> StringName:
+	var point_ids: Array = THEATER.get_points().keys()
+	point_ids.sort()
+	for point_id_value in point_ids:
+		var point_id := StringName(point_id_value)
+		var point: Dictionary = THEATER.get_point(point_id)
+		if Vector2(point.get("world_position", Vector2.INF)).distance_to(world_position) <= 0.1:
+			return point_id
+	return &""
 
 
 func _ui_draw_world_route(macro_screen: MacroMarchR0, points: Array) -> void:

@@ -1301,8 +1301,11 @@ func _direct_dispatch_source_at_screen(screen_position: Vector2) -> StringName:
 	if point_id == &"":
 		return &""
 	var point := _point_from_model(_model(), point_id)
-	if point.is_empty() or StringName(point.get("point_kind", &"")) == &"ENEMY_CITY":
+	if point.is_empty():
 		return &""
+	# City kind is authored geography, not permanent ownership. A captured enemy
+	# city keeps its city silhouette but becomes a legal departure point as soon
+	# as the runtime war projection marks it player-controlled.
 	if StringName(point.get("military_controller_faction_id", &"player")) != &"player":
 		return &""
 	return point_id

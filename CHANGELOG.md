@@ -2,6 +2,15 @@
 
 ## 2026-09-11
 
+- Fixed Route B's stationed-army continuation through the current long-hold
+  object-strip interaction rather than the obsolete draw/confirm fixture. A
+  captured Silverford remains authored as an `ENEMY_CITY` for its city
+  silhouette, but is now a legal direct-dispatch source when the runtime war
+  projection says it is player-controlled. The formal route regression records
+  complete before/reject/issue snapshots, proves failed release has no food or
+  order side effect, and verifies each valid continuation publishes one new
+  order with the preview food cost exactly once. Evidence:
+  `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-route-b-continuation/`.
 - Corrected patrol-encounter history and evidence boundaries: missing historical remaining strengths now render as `未记录`, multi-army reports preserve aggregate losses plus distinct participant states, and a new durable `contact_world_milliseconds` accompanies the per-step contact offset. Field R2 now compares contact quantization, casualties and the engineered road damaged by contact across large/30 FPS/60 FPS/irregular Controller frames.
 - Replaced the encounter sample's split army/patrol evidence with a continuous Controller-process GUI-event run, added an independent-process settled-encounter persistence/replay check, and documented same-process snapshot restore separately from actual exit/reopen recovery. Evidence: `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-encounter-correctness/`.
 

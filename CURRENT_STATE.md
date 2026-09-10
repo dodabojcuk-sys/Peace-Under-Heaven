@@ -16,7 +16,9 @@ Macro March 现在只读 FieldTacticsState 已成功提交的巡逻遭遇事实�
 
 遭遇摘要同时保存步内 `contact_milliseconds` 与可跨帧比较的 `contact_world_milliseconds`。`contact_world_position` 仍是工程道路损坏的权威输入，因此 Field R2 以大步、30 FPS、60 FPS 和不规则帧核对接触、伤亡和受损道路；连续几何在毫秒/整数坐标量化范围内一致，且伤亡和受损道路身份相同。
 
-正式路线复查中，主路 Route A 通过；工程 Route B 在银渡城续令前以空驻点 `point=` 触发既有 `R2_STATION_ISSUE_FAIL`。同一失败可在干净的 `a00b3d3` 基线工作树复现，且工程路线仍自然记录一次伏击；因此不归因于本次接触坐标变更，保持为独立待修回归，不把整局路线宣称为全绿。
+工程 Route B 的驻点续令回归已经定位并修复。`current_point_id` 在驻扎快照中为空是既有模型事实，不是驻点丢失；真实证据应读取 `army_id`、`phase`、`target_node_id`、军令端点、路线和粮食事务。旧路线夹具绕过当前的“长按驻点 → 选择条锁定驻军 → 指向目标 → 松手”正式入口，因而把空 `current_point_id` 误报为失败。修复后的正式 GUI 路径在林间驻点将同一军队续令至银渡城，并在占领后从银渡城续令至赤崖城；每次成功只创建一个新 `order_id`、扣除预览的 4 粮。对原驻点松手的失败路径不改军令或粮食。
+
+同时修复了一个实际入口缺陷：战区定义中的 `ENEMY_CITY` 是地理/外观类型，不是永久的控制权。银渡城被占领后仍保留该类型，旧快捷派遣入口因此错误拒绝从它长按出发。入口现仅以运行时 `military_controller_faction_id` 判定是否为友方；仍被敌方控制的城池依旧不可作为出发点。`a00b3d3` 与 `0d63180` 均已定向对照：前者复现旧夹具失败，后者也含同一静态城池类型门槛和旧夹具，故两者都不能被当作此问题的绿色对照。证据、隔离存档日志和连续引擎 GUI Movie Maker 记录位于 `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-route-b-continuation/`。这仍是引擎 GUI 输入证据，不是 macOS 正常鼠标手感验收；基础派兵结项及停滞调查的 **NOT REPRODUCED / NOT DIAGNOSED** 结论不变，玩家验收保持 **OPEN**。
 
 新的 453 帧引擎 GUI Movie Maker 记录由正式按住派兵开始，让 `ConstructionController._process` 同步推进行军与巡逻、经过遭遇、反馈结束及后续状态。原来的“冷恢复”表述现已收紧为**同进程快照恢复**；独立 A/B Godot 进程另行验证保存、退出、重开后的战果保留与 `replay=false`。证据位于 `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-encounter-correctness/`。基础派兵仍为结项，停滞调查仍为 **NOT REPRODUCED / NOT DIAGNOSED**，玩家验收仍 **OPEN**。
 

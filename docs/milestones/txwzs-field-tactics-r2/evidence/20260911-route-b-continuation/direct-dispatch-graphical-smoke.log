@@ -1,0 +1,25 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+Metal 3.2 - Forward+ - Using Device #0: Apple - Apple M4 (Apple9)
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+DIRECT_SCOUT_TRACE target=ridge_watch food=76 moving={ "specialist_id": &"scout.000001", "role": &"SCOUT", "current_point_id": &"blackstone_city", "target_point_id": &"ridge_watch", "phase": &"MOVING", "move_remaining_milliseconds": 1784, "move_total_milliseconds": 1800, "move_elapsed_milliseconds": 16, "move_start_position": (135, 650), "move_route_world_points": [(135, 650), (530, 275)], "world_position": (138, 646), "target_world_position": (530, 275), "visibility_range": 190, "project_id": &"", "alive": true } release_status=已选侦察兵：在途
+DIRECT_DISPATCH_TRACE hover=true lock=true hint_clear=true hover_copy=true locked_copy=true invalid_copy=true cancel_overview=true invalid=true scout=true march=true repair_shortage=true repair_unreachable=true repair_commit=true engineering=true start=true scout_index=3 formation_index=0 engineer_index=2 preview_route= issued_macro={ "order_id": &"macro.order.000001", "source_point_id": &"blackstone_city", "target_point_id": &"northwatch_garrison", "route_id": &"road.blackstone.northwatch.ridge", "route_world_points": [(135, 650), (245, 470), (360, 315), (520, 225), (680, 210)], "route_segments": [{ "road_id": &"road.blackstone.northwatch.ridge", "forward": true }], "formation_snapshots": [{ "formation_id": &"formation.blackstone.1", "display_name": "北门先锋", "definition_id": &"unit_role.infantry_basic", "member_count": 7, "max_members": 20 }], "food_cost": 2, "progress_millis": 16, "total_millis": 14965, "blocked_segment_index": -1, "temporary_station_point": &"", "blocked_resume_phase": &"MARCHING", "blocked_transfer": { "phase": &"NONE", "target_point_id": &"", "route_id": &"", "route_segments": [], "route_world_points": [], "progress_millis": 0, "total_millis": 0, "resume_progress_millis": 0 }, "phase": &"MARCHING" } food=49 armies=1 specialist={ "specialist_id": &"scout.000001", "role": &"SCOUT", "current_point_id": &"blackstone_city", "target_point_id": &"ridge_watch", "phase": &"MOVING", "move_remaining_milliseconds": 1784, "move_total_milliseconds": 1800, "move_elapsed_milliseconds": 16, "move_start_position": (135, 650), "move_route_world_points": [(135, 650), (530, 275)], "world_position": (138, 646), "target_world_position": (530, 275), "visibility_range": 190, "project_id": &"", "alive": true } status=已选工程师：施工中
+PASS: 选择条包含新侦察兵与编队
+PASS: 失焦会清理新的直接派遣手势
+PASS: 无效侦察目标不派遣也不扣粮
+PASS: 松手仍在选择条内会取消而不提交
+PASS: 引擎画面清楚区分条内悬停候选与拖出后的锁定对象
+PASS: 选择条说明不覆盖任何对象行的名称、人数或候选状态
+PASS: 快捷手势期间顶部与侧栏一致显示候选、锁定对象及松手派遣
+PASS: 无效快捷目标优先显示原因，且不会被正常路线预览覆盖
+PASS: 取消快捷手势后恢复常规侧栏概览
+PASS: 新侦察兵创建与下令保持单次事务
+PASS: 连续穿过选择条后锁定预期编队身份
+PASS: 松手以最终目标重校验，并只为预期编队提交一次军令
+PASS: 查看驻军后仍可从同一驻点直接续令
+PASS: 粮食失败提示跨刷新保留且不创建军队
+PASS: 维修缺粮跨刷新保留原因，不转入新工程或扣费
+PASS: 维修不可达跨刷新保留原因，不转入新工程或改动任务
+PASS: 合法维修仍经原权威入口单次创建维修项目
+PASS: 工程师拖到空地仅生成计划，开工按钮单次提交
+MACRO_MARCH_DIRECT_DISPATCH_GRAPHICAL_SMOKE PASS assertions=18
