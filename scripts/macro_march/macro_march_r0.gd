@@ -24,6 +24,8 @@ const DRAW_EDGE_SCROLL_MARGIN := 28.0
 const DRAW_EDGE_SCROLL_MAX_PIXELS_PER_SECOND := 360.0
 const DIRECT_DISPATCH_OPTION_SIZE := Vector2(132, 34)
 const DIRECT_DISPATCH_OPTION_GAP := 6.0
+const ENCOUNTER_FEEDBACK_SECONDS := 2.40
+const ENCOUNTER_STING_SECONDS := 0.14
 
 var _dispatch_adapter: V5ArmyDispatchAdapter
 var _draft_route: Dictionary = {}
@@ -109,12 +111,22 @@ var _direct_dispatch_hover_index := -1
 var _direct_dispatch_preview: Dictionary = {}
 var _direct_dispatch_error := ""
 var _direct_dispatch_route_road_id: StringName = &""
+# The Field owns settlement. This view records only seen event identities and
+# renders each newly observed result once, so refresh and cold restore never
+# replay casualties or imply a permanent combat phase.
+var _encounter_observation_initialized := false
+var _seen_encounter_keys: Dictionary = {}
+var _encounter_feedback: Dictionary = {}
+var _encounter_notification_rect := Rect2()
+var _encounter_audio_player := AudioStreamPlayer.new()
+var _encounter_audio_play_count := 0
 
 
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	gui_input.connect(_on_gui_input)
 	_build_ui()
+	_configure_encounter_audio()
 	resized.connect(_layout_ui)
 	refresh()
 
@@ -125,6 +137,9 @@ func configure(dispatch_adapter: V5ArmyDispatchAdapter) -> bool:
 	if _dispatch_adapter != null and _dispatch_adapter != dispatch_adapter:
 		return false
 	_dispatch_adapter = dispatch_adapter
+	_encounter_observation_initialized = false
+	_seen_encounter_keys.clear()
+	_encounter_feedback = {}
 	refresh()
 	return true
 
@@ -134,6 +149,8 @@ func refresh() -> void:
 		return
 	var model := _model()
 	var army := _selected_army(model)
+	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+	_sync_encounter_feedback(field)
 	_refresh_formation_controls(Array(model.get("formations", [])), army, Array(model.get("armies", [])))
 	_refresh_copy(model, army)
 	_layout_ui()
@@ -146,6 +163,7 @@ func _process(delta: float) -> void:
 	# World time belongs to ConstructionController.  This view is presentation
 	# only, so changing map frame rate or observing two armies cannot tick them
 	# twice.
+	_advance_encounter_feedback(delta)
 	refresh()
 	_update_direct_dispatch_gesture(delta)
 	_update_draw_interaction(delta)
@@ -174,6 +192,118 @@ func _notification(what: int) -> void:
 		# press; confirmed orders and existing specialist tasks remain untouched.
 		_cancel_direct_dispatch("")
 		_cancel_draw_interaction("窗口失去焦点，已取消当前规划。")
+
+
+func _configure_encounter_audio() -> void:
+	# A small generated sting has no external asset dependency. It is started
+	# only after an authority-owned encounter has already committed.
+	var stream := AudioStreamGenerator.new()
+	stream.mix_rate = 22050.0
+	stream.buffer_length = 0.20
+	_encounter_audio_player.stream = stream
+	_encounter_audio_player.volume_db = -16.0
+	_encounter_audio_player.bus = &"Master"
+	add_child(_encounter_audio_player)
+
+
+func _encounter_key(patrol_id: StringName, encounter: Dictionary) -> String:
+	var army_ids: Array = Array(encounter.get("army_ids", [])).duplicate()
+	army_ids.sort()
+	return "%s:%d:%s" % [String(patrol_id), int(encounter.get("world_milliseconds", 0)), ",".join(army_ids)]
+
+
+func _sync_encounter_feedback(field: Dictionary) -> void:
+	var visible_patrols: Dictionary = Dictionary(field.get("visible_patrols_by_id", {}))
+	var observed_keys: Dictionary = {}
+	var patrol_ids: Array = visible_patrols.keys()
+	patrol_ids.sort()
+	for patrol_id_value in patrol_ids:
+		var patrol_id := StringName(patrol_id_value)
+		var patrol: Dictionary = Dictionary(visible_patrols.get(patrol_id, {}))
+		var encounter: Dictionary = Dictionary(patrol.get("last_engagement", {}))
+		if encounter.is_empty():
+			continue
+		var key := _encounter_key(patrol_id, encounter)
+		observed_keys[key] = true
+		if _encounter_observation_initialized and not _seen_encounter_keys.has(key):
+			_encounter_feedback = _encounter_feedback_copy(patrol, encounter)
+			_play_encounter_sting()
+	_seen_encounter_keys = observed_keys
+	_encounter_observation_initialized = true
+
+
+func _encounter_feedback_copy(patrol: Dictionary, encounter: Dictionary) -> Dictionary:
+	var participant_ids: Array = Array(encounter.get("army_ids", [])).duplicate()
+	participant_ids.sort()
+	var before_by_army: Dictionary = Dictionary(encounter.get("army_strength_before_by_army", {}))
+	var after_by_army: Dictionary = Dictionary(encounter.get("army_strength_after_by_army", {}))
+	var phase_by_army: Dictionary = Dictionary(encounter.get("army_phase_after_by_army", {}))
+	var own_before := 0
+	var own_after := 0
+	var post_state := "继续行军"
+	if not participant_ids.is_empty():
+		var primary_id := StringName(participant_ids.front())
+		post_state = _encounter_post_state_label(StringName(phase_by_army.get(primary_id, &"")))
+	for army_id_value in participant_ids:
+		var army_id := StringName(army_id_value)
+		own_before += int(before_by_army.get(army_id, 0))
+		own_after += int(after_by_army.get(army_id, 0))
+	return {
+		"key": _encounter_key(StringName(encounter.get("patrol_id", &"")), encounter),
+		"elapsed_seconds": 0.0,
+		"world_position": Vector2(encounter.get("contact_world_position", encounter.get("world_position", Vector2.ZERO))),
+		"patrol_name": str(patrol.get("display_name", "巡逻")),
+		"army_ids": participant_ids,
+		"own_before": own_before,
+		"own_after": own_after,
+		"own_losses": maxi(own_before - own_after, 0),
+		"patrol_before": int(encounter.get("patrol_strength_before", 0)),
+		"patrol_after": int(encounter.get("patrol_strength_after", 0)),
+		"patrol_losses": int(encounter.get("patrol_losses", 0)),
+		"post_state": post_state,
+	}
+
+
+func _encounter_post_state_label(phase: StringName) -> String:
+	match phase:
+		ARMY_REGISTRY.PHASE_MARCHING:
+			return "继续行军"
+		ARMY_REGISTRY.PHASE_STATIONED:
+			return "驻扎待命"
+		ARMY_REGISTRY.PHASE_BLOCKED:
+			return "道路受阻"
+		ARMY_REGISTRY.PHASE_CLOSED:
+			return "全灭"
+		ARMY_REGISTRY.PHASE_RETREATING:
+			return "有损撤逃"
+		_:
+			return "继续原任务"
+
+
+func _advance_encounter_feedback(delta: float) -> void:
+	if _encounter_feedback.is_empty():
+		return
+	_encounter_feedback.elapsed_seconds = float(_encounter_feedback.get("elapsed_seconds", 0.0)) + maxf(delta, 0.0)
+	if float(_encounter_feedback.elapsed_seconds) > ENCOUNTER_FEEDBACK_SECONDS:
+		_encounter_feedback = {}
+		_encounter_notification_rect = Rect2()
+
+
+func _play_encounter_sting() -> void:
+	if _encounter_audio_player.stream == null:
+		return
+	_encounter_audio_player.play()
+	var playback = _encounter_audio_player.get_stream_playback()
+	if playback == null:
+		return
+	var sample_count := ceili(22050.0 * ENCOUNTER_STING_SECONDS)
+	for sample_index in range(sample_count):
+		var ratio := float(sample_index) / maxf(float(sample_count - 1), 1.0)
+		var envelope := (1.0 - ratio) * (1.0 - ratio)
+		var tone := sin(TAU * (185.0 + 410.0 * ratio) * float(sample_index) / 22050.0)
+		var noise := sin(TAU * 97.0 * float(sample_index) / 22050.0)
+		playback.push_frame(Vector2.ONE * (tone * 0.16 + noise * 0.04) * envelope)
+	_encounter_audio_play_count += 1
 
 
 func _build_ui() -> void:
@@ -528,7 +658,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			var encounter_copy := _latest_encounter_copy(field, StringName(army.get("army_id", &"")))
 			var battle_line := "最近战报：暂无"
 			if not encounter_copy.is_empty():
-				battle_line = "最近战报：遭遇%s，损失 %d 人，剩余 %d 人" % [str(encounter_copy.get("patrol_name", "巡逻")), int(encounter_copy.get("losses", 0)), current_members]
+				battle_line = "最近战报：遭遇%s · 我军损失 %d、敌军损失 %d；我军剩 %d、敌军剩 %d · %s" % [str(encounter_copy.get("patrol_name", "巡逻")), int(encounter_copy.get("losses", 0)), int(encounter_copy.get("patrol_losses", 0)), int(encounter_copy.get("army_remaining", current_members)), int(encounter_copy.get("patrol_remaining", 0)), str(encounter_copy.get("post_state", "继续原任务"))]
 			_detail_label.text = "当前军队：%d 人\n原军令进度：%d%%\n粮食已扣：%d\n%s\n%s%s" % [current_members, roundi(float(macro.progress_millis) / maxf(float(macro.total_millis), 1.0) * 100.0), int(macro.food_cost), battle_line, ("工程师维修后会沿实际道路接续原军令，不再扣粮。" if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED else "到达后可从驻扎点发出下一道军令。"), blocked_detail]
 		_confirm_button.disabled = true
 		_block_button.visible = false
@@ -668,6 +798,10 @@ func _latest_encounter_copy(field: Dictionary, army_id: StringName) -> Dictionar
 				"world_milliseconds": int(encounter.get("world_milliseconds", 0)),
 				"losses": losses,
 				"patrol_name": str(patrol.get("display_name", "巡逻")),
+				"patrol_losses": int(encounter.get("patrol_losses", 0)),
+				"patrol_remaining": int(encounter.get("patrol_strength_after", maxi(int(patrol.get("strength", 0)), 0))),
+				"army_remaining": int(Dictionary(encounter.get("army_strength_after_by_army", {})).get(army_id, 0)),
+				"post_state": _encounter_post_state_label(StringName(Dictionary(encounter.get("army_phase_after_by_army", {})).get(army_id, &""))),
 			}
 	return latest
 
@@ -852,6 +986,14 @@ func _on_gui_input(event: InputEvent) -> void:
 	var map_rect := _map_rect()
 	if event.pressed:
 		if not map_rect.has_point(event.position):
+			return
+		if not _encounter_feedback.is_empty() and _encounter_notification_rect.has_point(event.position):
+			_camera_center = Vector2(_encounter_feedback.get("world_position", _camera_center))
+			_camera_zoom = maxf(_camera_zoom, 0.90)
+			_clamp_camera()
+			_status_label.text = "已定位本次遭遇；战果已结算，军令继续按原状态推进。"
+			refresh()
+			accept_event()
 			return
 		if _minimap_rect().has_point(event.position):
 			_center_camera_from_minimap(event.position)
@@ -2508,6 +2650,7 @@ func _draw_map_canvas(canvas: Control) -> void:
 		else:
 			_draw_garrison_marker(canvas, center)
 		_draw_point_label(canvas, rect, center, str(point.display_name), 80, Color.WHITE)
+	_draw_encounter_feedback(canvas, rect)
 	_draw_minimap(canvas)
 	_draw_draw_hold_feedback(canvas)
 	_draw_direct_dispatch_picker(canvas)
@@ -2562,10 +2705,52 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 		var point: Dictionary = point_value
 		var center := _world_to_screen(Vector2(point.get("world_position", Vector2.ZERO)))
 		_draw_point_label(canvas, rect, center, str(point.get("display_name", "据点")), 92, Color("fff4d3"))
+	_draw_encounter_feedback(canvas, rect)
 	canvas.draw_rect(rect, Color("e7d7a8", 0.92), false, 2.0)
 	_draw_minimap(canvas)
 	_draw_draw_hold_feedback(canvas)
 	_draw_direct_dispatch_picker(canvas)
+
+
+func _draw_encounter_feedback(canvas: Control, rect: Rect2) -> void:
+	_encounter_notification_rect = Rect2()
+	if _encounter_feedback.is_empty():
+		return
+	var world_position := Vector2(_encounter_feedback.get("world_position", Vector2.ZERO))
+	var screen := _world_to_screen(world_position)
+	var elapsed := float(_encounter_feedback.get("elapsed_seconds", 0.0))
+	var visible_on_map := rect.grow(-8.0).has_point(screen)
+	if not visible_on_map:
+		_encounter_notification_rect = Rect2(rect.position + Vector2(14, 18), Vector2(204, 42))
+		canvas.draw_rect(_encounter_notification_rect, Color("3b2927", 0.94), true)
+		canvas.draw_rect(_encounter_notification_rect, Color("ffd166", 0.90), false, 1.5)
+		canvas.draw_string(ThemeDB.fallback_font, _encounter_notification_rect.position + Vector2(10, 18), "战报 · %s" % str(_encounter_feedback.get("patrol_name", "巡逻")), HORIZONTAL_ALIGNMENT_LEFT, 184, 13, Color("fff4d3"))
+		canvas.draw_string(ThemeDB.fallback_font, _encounter_notification_rect.position + Vector2(10, 33), "点击定位：我军 -%d · 敌军 -%d" % [int(_encounter_feedback.get("own_losses", 0)), int(_encounter_feedback.get("patrol_losses", 0))], HORIZONTAL_ALIGNMENT_LEFT, 184, 12, Color("ffd166"))
+		return
+	var pulse := 1.0 + sin(elapsed * TAU * 4.0) * 0.12
+	var fade := clampf(1.0 - maxf(elapsed - 1.75, 0.0) / 0.65, 0.0, 1.0)
+	# The first half-second communicates approach, impact and hit without making
+	# the instant authority settlement look like an ongoing combat simulation.
+	if elapsed < 0.20:
+		var approach := clampf(elapsed / 0.20, 0.0, 1.0)
+		canvas.draw_line(screen + Vector2(-34, 0).lerp(Vector2(-8, 0), approach), screen + Vector2(-7, 0), Color("8fd8ee", 0.92), 3.0)
+		canvas.draw_line(screen + Vector2(34, 0).lerp(Vector2(8, 0), approach), screen + Vector2(7, 0), Color("e26452", 0.92), 3.0)
+		canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-30, -28), "迎敌", HORIZONTAL_ALIGNMENT_CENTER, 60, 13, Color("fff4d3"))
+	else:
+		var impact := clampf((elapsed - 0.20) / 0.42, 0.0, 1.0)
+		canvas.draw_circle(screen, (10.0 + impact * 18.0) * pulse, Color("ffd166", (1.0 - impact) * 0.34 * fade))
+		canvas.draw_arc(screen, 17.0 * pulse, 0.0, TAU, 20, Color("fff1b8", fade), 2.5, true)
+		canvas.draw_line(screen + Vector2(-12, -12), screen + Vector2(12, 12), Color("ffe9a3", fade), 3.0)
+		canvas.draw_line(screen + Vector2(-12, 12), screen + Vector2(12, -12), Color("e26452", fade), 3.0)
+		if elapsed < 0.62:
+			canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-34, -30), "交锋", HORIZONTAL_ALIGNMENT_CENTER, 68, 13, Color("fff4d3", fade))
+	canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-74, 4), "我军 %d" % int(_encounter_feedback.get("own_after", 0)), HORIZONTAL_ALIGNMENT_CENTER, 58, 12, Color("9ee5f4", fade))
+	canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(16, 4), "%s %d" % [str(_encounter_feedback.get("patrol_name", "敌巡")), int(_encounter_feedback.get("patrol_after", 0))], HORIZONTAL_ALIGNMENT_LEFT, 84, 12, Color("ff9b85", fade))
+	var result_rect := Rect2(screen + Vector2(-96, 28), Vector2(192, 42))
+	canvas.draw_rect(result_rect, Color("2b3631", 0.90 * fade), true)
+	canvas.draw_rect(result_rect, Color("ffd166", 0.80 * fade), false, 1.0)
+	canvas.draw_string(ThemeDB.fallback_font, result_rect.position + Vector2(6, 16), "%s · 我军 -%d / 敌军 -%d" % [str(_encounter_feedback.get("patrol_name", "巡逻")), int(_encounter_feedback.get("own_losses", 0)), int(_encounter_feedback.get("patrol_losses", 0))], HORIZONTAL_ALIGNMENT_LEFT, 180, 12, Color("fff4d3", fade))
+	canvas.draw_string(ThemeDB.fallback_font, result_rect.position + Vector2(6, 32), "我军剩 %d · 敌军剩 %d · %s" % [int(_encounter_feedback.get("own_after", 0)), int(_encounter_feedback.get("patrol_after", 0)), str(_encounter_feedback.get("post_state", "继续原任务"))], HORIZONTAL_ALIGNMENT_LEFT, 180, 12, Color("ffd166", fade))
 
 
 func _draw_road_choice_points(canvas: Control, roads_by_id: Dictionary) -> void:

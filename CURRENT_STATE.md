@@ -1,5 +1,15 @@
 # 当前状态
 
+## 基础派兵结项与遭遇战可读性样例（2026-09-10）
+
+用户确认基础派兵功能完成，本阶段结项。基础派兵后续只处理回归缺陷；整体手感与战区品质仍待后续评价。此前报告的停滞问题保持 **NOT REPRODUCED / NOT DIAGNOSED**，本次没有将其标为已解决。
+
+Macro March 现在只读 FieldTacticsState 已成功提交的巡逻遭遇事实，首次观察到新事件时在接触坐标显示短暂的迎敌、碰撞和受击反馈，并播放一次短促提示音。它显示实际参战我军与巡逻的本次损失、双方剩余人数及军令后续状态；表现不计算伤亡、不暂停世界时间、不持有存档，也不会让任何军队进入一个长期的“交战中”阶段。
+
+`ConstructionController` 把巡逻与军队带时间轨迹的**首次**接触毫秒和坐标写入同一场已结算遭遇摘要。`ArmyRegistry` 仍是编队和军令事实所有者，`FieldTacticsState` 仍持有巡逻和遭遇摘要。地图刷新、暂停、倍速、重复推进与冷恢复只读取这些事实：不会重复扣兵或重播旧特效。屏幕外事件显示可点击定位通知，但不会自动移动镜头；可见性仍仅来自 `visible_patrols_by_id`。
+
+图形 GUI 事件回归从正式地图长按派兵开始，走到自然巡逻遭遇、短反馈、战果侧栏、屏幕外定位以及冷恢复。证据位于 `docs/milestones/txwzs-field-tactics-r2/evidence/20260910-encounter-readability/`；它是引擎 GUI 输入与 Movie Maker 证据，不是 macOS 正常系统鼠标手感验收。玩家验收保持 **OPEN**。
+
 ## Direct-dispatch copy priority (2026-09-10)
 
 The direct-map gesture now owns the top status line and side detail for its

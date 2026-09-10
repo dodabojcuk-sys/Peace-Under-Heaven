@@ -2,6 +2,10 @@
 
 ## 2026-09-10
 
+- Closed the user-confirmed baseline dispatch phase: `用户确认基础派兵功能完成，本阶段结项。` Follow-up work is now limited to dispatch regressions; overall hand-feel and theatre quality remain open, and the prior stall remains **NOT REPRODUCED / NOT DIAGNOSED**.
+- Added a transient, authority-read patrol-encounter presentation: first-contact coordinates/timing, a short approach/impact/hit effect, generated clash sting, nearby result card, selected-army detailed report, and an explicit off-screen locate notification. The view neither calculates losses nor writes combat/save state, and cold restore primes historical encounters without replaying them.
+- Added graphical GUI-event coverage from direct map dispatch through natural patrol contact, actual loss/result copy, pause/speed/refresh idempotence, off-screen notification and cold restore. Captured engine screenshots and a Movie Maker recording under `docs/milestones/txwzs-field-tactics-r2/evidence/20260910-encounter-readability/`.
+
 - Give the direct-map dispatch gesture ownership of its transient status and
   side detail: candidate, locked valid target and invalid target now have
   distinct player-facing copy without changing authority behavior.

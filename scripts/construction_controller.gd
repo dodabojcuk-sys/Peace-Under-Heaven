@@ -6090,15 +6090,20 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 
 func _resolve_field_patrol_encounters(field_advance: Dictionary) -> Dictionary:
 	var encounters: Array[Dictionary] = []
-	var movements_by_patrol: Dictionary = {}
+	var patrol_traces_by_id: Dictionary = {}
 	for movement_value in Array(field_advance.get("patrol_movements", [])):
 		var movement: Dictionary = Dictionary(movement_value)
 		var patrol_id := StringName(movement.get("patrol_id", &""))
 		if patrol_id == &"":
 			continue
-		if not movements_by_patrol.has(patrol_id):
-			movements_by_patrol[patrol_id] = []
-		movements_by_patrol[patrol_id].append(movement.duplicate(true))
+		if not patrol_traces_by_id.has(patrol_id):
+			patrol_traces_by_id[patrol_id] = []
+		patrol_traces_by_id[patrol_id].append({
+			"from": Vector2(movement.get("from", Vector2.ZERO)),
+			"to": Vector2(movement.get("to", Vector2.ZERO)),
+			"start_milliseconds": float(movement.get("start_offset_milliseconds", 0)),
+			"end_milliseconds": float(movement.get("end_offset_milliseconds", field_advance.get("delta_milliseconds", 0))),
+		})
 	var guard_ids_by_patrol: Dictionary = {}
 	for specialist_contact_value in Array(field_advance.get("engagements", [])):
 		var specialist_contact: Dictionary = Dictionary(specialist_contact_value)
@@ -6117,7 +6122,9 @@ func _resolve_field_patrol_encounters(field_advance: Dictionary) -> Dictionary:
 			continue
 		var resolved_ids: Array = Array(patrol.get("resolved_army_ids", []))
 		var participant_ids: Array[StringName] = []
+		var contact_milliseconds_by_army: Dictionary = {}
 		var army_positions := _macro_army_world_positions()
+		var patrol_trace: Array = Array(patrol_traces_by_id.get(patrol_id, []))
 		for army_id_value in army_positions.keys():
 			var army_id := StringName(army_id_value)
 			if army_id in resolved_ids:
@@ -6129,20 +6136,16 @@ func _resolve_field_patrol_encounters(field_advance: Dictionary) -> Dictionary:
 			var army_trace: Array = Array(_macro_march_traces_for_war_step.get(
 				army_id, _stationary_timed_trace(Vector2(army_positions[army_id]), step_milliseconds)
 			))
-			var contacted := Vector2(army_positions[army_id]).distance_to(Vector2(patrol.get("world_position", Vector2.ZERO))) <= 32.0
-			for movement_value in Array(movements_by_patrol.get(patrol_id, [])):
-				var movement: Dictionary = Dictionary(movement_value)
-				var patrol_trace := [{
-					"from": Vector2(movement.get("from", Vector2.ZERO)),
-					"to": Vector2(movement.get("to", Vector2.ZERO)),
-					"start_milliseconds": float(movement.get("start_offset_milliseconds", 0)),
-					"end_milliseconds": float(movement.get("end_offset_milliseconds", step_milliseconds)),
-				}]
-				if _timed_movement_segments_within_distance(army_trace, patrol_trace, 32.0):
-					contacted = true
-					break
-			if contacted:
+			var contact_milliseconds := INF
+			if not patrol_trace.is_empty():
+				contact_milliseconds = field.first_timed_contact_milliseconds(army_trace, patrol_trace, 32.0)
+			if contact_milliseconds == INF and Vector2(army_positions[army_id]).distance_to(Vector2(patrol.get("world_position", Vector2.ZERO))) <= 32.0:
+				# A stationary patrol has no movement segment this step. Its contact is
+				# therefore the explicit end-of-step overlap, not a guessed path crossing.
+				contact_milliseconds = step_milliseconds
+			if contact_milliseconds < INF:
 				participant_ids.append(army_id)
+				contact_milliseconds_by_army[army_id] = contact_milliseconds
 		for guard_id_value in Array(guard_ids_by_patrol.get(patrol_id, [])):
 			var guard_id := StringName(guard_id_value)
 			if guard_id not in resolved_ids and guard_id not in participant_ids:
@@ -6151,8 +6154,11 @@ func _resolve_field_patrol_encounters(field_advance: Dictionary) -> Dictionary:
 		if participant_ids.is_empty():
 			continue
 		var total_army_strength := 0
+		var army_strength_before_by_army: Dictionary = {}
 		for army_id in participant_ids:
-			total_army_strength += _macro_army_member_count(_army_registry.get_army(army_id))
+			var army_strength_before := _macro_army_member_count(_army_registry.get_army(army_id))
+			army_strength_before_by_army[army_id] = army_strength_before
+			total_army_strength += army_strength_before
 		if total_army_strength <= 0:
 			continue
 		var ambush_army_ids: Array[StringName] = []
@@ -6184,6 +6190,8 @@ func _resolve_field_patrol_encounters(field_advance: Dictionary) -> Dictionary:
 			if not allocated:
 				break
 		var formation_losses_by_army: Dictionary = {}
+		var army_strength_after_by_army: Dictionary = {}
+		var army_phase_after_by_army: Dictionary = {}
 		for army_id in participant_ids:
 			var army := _army_registry.get_army(army_id)
 			var macro: Dictionary = Dictionary(army.get("macro_march", {}))
@@ -6205,14 +6213,32 @@ func _resolve_field_patrol_encounters(field_advance: Dictionary) -> Dictionary:
 					if updated_army.is_empty():
 						return _macro_failure(&"FIELD_ARMY_CLOSE_FAILED", "野外交战全灭军队无法关闭")
 			formation_losses_by_army[army_id] = formation_losses
+			var army_after := _army_registry.get_army(army_id)
+			army_strength_after_by_army[army_id] = _macro_army_member_count(army_after)
+			army_phase_after_by_army[army_id] = StringName(army_after.get("phase", &""))
+		var contact_milliseconds := float(field_advance.get("delta_milliseconds", 0))
+		for contact_value in contact_milliseconds_by_army.values():
+			contact_milliseconds = minf(contact_milliseconds, float(contact_value))
+		var contact_world_position := Vector2(patrol.get("world_position", Vector2.ZERO))
+		if not patrol_trace.is_empty():
+			contact_world_position = field.timed_trace_position_at(patrol_trace, contact_milliseconds)
 		var encounter := {
 			"patrol_id": patrol_id,
 			"army_ids": participant_ids.duplicate(),
 			"ambush_army_ids": ambush_army_ids.duplicate(),
 			"patrol_strength_before": patrol_strength_before,
 			"patrol_losses": patrol_losses,
+			"patrol_strength_after": patrol_strength_before - patrol_losses,
+			"army_strength_before_by_army": army_strength_before_by_army,
+			"army_strength_after_by_army": army_strength_after_by_army,
+			"army_phase_after_by_army": army_phase_after_by_army,
 			"formation_losses_by_army": formation_losses_by_army,
-			"world_position": Vector2i(patrol.get("world_position", Vector2i.ZERO)),
+			# V5 snapshots deliberately admit only durable scalar types. The timed
+			# solver returns a float for geometry precision, while the persisted event
+			# records the nearest authoritative millisecond just like world time.
+			"contact_milliseconds": roundi(contact_milliseconds),
+			"contact_world_position": Vector2i(contact_world_position),
+			"world_position": Vector2i(contact_world_position),
 			"world_milliseconds": int(field_advance.get("world_milliseconds", 0)),
 		}
 		# A patrol that has reached an army guarding a nearby field work can damage

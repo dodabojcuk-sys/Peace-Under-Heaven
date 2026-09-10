@@ -1174,6 +1174,14 @@ func _first_timed_contact_milliseconds(first: Array, second: Array, distance: fl
 	return first_contact
 
 
+## Shared read-only contact helpers for controller-owned encounter summaries.
+## FieldTacticsState already uses these timed traces for specialists and guards;
+## exposing the same calculation prevents a macro patrol report from placing an
+## encounter at the end of a frame instead of at the actual contact instant.
+func first_timed_contact_milliseconds(first: Array, second: Array, distance: float) -> float:
+	return _first_timed_contact_milliseconds(first, second, distance)
+
+
 func _timed_trace_position_at(trace: Array, time_milliseconds: float) -> Vector2:
 	for segment_value in trace:
 		var segment: Dictionary = Dictionary(segment_value)
@@ -1185,6 +1193,10 @@ func _timed_trace_position_at(trace: Array, time_milliseconds: float) -> Vector2
 		var to := Vector2(segment.get("to", from))
 		return from.lerp(to, clampf((time_milliseconds - start_time) / maxf(end_time - start_time, 0.0001), 0.0, 1.0))
 	return Vector2(Dictionary(trace.back()).get("to", Vector2.ZERO)) if not trace.is_empty() else Vector2.ZERO
+
+
+func timed_trace_position_at(trace: Array, time_milliseconds: float) -> Vector2:
+	return _timed_trace_position_at(trace, time_milliseconds)
 
 
 func position_has_terrain_kind(position: Vector2, terrain_kind: StringName) -> bool:
