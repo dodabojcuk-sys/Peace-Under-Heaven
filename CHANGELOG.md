@@ -2,6 +2,16 @@
 
 ## 2026-09-10
 
+- Added distinct direct-strip `候选` hover and `锁定` feedback, and extended
+  graphical verification from the chosen strip row through the exact formation
+  snapshot in the published macro order.
+- Resolved engineer release intent before construction planning: failed damaged
+  road repairs now remain persistent repair failures without producing a road
+  draft, task, project or resource side effect. Kept valid repair and explicit
+  open-land plan flows unchanged.
+- Fixed low-poly repair scaffolds to use the engineer's world anchor when a
+  repair project correctly has no construction polyline.
+
 - Delayed direct-map object locking until the pointer exits its compact source
   strip. Rows now only highlight while traversed, so a continuous diagonal drag
   cannot lock an earlier crossed option; final release rejects the strip and

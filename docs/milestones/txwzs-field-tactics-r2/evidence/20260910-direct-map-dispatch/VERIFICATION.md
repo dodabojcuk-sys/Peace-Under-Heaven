@@ -31,7 +31,9 @@ Godot 4.5.1 graphical Metal run passed:
 
 ```text
 DIRECT_DISPATCH_TRACE invalid=true scout=true march=true engineering=true start=true
-MACRO_MARCH_DIRECT_DISPATCH_GRAPHICAL_SMOKE PASS assertions=10
+CAPTURED: docs/milestones/txwzs-field-tactics-r2/evidence/20260910-direct-map-dispatch/01-picker-hover-engine-gui.png
+CAPTURED: docs/milestones/txwzs-field-tactics-r2/evidence/20260910-direct-map-dispatch/02-picker-locked-engine-gui.png
+MACRO_MARCH_DIRECT_DISPATCH_GRAPHICAL_SMOKE PASS assertions=14
 ```
 
 The test sends the normal `MacroMarchR0` GUI input sequence: mouse press,
@@ -49,10 +51,18 @@ release. It asserts:
 - focus loss clears a pending direct gesture, so its later release cannot
   publish an order;
 - a continuous path crossing several rows locks the intended final highlight,
-  not an earlier crossed option;
+  not an earlier crossed option; the test records the exact `formation_id` and
+  verifies that the published macro order contains that same formation;
+- the captured full-engine hover and locked frames differ at the active row,
+  rather than treating the internal hover index as visual feedback;
 - a food-shortage failure survives the next UI refresh with no army or food
   side effect; and a map-inspected army can arrive, remain stationed, then use
   the same camp's direct strip to issue its next route.
+- damaged-road repair intent remains a repair on both food-shortage and
+  unreachable-endpoint failures: the persistent error survives refresh and no
+  plan, project, specialist task or food side effect is created. A legal repair
+  still creates exactly one repair project, while a legal open-land release
+  remains a no-cost editable plan until `开工`.
 
 ## Evidence boundary
 

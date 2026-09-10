@@ -1,5 +1,30 @@
 # 当前状态
 
+## Direct-map hover and repair-intent repair (2026-09-10)
+
+The direct object strip now makes its two pre-commit states visible: a row is
+amber-highlighted and labelled `候选` while the pointer is still inside the
+strip, then changes to the persistent `锁定` state only after the pointer
+leaves for the map. The active row is therefore both reversible inside the
+strip and unambiguous after a subject has been chosen. The graphical contract
+captures both rendered states and verifies that the locked `formation_id` is
+also the exact formation transferred into the published macro order.
+
+An engineer release now resolves intent before it considers open-land planning.
+Releasing over a damaged road that fails repair preflight for food or
+reachability remains a failed repair: it preserves the persistent failure text
+through refresh and does not create a draft, project, specialist task or
+resource side effect. A valid damaged-road release still uses the existing
+repair transaction once, while a deliberate legal open-land release still
+creates the editable plan and waits for `开工`. Repair-project scaffolds now
+anchor on their engineer when no construction polyline exists, so the normal
+low-poly scene no longer reads an empty route as an invalid endpoint.
+
+The direct graphical contract has 14 independent checks. It is isolated
+Godot GUI-event/render evidence, including saved hover/locked screenshots;
+player-feel acceptance remains **OPEN**. The prior stall investigation remains
+**NOT REPRODUCED / NOT DIAGNOSED**.
+
 ## Direct-map gesture boundary repair (2026-09-10)
 
 The direct object strip now treats movement inside the strip as hover only. It

@@ -1236,9 +1236,20 @@ func _finish_direct_dispatch(screen_position: Vector2) -> void:
 		_commit_direct_march()
 		return
 	_update_direct_specialist_preview(screen_position)
-	if _direct_dispatch_preview.is_empty() \
-		and StringName(_direct_dispatch_locked.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER \
-		and _point_id_at_screen(screen_position) == &"":
+	var engineer := StringName(_direct_dispatch_locked.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER
+	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+	var damaged_road_id := _damaged_road_id_at_screen(field, screen_position)
+	var target_point_id := _point_id_at_screen(screen_position)
+	# Resolve the release intent before considering an open-land plan. A damaged
+	# road remains a repair attempt even when authority preview rejects it for
+	# food or reachability; otherwise an invalid repair silently changes jobs.
+	if engineer and damaged_road_id != &"":
+		if _direct_dispatch_preview.is_empty() or not _direct_dispatch_error.is_empty():
+			_cancel_direct_dispatch(_direct_dispatch_error if not _direct_dispatch_error.is_empty() else "道路维修无法安排", true)
+			return
+		_commit_direct_specialist()
+		return
+	if _direct_dispatch_preview.is_empty() and engineer and target_point_id == &"":
 		_begin_engineering_plan_from_direct_gesture(screen_position)
 		return
 	if _direct_dispatch_preview.is_empty() or not _direct_dispatch_error.is_empty():
@@ -2657,10 +2668,15 @@ func _draw_direct_dispatch_picker(canvas: Control) -> void:
 		var option: Dictionary = Dictionary(_direct_dispatch_options[index])
 		var rect := _direct_dispatch_option_rect(index)
 		var locked := not _direct_dispatch_locked.is_empty() and index == _direct_dispatch_hover_index
-		var color := Color("355b58", 0.96) if locked else Color("202d2b", 0.94)
+		var hovered := _direct_dispatch_locked.is_empty() and index == _direct_dispatch_hover_index
+		var color := Color("355b58", 0.96) if locked else (Color("4b5d4b", 0.98) if hovered else Color("202d2b", 0.94))
 		canvas.draw_rect(rect, color, true)
-		canvas.draw_rect(rect, Color("fff2bf") if locked else Color("7aa39a"), false, 1.5)
+		canvas.draw_rect(rect, Color("fff2bf") if locked else (Color("f2b86e") if hovered else Color("7aa39a")), false, 1.5)
 		canvas.draw_string(ThemeDB.fallback_font, rect.position + Vector2(8, 22), str(option.get("label", "对象")), HORIZONTAL_ALIGNMENT_LEFT, int(rect.size.x - 16), 12, Color("fff4d3"))
+		if locked:
+			canvas.draw_string(ThemeDB.fallback_font, rect.end - Vector2(42, 8), "锁定", HORIZONTAL_ALIGNMENT_RIGHT, 36, 10, Color("fff2bf"))
+		elif hovered:
+			canvas.draw_string(ThemeDB.fallback_font, rect.end - Vector2(42, 8), "候选", HORIZONTAL_ALIGNMENT_RIGHT, 36, 10, Color("f2b86e"))
 	if _direct_dispatch_locked.is_empty():
 		canvas.draw_string(ThemeDB.fallback_font, _direct_dispatch_anchor_screen + Vector2(18, 24), "滑入对象后继续拖动", HORIZONTAL_ALIGNMENT_LEFT, 160, 12, Color("fff4d3"))
 

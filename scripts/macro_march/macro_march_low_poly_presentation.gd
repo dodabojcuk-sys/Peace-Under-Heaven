@@ -649,7 +649,13 @@ func _sync_projects(projects: Dictionary, specialists: Dictionary) -> void:
 		var engineer := Dictionary(specialists.get(StringName(project.get("engineer_id", &"")), {}))
 		if not engineer.is_empty() and bool(engineer.get("alive", false)):
 			var scaffold := Node3D.new()
-			scaffold.position = _ground_position(Vector2(engineer.get("world_position", points.front())), 2.5)
+			# Repair projects intentionally have no construction polyline. Do not
+			# evaluate points.front() as a Dictionary.get default for that legitimate
+			# state: the engineer's authoritative position is the visual anchor.
+			var scaffold_world_position := Vector2(engineer.get("world_position", Vector2.ZERO))
+			if not engineer.has("world_position") and not points.is_empty():
+				scaffold_world_position = Vector2(points.front())
+			scaffold.position = _ground_position(scaffold_world_position, 2.5)
 			project_node.add_child(scaffold)
 			_add_box(scaffold, Vector3(12, 16, 1.5), Vector3.ZERO, Color("a87544"), "Scaffold")
 			_add_box(scaffold, Vector3(1.5, 16, 12), Vector3.ZERO, Color("a87544"), "Scaffold")
