@@ -235,33 +235,100 @@ func _sync_encounter_feedback(field: Dictionary) -> void:
 func _encounter_feedback_copy(patrol: Dictionary, encounter: Dictionary) -> Dictionary:
 	var participant_ids: Array = Array(encounter.get("army_ids", [])).duplicate()
 	participant_ids.sort()
-	var before_by_army: Dictionary = Dictionary(encounter.get("army_strength_before_by_army", {}))
-	var after_by_army: Dictionary = Dictionary(encounter.get("army_strength_after_by_army", {}))
-	var phase_by_army: Dictionary = Dictionary(encounter.get("army_phase_after_by_army", {}))
-	var own_before := 0
-	var own_after := 0
-	var post_state := "继续行军"
-	if not participant_ids.is_empty():
-		var primary_id := StringName(participant_ids.front())
-		post_state = _encounter_post_state_label(StringName(phase_by_army.get(primary_id, &"")))
-	for army_id_value in participant_ids:
-		var army_id := StringName(army_id_value)
-		own_before += int(before_by_army.get(army_id, 0))
-		own_after += int(after_by_army.get(army_id, 0))
+	var army_results := _encounter_army_results(encounter, participant_ids)
+	var own_before := _encounter_total(army_results, &"before")
+	var own_after := _encounter_total(army_results, &"after")
+	var own_losses := _encounter_total(army_results, &"losses")
+	if own_losses < 0 and own_before >= 0 and own_after >= 0:
+		own_losses = maxi(own_before - own_after, 0)
+	var patrol_before := _encounter_value(encounter, &"patrol_strength_before")
+	var patrol_losses := _encounter_value(encounter, &"patrol_losses")
+	var patrol_after := _encounter_value(encounter, &"patrol_strength_after")
+	if patrol_after < 0 and patrol_before >= 0 and patrol_losses >= 0:
+		patrol_after = maxi(patrol_before - patrol_losses, 0)
+	if patrol_losses < 0 and patrol_before >= 0 and patrol_after >= 0:
+		patrol_losses = maxi(patrol_before - patrol_after, 0)
 	return {
 		"key": _encounter_key(StringName(encounter.get("patrol_id", &"")), encounter),
 		"elapsed_seconds": 0.0,
 		"world_position": Vector2(encounter.get("contact_world_position", encounter.get("world_position", Vector2.ZERO))),
 		"patrol_name": str(patrol.get("display_name", "巡逻")),
 		"army_ids": participant_ids,
+		"army_results": army_results,
 		"own_before": own_before,
 		"own_after": own_after,
-		"own_losses": maxi(own_before - own_after, 0),
-		"patrol_before": int(encounter.get("patrol_strength_before", 0)),
-		"patrol_after": int(encounter.get("patrol_strength_after", 0)),
-		"patrol_losses": int(encounter.get("patrol_losses", 0)),
-		"post_state": post_state,
+		"own_losses": own_losses,
+		"patrol_before": patrol_before,
+		"patrol_after": patrol_after,
+		"patrol_losses": patrol_losses,
+		"post_state": _encounter_post_state_summary(army_results),
 	}
+
+
+func _encounter_value(encounter: Dictionary, key: StringName) -> int:
+	return int(encounter.get(key, -1)) if encounter.has(key) else -1
+
+
+func _encounter_army_results(encounter: Dictionary, participant_ids: Array) -> Array[Dictionary]:
+	var before_by_army: Dictionary = Dictionary(encounter.get("army_strength_before_by_army", {}))
+	var after_by_army: Dictionary = Dictionary(encounter.get("army_strength_after_by_army", {}))
+	var phase_by_army: Dictionary = Dictionary(encounter.get("army_phase_after_by_army", {}))
+	var losses_by_army: Dictionary = Dictionary(encounter.get("formation_losses_by_army", {}))
+	var results: Array[Dictionary] = []
+	for army_id_value in participant_ids:
+		var army_id := StringName(army_id_value)
+		var before := int(before_by_army.get(army_id, -1)) if before_by_army.has(army_id) else -1
+		var after := int(after_by_army.get(army_id, -1)) if after_by_army.has(army_id) else -1
+		var losses := -1
+		if losses_by_army.has(army_id):
+			losses = 0
+			for formation_loss in Dictionary(losses_by_army.get(army_id, {})).values():
+				losses += int(formation_loss)
+		if after < 0 and before >= 0 and losses >= 0:
+			after = maxi(before - losses, 0)
+		if losses < 0 and before >= 0 and after >= 0:
+			losses = maxi(before - after, 0)
+		results.append({
+			"army_id": army_id,
+			"before": before,
+			"after": after,
+			"losses": losses,
+			"phase": StringName(phase_by_army.get(army_id, &"")) if phase_by_army.has(army_id) else &"",
+		})
+	return results
+
+
+func _encounter_total(results: Array, key: StringName) -> int:
+	var total := 0
+	for result_value in results:
+		var value := int(Dictionary(result_value).get(key, -1))
+		if value < 0:
+			return -1
+		total += value
+	return total if not results.is_empty() else -1
+
+
+func _encounter_post_state_summary(army_results: Array) -> String:
+	if army_results.is_empty():
+		return "后续状态未记录"
+	var counts_by_label: Dictionary = {}
+	for result_value in army_results:
+		var phase := StringName(Dictionary(result_value).get("phase", &""))
+		var label := _encounter_post_state_label(phase) if phase != &"" else "后续状态未记录"
+		counts_by_label[label] = int(counts_by_label.get(label, 0)) + 1
+	if counts_by_label.size() == 1:
+		return str(counts_by_label.keys().front())
+	var labels: Array = counts_by_label.keys()
+	labels.sort()
+	var parts: Array[String] = []
+	for label_value in labels:
+		var label := str(label_value)
+		parts.append("%d支%s" % [int(counts_by_label[label]), label])
+	return "%d支参与：%s" % [army_results.size(), "、".join(parts)]
+
+
+func _encounter_count_label(value: int) -> String:
+	return str(value) if value >= 0 else "未记录"
 
 
 func _encounter_post_state_label(phase: StringName) -> String:
@@ -658,7 +725,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			var encounter_copy := _latest_encounter_copy(field, StringName(army.get("army_id", &"")))
 			var battle_line := "最近战报：暂无"
 			if not encounter_copy.is_empty():
-				battle_line = "最近战报：遭遇%s · 我军损失 %d、敌军损失 %d；我军剩 %d、敌军剩 %d · %s" % [str(encounter_copy.get("patrol_name", "巡逻")), int(encounter_copy.get("losses", 0)), int(encounter_copy.get("patrol_losses", 0)), int(encounter_copy.get("army_remaining", current_members)), int(encounter_copy.get("patrol_remaining", 0)), str(encounter_copy.get("post_state", "继续原任务"))]
+				battle_line = "最近战报：遭遇%s · 我军损失 %s、敌军损失 %s；我军剩 %s、敌军剩 %s · %s" % [str(encounter_copy.get("patrol_name", "巡逻")), _encounter_count_label(int(encounter_copy.get("losses", -1))), _encounter_count_label(int(encounter_copy.get("patrol_losses", -1))), _encounter_count_label(int(encounter_copy.get("army_remaining", -1))), _encounter_count_label(int(encounter_copy.get("patrol_remaining", -1))), str(encounter_copy.get("post_state", "后续状态未记录"))]
 			_detail_label.text = "当前军队：%d 人\n原军令进度：%d%%\n粮食已扣：%d\n%s\n%s%s" % [current_members, roundi(float(macro.progress_millis) / maxf(float(macro.total_millis), 1.0) * 100.0), int(macro.food_cost), battle_line, ("工程师维修后会沿实际道路接续原军令，不再扣粮。" if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED else "到达后可从驻扎点发出下一道军令。"), blocked_detail]
 		_confirm_button.disabled = true
 		_block_button.visible = false
@@ -788,20 +855,25 @@ func _latest_encounter_copy(field: Dictionary, army_id: StringName) -> Dictionar
 		var encounter: Dictionary = Dictionary(patrol.get("last_engagement", {}))
 		if encounter.is_empty() or army_id not in Array(encounter.get("army_ids", [])):
 			continue
-		var losses := 0
-		var losses_by_army: Dictionary = Dictionary(encounter.get("formation_losses_by_army", {}))
-		var formation_losses: Dictionary = Dictionary(losses_by_army.get(army_id, {}))
-		for formation_loss in formation_losses.values():
-			losses += int(formation_loss)
 		if latest.is_empty() or int(encounter.get("world_milliseconds", 0)) > int(latest.get("world_milliseconds", -1)):
+			var army_result: Dictionary = {}
+			for result_value in _encounter_army_results(encounter, [army_id]):
+				army_result = Dictionary(result_value)
+			var patrol_before := _encounter_value(encounter, &"patrol_strength_before")
+			var patrol_losses := _encounter_value(encounter, &"patrol_losses")
+			var patrol_remaining := _encounter_value(encounter, &"patrol_strength_after")
+			if patrol_remaining < 0 and patrol_before >= 0 and patrol_losses >= 0:
+				patrol_remaining = maxi(patrol_before - patrol_losses, 0)
+			if patrol_losses < 0 and patrol_before >= 0 and patrol_remaining >= 0:
+				patrol_losses = maxi(patrol_before - patrol_remaining, 0)
 			latest = {
 				"world_milliseconds": int(encounter.get("world_milliseconds", 0)),
-				"losses": losses,
+				"losses": int(army_result.get("losses", -1)),
 				"patrol_name": str(patrol.get("display_name", "巡逻")),
-				"patrol_losses": int(encounter.get("patrol_losses", 0)),
-				"patrol_remaining": int(encounter.get("patrol_strength_after", maxi(int(patrol.get("strength", 0)), 0))),
-				"army_remaining": int(Dictionary(encounter.get("army_strength_after_by_army", {})).get(army_id, 0)),
-				"post_state": _encounter_post_state_label(StringName(Dictionary(encounter.get("army_phase_after_by_army", {})).get(army_id, &""))),
+				"patrol_losses": patrol_losses,
+				"patrol_remaining": patrol_remaining,
+				"army_remaining": int(army_result.get("after", -1)),
+				"post_state": _encounter_post_state_label(StringName(army_result.get("phase", &""))) if StringName(army_result.get("phase", &"")) != &"" else "后续状态未记录",
 			}
 	return latest
 
@@ -2725,7 +2797,7 @@ func _draw_encounter_feedback(canvas: Control, rect: Rect2) -> void:
 		canvas.draw_rect(_encounter_notification_rect, Color("3b2927", 0.94), true)
 		canvas.draw_rect(_encounter_notification_rect, Color("ffd166", 0.90), false, 1.5)
 		canvas.draw_string(ThemeDB.fallback_font, _encounter_notification_rect.position + Vector2(10, 18), "战报 · %s" % str(_encounter_feedback.get("patrol_name", "巡逻")), HORIZONTAL_ALIGNMENT_LEFT, 184, 13, Color("fff4d3"))
-		canvas.draw_string(ThemeDB.fallback_font, _encounter_notification_rect.position + Vector2(10, 33), "点击定位：我军 -%d · 敌军 -%d" % [int(_encounter_feedback.get("own_losses", 0)), int(_encounter_feedback.get("patrol_losses", 0))], HORIZONTAL_ALIGNMENT_LEFT, 184, 12, Color("ffd166"))
+		canvas.draw_string(ThemeDB.fallback_font, _encounter_notification_rect.position + Vector2(10, 33), "点击定位：我军 -%s · 敌军 -%s" % [_encounter_count_label(int(_encounter_feedback.get("own_losses", -1))), _encounter_count_label(int(_encounter_feedback.get("patrol_losses", -1)))], HORIZONTAL_ALIGNMENT_LEFT, 184, 12, Color("ffd166"))
 		return
 	var pulse := 1.0 + sin(elapsed * TAU * 4.0) * 0.12
 	var fade := clampf(1.0 - maxf(elapsed - 1.75, 0.0) / 0.65, 0.0, 1.0)
@@ -2744,13 +2816,13 @@ func _draw_encounter_feedback(canvas: Control, rect: Rect2) -> void:
 		canvas.draw_line(screen + Vector2(-12, 12), screen + Vector2(12, -12), Color("e26452", fade), 3.0)
 		if elapsed < 0.62:
 			canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-34, -30), "交锋", HORIZONTAL_ALIGNMENT_CENTER, 68, 13, Color("fff4d3", fade))
-	canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-74, 4), "我军 %d" % int(_encounter_feedback.get("own_after", 0)), HORIZONTAL_ALIGNMENT_CENTER, 58, 12, Color("9ee5f4", fade))
-	canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(16, 4), "%s %d" % [str(_encounter_feedback.get("patrol_name", "敌巡")), int(_encounter_feedback.get("patrol_after", 0))], HORIZONTAL_ALIGNMENT_LEFT, 84, 12, Color("ff9b85", fade))
+	canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-74, 4), "我军 %s" % _encounter_count_label(int(_encounter_feedback.get("own_after", -1))), HORIZONTAL_ALIGNMENT_CENTER, 58, 12, Color("9ee5f4", fade))
+	canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(16, 4), "%s %s" % [str(_encounter_feedback.get("patrol_name", "敌巡")), _encounter_count_label(int(_encounter_feedback.get("patrol_after", -1)))], HORIZONTAL_ALIGNMENT_LEFT, 84, 12, Color("ff9b85", fade))
 	var result_rect := Rect2(screen + Vector2(-96, 28), Vector2(192, 42))
 	canvas.draw_rect(result_rect, Color("2b3631", 0.90 * fade), true)
 	canvas.draw_rect(result_rect, Color("ffd166", 0.80 * fade), false, 1.0)
-	canvas.draw_string(ThemeDB.fallback_font, result_rect.position + Vector2(6, 16), "%s · 我军 -%d / 敌军 -%d" % [str(_encounter_feedback.get("patrol_name", "巡逻")), int(_encounter_feedback.get("own_losses", 0)), int(_encounter_feedback.get("patrol_losses", 0))], HORIZONTAL_ALIGNMENT_LEFT, 180, 12, Color("fff4d3", fade))
-	canvas.draw_string(ThemeDB.fallback_font, result_rect.position + Vector2(6, 32), "我军剩 %d · 敌军剩 %d · %s" % [int(_encounter_feedback.get("own_after", 0)), int(_encounter_feedback.get("patrol_after", 0)), str(_encounter_feedback.get("post_state", "继续原任务"))], HORIZONTAL_ALIGNMENT_LEFT, 180, 12, Color("ffd166", fade))
+	canvas.draw_string(ThemeDB.fallback_font, result_rect.position + Vector2(6, 16), "%s · 我军 -%s / 敌军 -%s" % [str(_encounter_feedback.get("patrol_name", "巡逻")), _encounter_count_label(int(_encounter_feedback.get("own_losses", -1))), _encounter_count_label(int(_encounter_feedback.get("patrol_losses", -1)))], HORIZONTAL_ALIGNMENT_LEFT, 180, 12, Color("fff4d3", fade))
+	canvas.draw_string(ThemeDB.fallback_font, result_rect.position + Vector2(6, 32), "我军剩 %s · 敌军剩 %s · %s" % [_encounter_count_label(int(_encounter_feedback.get("own_after", -1))), _encounter_count_label(int(_encounter_feedback.get("patrol_after", -1))), str(_encounter_feedback.get("post_state", "后续状态未记录"))], HORIZONTAL_ALIGNMENT_LEFT, 180, 12, Color("ffd166", fade))
 
 
 func _draw_road_choice_points(canvas: Control, roads_by_id: Dictionary) -> void:

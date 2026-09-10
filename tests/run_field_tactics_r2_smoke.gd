@@ -1288,6 +1288,22 @@ func _run_patrol_encounter_contract() -> void:
 	crossing_patrol.resolved_army_ids = []
 	crossing_patrol.ambush_consumed_army_ids = []
 	crossing_field.patrols_by_id[&"patrol.ridge.001"] = crossing_patrol
+	# The contact summary is also the authority input to nearby engineered-road
+	# damage. Keep one normal road on the crossing geometry so this time-split
+	# contract proves both the reported contact and its gameplay consequence.
+	var crossing_damage_road_id := &"test.crossing.engineered"
+	crossing_field.roads_by_id[crossing_damage_road_id] = {
+		"road_id": crossing_damage_road_id,
+		"source_point_id": &"blackstone_city",
+		"target_point_id": &"northwatch_garrison",
+		"route_world_points": Array(ridge.points).duplicate(true),
+		"road_kind": FieldTacticsState.ROAD_NORMAL,
+		"state": FieldTacticsState.ROAD_OPEN,
+		"durability": 1,
+		"max_durability": 1,
+		"built": true,
+		"project_id": &"test.crossing",
+	}
 	var crossing_duration := float(int(crossing_plan.get("duration_milliseconds", 0))) / 1000.0
 	var crossing_snapshot: Dictionary = crossing_city.export_v5_campaign_snapshot()
 	var crossing_comparison_scenes: Array[Node] = []
@@ -1310,16 +1326,34 @@ func _run_patrol_encounter_contract() -> void:
 	_advance_controller_frames(crossing_comparison_cities[2], crossing_duration, [0.017, 0.041, 0.113, 0.007])
 	var crossing_after: Dictionary = crossing_city._army_registry.get_army(crossing_army_id)
 	var crossing_patrol_after: Dictionary = Dictionary(crossing_field.patrols_by_id[&"patrol.ridge.001"])
+	var crossing_encounter: Dictionary = Dictionary(crossing_patrol_after.get("last_engagement", {}))
+	var crossing_damage_road: Dictionary = Dictionary(crossing_field.roads_by_id.get(crossing_damage_road_id, {}))
 	var crossing_army_count: int = crossing_city._macro_army_member_count(crossing_after)
 	var crossing_results_match := true
 	for comparison_city in crossing_comparison_cities:
 		var comparison_army: Dictionary = comparison_city._army_registry.get_army(crossing_army_id)
 		var comparison_patrol: Dictionary = Dictionary(comparison_city._war_loop_state.field_tactics.patrols_by_id[&"patrol.ridge.001"])
+		var comparison_encounter: Dictionary = Dictionary(comparison_patrol.get("last_engagement", {}))
+		var comparison_damage_road: Dictionary = Dictionary(comparison_city._war_loop_state.field_tactics.roads_by_id.get(crossing_damage_road_id, {}))
+		print("CROSSING_CONTACT_COMPARE world_contact=%d/%d position=%s/%s damage=%s/%s state=%s/%s" % [
+			int(crossing_encounter.get("contact_world_milliseconds", -1)), int(comparison_encounter.get("contact_world_milliseconds", -1)),
+			str(crossing_encounter.get("contact_world_position", Vector2i.ZERO)), str(comparison_encounter.get("contact_world_position", Vector2i.ZERO)),
+			String(crossing_encounter.get("damaged_road_id", &"")), String(comparison_encounter.get("damaged_road_id", &"")),
+			String(crossing_damage_road.get("state", &"")), String(comparison_damage_road.get("state", &"")),
+		])
 		crossing_results_match = crossing_results_match and (
 			StringName(comparison_army.get("phase", &"")) == StringName(crossing_after.get("phase", &""))
 			and comparison_city._macro_army_member_count(comparison_army) == crossing_army_count
 			and int(comparison_patrol.get("strength", -1)) == int(crossing_patrol_after.get("strength", -1))
 			and Array(comparison_patrol.get("resolved_army_ids", [])) == Array(crossing_patrol_after.get("resolved_army_ids", []))
+			# Persisted positions are Vector2i and frame remainders quantize the
+			# continuous first-contact solver at the millisecond boundary. A three-ms,
+			# one-world-unit tolerance proves the same physical contact without asking
+			# different valid frame partitions to share a rounding artifact.
+			and absi(int(comparison_encounter.get("contact_world_milliseconds", -1)) - int(crossing_encounter.get("contact_world_milliseconds", -2))) <= 3
+			and Vector2i(comparison_encounter.get("contact_world_position", Vector2i.ZERO)).distance_to(Vector2i(crossing_encounter.get("contact_world_position", Vector2i(1, 1)))) <= 1.0
+			and StringName(comparison_encounter.get("damaged_road_id", &"")) == crossing_damage_road_id
+			and StringName(comparison_damage_road.get("state", &"")) == FieldTacticsState.ROAD_DAMAGED
 		)
 	_check(
 		bool(crossing_issue.get("success", false))
@@ -1328,6 +1362,13 @@ func _run_patrol_encounter_contract() -> void:
 			and Array(crossing_patrol_after.get("resolved_army_ids", [])).has(crossing_army_id)
 			and crossing_results_match,
 		"军队与巡逻在同一道路相向穿越时不会因帧末错开而漏战，单步、30/60 FPS 与不规则帧得到相同结算"
+	)
+	_check(
+		StringName(crossing_encounter.get("damaged_road_id", &"")) == crossing_damage_road_id
+			and StringName(crossing_damage_road.get("state", &"")) == FieldTacticsState.ROAD_DAMAGED
+			and int(crossing_encounter.get("contact_milliseconds", -1)) >= 0
+			and Vector2i(crossing_encounter.get("contact_world_position", Vector2i.ZERO)) != Vector2i(crossing_patrol_after.get("world_position", Vector2i.ZERO)),
+		"首次接触坐标同时决定工程道路损坏；大步、30/60 FPS 与不规则帧保持同一接触和损坏结果"
 	)
 	for comparison_scene in crossing_comparison_scenes:
 		comparison_scene.queue_free()

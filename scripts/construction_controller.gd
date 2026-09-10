@@ -6237,6 +6237,11 @@ func _resolve_field_patrol_encounters(field_advance: Dictionary) -> Dictionary:
 			# solver returns a float for geometry precision, while the persisted event
 			# records the nearest authoritative millisecond just like world time.
 			"contact_milliseconds": roundi(contact_milliseconds),
+			# The per-step contact offset is useful to reconstruct the trace, but it
+			# naturally differs when the same world interval is split into frames.
+			# Persist the matching world-clock instant for reports, diagnostics and
+			# deterministic comparison without introducing another combat clock.
+			"contact_world_milliseconds": int(field_advance.get("world_milliseconds", 0)) - int(field_advance.get("delta_milliseconds", 0)) + roundi(contact_milliseconds),
 			"contact_world_position": Vector2i(contact_world_position),
 			"world_position": Vector2i(contact_world_position),
 			"world_milliseconds": int(field_advance.get("world_milliseconds", 0)),

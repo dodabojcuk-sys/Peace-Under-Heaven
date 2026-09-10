@@ -26,7 +26,7 @@ world clock into the authored patrol, then checks:
   effect or alter the settled army/food facts;
 - an off-screen encounter remains non-disruptive until its explicit map notice
   is clicked; and
-- V5 cold restore preserves the authority result but primes it as history, so
+- same-process V5 snapshot restore preserves the authority result but primes it as history, so
   it cannot replay the effect or sound.
 
 The graphical command completed with **7 assertions**.
@@ -55,10 +55,12 @@ Godot executable:
 | --- | --- |
 | editor import / script parse | PASS |
 | `tests/run_field_tactics_r2_smoke.gd` isolated V5 store | PASS, 71 assertions |
-| `tests/run_macro_march_encounter_feedback_graphical_smoke.gd` isolated V5 store | PASS, 7 assertions |
+| `tests/run_macro_march_encounter_feedback_graphical_smoke.gd` isolated V5 store | Historical result: PASS, 7 assertions; superseded by the 11-assertion continuous Controller-process follow-up. |
 | Movie Maker encounter capture | PASS, 110 frames at 60 FPS |
 
 The wider multi-army/shared-patrol and siege-parallel settlement contracts stay
 in the Field R2 smoke suite. This visual checkpoint adds presentation-specific
-idempotence and cold-restore coverage; it does not claim desktop-system-input
-or player-experience acceptance. Player acceptance remains **OPEN**.
+idempotence and same-process snapshot-restore coverage; actual exit/reopen
+recovery is covered separately by the 2026-09-11 independent-process follow-up.
+It does not claim desktop-system-input or player-experience acceptance. Player
+acceptance remains **OPEN**.

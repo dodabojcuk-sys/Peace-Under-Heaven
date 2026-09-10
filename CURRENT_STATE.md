@@ -8,7 +8,17 @@ Macro March 现在只读 FieldTacticsState 已成功提交的巡逻遭遇事实�
 
 `ConstructionController` 把巡逻与军队带时间轨迹的**首次**接触毫秒和坐标写入同一场已结算遭遇摘要。`ArmyRegistry` 仍是编队和军令事实所有者，`FieldTacticsState` 仍持有巡逻和遭遇摘要。地图刷新、暂停、倍速、重复推进与冷恢复只读取这些事实：不会重复扣兵或重播旧特效。屏幕外事件显示可点击定位通知，但不会自动移动镜头；可见性仍仅来自 `visible_patrols_by_id`。
 
-图形 GUI 事件回归从正式地图长按派兵开始，走到自然巡逻遭遇、短反馈、战果侧栏、屏幕外定位以及冷恢复。证据位于 `docs/milestones/txwzs-field-tactics-r2/evidence/20260910-encounter-readability/`；它是引擎 GUI 输入与 Movie Maker 证据，不是 macOS 正常系统鼠标手感验收。玩家验收保持 **OPEN**。
+图形 GUI 事件回归从正式地图长按派兵开始，走到自然巡逻遭遇、短反馈、战果侧栏、屏幕外定位以及同进程快照恢复。证据位于 `docs/milestones/txwzs-field-tactics-r2/evidence/20260910-encounter-readability/`；它是引擎 GUI 输入与 Movie Maker 证据，不是 macOS 正常系统鼠标手感验收。玩家验收保持 **OPEN**。
+
+## 遭遇战正确性与连续证据补齐（2026-09-11）
+
+历史遭遇记录缺少剩余人数时，地图现在显示“未记录”；只有同次战报中完整的前值与损失才允许推导，绝不使用当前巡逻或军队兵力冒充历史结果。多军队遭遇同时保留总伤亡与每支参与军队的后续状态，因此一支全灭不会覆盖另一支存活军队的结果。
+
+遭遇摘要同时保存步内 `contact_milliseconds` 与可跨帧比较的 `contact_world_milliseconds`。`contact_world_position` 仍是工程道路损坏的权威输入，因此 Field R2 以大步、30 FPS、60 FPS 和不规则帧核对接触、伤亡和受损道路；连续几何在毫秒/整数坐标量化范围内一致，且伤亡和受损道路身份相同。
+
+正式路线复查中，主路 Route A 通过；工程 Route B 在银渡城续令前以空驻点 `point=` 触发既有 `R2_STATION_ISSUE_FAIL`。同一失败可在干净的 `a00b3d3` 基线工作树复现，且工程路线仍自然记录一次伏击；因此不归因于本次接触坐标变更，保持为独立待修回归，不把整局路线宣称为全绿。
+
+新的 453 帧引擎 GUI Movie Maker 记录由正式按住派兵开始，让 `ConstructionController._process` 同步推进行军与巡逻、经过遭遇、反馈结束及后续状态。原来的“冷恢复”表述现已收紧为**同进程快照恢复**；独立 A/B Godot 进程另行验证保存、退出、重开后的战果保留与 `replay=false`。证据位于 `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-encounter-correctness/`。基础派兵仍为结项，停滞调查仍为 **NOT REPRODUCED / NOT DIAGNOSED**，玩家验收仍 **OPEN**。
 
 ## Direct-dispatch copy priority (2026-09-10)
 

@@ -1,10 +1,15 @@
 # Changelog
 
+## 2026-09-11
+
+- Corrected patrol-encounter history and evidence boundaries: missing historical remaining strengths now render as `未记录`, multi-army reports preserve aggregate losses plus distinct participant states, and a new durable `contact_world_milliseconds` accompanies the per-step contact offset. Field R2 now compares contact quantization, casualties and the engineered road damaged by contact across large/30 FPS/60 FPS/irregular Controller frames.
+- Replaced the encounter sample's split army/patrol evidence with a continuous Controller-process GUI-event run, added an independent-process settled-encounter persistence/replay check, and documented same-process snapshot restore separately from actual exit/reopen recovery. Evidence: `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-encounter-correctness/`.
+
 ## 2026-09-10
 
 - Closed the user-confirmed baseline dispatch phase: `用户确认基础派兵功能完成，本阶段结项。` Follow-up work is now limited to dispatch regressions; overall hand-feel and theatre quality remain open, and the prior stall remains **NOT REPRODUCED / NOT DIAGNOSED**.
-- Added a transient, authority-read patrol-encounter presentation: first-contact coordinates/timing, a short approach/impact/hit effect, generated clash sting, nearby result card, selected-army detailed report, and an explicit off-screen locate notification. The view neither calculates losses nor writes combat/save state, and cold restore primes historical encounters without replaying them.
-- Added graphical GUI-event coverage from direct map dispatch through natural patrol contact, actual loss/result copy, pause/speed/refresh idempotence, off-screen notification and cold restore. Captured engine screenshots and a Movie Maker recording under `docs/milestones/txwzs-field-tactics-r2/evidence/20260910-encounter-readability/`.
+- Added a transient, authority-read patrol-encounter presentation: first-contact coordinates/timing, a short approach/impact/hit effect, generated clash sting, nearby result card, selected-army detailed report, and an explicit off-screen locate notification. The view neither calculates losses nor writes combat/save state, and same-process snapshot restore primes historical encounters without replaying them.
+- Added graphical GUI-event coverage from direct map dispatch through natural patrol contact, actual loss/result copy, pause/speed/refresh idempotence, off-screen notification and same-process snapshot restore. Captured engine screenshots and a Movie Maker recording under `docs/milestones/txwzs-field-tactics-r2/evidence/20260910-encounter-readability/`.
 
 - Give the direct-map dispatch gesture ownership of its transient status and
   side detail: candidate, locked valid target and invalid target now have
