@@ -1,5 +1,30 @@
 # 当前状态
 
+## Direct-map gesture boundary repair (2026-09-10)
+
+The direct object strip now treats movement inside the strip as hover only. It
+locks the last highlighted formation, stationed army or specialist only after
+the pointer leaves the strip for the map, so a diagonal path that crosses other
+rows cannot accidentally choose the first row it happens to touch. The final
+release position is rechecked as an in-map, non-strip target before any command
+entry is called.
+
+Focus loss clears the direct gesture alongside the legacy draw gesture; restoring
+the window requires a fresh press and hold. A map-inspected stationed army no
+longer suppresses the direct strip at its camp: only the explicit city formation
+selection retains the older multi-formation draft path. Failed direct previews
+now use the persistent Macro March status channel, and error rendering wins over
+a stale valid route. Specialist movement, new-scout dispatch and repair previews
+all use authoritative read-only reachability/cost checks before release; their
+existing controller entries revalidate again on commit.
+
+The graphical direct-dispatch test now naturally waits through scene frames,
+traverses several strip rows before leaving it, sends focus loss, verifies the
+failure message after a refresh, and stations then reissues a viewed army from
+the same camp. Macro March (30) and Field R2 (71) remain green. This is engine
+GUI-event evidence; player acceptance remains **OPEN** and the earlier stall is
+still **NOT REPRODUCED / NOT DIAGNOSED**.
+
 ## Direct map dispatch gesture (2026-09-10)
 
 Macro March now supports a one-subject map command without taking over the

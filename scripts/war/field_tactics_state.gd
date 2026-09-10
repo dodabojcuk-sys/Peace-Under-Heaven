@@ -178,6 +178,29 @@ func preview_specialist_move_from_point(source_point_id: StringName, target_poin
 	}
 
 
+func preview_specialist_move(specialist_id: StringName, target_point_id: StringName) -> Dictionary:
+	# Keep direct-map feedback on the same reachability facts as the actual
+	# specialist command. A target that cannot be reached must not look ready
+	# merely because it has a visible map point.
+	var specialist := Dictionary(specialists_by_id.get(specialist_id, {}))
+	if specialist.is_empty() or not bool(specialist.get("alive", false)) or StringName(specialist.get("project_id", &"")) != &"":
+		return {"valid": false, "error": "该专员当前无法接受新任务"}
+	if target_point_id == &"" or StringName(specialist.get("current_point_id", &"")) == target_point_id:
+		return {"valid": false, "error": "请选择另一处城池或驻点"}
+	var target_position := _point_position(target_point_id)
+	if target_position == INVALID_WORLD_POSITION:
+		return {"valid": false, "error": "专员目标不存在"}
+	var start_position := Vector2(specialist.get("world_position", _point_position(StringName(specialist.get("current_point_id", &"")))))
+	var movement_plan := _plan_specialist_land_path(start_position, Vector2(target_position))
+	if movement_plan.is_empty():
+		return {"valid": false, "error": "特殊单位无法到达该位置"}
+	return {
+		"valid": true,
+		"duration_milliseconds": maxi(1800, int(movement_plan.get("duration_milliseconds", 0))),
+		"points": Array(movement_plan.get("points", [])).duplicate(true),
+	}
+
+
 func order_specialist_move(specialist_id: StringName, target_point_id: StringName) -> Dictionary:
 	var specialist := Dictionary(specialists_by_id.get(specialist_id, {}))
 	if specialist.is_empty() or not bool(specialist.get("alive", false)) or target_point_id == &"":
@@ -476,6 +499,27 @@ func damage_road(road_id: StringName, amount: int) -> bool:
 
 func repair_road(engineer_id: StringName, road_id: StringName) -> bool:
 	return not begin_road_repair(engineer_id, road_id).is_empty()
+
+
+func preview_road_repair(engineer_id: StringName, road_id: StringName) -> Dictionary:
+	var engineer := Dictionary(specialists_by_id.get(engineer_id, {}))
+	var road := Dictionary(roads_by_id.get(road_id, {}))
+	if (
+		engineer.is_empty() or StringName(engineer.get("role", &"")) != SPECIALIST_ENGINEER
+		or not bool(engineer.get("alive", false)) or road.is_empty()
+		or StringName(road.get("road_kind", &"")) == ROAD_MAIN
+		or StringName(road.get("state", &"")) != ROAD_DAMAGED
+		or StringName(engineer.get("project_id", &"")) != &""
+	):
+		return {"valid": false, "error": "工程师当前无法维修该道路"}
+	var repair_target := _reachable_repair_endpoint(engineer, road)
+	if repair_target.is_empty():
+		return {"valid": false, "error": "工程师无法到达受损道路"}
+	return {
+		"valid": true,
+		"target_point_id": StringName(repair_target.get("point_id", &"")),
+		"duration_milliseconds": int(Dictionary(repair_target.get("movement_plan", {})).get("duration_milliseconds", 0)),
+	}
 
 
 func begin_road_repair(engineer_id: StringName, road_id: StringName) -> Dictionary:

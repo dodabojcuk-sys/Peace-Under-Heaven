@@ -35,12 +35,24 @@ func _run() -> void:
 	var scout_target_screen := macro._world_to_screen(Vector2(macro._point_from_model(macro._model(), scout_target_id).get("world_position", Vector2.ZERO)))
 	var target_screen := macro._world_to_screen(Vector2(macro._point_from_model(macro._model(), target_id).get("world_position", Vector2.ZERO)))
 
+	# Focus loss must cancel the new direct gesture just as it cancels legacy
+	# drawing. A later release cannot issue from a stale object-strip selection.
+	await _open_picker(macro, source_screen)
+	var focus_option_index := _option_index(macro, &"NEW_SCOUT")
+	_hover_option(macro, focus_option_index)
+	macro._notification(Window.NOTIFICATION_WM_WINDOW_FOCUS_OUT)
+	_send_map_release(macro, scout_target_screen)
+	await process_frame
+	var focus_clears_direct_gesture := not macro._direct_dispatch_pending \
+		and macro._direct_dispatch_locked.is_empty() \
+		and macro._direct_dispatch_preview.is_empty()
+
 	# An invalid direct-scout release must not create a specialist or spend food.
 	var food_before_invalid := int(city.food)
 	var specialists_before := Dictionary(city.get_field_tactics_read_model().get("specialists_by_id", {})).size()
-	_open_picker(macro, source_screen)
+	await _open_picker(macro, source_screen)
 	var new_scout_index := _option_index(macro, &"NEW_SCOUT")
-	_lock_option(macro, new_scout_index)
+	_hover_option(macro, new_scout_index)
 	_send_map_motion(macro, macro._map_rect().position + Vector2(8, 8))
 	_send_map_release(macro, macro._map_rect().position + Vector2(8, 8))
 	await process_frame
@@ -48,10 +60,21 @@ func _run() -> void:
 		and Dictionary(city.get_field_tactics_read_model().get("specialists_by_id", {})).size() == specialists_before \
 		and Array(macro._model().get("armies", [])).is_empty()
 
+	# Releasing inside the object strip is a cancellation, not a hidden command.
+	# This verifies the final release position is checked before any authority call.
+	await _open_picker(macro, source_screen)
+	_hover_option(macro, new_scout_index)
+	var food_before_picker_release := int(city.food)
+	_send_map_release(macro, macro._direct_dispatch_option_rect(new_scout_index).get_center())
+	await process_frame
+	var picker_release_has_no_side_effect := not macro._direct_dispatch_pending \
+		and int(city.food) == food_before_picker_release \
+		and Dictionary(city.get_field_tactics_read_model().get("specialists_by_id", {})).size() == specialists_before
+
 	# A valid new-scout gesture atomically creates and orders the specialist.
-	_open_picker(macro, source_screen)
+	await _open_picker(macro, source_screen)
 	new_scout_index = _option_index(macro, &"NEW_SCOUT")
-	_lock_option(macro, new_scout_index)
+	_hover_option(macro, new_scout_index)
 	_send_map_motion(macro, scout_target_screen)
 	_send_map_release(macro, scout_target_screen)
 	var direct_scout_status := macro._status_label.text
@@ -70,23 +93,81 @@ func _run() -> void:
 	target_screen = macro._world_to_screen(Vector2(macro._point_from_model(macro._model(), target_id).get("world_position", Vector2.ZERO)))
 	var food_before_march := int(city.food)
 	var armies_before := Array(macro._model().get("armies", [])).size()
-	_open_picker(macro, source_screen)
+	# Follow the natural line from the anchor through the strip to the first row.
+	# It crosses lower rows first; only the last highlighted row may lock after
+	# leaving the strip, otherwise the older eager-lock bug selects the wrong one.
+	await _open_picker(macro, source_screen)
 	var formation_index := _option_index(macro, &"FORMATION")
-	_lock_option(macro, formation_index)
-	_send_map_motion(macro, target_screen)
+	_move_through_option_to_target(macro, formation_index, scout_target_screen)
+	var crossed_strip_locks_intended_option := StringName(macro._direct_dispatch_locked.get("kind", &"")) == &"FORMATION"
 	var preview_route_id := StringName(macro._direct_dispatch_preview.get("route_id", &""))
-	var preview_food := int(macro._direct_dispatch_preview.get("food_cost", 0))
+	# No final motion event is sent for northwatch. Release must replan from the
+	# actual release point rather than commit the prior ridge-watch preview.
 	_send_map_release(macro, target_screen)
 	await process_frame
 	var issued_armies: Array = Array(macro._model().get("armies", []))
 	var issued_army := Dictionary(issued_armies.back()) if not issued_armies.is_empty() else {}
 	var issued_macro: Dictionary = Dictionary(issued_army.get("macro_march", {}))
 	var direct_march_commits_once := issued_armies.size() == armies_before + 1 \
-		and int(city.food) == food_before_march - preview_food \
-		and StringName(issued_macro.get("route_id", &"")) == preview_route_id \
+		and int(issued_macro.get("food_cost", 0)) > 0 \
+		and int(city.food) == food_before_march - int(issued_macro.get("food_cost", 0)) \
+		and StringName(issued_macro.get("target_point_id", &"")) == target_id \
+		and StringName(issued_macro.get("route_id", &"")) == &"road.blackstone.northwatch.ridge" \
 		and macro._draft_route.is_empty() \
 		and macro._engineering_draft.is_empty() \
 		and macro._confirm_button.disabled
+
+	# Viewing a stationed army on the map must not turn its own camp into the old
+	# confirmation-only flow. The same long hold opens the strip and can issue a
+	# new direct station order.
+	var reached_station: Dictionary = city.advance_macro_march_time(
+		StringName(issued_army.get("army_id", &"")), StringName(issued_macro.get("order_id", &"")),
+		int(issued_macro.get("progress_millis", 0)), int(issued_macro.get("total_millis", 0))
+	)
+	await process_frame
+	var stationed_army := Dictionary(reached_station.get("army", {}))
+	var station_source_id: StringName = &"northwatch_garrison"
+	var station_target_id: StringName = &"forest_garrison"
+	macro._selected_army_id = StringName(stationed_army.get("army_id", &""))
+	macro.refresh()
+	var station_source_screen := macro._world_to_screen(Vector2(macro._point_from_model(macro._model(), station_source_id).get("world_position", Vector2.ZERO)))
+	var station_target_screen := macro._world_to_screen(Vector2(macro._point_from_model(macro._model(), station_target_id).get("world_position", Vector2.ZERO)))
+	var station_food_before := int(city.food)
+	await _open_picker(macro, station_source_screen)
+	var stationed_army_index := _option_index(macro, &"ARMY")
+	_move_through_option_to_target(macro, stationed_army_index, station_target_screen)
+	var station_preview_route := StringName(macro._direct_dispatch_preview.get("route_id", &""))
+	_send_map_release(macro, station_target_screen)
+	await process_frame
+	var station_reissue := Dictionary(macro._selected_army(macro._model()).get("macro_march", {}))
+	var viewed_station_can_direct_dispatch := bool(reached_station.get("success", false)) \
+		and StringName(stationed_army.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED \
+		and stationed_army_index >= 0 \
+		and StringName(station_reissue.get("route_id", &"")) == station_preview_route \
+		and StringName(station_reissue.get("target_point_id", &"")) == station_target_id \
+		and int(city.food) < station_food_before
+
+	# A direct authority-preview failure persists over refresh instead of being
+	# replaced next frame by context copy, and it does not add an army or charge
+	# food. Restore the fixture food only after this isolated negative check.
+	var food_before_shortage := int(city.food)
+	city.food = 0
+	macro._selected_army_id = &""
+	macro.refresh()
+	source_screen = macro._world_to_screen(Vector2(macro._point_from_model(macro._model(), source_id).get("world_position", Vector2.ZERO)))
+	target_screen = macro._world_to_screen(Vector2(macro._point_from_model(macro._model(), target_id).get("world_position", Vector2.ZERO)))
+	var armies_before_shortage := Array(macro._model().get("armies", [])).size()
+	await _open_picker(macro, source_screen)
+	formation_index = _option_index(macro, &"FORMATION")
+	_move_through_option_to_target(macro, formation_index, target_screen)
+	_send_map_release(macro, target_screen)
+	await process_frame
+	macro.refresh()
+	var shortage_persists_over_refresh := macro._status_label.text.contains("粮食不足") \
+		and Array(macro._model().get("armies", [])).size() == armies_before_shortage \
+		and int(city.food) == 0
+	city.food = food_before_shortage
+	macro.refresh()
 
 	# A local engineer can turn the same picker gesture into an editable road
 	# plan. It spends nothing until the explicit map-side 开工 control is clicked.
@@ -96,9 +177,9 @@ func _run() -> void:
 	source_screen = macro._world_to_screen(Vector2(macro._point_from_model(macro._model(), source_id).get("world_position", Vector2.ZERO)))
 	var engineering_endpoint := macro._world_to_screen(Vector2(330, 650))
 	var food_before_engineering := int(city.food)
-	_open_picker(macro, source_screen)
+	await _open_picker(macro, source_screen)
 	var engineer_index := _specialist_option_index(macro, FieldTacticsState.SPECIALIST_ENGINEER)
-	_lock_option(macro, engineer_index)
+	_hover_option(macro, engineer_index)
 	_send_map_motion(macro, engineering_endpoint)
 	_send_map_release(macro, engineering_endpoint)
 	await process_frame
@@ -115,20 +196,20 @@ func _run() -> void:
 	await process_frame
 	var map_start_commits_once := Dictionary(city.get_field_tactics_read_model().get("projects_by_id", {})).size() == projects_before + 1 \
 		and int(city.food) == food_before_engineering - plan_cost
-	print("DIRECT_DISPATCH_TRACE invalid=%s scout=%s march=%s engineering=%s start=%s scout_index=%d formation_index=%d engineer_index=%d route=%s food=%d armies=%d specialist=%s status=%s" % [
-		str(invalid_scout_has_no_side_effect), str(direct_scout_commits_once), str(direct_march_commits_once), str(engineering_plan_is_editable), str(map_start_commits_once), new_scout_index, formation_index, engineer_index, preview_route_id, int(city.food), issued_armies.size(), str(moving_scout), macro._status_label.text,
+	print("DIRECT_DISPATCH_TRACE invalid=%s scout=%s march=%s engineering=%s start=%s scout_index=%d formation_index=%d engineer_index=%d preview_route=%s issued_macro=%s food=%d armies=%d specialist=%s status=%s" % [
+		str(invalid_scout_has_no_side_effect), str(direct_scout_commits_once), str(direct_march_commits_once), str(engineering_plan_is_editable), str(map_start_commits_once), new_scout_index, formation_index, engineer_index, preview_route_id, str(issued_macro), int(city.food), issued_armies.size(), str(moving_scout), macro._status_label.text,
 	])
 
-	_check(
-		new_scout_index >= 0
-			and formation_index >= 0
-			and invalid_scout_has_no_side_effect
-			and direct_scout_commits_once
-			and direct_march_commits_once
-			and engineering_plan_is_editable
-			and map_start_commits_once,
-		"图形 GUI 事件经过按住→对象条→拖向目标→松手：无效侦察目标不派遣不扣粮；有效侦察与单编队军令各只提交一次，缩放后实际目标和道路仍正确；工程师拖到空地只生成可编辑计划，地图终点的开工按钮才提交一次"
-	)
+	_check(new_scout_index >= 0 and formation_index >= 0, "选择条包含新侦察兵与编队")
+	_check(focus_clears_direct_gesture, "失焦会清理新的直接派遣手势")
+	_check(invalid_scout_has_no_side_effect, "无效侦察目标不派遣也不扣粮")
+	_check(picker_release_has_no_side_effect, "松手仍在选择条内会取消而不提交")
+	_check(direct_scout_commits_once, "新侦察兵创建与下令保持单次事务")
+	_check(crossed_strip_locks_intended_option, "连续穿过选择条后仅锁定最后高亮对象")
+	_check(direct_march_commits_once, "松手以最终目标重校验并只提交一次军令")
+	_check(viewed_station_can_direct_dispatch, "查看驻军后仍可从同一驻点直接续令")
+	_check(shortage_persists_over_refresh, "粮食失败提示跨刷新保留且不创建军队")
+	_check(engineering_plan_is_editable and map_start_commits_once, "工程师拖到空地仅生成计划，开工按钮单次提交")
 	scene.queue_free()
 	await process_frame
 	_finish()
@@ -136,7 +217,8 @@ func _run() -> void:
 
 func _open_picker(macro: MacroMarchR0, source_screen: Vector2) -> void:
 	_send_map_press(macro, source_screen)
-	macro._process(MacroMarchR0.DRAW_HOLD_SECONDS + 0.02)
+	await create_timer(MacroMarchR0.DRAW_HOLD_SECONDS + 0.04).timeout
+	await process_frame
 
 
 func _option_index(macro: MacroMarchR0, kind: StringName) -> int:
@@ -146,10 +228,20 @@ func _option_index(macro: MacroMarchR0, kind: StringName) -> int:
 	return -1
 
 
-func _lock_option(macro: MacroMarchR0, index: int) -> void:
+func _hover_option(macro: MacroMarchR0, index: int) -> void:
 	if index < 0:
 		return
 	_send_map_motion(macro, macro._direct_dispatch_option_rect(index).get_center())
+
+
+func _move_through_option_to_target(macro: MacroMarchR0, index: int, target_screen: Vector2) -> void:
+	if index < 0:
+		return
+	var anchor := macro._direct_dispatch_anchor_screen
+	var option_center := macro._direct_dispatch_option_rect(index).get_center()
+	for step in range(1, 9):
+		_send_map_motion(macro, anchor.lerp(option_center, float(step) / 8.0))
+	_send_map_motion(macro, target_screen)
 
 
 func _specialist_option_index(macro: MacroMarchR0, role: StringName) -> int:

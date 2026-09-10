@@ -5479,6 +5479,28 @@ func dispatch_field_specialist_to_target(role: StringName, target_point_id: Stri
 	return {"success": true, "specialist": Dictionary(transaction.local_commit_result.specialist).duplicate(true), "food_cost": food_cost}
 
 
+func preview_field_specialist_dispatch_to_target(role: StringName, target_point_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	if role not in [FieldTacticsState.SPECIALIST_SCOUT, FieldTacticsState.SPECIALIST_ENGINEER]:
+		return {"valid": false, "error": "只能派遣侦察兵或工程师"}
+	var movement_preview := _war_loop_state.field_tactics.preview_specialist_move_from_point(&"blackstone_city", target_point_id)
+	if not bool(movement_preview.get("valid", false)):
+		return movement_preview
+	var food_cost := 4 if role == FieldTacticsState.SPECIALIST_SCOUT else 8
+	movement_preview.food_cost = food_cost
+	movement_preview.food_shortage = maxi(food_cost - food, 0)
+	movement_preview.affordable = food >= food_cost
+	if not bool(movement_preview.affordable):
+		movement_preview.valid = false
+		movement_preview.error = "粮食不足：需要 %d，当前 %d" % [food_cost, food]
+	return movement_preview
+
+
+func preview_field_specialist_move(specialist_id: StringName, target_point_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	return _war_loop_state.field_tactics.preview_specialist_move(specialist_id, target_point_id)
+
+
 func order_field_specialist_move(specialist_id: StringName, target_point_id: StringName) -> Dictionary:
 	_ensure_war_loop_initialized()
 	var war_before := _war_loop_state.get_snapshot()
@@ -5573,6 +5595,21 @@ func begin_field_road_repair(engineer_id: StringName, road_id: StringName) -> Di
 			&"field_road_repair_rollback")
 		return _macro_failure(&"SAVE_FAILED", "道路维修存档失败，资源已回滚")
 	return {"success": true, "project": Dictionary(transaction.local_commit_result.project).duplicate(true), "food_cost": REPAIR_FOOD_COST}
+
+
+func preview_field_road_repair(engineer_id: StringName, road_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	const REPAIR_FOOD_COST := 3
+	var preview := _war_loop_state.field_tactics.preview_road_repair(engineer_id, road_id)
+	if not bool(preview.get("valid", false)):
+		return preview
+	preview.food_cost = REPAIR_FOOD_COST
+	preview.food_shortage = maxi(REPAIR_FOOD_COST - food, 0)
+	preview.affordable = food >= REPAIR_FOOD_COST
+	if not bool(preview.affordable):
+		preview.valid = false
+		preview.error = "粮食不足：需要 %d，当前 %d" % [REPAIR_FOOD_COST, food]
+	return preview
 
 
 func resume_interrupted_field_project(engineer_id: StringName, project_id: StringName) -> Dictionary:

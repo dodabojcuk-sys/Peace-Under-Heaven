@@ -2,6 +2,21 @@
 
 ## 2026-09-10
 
+- Delayed direct-map object locking until the pointer exits its compact source
+  strip. Rows now only highlight while traversed, so a continuous diagonal drag
+  cannot lock an earlier crossed option; final release rejects the strip and
+  non-map regions before any authority call.
+- Unified focus-loss cleanup for direct and legacy draw gestures, kept a
+  map-inspected stationed army eligible for its camp's direct strip, and
+  reserved the old confirmed-draft behavior for explicit city-formation intent.
+- Routed failed direct previews and commit failures through the persistent
+  Macro March error channel. Added read-only specialist-move, new-dispatch and
+  repair previews so unreachable or unaffordable targets do not display as
+  ready to execute.
+- Extended the graphical gesture contract to wait through real scene time,
+  cross strip rows, validate focus cancellation, failure persistence and a
+  viewed-stationed-army reissue.
+
 - Added a direct one-subject map-dispatch gesture: hold a friendly city/camp,
   slide through a compact formation/stationed-army/specialist strip, then
   release on a valid target to use the existing authority order entry exactly

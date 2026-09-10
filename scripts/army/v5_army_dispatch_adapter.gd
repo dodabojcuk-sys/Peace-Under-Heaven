@@ -128,6 +128,16 @@ func dispatch_field_specialist_to_target(role: StringName, target_point_id: Stri
 	return city.dispatch_field_specialist_to_target(role, target_point_id) if city != null else {}
 
 
+func preview_field_specialist_dispatch_to_target(role: StringName, target_point_id: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.preview_field_specialist_dispatch_to_target(role, target_point_id) if city != null else {}
+
+
+func preview_field_specialist_move(specialist_id: StringName, target_point_id: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.preview_field_specialist_move(specialist_id, target_point_id) if city != null else {}
+
+
 func order_field_specialist_move(specialist_id: StringName, target_point_id: StringName) -> Dictionary:
 	var city := _get_city()
 	return city.order_field_specialist_move(specialist_id, target_point_id) if city != null else {}
@@ -164,6 +174,11 @@ func begin_field_road_project(
 func begin_field_road_repair(engineer_id: StringName, road_id: StringName) -> Dictionary:
 	var city := _get_city()
 	return city.begin_field_road_repair(engineer_id, road_id) if city != null else {}
+
+
+func preview_field_road_repair(engineer_id: StringName, road_id: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.preview_field_road_repair(engineer_id, road_id) if city != null else {}
 
 
 func resume_interrupted_field_project(engineer_id: StringName, project_id: StringName) -> Dictionary:

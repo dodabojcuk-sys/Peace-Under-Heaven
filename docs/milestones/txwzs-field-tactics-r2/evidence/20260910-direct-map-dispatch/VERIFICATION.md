@@ -6,8 +6,9 @@ This checkpoint adds a one-subject Macro March gesture without replacing the
 existing explicit side-panel/multi-formation draft path:
 
 1. Press a friendly city or camp and hold for 0.5 seconds.
-2. Slide into the compact object strip to lock one formation, stationed army,
-   idle local scout, or idle local engineer.
+2. Slide within the compact object strip to highlight one formation, stationed
+   army, idle local scout, or idle local engineer. The last highlighted row
+   locks only when the pointer leaves the strip toward the map.
 3. Drag to a legal target and release to use the existing authority command
    entry immediately.
 
@@ -30,11 +31,12 @@ Godot 4.5.1 graphical Metal run passed:
 
 ```text
 DIRECT_DISPATCH_TRACE invalid=true scout=true march=true engineering=true start=true
-MACRO_MARCH_DIRECT_DISPATCH_GRAPHICAL_SMOKE PASS assertions=1
+MACRO_MARCH_DIRECT_DISPATCH_GRAPHICAL_SMOKE PASS assertions=10
 ```
 
 The test sends the normal `MacroMarchR0` GUI input sequence: mouse press,
-elapsed UI hold, strip motion, target motion and mouse release. It asserts:
+real scene-frame hold, continuous strip motion, target motion and mouse
+release. It asserts:
 
 - invalid new-scout release creates no specialist and spends no food;
 - valid new-scout release creates one moving scout and spends the one dispatch
@@ -44,6 +46,13 @@ elapsed UI hold, strip motion, target motion and mouse release. It asserts:
 - an engineer release into open land leaves food unchanged and exposes the
   editable plan plus enabled map-side start control; clicking that control
   creates exactly one project and spends the preview cost once.
+- focus loss clears a pending direct gesture, so its later release cannot
+  publish an order;
+- a continuous path crossing several rows locks the intended final highlight,
+  not an earlier crossed option;
+- a food-shortage failure survives the next UI refresh with no army or food
+  side effect; and a map-inspected army can arrive, remain stationed, then use
+  the same camp's direct strip to issue its next route.
 
 ## Evidence boundary
 

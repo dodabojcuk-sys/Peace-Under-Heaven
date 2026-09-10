@@ -169,6 +169,10 @@ func _set_context_status(message: String) -> void:
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_WM_WINDOW_FOCUS_OUT:
+		# Both map gestures are pointer-owned transient state. Focus loss must not
+		# leave a locked direct subject that can later be released without a new
+		# press; confirmed orders and existing specialist tasks remain untouched.
+		_cancel_direct_dispatch("")
 		_cancel_draw_interaction("窗口失去焦点，已取消当前规划。")
 
 
@@ -843,9 +847,10 @@ func _on_gui_input(event: InputEvent) -> void:
 		var command_army := _selected_army(_model())
 		var has_explicit_command_subject := _has_explicit_command_subject(_model(), command_army)
 		# A long hold on a friendly gate or camp starts the direct map command.
-		# Explicit side-panel formation selection intentionally keeps the older
-		# multi-formation draft flow and never enters this one-subject gesture.
-		if not has_explicit_command_subject:
+		# An explicit *city formation* selection intentionally keeps the older
+		# multi-formation draft flow. Merely inspecting a stationed army on the map
+		# never suppresses the same direct long-hold from that army's camp.
+		if _selected_formation_ids.is_empty():
 			var direct_source_id := _direct_dispatch_source_at_screen(event.position)
 			if direct_source_id != &"" and not _direct_dispatch_options_for_source(direct_source_id).is_empty():
 				# Selection remains immediate for normal GUI and desktop clicks.  A
@@ -1084,6 +1089,14 @@ func _direct_dispatch_option_rect(index: int) -> Rect2:
 	return Rect2(origin + Vector2(0, index * (DIRECT_DISPATCH_OPTION_SIZE.y + DIRECT_DISPATCH_OPTION_GAP)), DIRECT_DISPATCH_OPTION_SIZE)
 
 
+func _direct_dispatch_picker_bounds() -> Rect2:
+	if _direct_dispatch_options.is_empty():
+		return Rect2()
+	var first := _direct_dispatch_option_rect(0)
+	var last := _direct_dispatch_option_rect(_direct_dispatch_options.size() - 1)
+	return Rect2(first.position, Vector2(first.size.x, last.end.y - first.position.y))
+
+
 func _update_direct_dispatch_gesture(delta: float) -> void:
 	if not _direct_dispatch_pending or _direct_dispatch_picker_open:
 		return
@@ -1099,14 +1112,24 @@ func _update_direct_dispatch_gesture(delta: float) -> void:
 func _update_direct_dispatch_motion(screen_position: Vector2) -> void:
 	_direct_dispatch_cursor_screen = screen_position
 	if _direct_dispatch_locked.is_empty():
-		_direct_dispatch_hover_index = -1
+		var hovered_index := -1
 		for index in range(_direct_dispatch_options.size()):
 			if _direct_dispatch_option_rect(index).has_point(screen_position):
-				_direct_dispatch_hover_index = index
-				_direct_dispatch_locked = Dictionary(_direct_dispatch_options[index]).duplicate(true)
-				_status_label.text = "%s 已锁定；拖向城池、驻点或受损道路。" % str(_direct_dispatch_locked.get("label", "对象"))
+				hovered_index = index
 				break
-	else:
+		if hovered_index >= 0:
+			# Passing through a row is only hover feedback. This keeps the object
+			# under the pointer adjustable while the strip is crossed diagonally.
+			_direct_dispatch_hover_index = hovered_index
+			_status_label.text = "%s；拖出选择条后锁定。" % str(Dictionary(_direct_dispatch_options[hovered_index]).get("label", "对象"))
+		elif not _direct_dispatch_picker_bounds().has_point(screen_position) and _direct_dispatch_hover_index >= 0:
+			_direct_dispatch_locked = Dictionary(_direct_dispatch_options[_direct_dispatch_hover_index]).duplicate(true)
+			_status_label.text = "%s 已锁定；拖向城池、驻点或受损道路。" % str(_direct_dispatch_locked.get("label", "对象"))
+		else:
+			queue_redraw()
+			_map_canvas.queue_redraw()
+			return
+	if not _direct_dispatch_locked.is_empty():
 		if _direct_dispatch_is_march():
 			_update_direct_route_constraint(screen_position)
 			_update_direct_march_preview()
@@ -1161,20 +1184,43 @@ func _direct_dispatch_command_preview() -> Dictionary:
 func _update_direct_specialist_preview(screen_position: Vector2) -> void:
 	_direct_dispatch_preview = {}
 	_direct_dispatch_error = ""
+	if _dispatch_adapter == null:
+		_direct_dispatch_error = "专员服务尚未就绪"
+		return
 	var damaged_road := _damaged_road_id_at_screen(_dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}, screen_position)
 	var target_id := _point_id_at_screen(screen_position)
 	if damaged_road != &"" and StringName(_direct_dispatch_locked.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER:
-		_direct_dispatch_preview = {"repair_road_id": damaged_road}
+		var repair_preview := _dispatch_adapter.preview_field_road_repair(StringName(_direct_dispatch_locked.get("specialist_id", &"")), damaged_road)
+		if not bool(repair_preview.get("valid", false)):
+			_direct_dispatch_error = str(repair_preview.get("error", "道路无法维修"))
+			return
+		_direct_dispatch_preview = {"repair_road_id": damaged_road, "food_cost": int(repair_preview.get("food_cost", 0)), "duration_milliseconds": int(repair_preview.get("duration_milliseconds", 0))}
 		return
 	if target_id == &"" or target_id == _direct_dispatch_source_point_id:
 		_direct_dispatch_error = "请选择另一处城池、驻点或受损道路"
 		return
-	_direct_dispatch_preview = {"target_point_id": target_id}
+	var kind := StringName(_direct_dispatch_locked.get("kind", &""))
+	var specialist_preview := _dispatch_adapter.preview_field_specialist_dispatch_to_target(StringName(_direct_dispatch_locked.get("role", &"")), target_id) if kind == &"NEW_SCOUT" else _dispatch_adapter.preview_field_specialist_move(StringName(_direct_dispatch_locked.get("specialist_id", &"")), target_id)
+	if not bool(specialist_preview.get("valid", false)):
+		_direct_dispatch_error = str(specialist_preview.get("error", "专员无法前往该位置"))
+		return
+	_direct_dispatch_preview = {
+		"target_point_id": target_id,
+		"duration_milliseconds": int(specialist_preview.get("duration_milliseconds", 0)),
+		"food_cost": int(specialist_preview.get("food_cost", 0)),
+	}
 
 
 func _finish_direct_dispatch(screen_position: Vector2) -> void:
+	_direct_dispatch_cursor_screen = screen_position
 	if not _direct_dispatch_picker_open:
 		_cancel_direct_dispatch("已保持当前选择；长按起点可直接派遣。")
+		return
+	if not _map_rect().has_point(screen_position):
+		_cancel_direct_dispatch("目标位于地图外，未下达军令。", true)
+		return
+	if _direct_dispatch_picker_bounds().has_point(screen_position):
+		_cancel_direct_dispatch("已取消派遣；请拖出选择条后再选择地图目标。")
 		return
 	if _direct_dispatch_locked.is_empty():
 		_update_direct_dispatch_motion(screen_position)
@@ -1185,7 +1231,7 @@ func _finish_direct_dispatch(screen_position: Vector2) -> void:
 		_update_direct_march_preview()
 		if _direct_dispatch_preview.is_empty() or not _direct_dispatch_error.is_empty():
 			var failure := _direct_dispatch_error if not _direct_dispatch_error.is_empty() else "目标不可用，未下达军令。"
-			_cancel_direct_dispatch(failure)
+			_cancel_direct_dispatch(failure, true)
 			return
 		_commit_direct_march()
 		return
@@ -1197,7 +1243,7 @@ func _finish_direct_dispatch(screen_position: Vector2) -> void:
 		return
 	if _direct_dispatch_preview.is_empty() or not _direct_dispatch_error.is_empty():
 		var specialist_failure := _direct_dispatch_error if not _direct_dispatch_error.is_empty() else "目标不可用，未派遣专员。"
-		_cancel_direct_dispatch(specialist_failure)
+		_cancel_direct_dispatch(specialist_failure, true)
 		return
 	_commit_direct_specialist()
 
@@ -1253,7 +1299,7 @@ func _commit_direct_march() -> void:
 	else:
 		result = _dispatch_adapter.commit_macro_march_from_station(StringName(_direct_dispatch_locked.get("army_id", &"")), target_id, StringName(_direct_dispatch_preview.get("route_id", &"")), Array(_direct_dispatch_preview.get("points", [])))
 	if not bool(result.get("success", false)):
-		_cancel_direct_dispatch(str(result.get("error", "军令下达失败")))
+		_cancel_direct_dispatch(str(result.get("error", "军令下达失败")), true)
 		return
 	_selected_army_id = StringName(Dictionary(result.get("army", {})).get("army_id", &""))
 	_selected_formation_ids.clear()
@@ -1274,7 +1320,7 @@ func _commit_direct_specialist() -> void:
 	else:
 		result = _dispatch_adapter.order_field_specialist_move(StringName(_direct_dispatch_locked.get("specialist_id", &"")), StringName(_direct_dispatch_preview.get("target_point_id", &"")))
 	if not bool(result.get("success", false)):
-		_cancel_direct_dispatch(str(result.get("error", "专员任务无法下达")))
+		_cancel_direct_dispatch(str(result.get("error", "专员任务无法下达")), true)
 		return
 	_selected_specialist_id = StringName(Dictionary(result.get("specialist", {})).get("specialist_id", _direct_dispatch_locked.get("specialist_id", &"")))
 	_selected_scout_id = _selected_specialist_id if role == FieldTacticsState.SPECIALIST_SCOUT else &""
@@ -1283,7 +1329,7 @@ func _commit_direct_specialist() -> void:
 	refresh()
 
 
-func _cancel_direct_dispatch(message: String) -> void:
+func _cancel_direct_dispatch(message: String, persist_error := false) -> void:
 	var had_gesture := _direct_dispatch_pending
 	_direct_dispatch_pending = false
 	_direct_dispatch_picker_open = false
@@ -1296,7 +1342,10 @@ func _cancel_direct_dispatch(message: String) -> void:
 	_direct_dispatch_route_road_id = &""
 	_direct_dispatch_elapsed = 0.0
 	if had_gesture and not message.is_empty():
-		_status_label.text = message
+		if persist_error:
+			_set_status_error(message)
+		else:
+			_status_label.text = message
 	queue_redraw()
 	_map_canvas.queue_redraw()
 
@@ -2471,6 +2520,13 @@ func _road_choice_markers(roads_by_id: Dictionary) -> Array[Dictionary]:
 
 func _draw_march_draft_or_live_preview(canvas: Control) -> void:
 	if _direct_dispatch_pending and not _direct_dispatch_locked.is_empty():
+		# A valid-looking route is not actionable when authority preview already
+		# found a food, reachability, or road failure. Render the warning first so
+		# feedback cannot be hidden underneath the last successful route preview.
+		if not _direct_dispatch_error.is_empty():
+			_draw_command_arrow(canvas, _direct_dispatch_source_point_id, _direct_dispatch_cursor_screen, Color("e26452", 0.76))
+			canvas.draw_string(ThemeDB.fallback_font, _direct_dispatch_cursor_screen + Vector2(12, -12), _direct_dispatch_error, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("fff2bf"))
+			return
 		if not _direct_dispatch_preview.is_empty() and _direct_dispatch_is_march():
 			_draw_route_preview(canvas, Array(_direct_dispatch_preview.get("points", [])), Color("77f0ef"), 1.8, false)
 			_draw_command_arrow(canvas, _direct_dispatch_source_point_id, _direct_dispatch_cursor_screen)
@@ -2490,10 +2546,6 @@ func _draw_march_draft_or_live_preview(canvas: Control) -> void:
 				var specialist_target_screen := _world_to_screen(Vector2(specialist_target.get("world_position", Vector2.ZERO)))
 				canvas.draw_arc(specialist_target_screen, 17.0, 0.0, TAU, 24, Color("fff2bf"), 2.5, true)
 				canvas.draw_string(ThemeDB.fallback_font, specialist_target_screen + Vector2(-88, -30), "%s → %s｜松手执行" % [role_label, str(specialist_target.get("display_name", "目标"))], HORIZONTAL_ALIGNMENT_CENTER, 176, 12, Color("fff4d3"))
-			return
-		if not _direct_dispatch_error.is_empty():
-			_draw_command_arrow(canvas, _direct_dispatch_source_point_id, _direct_dispatch_cursor_screen, Color("e26452", 0.76))
-			canvas.draw_string(ThemeDB.fallback_font, _direct_dispatch_cursor_screen + Vector2(12, -12), _direct_dispatch_error, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("fff2bf"))
 			return
 	# A previous draft remains available if the new drag is cancelled, but while
 	# a replacement gesture is active its live path is the only player-facing
