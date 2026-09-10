@@ -5437,6 +5437,48 @@ func dispatch_field_specialist(role: StringName) -> Dictionary:
 	return {"success": true, "specialist": Dictionary(transaction.local_commit_result.specialist).duplicate(true), "food_cost": food_cost}
 
 
+func dispatch_field_specialist_to_target(role: StringName, target_point_id: StringName) -> Dictionary:
+	# Direct-map dispatch is one transaction: first prove the requested movement
+	# is legal, then create and order the specialist before publishing one save.
+	# This avoids the old two-click flow where a failed target could still spend
+	# food on an idle specialist.
+	_ensure_war_loop_initialized()
+	if role not in [FieldTacticsState.SPECIALIST_SCOUT, FieldTacticsState.SPECIALIST_ENGINEER]:
+		return _macro_failure(&"SPECIALIST_ROLE", "只能派遣侦察兵或工程师")
+	if target_point_id == &"blackstone_city":
+		return _macro_failure(&"SPECIALIST_TARGET", "请选择另一处城池或驻点")
+	var movement_preview := _war_loop_state.field_tactics.preview_specialist_move_from_point(&"blackstone_city", target_point_id)
+	if not bool(movement_preview.get("valid", false)):
+		return _macro_failure(&"SPECIALIST_MOVE", str(movement_preview.get("error", "特殊单位无法前往该位置")))
+	var food_cost := 4 if role == FieldTacticsState.SPECIALIST_SCOUT else 8
+	if food < food_cost:
+		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足，无法派遣特殊单位")
+	var war_before := _war_loop_state.get_snapshot()
+	var local_commit := func() -> Dictionary:
+		var specialist := _war_loop_state.field_tactics.dispatch_specialist(role, &"blackstone_city")
+		if specialist.is_empty():
+			return {"success": false}
+		var ordered := _war_loop_state.field_tactics.order_specialist_move(StringName(specialist.get("specialist_id", &"")), target_point_id)
+		if ordered.is_empty():
+			_war_loop_state.restore_snapshot(war_before)
+			return {"success": false}
+		return {"success": true, "specialist": ordered}
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": food_cost}],
+		&"field_specialist_dispatch_and_move", local_commit
+	)
+	if not bool(transaction.get("success", false)):
+		return _macro_failure(&"SPECIALIST_TRANSACTION", "特殊单位派遣与目标下令未提交")
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		_nation_state.commit_resource_transaction(NationState.BLACKSTONE_CITY_ID,
+			[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": food_cost}],
+			&"field_specialist_dispatch_and_move_rollback")
+		return _macro_failure(&"SAVE_FAILED", "特殊单位派遣存档失败，资源已回滚")
+	return {"success": true, "specialist": Dictionary(transaction.local_commit_result.specialist).duplicate(true), "food_cost": food_cost}
+
+
 func order_field_specialist_move(specialist_id: StringName, target_point_id: StringName) -> Dictionary:
 	_ensure_war_loop_initialized()
 	var war_before := _war_loop_state.get_snapshot()

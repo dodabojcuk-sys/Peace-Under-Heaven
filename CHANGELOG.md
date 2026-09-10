@@ -2,6 +2,21 @@
 
 ## 2026-09-10
 
+- Added a direct one-subject map-dispatch gesture: hold a friendly city/camp,
+  slide through a compact formation/stationed-army/specialist strip, then
+  release on a valid target to use the existing authority order entry exactly
+  once. The established side-panel path remains the explicit multi-formation
+  draft workflow.
+- Made new-scout dispatch and its first target order one controller
+  transaction, so opening/locking the object strip or releasing on an invalid
+  target cannot create a scout or spend food. Existing specialists use their
+  established move/repair entries; an engineer released onto open land produces
+  only an editable plan until the visible map-side `开工` action is clicked.
+- Added a graphical GUI-event regression for hold, strip selection, release,
+  invalid-specialist cancellation, zoomed target mapping and one-time
+  engineering commitment. It is engine GUI-event evidence, not desktop-system
+  mouse footage.
+
 - Made a live Macro March replanning gesture take display and action-panel
   priority over its cancel-safe prior draft. The old confirm control is hidden
   while a replacement route is resolving, then the released route alone

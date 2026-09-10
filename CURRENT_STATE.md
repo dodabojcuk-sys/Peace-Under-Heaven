@@ -1,5 +1,36 @@
 # 当前状态
 
+## Direct map dispatch gesture (2026-09-10)
+
+Macro March now supports a one-subject map command without taking over the
+existing multi-formation side-panel workflow: hold a friendly city/camp for
+0.5 seconds, slide through the compact object strip to lock one formation,
+stationed army or local specialist, then release over a valid target to issue
+the authority command immediately. The route target shows a direct destination
+arrow, its authoritative road preview, travel time and food cost; a scout or
+engineer shows the same source-to-target arrow and a release-to-execute label.
+Invalid release, early release, right-click and focus cancellation leave no
+army, specialist task, project, resource charge or stale direct route behind.
+
+New scouts are handled atomically: selecting `侦察兵` from Blackstone's object
+strip reserves nothing; only a valid target release creates and orders the
+specialist in one controller transaction. Existing specialists can move to a
+point or an engineer can release over a damaged road to start the existing
+repair entry. Releasing an engineer into open legal land instead starts an
+editable construction plan with no resource write; its map-side `开工` control
+remains the one explicit construction commit. The direct route constraint is
+local to the pending gesture and clears on every end state.
+
+The non-headless GUI-event contract drives actual map press, elapsed hold,
+object-strip motion, target motion and release. It verifies an invalid scout
+release costs nothing, valid scout dispatch and troop march each publish once,
+zoom preserves the authoritative target/road, and an engineer plan only spends
+when the visible map-side start control is clicked. Evidence is in
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260910-direct-map-dispatch/`.
+It is Godot GUI-event/render evidence, not desktop-system-input footage; player
+acceptance remains **OPEN**. The previously reported simulation stall remains
+**NOT REPRODUCED / NOT DIAGNOSED**.
+
 ## Command feedback repair and candidate observation (2026-09-10)
 
 An unconfirmed Macro March confirmation failure now remains visible across the

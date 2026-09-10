@@ -471,7 +471,11 @@ func _add_road_segment(parent: Node3D, start: Vector2, end: Vector2, color: Colo
 	segment.name = ("ProjectBridgeSegment" if bridge else "ProjectRoadSegment") if construction else ("BridgeSegment" if bridge else "RoadSegment")
 	parent.add_child(segment)
 	segment.global_position = start_3d.lerp(end_3d, 0.5)
-	segment.look_at(end_3d, Vector3.UP)
+	# A partial construction segment can collapse to the just-completed endpoint
+	# after time quantization. Never ask Node3D to orient toward its own origin:
+	# the visible deck is skipped by the guard above only when it has no length.
+	if segment.global_position.distance_squared_to(end_3d) > 0.0001:
+		segment.look_at(end_3d, Vector3.UP)
 	segment.set_meta("road_start", start_3d)
 	segment.set_meta("road_end", end_3d)
 	# Slightly broader presentation-only surfaces keep the legal route legible at

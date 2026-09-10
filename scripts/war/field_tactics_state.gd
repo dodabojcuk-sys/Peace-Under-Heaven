@@ -160,6 +160,24 @@ func dispatch_specialist(role: StringName, source_point_id: StringName) -> Dicti
 	return specialist.duplicate(true)
 
 
+func preview_specialist_move_from_point(source_point_id: StringName, target_point_id: StringName) -> Dictionary:
+	# The Controller uses this read-only preflight before spending food to create
+	# a new specialist.  Dispatching an idle specialist and discovering that the
+	# requested target is unreachable must never leave a paid, unintended unit.
+	var source_position := _point_position(source_point_id)
+	var target_position := _point_position(target_point_id)
+	if source_position == INVALID_WORLD_POSITION or target_position == INVALID_WORLD_POSITION:
+		return {"valid": false, "error": "特殊单位目标不存在"}
+	var movement_plan := _plan_specialist_land_path(Vector2(source_position), Vector2(target_position))
+	if movement_plan.is_empty():
+		return {"valid": false, "error": "特殊单位无法到达该位置"}
+	return {
+		"valid": true,
+		"duration_milliseconds": maxi(1800, int(movement_plan.get("duration_milliseconds", 0))),
+		"points": Array(movement_plan.get("points", [])).duplicate(true),
+	}
+
+
 func order_specialist_move(specialist_id: StringName, target_point_id: StringName) -> Dictionary:
 	var specialist := Dictionary(specialists_by_id.get(specialist_id, {}))
 	if specialist.is_empty() or not bool(specialist.get("alive", false)) or target_point_id == &"":

@@ -22,6 +22,8 @@ const ROAD_CHOICE_RADIUS_PIXELS := 12.0
 const ENGINEERING_SAMPLE_SPACING_WORLD := 3.0
 const DRAW_EDGE_SCROLL_MARGIN := 28.0
 const DRAW_EDGE_SCROLL_MAX_PIXELS_PER_SECOND := 360.0
+const DIRECT_DISPATCH_OPTION_SIZE := Vector2(132, 34)
+const DIRECT_DISPATCH_OPTION_GAP := 6.0
 
 var _dispatch_adapter: V5ArmyDispatchAdapter
 var _draft_route: Dictionary = {}
@@ -92,6 +94,21 @@ var _engineering_undo_button := Button.new()
 var _engineering_clear_button := Button.new()
 var _interrupted_project_selector_signature := ""
 var _status_error_text := ""
+# A map-origin command is deliberately separate from the explicit formation
+# panel.  The latter continues to support multi-formation, reviewable drafts;
+# this state owns the one-subject, release-to-issue gesture only.
+var _direct_dispatch_pending := false
+var _direct_dispatch_picker_open := false
+var _direct_dispatch_source_point_id: StringName = &""
+var _direct_dispatch_anchor_screen := Vector2.ZERO
+var _direct_dispatch_cursor_screen := Vector2.ZERO
+var _direct_dispatch_elapsed := 0.0
+var _direct_dispatch_options: Array[Dictionary] = []
+var _direct_dispatch_locked: Dictionary = {}
+var _direct_dispatch_hover_index := -1
+var _direct_dispatch_preview: Dictionary = {}
+var _direct_dispatch_error := ""
+var _direct_dispatch_route_road_id: StringName = &""
 
 
 func _ready() -> void:
@@ -130,6 +147,7 @@ func _process(delta: float) -> void:
 	# only, so changing map frame rate or observing two armies cannot tick them
 	# twice.
 	refresh()
+	_update_direct_dispatch_gesture(delta)
 	_update_draw_interaction(delta)
 
 
@@ -528,6 +546,7 @@ func _toggle_formation(formation_id: StringName) -> void:
 	# Starting or ending an explicit city-command selection is a fresh player
 	# decision, so an earlier failed confirmation must not obscure the next
 	# actionable state in the persistent status line.
+	_cancel_direct_dispatch("")
 	_clear_status_error()
 	if formation_id in _selected_formation_ids:
 		_selected_formation_ids.erase(formation_id)
@@ -703,6 +722,15 @@ func _on_gui_input(event: InputEvent) -> void:
 			_last_pan_position = event.position
 			accept_event()
 			return
+		if _direct_dispatch_pending:
+			_direct_dispatch_cursor_screen = event.position
+			if not _direct_dispatch_picker_open:
+				if event.position.distance_to(_direct_dispatch_anchor_screen) >= DRAW_HOLD_JITTER_PIXELS:
+					_cancel_direct_dispatch("移动过早已取消本次派遣；轻点只选择，按住后再从对象条拖动。")
+			else:
+				_update_direct_dispatch_motion(event.position)
+			accept_event()
+			return
 		if _draw_hold_pending:
 			_draw_cursor_screen = event.position
 			_draw_previous_screen = event.position
@@ -720,9 +748,10 @@ func _on_gui_input(event: InputEvent) -> void:
 			accept_event()
 			return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		if _draw_hold_pending or _is_drawing or _scout_target_mode or not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty() or _selected_damaged_road_id != &"" or _selected_specialist_id != &"":
+		if _direct_dispatch_pending or _draw_hold_pending or _is_drawing or _scout_target_mode or not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty() or _selected_damaged_road_id != &"" or _selected_specialist_id != &"":
 			var had_specialist_selection := _selected_specialist_id != &""
 			var had_scout_target_mode := _scout_target_mode
+			_cancel_direct_dispatch("")
 			_cancel_draw_interaction("")
 			_scout_target_mode = false
 			if had_specialist_selection or had_scout_target_mode:
@@ -779,6 +808,10 @@ func _on_gui_input(event: InputEvent) -> void:
 			accept_event()
 			return
 		if _engineering_mode:
+			if not _engineering_draft.is_empty() and _engineering_start_rect().has_point(event.position):
+				_confirm_draft()
+				accept_event()
+				return
 			# A confirmed endpoint can itself be a legal camp. Prefer continuing the
 			# existing project at that visible endpoint before treating the same click
 			# as a request to replace the project source.
@@ -809,6 +842,19 @@ func _on_gui_input(event: InputEvent) -> void:
 			return
 		var command_army := _selected_army(_model())
 		var has_explicit_command_subject := _has_explicit_command_subject(_model(), command_army)
+		# A long hold on a friendly gate or camp starts the direct map command.
+		# Explicit side-panel formation selection intentionally keeps the older
+		# multi-formation draft flow and never enters this one-subject gesture.
+		if not has_explicit_command_subject:
+			var direct_source_id := _direct_dispatch_source_at_screen(event.position)
+			if direct_source_id != &"" and not _direct_dispatch_options_for_source(direct_source_id).is_empty():
+				# Selection remains immediate for normal GUI and desktop clicks.  A
+				# continued hold upgrades the already-selected friendly anchor into
+				# the object strip instead of delaying selection until mouse-up.
+				_select_map_subject_from_tap(event.position)
+				_begin_direct_dispatch(event.position, direct_source_id)
+				accept_event()
+				return
 		# A specialist at a city or camp stays selectable even when a stationed
 		# army at the same anchor is eligible to begin a route draft. An explicit
 		# formation selection is already an intentional city-command mode, so it
@@ -868,6 +914,10 @@ func _on_gui_input(event: InputEvent) -> void:
 			_status_label.text = "请先在右栏选择城内编队或驻扎军队。"
 			return
 	else:
+		if _direct_dispatch_pending:
+			_finish_direct_dispatch(event.position)
+			accept_event()
+			return
 		if _draw_hold_pending:
 			_cancel_draw_interaction("已保持当前选择；拖动超过 8 像素即可开始规划。")
 			accept_event()
@@ -953,6 +1003,299 @@ func _cancel_draw_interaction(message: String) -> void:
 	_draw_preview_error = ""
 	_engineering_live_endpoint = Vector2.INF
 	if had_interaction and not message.is_empty():
+		_status_label.text = message
+	queue_redraw()
+	_map_canvas.queue_redraw()
+
+
+func _direct_dispatch_source_at_screen(screen_position: Vector2) -> StringName:
+	var point_id := _point_id_at_screen(screen_position)
+	if point_id == &"":
+		return &""
+	var point := _point_from_model(_model(), point_id)
+	if point.is_empty() or StringName(point.get("point_kind", &"")) == &"ENEMY_CITY":
+		return &""
+	if StringName(point.get("military_controller_faction_id", &"player")) != &"player":
+		return &""
+	return point_id
+
+
+func _direct_dispatch_options_for_source(source_point_id: StringName) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	var model := _model()
+	if source_point_id == &"blackstone_city" and bool(model.get("can_issue_from_city", true)):
+		for formation_value in Array(model.get("formations", [])):
+			var formation: Dictionary = Dictionary(formation_value)
+			if int(formation.get("member_count", 0)) <= 0:
+				continue
+			result.append({
+				"kind": &"FORMATION", "formation_id": StringName(formation.get("formation_id", &"")),
+				"label": "%s · %d 人" % [str(formation.get("display_name", "编队")), int(formation.get("member_count", 0))],
+			})
+	for army_value in Array(model.get("armies", [])):
+		var army: Dictionary = Dictionary(army_value)
+		if StringName(army.get("phase", &"")) == ARMY_REGISTRY.PHASE_STATIONED and StringName(army.get("target_node_id", &"")) == source_point_id:
+			result.append({
+				"kind": &"ARMY", "army_id": StringName(army.get("army_id", &"")),
+				"label": "驻军 · %d 人" % _army_member_count(army),
+			})
+	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+	var specialists: Dictionary = Dictionary(field.get("specialists_by_id", {}))
+	var has_local_scout := false
+	var specialist_ids: Array = specialists.keys()
+	specialist_ids.sort()
+	for specialist_id_value in specialist_ids:
+		var specialist: Dictionary = Dictionary(specialists[specialist_id_value])
+		if not bool(specialist.get("alive", false)) \
+			or StringName(specialist.get("phase", &"")) != FieldTacticsState.SPECIALIST_IDLE \
+			or StringName(specialist.get("project_id", &"")) != &"" \
+			or StringName(specialist.get("current_point_id", &"")) != source_point_id:
+			continue
+		var role := StringName(specialist.get("role", &""))
+		if role == FieldTacticsState.SPECIALIST_SCOUT:
+			has_local_scout = true
+		result.append({
+			"kind": &"SPECIALIST", "specialist_id": StringName(specialist.get("specialist_id", &"")), "role": role,
+			"label": "%s · 待命" % _specialist_role_label(specialist),
+		})
+	if source_point_id == &"blackstone_city" and not has_local_scout:
+		result.append({"kind": &"NEW_SCOUT", "role": FieldTacticsState.SPECIALIST_SCOUT, "label": "侦察兵 · 派遣 4 粮"})
+	return result
+
+
+func _begin_direct_dispatch(screen_position: Vector2, source_point_id: StringName) -> void:
+	_cancel_direct_dispatch("")
+	_clear_status_error()
+	_direct_dispatch_pending = true
+	_direct_dispatch_source_point_id = source_point_id
+	_direct_dispatch_anchor_screen = screen_position
+	_direct_dispatch_cursor_screen = screen_position
+	_direct_dispatch_elapsed = 0.0
+	_direct_dispatch_options = _direct_dispatch_options_for_source(source_point_id)
+	_status_label.text = "按住 %0.1f 秒后选择编队或专员；轻点仅选择。" % DRAW_HOLD_SECONDS
+	queue_redraw()
+	_map_canvas.queue_redraw()
+
+
+func _direct_dispatch_option_rect(index: int) -> Rect2:
+	var rows := _direct_dispatch_options.size()
+	var total_height := float(rows) * DIRECT_DISPATCH_OPTION_SIZE.y + maxf(float(rows - 1), 0.0) * DIRECT_DISPATCH_OPTION_GAP
+	var origin := _direct_dispatch_anchor_screen + Vector2(22, -total_height * 0.5)
+	return Rect2(origin + Vector2(0, index * (DIRECT_DISPATCH_OPTION_SIZE.y + DIRECT_DISPATCH_OPTION_GAP)), DIRECT_DISPATCH_OPTION_SIZE)
+
+
+func _update_direct_dispatch_gesture(delta: float) -> void:
+	if not _direct_dispatch_pending or _direct_dispatch_picker_open:
+		return
+	_direct_dispatch_elapsed += maxf(delta, 0.0)
+	if _direct_dispatch_elapsed < DRAW_HOLD_SECONDS:
+		return
+	_direct_dispatch_picker_open = true
+	_status_label.text = "滑入对象后拖向目标；有效目标松手立即下令。"
+	queue_redraw()
+	_map_canvas.queue_redraw()
+
+
+func _update_direct_dispatch_motion(screen_position: Vector2) -> void:
+	_direct_dispatch_cursor_screen = screen_position
+	if _direct_dispatch_locked.is_empty():
+		_direct_dispatch_hover_index = -1
+		for index in range(_direct_dispatch_options.size()):
+			if _direct_dispatch_option_rect(index).has_point(screen_position):
+				_direct_dispatch_hover_index = index
+				_direct_dispatch_locked = Dictionary(_direct_dispatch_options[index]).duplicate(true)
+				_status_label.text = "%s 已锁定；拖向城池、驻点或受损道路。" % str(_direct_dispatch_locked.get("label", "对象"))
+				break
+	else:
+		if _direct_dispatch_is_march():
+			_update_direct_route_constraint(screen_position)
+			_update_direct_march_preview()
+		else:
+			_update_direct_specialist_preview(screen_position)
+	queue_redraw()
+	_map_canvas.queue_redraw()
+
+
+func _direct_dispatch_is_march() -> bool:
+	return StringName(_direct_dispatch_locked.get("kind", &"")) in [&"FORMATION", &"ARMY"]
+
+
+func _update_direct_route_constraint(screen_position: Vector2) -> void:
+	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+	for marker_value in _road_choice_markers(Dictionary(field.get("roads_by_id", {}))):
+		var marker: Dictionary = Dictionary(marker_value)
+		if Vector2(marker.get("screen_position", Vector2.INF)).distance_to(screen_position) <= ROAD_CHOICE_RADIUS_PIXELS:
+			_direct_dispatch_route_road_id = StringName(marker.get("road_id", &""))
+			return
+
+
+func _update_direct_march_preview() -> void:
+	_direct_dispatch_preview = {}
+	_direct_dispatch_error = ""
+	var target_id := _point_id_at_screen(_direct_dispatch_cursor_screen)
+	if target_id == &"" or target_id == _direct_dispatch_source_point_id:
+		_direct_dispatch_error = "请选择另一处城池或驻点"
+		return
+	var planned := _dispatch_adapter.plan_field_path(_direct_dispatch_source_point_id, target_id, [], _direct_dispatch_route_road_id) if _dispatch_adapter != null else {}
+	if not bool(planned.get("valid", false)):
+		_direct_dispatch_error = str(planned.get("error", "没有可通行道路"))
+		return
+	var preview := _direct_dispatch_command_preview()
+	_direct_dispatch_preview = _ui_route_draft({
+		"road_id": StringName(planned.get("route_id", &"")), "target_point_id": target_id,
+		"route_world_points": Array(planned.get("points", [])).duplicate(true), "duration_milliseconds": int(planned.get("duration_milliseconds", 0)),
+	})
+	_direct_dispatch_preview.food_cost = int(preview.get("food_cost", 0))
+	if int(preview.get("food_shortage", 0)) > 0:
+		_direct_dispatch_error = "粮食不足：需要 %d，当前 %d" % [int(preview.get("food_cost", 0)), int(preview.get("food_available", 0))]
+
+
+func _direct_dispatch_command_preview() -> Dictionary:
+	if _dispatch_adapter == null:
+		return {}
+	if StringName(_direct_dispatch_locked.get("kind", &"")) == &"FORMATION":
+		return _dispatch_adapter.get_macro_march_command_preview([StringName(_direct_dispatch_locked.get("formation_id", &""))])
+	return _dispatch_adapter.get_macro_march_command_preview([], StringName(_direct_dispatch_locked.get("army_id", &"")))
+
+
+func _update_direct_specialist_preview(screen_position: Vector2) -> void:
+	_direct_dispatch_preview = {}
+	_direct_dispatch_error = ""
+	var damaged_road := _damaged_road_id_at_screen(_dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}, screen_position)
+	var target_id := _point_id_at_screen(screen_position)
+	if damaged_road != &"" and StringName(_direct_dispatch_locked.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER:
+		_direct_dispatch_preview = {"repair_road_id": damaged_road}
+		return
+	if target_id == &"" or target_id == _direct_dispatch_source_point_id:
+		_direct_dispatch_error = "请选择另一处城池、驻点或受损道路"
+		return
+	_direct_dispatch_preview = {"target_point_id": target_id}
+
+
+func _finish_direct_dispatch(screen_position: Vector2) -> void:
+	if not _direct_dispatch_picker_open:
+		_cancel_direct_dispatch("已保持当前选择；长按起点可直接派遣。")
+		return
+	if _direct_dispatch_locked.is_empty():
+		_update_direct_dispatch_motion(screen_position)
+	if _direct_dispatch_locked.is_empty():
+		_cancel_direct_dispatch("已取消派遣；未选择对象，不会扣除资源。")
+		return
+	if _direct_dispatch_is_march():
+		_update_direct_march_preview()
+		if _direct_dispatch_preview.is_empty() or not _direct_dispatch_error.is_empty():
+			var failure := _direct_dispatch_error if not _direct_dispatch_error.is_empty() else "目标不可用，未下达军令。"
+			_cancel_direct_dispatch(failure)
+			return
+		_commit_direct_march()
+		return
+	_update_direct_specialist_preview(screen_position)
+	if _direct_dispatch_preview.is_empty() \
+		and StringName(_direct_dispatch_locked.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER \
+		and _point_id_at_screen(screen_position) == &"":
+		_begin_engineering_plan_from_direct_gesture(screen_position)
+		return
+	if _direct_dispatch_preview.is_empty() or not _direct_dispatch_error.is_empty():
+		var specialist_failure := _direct_dispatch_error if not _direct_dispatch_error.is_empty() else "目标不可用，未派遣专员。"
+		_cancel_direct_dispatch(specialist_failure)
+		return
+	_commit_direct_specialist()
+
+
+func _select_map_subject_from_tap(screen_position: Vector2) -> void:
+	# A short press remains selection/cycling, even though the same friendly
+	# anchor is eligible for a long-press object strip.  This keeps specialist
+	# inspection and coincident-subject cycling available without accidental
+	# dispatch.
+	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+	var specialist_id := _specialist_id_at_screen(field, screen_position)
+	if specialist_id != &"":
+		var specialist := Dictionary(Dictionary(field.get("specialists_by_id", {})).get(specialist_id, {}))
+		_reset_march_draft()
+		_selected_army_id = &""
+		_selected_specialist_id = specialist_id
+		_selected_scout_id = specialist_id if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else &""
+		_status_label.text = "已选中%s；长按其所在友方地点可直接下达目标。" % _specialist_role_label(specialist)
+		refresh()
+		return
+	var army_id := _army_id_at_screen(_model(), screen_position)
+	if army_id != &"":
+		_reset_march_draft()
+		_selected_army_id = army_id
+		_selected_specialist_id = &""
+		_selected_scout_id = &""
+		_status_label.text = "已选中该军队；长按其驻扎点可继续下令。"
+		refresh()
+		return
+	_status_label.text = "已选择起点；按住可选择编队或专员，松手前不会派遣。"
+	refresh()
+
+
+func _begin_engineering_plan_from_direct_gesture(screen_position: Vector2) -> void:
+	var engineer_id := StringName(_direct_dispatch_locked.get("specialist_id", &""))
+	var source_id := _direct_dispatch_source_point_id
+	var source := _point_from_model(_model(), source_id)
+	_cancel_direct_dispatch("")
+	_engineering_mode = true
+	_engineering_engineer_id = engineer_id
+	_engineering_source_point_id = source_id
+	_draw_source_point_id = source_id
+	_draw_points = [Vector2(source.get("world_position", _screen_to_world(_direct_dispatch_anchor_screen))), _screen_to_world(screen_position)]
+	_engineering_live_endpoint = _screen_to_world(screen_position)
+	_finish_engineering_draw(_model(), source_id)
+
+
+func _commit_direct_march() -> void:
+	var target_id := StringName(_direct_dispatch_preview.get("target_point_id", &""))
+	var result := {}
+	if StringName(_direct_dispatch_locked.get("kind", &"")) == &"FORMATION":
+		result = _dispatch_adapter.commit_macro_march_from_city([StringName(_direct_dispatch_locked.get("formation_id", &""))], target_id, StringName(_direct_dispatch_preview.get("route_id", &"")), Array(_direct_dispatch_preview.get("points", [])))
+	else:
+		result = _dispatch_adapter.commit_macro_march_from_station(StringName(_direct_dispatch_locked.get("army_id", &"")), target_id, StringName(_direct_dispatch_preview.get("route_id", &"")), Array(_direct_dispatch_preview.get("points", [])))
+	if not bool(result.get("success", false)):
+		_cancel_direct_dispatch(str(result.get("error", "军令下达失败")))
+		return
+	_selected_army_id = StringName(Dictionary(result.get("army", {})).get("army_id", &""))
+	_selected_formation_ids.clear()
+	_selected_specialist_id = &""
+	_clear_status_error()
+	_cancel_direct_dispatch("已出发：军令已锁定，粮食只扣除一次。")
+	refresh()
+
+
+func _commit_direct_specialist() -> void:
+	var kind := StringName(_direct_dispatch_locked.get("kind", &""))
+	var role := StringName(_direct_dispatch_locked.get("role", &""))
+	var result := {}
+	if _direct_dispatch_preview.has("repair_road_id"):
+		result = _dispatch_adapter.begin_field_road_repair(StringName(_direct_dispatch_locked.get("specialist_id", &"")), StringName(_direct_dispatch_preview.get("repair_road_id", &"")))
+	elif kind == &"NEW_SCOUT":
+		result = _dispatch_adapter.dispatch_field_specialist_to_target(role, StringName(_direct_dispatch_preview.get("target_point_id", &"")))
+	else:
+		result = _dispatch_adapter.order_field_specialist_move(StringName(_direct_dispatch_locked.get("specialist_id", &"")), StringName(_direct_dispatch_preview.get("target_point_id", &"")))
+	if not bool(result.get("success", false)):
+		_cancel_direct_dispatch(str(result.get("error", "专员任务无法下达")))
+		return
+	_selected_specialist_id = StringName(Dictionary(result.get("specialist", {})).get("specialist_id", _direct_dispatch_locked.get("specialist_id", &"")))
+	_selected_scout_id = _selected_specialist_id if role == FieldTacticsState.SPECIALIST_SCOUT else &""
+	_clear_status_error()
+	_cancel_direct_dispatch("%s已出发；任务已锁定。" % ("工程师" if role == FieldTacticsState.SPECIALIST_ENGINEER else "侦察兵"))
+	refresh()
+
+
+func _cancel_direct_dispatch(message: String) -> void:
+	var had_gesture := _direct_dispatch_pending
+	_direct_dispatch_pending = false
+	_direct_dispatch_picker_open = false
+	_direct_dispatch_source_point_id = &""
+	_direct_dispatch_options.clear()
+	_direct_dispatch_locked = {}
+	_direct_dispatch_hover_index = -1
+	_direct_dispatch_preview = {}
+	_direct_dispatch_error = ""
+	_direct_dispatch_route_road_id = &""
+	_direct_dispatch_elapsed = 0.0
+	if had_gesture and not message.is_empty():
 		_status_label.text = message
 	queue_redraw()
 	_map_canvas.queue_redraw()
@@ -1305,6 +1648,7 @@ func _request_retreat() -> void:
 func _dispatch_scout() -> void:
 	if _dispatch_adapter == null:
 		return
+	_cancel_direct_dispatch("")
 	if _scout_target_mode:
 		_scout_target_mode = false
 		_selected_scout_id = &""
@@ -1370,6 +1714,7 @@ func _specialist_phase_label(specialist: Dictionary) -> String:
 func _dispatch_engineer() -> void:
 	if _dispatch_adapter == null:
 		return
+	_cancel_direct_dispatch("")
 	var result := _dispatch_adapter.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
 	_status_label.text = "工程师已从黑石城出发。" if bool(result.get("success", false)) else str(result.get("error", "工程师派遣失败"))
 	refresh()
@@ -1378,6 +1723,7 @@ func _dispatch_engineer() -> void:
 func _build_side_road() -> void:
 	if _dispatch_adapter == null:
 		return
+	_cancel_direct_dispatch("")
 	var field := _dispatch_adapter.get_field_tactics_read_model()
 	if _selected_damaged_road_id != &"":
 		for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
@@ -1973,7 +2319,7 @@ func _draw_map_canvas(canvas: Control) -> void:
 			_draw_bridge_deck(canvas, points, damaged)
 		elif damaged:
 			_draw_road_damage(canvas, Array(points))
-	if not _engineering_mode and _has_explicit_command_subject(_model(), _selected_army(_model())):
+	if not _engineering_mode and (_has_explicit_command_subject(_model(), _selected_army(_model())) or (_direct_dispatch_pending and _direct_dispatch_is_march())):
 		_draw_road_choice_points(canvas, Dictionary(field.get("roads_by_id", {})))
 	_draw_engineering_draft_overlay(canvas, rect)
 	_draw_project_construction_overlays(canvas, Dictionary(field.get("projects_by_id", {})))
@@ -2035,6 +2381,7 @@ func _draw_map_canvas(canvas: Control) -> void:
 		_draw_point_label(canvas, rect, center, str(point.display_name), 80, Color.WHITE)
 	_draw_minimap(canvas)
 	_draw_draw_hold_feedback(canvas)
+	_draw_direct_dispatch_picker(canvas)
 
 
 func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) -> void:
@@ -2044,7 +2391,7 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 	_draw_march_draft_or_live_preview(canvas)
 	_draw_engineering_draft_overlay(canvas, rect)
 	_draw_project_construction_overlays(canvas, Dictionary(field.get("projects_by_id", {})))
-	if not _engineering_mode and _has_explicit_command_subject(_model(), _selected_army(_model())):
+	if not _engineering_mode and (_has_explicit_command_subject(_model(), _selected_army(_model())) or (_direct_dispatch_pending and _direct_dispatch_is_march())):
 		_draw_road_choice_points(canvas, Dictionary(field.get("roads_by_id", {})))
 	for army_value in Array(_model().get("armies", [])):
 		var army: Dictionary = Dictionary(army_value)
@@ -2089,6 +2436,7 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 	canvas.draw_rect(rect, Color("e7d7a8", 0.92), false, 2.0)
 	_draw_minimap(canvas)
 	_draw_draw_hold_feedback(canvas)
+	_draw_direct_dispatch_picker(canvas)
 
 
 func _draw_road_choice_points(canvas: Control, roads_by_id: Dictionary) -> void:
@@ -2096,7 +2444,8 @@ func _draw_road_choice_points(canvas: Control, roads_by_id: Dictionary) -> void:
 		var marker: Dictionary = marker_value
 		var road_id := StringName(marker.road_id)
 		var screen := Vector2(marker.screen_position)
-		var selected := road_id == _selected_route_road_id
+		var active_road_id := _direct_dispatch_route_road_id if _direct_dispatch_pending and _direct_dispatch_is_march() else _selected_route_road_id
+		var selected := road_id == active_road_id
 		canvas.draw_circle(screen, 6.0 if selected else 4.0, Color("fff2bf") if selected else Color("77f0ef", 0.70))
 		canvas.draw_arc(screen, 9.0 if selected else 7.0, 0.0, TAU, 16, Color("fff2bf", 0.95) if selected else Color("20302c", 0.72), 1.5, true)
 
@@ -2121,6 +2470,31 @@ func _road_choice_markers(roads_by_id: Dictionary) -> Array[Dictionary]:
 
 
 func _draw_march_draft_or_live_preview(canvas: Control) -> void:
+	if _direct_dispatch_pending and not _direct_dispatch_locked.is_empty():
+		if not _direct_dispatch_preview.is_empty() and _direct_dispatch_is_march():
+			_draw_route_preview(canvas, Array(_direct_dispatch_preview.get("points", [])), Color("77f0ef"), 1.8, false)
+			_draw_command_arrow(canvas, _direct_dispatch_source_point_id, _direct_dispatch_cursor_screen)
+			var direct_target := _point_from_model(_model(), StringName(_direct_dispatch_preview.get("target_point_id", &"")))
+			var direct_target_screen := _world_to_screen(Vector2(direct_target.get("world_position", Vector2.ZERO)))
+			canvas.draw_arc(direct_target_screen, 17.0, 0.0, TAU, 24, Color("fff2bf"), 2.5, true)
+			canvas.draw_string(ThemeDB.fallback_font, direct_target_screen + Vector2(-92, -30), "%s · %0.1f 秒 · 粮 %d" % [str(direct_target.get("display_name", "目标")), float(_direct_dispatch_preview.get("duration_milliseconds", 0)) / 1000.0, int(_direct_dispatch_preview.get("food_cost", 0))], HORIZONTAL_ALIGNMENT_CENTER, 184, 12, Color("fff4d3"))
+			return
+		if not _direct_dispatch_preview.is_empty() and not _direct_dispatch_is_march():
+			_draw_command_arrow(canvas, _direct_dispatch_source_point_id, _direct_dispatch_cursor_screen, Color("f2b86e"))
+			var role_label := "工程师" if StringName(_direct_dispatch_locked.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER else "侦察兵"
+			if _direct_dispatch_preview.has("repair_road_id"):
+				canvas.draw_arc(_direct_dispatch_cursor_screen, 15.0, 0.0, TAU, 24, Color("f2b86e"), 2.5, true)
+				canvas.draw_string(ThemeDB.fallback_font, _direct_dispatch_cursor_screen + Vector2(-74, -24), "%s → 维修道路｜松手执行" % role_label, HORIZONTAL_ALIGNMENT_CENTER, 148, 12, Color("fff4d3"))
+			else:
+				var specialist_target := _point_from_model(_model(), StringName(_direct_dispatch_preview.get("target_point_id", &"")))
+				var specialist_target_screen := _world_to_screen(Vector2(specialist_target.get("world_position", Vector2.ZERO)))
+				canvas.draw_arc(specialist_target_screen, 17.0, 0.0, TAU, 24, Color("fff2bf"), 2.5, true)
+				canvas.draw_string(ThemeDB.fallback_font, specialist_target_screen + Vector2(-88, -30), "%s → %s｜松手执行" % [role_label, str(specialist_target.get("display_name", "目标"))], HORIZONTAL_ALIGNMENT_CENTER, 176, 12, Color("fff4d3"))
+			return
+		if not _direct_dispatch_error.is_empty():
+			_draw_command_arrow(canvas, _direct_dispatch_source_point_id, _direct_dispatch_cursor_screen, Color("e26452", 0.76))
+			canvas.draw_string(ThemeDB.fallback_font, _direct_dispatch_cursor_screen + Vector2(12, -12), _direct_dispatch_error, HORIZONTAL_ALIGNMENT_LEFT, -1, 13, Color("fff2bf"))
+			return
 	# A previous draft remains available if the new drag is cancelled, but while
 	# a replacement gesture is active its live path is the only player-facing
 	# route. Rendering it first prevents the old bright path from appearing to
@@ -2211,12 +2585,32 @@ func _draw_route_preview(canvas: Control, world_points: Array, color: Color, wid
 
 
 func _draw_draw_hold_feedback(canvas: Control) -> void:
+	if _direct_dispatch_pending and not _direct_dispatch_picker_open:
+		var direct_progress := clampf(_direct_dispatch_elapsed / DRAW_HOLD_SECONDS, 0.0, 1.0)
+		canvas.draw_arc(_direct_dispatch_anchor_screen, 14.0, -PI * 0.5, TAU * direct_progress - PI * 0.5, 20, Color("f2b86e", 0.92), 2.5, true)
+		canvas.draw_string(ThemeDB.fallback_font, _direct_dispatch_anchor_screen + Vector2(-62, -24), "按住 %0.1f 秒选人" % DRAW_HOLD_SECONDS, HORIZONTAL_ALIGNMENT_CENTER, 124, 12, Color("fff4d3"))
+		return
 	if _draw_hold_pending:
 		var progress := clampf(_draw_hold_elapsed / DRAW_HOLD_SECONDS, 0.0, 1.0)
 		canvas.draw_arc(_draw_press_screen, 14.0, -PI * 0.5, TAU * progress - PI * 0.5, 20, Color("f2b86e", 0.92), 2.5, true)
 		canvas.draw_string(ThemeDB.fallback_font, _draw_press_screen + Vector2(-54, -24), "按住 %0.1f 秒" % DRAW_HOLD_SECONDS, HORIZONTAL_ALIGNMENT_CENTER, 108, 12, Color("fff4d3"))
 	elif _is_drawing:
 		canvas.draw_circle(_draw_cursor_screen, 5.0, Color("f2b86e") if _engineering_mode else Color("77f0ef"))
+
+
+func _draw_direct_dispatch_picker(canvas: Control) -> void:
+	if not _direct_dispatch_pending or not _direct_dispatch_picker_open:
+		return
+	for index in range(_direct_dispatch_options.size()):
+		var option: Dictionary = Dictionary(_direct_dispatch_options[index])
+		var rect := _direct_dispatch_option_rect(index)
+		var locked := not _direct_dispatch_locked.is_empty() and index == _direct_dispatch_hover_index
+		var color := Color("355b58", 0.96) if locked else Color("202d2b", 0.94)
+		canvas.draw_rect(rect, color, true)
+		canvas.draw_rect(rect, Color("fff2bf") if locked else Color("7aa39a"), false, 1.5)
+		canvas.draw_string(ThemeDB.fallback_font, rect.position + Vector2(8, 22), str(option.get("label", "对象")), HORIZONTAL_ALIGNMENT_LEFT, int(rect.size.x - 16), 12, Color("fff4d3"))
+	if _direct_dispatch_locked.is_empty():
+		canvas.draw_string(ThemeDB.fallback_font, _direct_dispatch_anchor_screen + Vector2(18, 24), "滑入对象后继续拖动", HORIZONTAL_ALIGNMENT_LEFT, 160, 12, Color("fff4d3"))
 
 
 func _draw_selected_specialist_overlay(canvas: Control, field: Dictionary) -> void:
@@ -2255,6 +2649,19 @@ func _draw_engineering_preview_overlay(canvas: Control, draft: Dictionary) -> vo
 	canvas.draw_circle(target_screen, 9.0, Color("80e8e0"))
 	canvas.draw_string(ThemeDB.fallback_font, source_screen + Vector2(-30, -14), "施工起点", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color("fff4d3"))
 	canvas.draw_string(ThemeDB.fallback_font, target_screen + Vector2(-30, -14), "施工目标", HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color("fff4d3"))
+	var start_rect := _engineering_start_rect()
+	canvas.draw_rect(start_rect, Color("d39d49", 0.96), true)
+	canvas.draw_rect(start_rect, Color("fff2bf"), false, 1.5)
+	canvas.draw_string(ThemeDB.fallback_font, start_rect.position + Vector2(10, 19), "开工", HORIZONTAL_ALIGNMENT_LEFT, 54, 13, Color("1d2a30"))
+
+
+func _engineering_start_rect() -> Rect2:
+	if _engineering_draft.is_empty():
+		return Rect2(Vector2.INF, Vector2.ZERO)
+	var points: Array = Array(_engineering_draft.get("route_world_points", []))
+	if points.is_empty():
+		return Rect2(Vector2.INF, Vector2.ZERO)
+	return Rect2(_world_to_screen(Vector2(points.back())) + Vector2(14, -12), Vector2(64, 28))
 
 
 func _draw_project_construction_overlays(canvas: Control, projects: Dictionary) -> void:
