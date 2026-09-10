@@ -1,5 +1,30 @@
 # 当前状态
 
+## Direct-dispatch copy priority (2026-09-10)
+
+The direct-map gesture now owns the top status line and side detail for its
+full pre-commit lifetime. Before a row is chosen it explains that the player
+must slide into the strip; while a row is hovered it names the candidate and
+explains that leaving the strip locks it; after locking it shows the subject,
+source, target, authority duration and food cost, with `松手派遣` only for a
+valid preview. A live validation error takes priority over route copy and says
+that release cannot publish an order, project or resource transaction.
+
+The strip instruction moved into its own small callout outside all option
+rectangles, leaving each row exclusively for its subject label and its
+`候选`/`锁定` state. Cancelling or completing the gesture clears only this
+temporary presentation state and restores the ordinary overview on the next
+refresh; no selection, order, food, repair or multi-formation behavior was
+changed. The direct graphical contract now captures candidate, locked and
+invalid-preview states and asserts their top/side copy, as GUI-event/render
+evidence. Player acceptance remains **OPEN**; the earlier stall is still
+**NOT REPRODUCED / NOT DIAGNOSED**.
+
+The low-poly graphical fixture now emits a complete press/release pair for a
+map click. This keeps a selection click distinct from a held direct-dispatch
+gesture and prevents later engineering checks from inheriting an impossible
+pending hold state.
+
 ## Direct-map hover and repair-intent repair (2026-09-10)
 
 The direct object strip now makes its two pre-commit states visible: a row is

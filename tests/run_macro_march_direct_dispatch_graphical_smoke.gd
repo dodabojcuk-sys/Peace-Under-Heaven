@@ -42,11 +42,23 @@ func _run() -> void:
 	await _open_picker(macro, source_screen)
 	var visible_formation_index := _option_index(macro, &"FORMATION")
 	var expected_formation_id := StringName(Dictionary(macro._direct_dispatch_options[visible_formation_index] if visible_formation_index >= 0 else {}).get("formation_id", &""))
+	var expected_formation_label := str(Dictionary(macro._direct_dispatch_options[visible_formation_index] if visible_formation_index >= 0 else {}).get("label", ""))
 	var picker_before_hover := await _capture_viewport_image()
 	_hover_option(macro, visible_formation_index)
+	macro.refresh()
 	var picker_hover := await _capture_viewport_image()
+	var picker_hint_is_outside_rows := true
+	for option_index in range(macro._direct_dispatch_options.size()):
+		if macro._direct_dispatch_picker_hint_rect().intersects(macro._direct_dispatch_option_rect(option_index)):
+			picker_hint_is_outside_rows = false
+			break
 	var hover_remains_unlocked := macro._direct_dispatch_locked.is_empty()
+	var hover_copy_is_consistent := macro._status_label.text.contains("候选对象") \
+		and macro._status_label.text.contains(expected_formation_label) \
+		and macro._detail_label.text.contains(expected_formation_label) \
+		and macro._detail_label.text.contains("拖出后锁定")
 	_send_map_motion(macro, target_screen)
+	macro.refresh()
 	var picker_locked := await _capture_viewport_image()
 	_capture_evidence(picker_hover, "01-picker-hover-engine-gui.png")
 	_capture_evidence(picker_locked, "02-picker-locked-engine-gui.png")
@@ -55,8 +67,14 @@ func _run() -> void:
 		and hover_remains_unlocked
 	var lock_is_visible := _changed_pixels(picker_hover, picker_locked, hover_rect) > 30 \
 		and StringName(macro._direct_dispatch_locked.get("formation_id", &"")) == expected_formation_id
+	var locked_copy_is_consistent := macro._status_label.text.contains("松手派遣") \
+		and macro._status_label.text.contains(expected_formation_label) \
+		and macro._detail_label.text.contains(expected_formation_label) \
+		and macro._detail_label.text.contains("目标：")
 	_send_map_release(macro, macro._direct_dispatch_option_rect(visible_formation_index).get_center())
 	await process_frame
+	macro.refresh()
+	var direct_cancel_restores_overview := not macro._detail_label.text.contains("快捷派遣")
 
 	# Focus loss must cancel the new direct gesture just as it cancels legacy
 	# drawing. A later release cannot issue from a stale object-strip selection.
@@ -185,6 +203,13 @@ func _run() -> void:
 	await _open_picker(macro, source_screen)
 	formation_index = _option_index(macro, &"FORMATION")
 	_move_through_option_to_target(macro, formation_index, target_screen)
+	macro.refresh()
+	var shortage_preview := await _capture_viewport_image()
+	_capture_evidence(shortage_preview, "03-picker-invalid-target-gui.png")
+	var shortage_has_priority_copy := macro._direct_dispatch_pending \
+		and macro._status_label.text.contains("粮食不足") \
+		and macro._detail_label.text.contains("无法派遣") \
+		and macro._detail_label.text.contains("松手不会提交")
 	_send_map_release(macro, target_screen)
 	await process_frame
 	macro.refresh()
@@ -295,8 +320,8 @@ func _run() -> void:
 	await process_frame
 	var map_start_commits_once := Dictionary(city.get_field_tactics_read_model().get("projects_by_id", {})).size() == projects_before + 1 \
 		and int(city.food) == food_before_engineering - plan_cost
-	print("DIRECT_DISPATCH_TRACE hover=%s lock=%s invalid=%s scout=%s march=%s repair_shortage=%s repair_unreachable=%s repair_commit=%s engineering=%s start=%s scout_index=%d formation_index=%d engineer_index=%d preview_route=%s issued_macro=%s food=%d armies=%d specialist=%s status=%s" % [
-		str(hover_is_visible), str(lock_is_visible), str(invalid_scout_has_no_side_effect), str(direct_scout_commits_once), str(direct_march_commits_once), str(repair_shortage_stays_repair), str(repair_unreachable_stays_repair), str(repair_commits_once), str(engineering_plan_is_editable), str(map_start_commits_once), new_scout_index, formation_index, engineer_index, preview_route_id, str(issued_macro), int(city.food), issued_armies.size(), str(moving_scout), macro._status_label.text,
+	print("DIRECT_DISPATCH_TRACE hover=%s lock=%s hint_clear=%s hover_copy=%s locked_copy=%s invalid_copy=%s cancel_overview=%s invalid=%s scout=%s march=%s repair_shortage=%s repair_unreachable=%s repair_commit=%s engineering=%s start=%s scout_index=%d formation_index=%d engineer_index=%d preview_route=%s issued_macro=%s food=%d armies=%d specialist=%s status=%s" % [
+		str(hover_is_visible), str(lock_is_visible), str(picker_hint_is_outside_rows), str(hover_copy_is_consistent), str(locked_copy_is_consistent), str(shortage_has_priority_copy), str(direct_cancel_restores_overview), str(invalid_scout_has_no_side_effect), str(direct_scout_commits_once), str(direct_march_commits_once), str(repair_shortage_stays_repair), str(repair_unreachable_stays_repair), str(repair_commits_once), str(engineering_plan_is_editable), str(map_start_commits_once), new_scout_index, formation_index, engineer_index, preview_route_id, str(issued_macro), int(city.food), issued_armies.size(), str(moving_scout), macro._status_label.text,
 	])
 
 	_check(new_scout_index >= 0 and formation_index >= 0, "选择条包含新侦察兵与编队")
@@ -304,6 +329,10 @@ func _run() -> void:
 	_check(invalid_scout_has_no_side_effect, "无效侦察目标不派遣也不扣粮")
 	_check(picker_release_has_no_side_effect, "松手仍在选择条内会取消而不提交")
 	_check(hover_is_visible and lock_is_visible, "引擎画面清楚区分条内悬停候选与拖出后的锁定对象")
+	_check(picker_hint_is_outside_rows, "选择条说明不覆盖任何对象行的名称、人数或候选状态")
+	_check(hover_copy_is_consistent and locked_copy_is_consistent, "快捷手势期间顶部与侧栏一致显示候选、锁定对象及松手派遣")
+	_check(shortage_has_priority_copy, "无效快捷目标优先显示原因，且不会被正常路线预览覆盖")
+	_check(direct_cancel_restores_overview, "取消快捷手势后恢复常规侧栏概览")
 	_check(direct_scout_commits_once, "新侦察兵创建与下令保持单次事务")
 	_check(crossed_strip_locks_intended_option, "连续穿过选择条后锁定预期编队身份")
 	_check(direct_march_commits_once, "松手以最终目标重校验，并只为预期编队提交一次军令")

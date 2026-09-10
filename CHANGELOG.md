@@ -2,6 +2,17 @@
 
 ## 2026-09-10
 
+- Give the direct-map dispatch gesture ownership of its transient status and
+  side detail: candidate, locked valid target and invalid target now have
+  distinct player-facing copy without changing authority behavior.
+- Move the picker instruction out of option rows so it cannot cover subject
+  names, member counts or candidate/locked labels.
+- Extend the graphical direct-dispatch contract with top/side copy assertions
+  and a captured invalid-preview state.
+- Make the low-poly graphical map-click fixture emit both press and release,
+  matching normal selection input instead of leaving a direct-dispatch hold
+  pending for a later engineering check.
+
 - Added distinct direct-strip `候选` hover and `锁定` feedback, and extended
   graphical verification from the chosen strip row through the exact formation
   snapshot in the published macro order.

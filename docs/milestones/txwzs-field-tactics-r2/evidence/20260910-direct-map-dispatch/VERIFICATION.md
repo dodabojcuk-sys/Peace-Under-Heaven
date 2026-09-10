@@ -18,6 +18,20 @@ transaction after a valid target release. Engineering keeps the deliberately
 different editable plan: release into legal open land creates a draft only;
 the visible map-side `开工` action is the sole construction commitment.
 
+## Display-priority follow-up
+
+While the direct-map gesture is active, the top status and side detail use the
+same current gesture state rather than the normal selected-army or specialist
+copy. They show the candidate row while the pointer remains in the strip, the
+locked subject plus target/duration/food for a valid preview, or the validation
+reason before a release can publish anything. The instruction is rendered in a
+separate callout outside the picker rows, preserving each row's name/count and
+candidate/locked label. Gesture completion or cancellation returns to the
+ordinary overview without changing authoritative selection or command state.
+The related low-poly graphical fixture sends a complete press/release pair for
+map selection, so it cannot leave the hold recognizer pending before an
+independent engineering interaction.
+
 ## Command and result
 
 Run from the repository root with an isolated V5 store:
@@ -30,10 +44,11 @@ TXWZS_GODOT_BIN="/Users/m4-zhi/Documents/codex-tools/godot/4.5.1-stable-standard
 Godot 4.5.1 graphical Metal run passed:
 
 ```text
-DIRECT_DISPATCH_TRACE invalid=true scout=true march=true engineering=true start=true
+DIRECT_DISPATCH_TRACE hover=true lock=true hint_clear=true hover_copy=true locked_copy=true invalid_copy=true cancel_overview=true invalid=true scout=true march=true repair_shortage=true repair_unreachable=true repair_commit=true engineering=true start=true
 CAPTURED: docs/milestones/txwzs-field-tactics-r2/evidence/20260910-direct-map-dispatch/01-picker-hover-engine-gui.png
 CAPTURED: docs/milestones/txwzs-field-tactics-r2/evidence/20260910-direct-map-dispatch/02-picker-locked-engine-gui.png
-MACRO_MARCH_DIRECT_DISPATCH_GRAPHICAL_SMOKE PASS assertions=14
+CAPTURED: docs/milestones/txwzs-field-tactics-r2/evidence/20260910-direct-map-dispatch/03-picker-invalid-target-gui.png
+MACRO_MARCH_DIRECT_DISPATCH_GRAPHICAL_SMOKE PASS assertions=18
 ```
 
 The test sends the normal `MacroMarchR0` GUI input sequence: mouse press,
@@ -50,6 +65,10 @@ release. It asserts:
   creates exactly one project and spends the preview cost once.
 - focus loss clears a pending direct gesture, so its later release cannot
   publish an order;
+- candidate hover, locked valid target and invalid target each render their
+  matching top/side copy; cancellation restores the ordinary overview;
+- the picker instruction rectangle stays outside every option row, so it cannot
+  overlap a subject name, member count or candidate/locked state;
 - a continuous path crossing several rows locks the intended final highlight,
   not an earlier crossed option; the test records the exact `formation_id` and
   verifies that the published macro order contains that same formation;

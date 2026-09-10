@@ -370,6 +370,13 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_restore_default_route_button.disabled = _selected_route_road_id == &""
 	_engineering_undo_button.visible = not _engineering_draft.is_empty() and _engineering_planned_points.size() > 2
 	_engineering_clear_button.visible = not _engineering_draft.is_empty()
+	# Direct-map dispatch is a transient, one-subject gesture.  Its presentation
+	# must own the status line and side detail while the pointer is down; otherwise
+	# the regular selected-army/specialist copy replaces the feedback a player is
+	# currently using to decide whether release is safe.  This reads only the
+	# existing authority preview and deliberately does not alter command state.
+	if _refresh_direct_dispatch_copy(model):
+		return
 	if _scout_target_mode:
 		_confirm_button.visible = false
 		_block_button.visible = false
@@ -544,6 +551,68 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_side_road_button.visible = _has_idle_engineer(specialists)
 	_confirm_button.text = "确认施工" if not _engineering_draft.is_empty() else "确认并锁定军令"
 	_confirm_button.disabled = (_engineering_draft.is_empty() and (_draft_route.is_empty() or _selected_formation_ids.is_empty()))
+
+
+func _refresh_direct_dispatch_copy(model: Dictionary) -> bool:
+	if not _direct_dispatch_pending:
+		return false
+	# A direct release is the sole commit action.  Hide unrelated side actions
+	# until the gesture ends, then the ordinary refresh path restores them from
+	# their existing authoritative state.
+	_confirm_button.visible = false
+	_block_button.visible = false
+	_recover_button.visible = false
+	_retreat_button.visible = false
+	_scout_button.visible = false
+	_engineer_button.visible = false
+	_side_road_button.visible = false
+	_resume_project_button.visible = false
+	_restore_default_route_button.visible = false
+	_engineering_undo_button.visible = false
+	_engineering_clear_button.visible = false
+	_interrupted_project_selector.visible = false
+	_specialist_status_label.text = ""
+	var source := _point_from_model(model, _direct_dispatch_source_point_id)
+	var source_label := str(source.get("display_name", _direct_dispatch_source_point_id))
+	if not _direct_dispatch_picker_open:
+		_status_label.text = "按住 %0.1f 秒后选择派遣对象；轻点仅选择。" % DRAW_HOLD_SECONDS
+		_detail_label.text = "快捷派遣\n起点：%s\n长按激活后，滑入选择条中的编队或专员。\n尚未选择对象，不会下达军令或扣除资源。" % source_label
+		return true
+	if _direct_dispatch_locked.is_empty():
+		if _direct_dispatch_hover_index < 0:
+			_status_label.text = "滑入选择条中的对象以选择派遣对象。"
+			_detail_label.text = "快捷派遣\n起点：%s\n在选择条内滑动可更换候选对象。\n拖出选择条后才会锁定对象。" % source_label
+			return true
+		var candidate := Dictionary(_direct_dispatch_options[_direct_dispatch_hover_index])
+		var candidate_label := str(candidate.get("label", "对象"))
+		_status_label.text = "候选对象：%s；拖出选择条后锁定。" % candidate_label
+		_detail_label.text = "快捷派遣\n候选对象：%s\n选择条内仍可切换；拖出后锁定此对象。\n尚未提交，不会扣除资源。" % candidate_label
+		return true
+	var subject_label := str(_direct_dispatch_locked.get("label", "对象"))
+	var target_label := _direct_dispatch_target_label(model)
+	if not _direct_dispatch_error.is_empty():
+		# A live validation failure is more important than a stale route preview.
+		_status_label.text = "无法派遣：%s" % _direct_dispatch_error
+		_detail_label.text = "快捷派遣\n对象：%s\n目标：%s\n无法派遣：%s\n松手不会提交军令、工程或资源事务。" % [subject_label, target_label, _direct_dispatch_error]
+		return true
+	if _direct_dispatch_preview.is_empty():
+		_status_label.text = "%s 已锁定；指向城池、驻点或受损道路。" % subject_label
+		_detail_label.text = "快捷派遣\n对象：%s\n起点：%s\n请指向合法目标；有效目标会显示预计时间和费用。" % [subject_label, source_label]
+		return true
+	var seconds := float(_direct_dispatch_preview.get("duration_milliseconds", 0)) / 1000.0
+	var food_cost := int(_direct_dispatch_preview.get("food_cost", 0))
+	_status_label.text = "%s → %s · %0.1f 秒 · 耗粮 %d；松手派遣。" % [subject_label, target_label, seconds, food_cost]
+	_detail_label.text = "快捷派遣\n对象：%s\n起点：%s\n目标：%s\n预计 %0.1f 秒 · 耗粮 %d\n合法目标：松手派遣。" % [subject_label, source_label, target_label, seconds, food_cost]
+	return true
+
+
+func _direct_dispatch_target_label(model: Dictionary) -> String:
+	if _direct_dispatch_preview.has("repair_road_id"):
+		return "受损道路"
+	var target_id := StringName(_direct_dispatch_preview.get("target_point_id", &""))
+	if target_id == &"":
+		target_id = _point_id_at_screen(_direct_dispatch_cursor_screen)
+	return _point_display_name(model, target_id, "待选择目标")
 
 
 func _toggle_formation(formation_id: StringName) -> void:
@@ -2678,7 +2747,26 @@ func _draw_direct_dispatch_picker(canvas: Control) -> void:
 		elif hovered:
 			canvas.draw_string(ThemeDB.fallback_font, rect.end - Vector2(42, 8), "候选", HORIZONTAL_ALIGNMENT_RIGHT, 36, 10, Color("f2b86e"))
 	if _direct_dispatch_locked.is_empty():
-		canvas.draw_string(ThemeDB.fallback_font, _direct_dispatch_anchor_screen + Vector2(18, 24), "滑入对象后继续拖动", HORIZONTAL_ALIGNMENT_LEFT, 160, 12, Color("fff4d3"))
+		# Keep the instruction outside the rows.  The option rectangle is reserved
+		# for the subject name, member count and candidate/locked state.
+		var hint_rect := _direct_dispatch_picker_hint_rect()
+		canvas.draw_rect(hint_rect, Color("1d2a30", 0.90), true)
+		canvas.draw_rect(hint_rect, Color("7aa39a", 0.82), false, 1.0)
+		canvas.draw_string(ThemeDB.fallback_font, hint_rect.position + Vector2(7, 15), "条内选择 · 拖出锁定", HORIZONTAL_ALIGNMENT_LEFT, int(hint_rect.size.x - 14), 11, Color("fff4d3"))
+
+
+func _direct_dispatch_picker_hint_rect() -> Rect2:
+	var bounds := _direct_dispatch_picker_bounds()
+	var map_rect := _map_rect()
+	var size_hint := Vector2(150, 22)
+	var position := bounds.position + Vector2(0, -size_hint.y - 5.0)
+	if position.y < map_rect.position.y + 3.0:
+		position = Vector2(bounds.end.x + 6.0, bounds.position.y)
+	if position.x + size_hint.x > map_rect.end.x - 3.0:
+		position = Vector2(bounds.position.x, bounds.end.y + 5.0)
+	position.x = clampf(position.x, map_rect.position.x + 3.0, map_rect.end.x - size_hint.x - 3.0)
+	position.y = clampf(position.y, map_rect.position.y + 3.0, map_rect.end.y - size_hint.y - 3.0)
+	return Rect2(position, size_hint)
 
 
 func _draw_selected_specialist_overlay(canvas: Control, field: Dictionary) -> void:

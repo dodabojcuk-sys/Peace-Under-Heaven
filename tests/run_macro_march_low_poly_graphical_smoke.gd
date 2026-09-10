@@ -904,6 +904,14 @@ func _click_map(macro: MacroMarchR0, position: Vector2, button_index: MouseButto
 	event.pressed = true
 	event.position = position
 	macro._on_gui_input(event)
+	# Map selection is a complete press/release click.  Leaving the release out
+	# used to strand the new hold-to-dispatch recognizer in a pending state and
+	# made later engineering assertions test an impossible desktop input stream.
+	event = InputEventMouseButton.new()
+	event.button_index = button_index
+	event.pressed = false
+	event.position = position
+	macro._on_gui_input(event)
 
 
 func _click_control_with_gui_input(control: Control) -> void:
