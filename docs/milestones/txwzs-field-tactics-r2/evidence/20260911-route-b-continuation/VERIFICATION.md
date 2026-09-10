@@ -59,6 +59,7 @@ mouse footage and not a player hand-feel acceptance result.
 | `direct-dispatch-graphical-smoke.log` | Direct-map GUI input/render regression. |
 | `low-poly-graphical-smoke.log` | Low-poly graphical rendering/input regression. |
 | `field-r2-smoke.log` | Field tactical authority regression. |
+| `candidate-launch-attempt.log` | Standard-launcher refusal that preserves two identified older candidate windows rather than opening an ambiguous third window. |
 
 ## Verification
 
@@ -91,3 +92,14 @@ intentional same-source release reports `请选择另一处城池或驻点` and 
 No new cross-process claim is made by this checkpoint. Existing persistence
 coverage remains unchanged because this repair does not alter ArmyRegistry or
 V5 snapshot schema.
+
+## Candidate launch boundary
+
+After the push, `RUN_CURRENT_TXWZS.command` correctly refused to launch a new
+candidate because two still-running, unregistered windows from this checkout
+were identified as `a00b3d3` and `f849e5f`. They have separate isolated user
+and V5 save directories. This checkpoint does not terminate or overwrite those
+user-visible candidates, and it does not bypass the launcher's duplicate-window
+safety rule. The exact process identities and command output are retained in
+`candidate-launch-attempt.log`; opening a `60f1874` isolated candidate requires
+closing or explicitly handing off the older windows first.
