@@ -1,5 +1,29 @@
 # 当前状态
 
+## Command feedback repair and candidate observation (2026-09-10)
+
+An unconfirmed Macro March confirmation failure now remains visible across the
+normal per-frame UI refresh. Cancelling a draft or hold clears that temporary
+error and preserves the selected city formation; only a deliberate second
+formation click deselects it. A successful retry clears the error, creates one
+army and charges the authority preview cost once. The status line now also
+distinguishes a paused world from a normally advancing order.
+
+The new standalone graphical GUI-event contract records failure, cancel,
+explicit second click and retry separately, then verifies pause/resume keeps
+the same order and does not duplicate food cost. It is run in its own isolated
+Godot process so prior graphical fixtures cannot supply a previously spent
+roster. Macro March (30), Field R2 (71), the graphical low-poly suite (18),
+and the new command-status contract pass.
+
+The existing `58be81e` candidate and its V5 store were observed read-only and
+left intact. Its process is alive and publishing generations, but the latest
+snapshot has no active macro army; another candidate owns the frontmost Godot
+window. No simulation or rendering stall was reproduced. The conclusion is
+**NOT REPRODUCED / NOT DIAGNOSED**, not a stall fix. Details and exact commands
+are in `docs/milestones/txwzs-field-tactics-r2/evidence/20260910-command-status-and-stall-observation/`.
+Player acceptance remains **OPEN**.
+
 ## FIELD_TACTICS_R2 Blackstone sample-theatre candidate (2026-09-09)
 
 ### Direct command and engineering planning (current worktree)

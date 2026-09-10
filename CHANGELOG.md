@@ -45,6 +45,22 @@
 
 ## Unreleased
 
+### FIELD_TACTICS_R2 Command feedback and status observation
+
+- Preserved confirmation failures across Macro March's per-frame context
+  refresh, then cleared them when the player cancels or begins/succeeds at a
+  new command decision.
+- Clarified cancellation: it clears only unconfirmed gesture/draft state and
+  retains the selected city formation; an explicit second formation click is
+  still the separate deselection action.
+- Added a standalone graphical GUI-event regression that traces failed
+  confirmation, cancel, explicit deselection, retry, pause and resume with an
+  isolated V5 store. It proves no failure transaction, one retry transaction,
+  and no extra food charge on resume.
+- Recorded a read-only observation of the preserved `58be81e` candidate. Its
+  latest save contains no active macro order, so the reported stall was not
+  reproduced or diagnosed; no candidate state was reset or modified.
+
 ### FIELD_TACTICS_R2 Draw-hold route planning
 
 - Replaced immediate map drawing with one shared 0.5-second UI-time hold

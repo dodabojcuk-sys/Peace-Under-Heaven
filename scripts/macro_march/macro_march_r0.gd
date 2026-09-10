@@ -91,6 +91,7 @@ var _restore_default_route_button := Button.new()
 var _engineering_undo_button := Button.new()
 var _engineering_clear_button := Button.new()
 var _interrupted_project_selector_signature := ""
+var _status_error_text := ""
 
 
 func _ready() -> void:
@@ -130,6 +131,22 @@ func _process(delta: float) -> void:
 	# twice.
 	refresh()
 	_update_draw_interaction(delta)
+
+
+func _set_status_error(message: String) -> void:
+	_status_error_text = message
+	_status_label.text = message
+
+
+func _clear_status_error() -> void:
+	_status_error_text = ""
+
+
+func _set_context_status(message: String) -> void:
+	if not _status_error_text.is_empty():
+		_status_label.text = _status_error_text
+		return
+	_status_label.text = message
 
 
 func _notification(what: int) -> void:
@@ -343,7 +360,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		_scout_button.visible = true
 		_scout_button.disabled = false
 		_scout_button.text = "取消侦察目标选择"
-		_status_label.text = "侦察目标模式：单击地图上的城池或驻点；右键或按钮取消。"
+		_set_context_status("侦察目标模式：单击地图上的城池或驻点；右键或按钮取消。")
 		var scout := Dictionary(specialists.get(_selected_scout_id, {}))
 		_detail_label.text = "侦察兵待命\n当前位置：%s\n尚未下达移动命令；取消不会产生新的资源事务。" % _point_display_name(
 			model, StringName(scout.get("current_point_id", &"")), "野外"
@@ -362,7 +379,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		var live_source := _point_from_model(model, live_source_id)
 		var live_target_id := StringName(_draw_preview_route.get("target_point_id", &""))
 		var live_target_label := _point_display_name(model, live_target_id, "沿道路选择目标")
-		_status_label.text = "正在重规划行军；松手后以当前道路草稿替换待确认路线。"
+		_set_context_status("正在重规划行军；松手后以当前道路草稿替换待确认路线。")
 		_detail_label.text = "正在重规划军令\n起点：%s\n候选目标：%s\n当前待确认的旧路线不会在拖动中提交。" % [
 			str(live_source.get("display_name", live_source_id)), live_target_label,
 		]
@@ -382,7 +399,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		var specialist_phase := _specialist_phase_label(selected_specialist)
 		var current_name := _point_display_name(model, StringName(selected_specialist.get("current_point_id", &"")), "野外")
 		var target_name := _point_display_name(model, StringName(selected_specialist.get("target_point_id", &"")), current_name)
-		_status_label.text = "已选%s：%s" % [specialist_role, specialist_phase]
+		_set_context_status("已选%s：%s" % [specialist_role, specialist_phase])
 		_detail_label.text = "当前选择：%s\n状态：%s\n当前位置：%s\n任务目标：%s" % [specialist_role, specialist_phase, current_name, target_name]
 		return
 	var source_id := _source_point_id(model, army)
@@ -410,7 +427,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		_block_button.visible = false
 		_recover_button.visible = false
 		_retreat_button.visible = false
-		_status_label.text = "工程草稿待确认；右键取消不会扣除资源。" if not _engineering_draft.is_empty() else ("工程规划：从%s直接拖动到已有驻点或新驻点位置。" % source_label if _engineering_source_point_id != &"" else "工程模式：从友方地点拖动开始规划施工。")
+		_set_context_status("工程草稿待确认；右键取消不会扣除资源。" if not _engineering_draft.is_empty() else ("工程规划：从%s直接拖动到已有驻点或新驻点位置。" % source_label if _engineering_source_point_id != &"" else "工程模式：从友方地点拖动开始规划施工。"))
 		var segment_summary := _engineering_segment_summary(_engineering_draft)
 		_detail_label.text = "工程师施工计划\n%s → %s\n%s · %s\n到场 %0.1f 秒 · 施工 %0.1f 秒 · 粮食 %d；确认后才会扣除。" % [
 			source_label, target_label, segment_summary, draft_kind_label, travel_seconds, draft_seconds, draft_cost,
@@ -421,7 +438,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	# must use the city-command panel rather than inheriting that army's disabled
 	# confirmation state.
 	if army.is_empty() or not _selected_formation_ids.is_empty():
-		_status_label.text = "工程规划：从%s拖到可施工位置，确认后工程师前往施工。" % str(source.get("display_name", source_id)) if _engineering_mode else "已选部队：点击目标生成最短路线，或从出发点拖过道路点指定路线。"
+		_set_context_status("工程规划：从%s拖到可施工位置，确认后工程师前往施工。" % str(source.get("display_name", source_id)) if _engineering_mode else "已选部队：点击目标生成最短路线，或从出发点拖过道路点指定路线。")
 		var draft_duration := _runtime_draft_duration() if not _draft_route.is_empty() else 0
 		var preview := _dispatch_adapter.get_macro_march_command_preview(_selected_formation_ids) if _dispatch_adapter != null else {}
 		var selected_members := int(preview.get("committed_total", _selected_formation_member_count(Array(model.get("formations", [])))))
@@ -465,7 +482,8 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			phase_text = "自动攻城中"
 		elif StringName(army.phase) == ARMY_REGISTRY.PHASE_RETREATING:
 			phase_text = "有损撤逃中"
-		_status_label.text = "%s：%s → %s" % [phase_text, str(order_source.get("display_name", order_source_id)), str(target.get("display_name", macro.target_point_id))]
+		var clock_text := "世界已暂停，军令进度保持不变" if bool(model.get("paused", false)) else "世界正常推进 · %.1f×" % float(model.get("speed", 1.0))
+		_set_context_status("%s：%s → %s · %s" % [phase_text, str(order_source.get("display_name", order_source_id)), str(target.get("display_name", macro.target_point_id)), clock_text])
 		var war: Dictionary = model.get("war_loop", {})
 		var siege := _siege_for_army(war, StringName(army.get("army_id", &"")))
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING:
@@ -475,7 +493,8 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED:
 				var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
 				var transfer_target := _point_from_model(model, StringName(transfer.get("target_point_id", &"")))
-				blocked_detail = "\n受阻路段：%d；当前处置：%s%s" % [int(macro.get("blocked_segment_index", -1)) + 1, _blocked_transfer_label(StringName(transfer.get("phase", &""))), (" → %s" % str(transfer_target.get("display_name", "友方驻点"))) if StringName(transfer.get("target_point_id", &"")) != &"" else ""]
+				var wait_reason := _blocked_transfer_reason(StringName(transfer.get("phase", &"")))
+				blocked_detail = "\n受阻路段：%d；当前处置：%s%s\n%s" % [int(macro.get("blocked_segment_index", -1)) + 1, _blocked_transfer_label(StringName(transfer.get("phase", &""))), (" → %s" % str(transfer_target.get("display_name", "友方驻点"))) if StringName(transfer.get("target_point_id", &"")) != &"" else "", wait_reason]
 			var current_members := _army_member_count(army)
 			var encounter_copy := _latest_encounter_copy(field, StringName(army.get("army_id", &"")))
 			var battle_line := "最近战报：暂无"
@@ -506,6 +525,10 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 
 
 func _toggle_formation(formation_id: StringName) -> void:
+	# Starting or ending an explicit city-command selection is a fresh player
+	# decision, so an earlier failed confirmation must not obscure the next
+	# actionable state in the persistent status line.
+	_clear_status_error()
 	if formation_id in _selected_formation_ids:
 		_selected_formation_ids.erase(formation_id)
 	else:
@@ -714,6 +737,10 @@ func _on_gui_input(event: InputEvent) -> void:
 			_engineering_strokes.clear()
 			_selected_damaged_road_id = &""
 			_selected_route_road_id = &""
+			# Cancel discards only the unconfirmed gesture and draft. It retains the
+			# formation selection so the player can immediately draw again, and also
+			# removes a stale failure that would otherwise win every refresh cycle.
+			_clear_status_error()
 			_status_label.text = "已取消当前专员选择；没有资源、编队或军令写入。" if had_specialist_selection else "路线草稿已取消；没有资源、编队或军令写入。"
 			refresh()
 			accept_event()
@@ -879,6 +906,7 @@ func _append_draw_point(screen_position: Vector2) -> void:
 
 func _begin_draw_interaction(screen_position: Vector2, source_point_id: StringName) -> void:
 	_cancel_draw_interaction("")
+	_clear_status_error()
 	_draw_hold_pending = true
 	_draw_hold_elapsed = 0.0
 	_draw_hold_start_screen = screen_position
@@ -1107,6 +1135,7 @@ func _create_march_draft_with_constraint(source_id: StringName, target_id: Strin
 	_draft_route = _ui_route_draft(Dictionary(decision.get("route", {})))
 	_draft_route.source_point_id = source_id
 	_draft_route.required_road_id = required_road_id
+	_clear_status_error()
 	var preview := _dispatch_adapter.get_macro_march_command_preview(
 		_selected_formation_ids, StringName(_selected_army(model).get("army_id", &"")) if _selected_formation_ids.is_empty() else &""
 	) if _dispatch_adapter != null else {}
@@ -1148,6 +1177,7 @@ func _finish_engineering_draw(model: Dictionary, source_id: StringName) -> void:
 		return
 	_engineering_draft = preview.duplicate(true)
 	_engineering_draft.requested_target_point_id = target_id
+	_clear_status_error()
 	_record_engineering_stroke(route_points)
 	_draw_points.clear()
 	_engineering_live_endpoint = Vector2.INF
@@ -1216,7 +1246,7 @@ func _confirm_draft() -> void:
 			StringName(engineering.road_kind), bool(engineering.build_camp)
 		)
 		if not bool(engineering_result.get("success", false)):
-			_status_label.text = str(engineering_result.get("error", "工程施工失败"))
+			_set_status_error(str(engineering_result.get("error", "工程施工失败")))
 			return
 		_engineering_draft = {}
 		_engineering_planned_points.clear()
@@ -1224,6 +1254,7 @@ func _confirm_draft() -> void:
 		_engineering_mode = false
 		_engineering_engineer_id = &""
 		_engineering_source_point_id = &""
+		_clear_status_error()
 		_status_label.text = "工程军令已锁定；道路和驻点将在施工完成后开放通军。"
 		refresh()
 		return
@@ -1243,12 +1274,13 @@ func _confirm_draft() -> void:
 			StringName(_draft_route.get("route_id", &"")), Array(_draft_route.get("points", []))
 		)
 	if not bool(result.get("success", false)):
-		_status_label.text = str(result.get("error", "军令确认失败"))
+		_set_status_error(str(result.get("error", "军令确认失败")))
 		return
 	_selected_army_id = StringName(Dictionary(result.get("army", {})).get("army_id", &""))
 	_selected_formation_ids.clear()
 	_draw_points.clear()
 	_reset_march_draft()
+	_clear_status_error()
 	refresh()
 
 
@@ -1599,6 +1631,16 @@ func _blocked_transfer_label(phase: StringName) -> String:
 		&"TO_RESUME": return "返回原路线"
 		&"TO_RESUME_BLOCKED": return "返回路线受阻"
 		_: return "原地等待"
+
+
+func _blocked_transfer_reason(phase: StringName) -> String:
+	match phase:
+		&"TO_CAMP": return "正在沿开放道路转移；原军令进度已冻结。"
+		&"TO_CAMP_BLOCKED": return "临时转移路线再次断开；将停在当前位置等待可达道路。"
+		&"WAITING": return "等待工程师维修受阻道路；暂停世界时间时不会自动恢复。"
+		&"TO_RESUME": return "道路已修复，正返回冻结位置；抵达后继续原军令且不重复扣粮。"
+		&"TO_RESUME_BLOCKED": return "返回原路线的道路再次受阻；正等待可达道路恢复。"
+		_: return "没有可达驻点或返回路径；军队停在合法位置等待。"
 
 
 func _point_from_model(model: Dictionary, point_id: StringName) -> Dictionary:
