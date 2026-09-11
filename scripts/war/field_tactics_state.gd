@@ -1271,6 +1271,12 @@ func get_runtime_points() -> Dictionary:
 			"display_name": String(camp.get("display_name", "工程驻点")),
 			"world_position": Vector2(camp.get("world_position", _road_endpoint_position(StringName(camp.get("road_id", &""))))),
 			"point_kind": &"FRIENDLY_GARRISON",
+			# A finished project exposes a tactical camp, not a second city.  These
+			# are presentation capabilities read from the authoritative Field state;
+			# no UI selection is allowed to promote it into an inner-city owner.
+			"location_role": &"ENGINEERED_GARRISON",
+			"allows_inner_city_actions": false,
+			"military_controller_faction_id": &"player",
 		}
 	return points
 

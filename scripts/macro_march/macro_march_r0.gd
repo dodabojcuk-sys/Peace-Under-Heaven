@@ -53,6 +53,11 @@ var _scout_target_mode := false
 var _selected_scout_id: StringName = &""
 var _selected_specialist_id: StringName = &""
 var _selected_army_id: StringName = &""
+# Inspecting a point is presentation-only. It deliberately stores no command
+# or ownership fact: controller, capability and garrison rows are rebuilt from
+# the existing theatre/war/army read model on every refresh.
+var _selected_point_id: StringName = &""
+var _location_detail_mode := false
 var _selected_damaged_road_id: StringName = &""
 var _selected_interrupted_project_id: StringName = &""
 var _last_army_hit_position := Vector2.INF
@@ -78,6 +83,9 @@ var _detail_label := Label.new()
 var _specialist_status_label := Label.new()
 var _formation_scroll := ScrollContainer.new()
 var _formation_list := VBoxContainer.new()
+var _location_garrison_list := VBoxContainer.new()
+var _location_garrison_signature := ""
+var _location_garrison_buttons: Array[Button] = []
 var _confirm_button := Button.new()
 var _block_button := Button.new()
 var _recover_button := Button.new()
@@ -91,6 +99,7 @@ var _return_button := Button.new()
 var _presentation_toggle_button := Button.new()
 var _overview_button := Button.new()
 var _focus_subject_button := Button.new()
+var _location_details_button := Button.new()
 var _restore_default_route_button := Button.new()
 var _engineering_undo_button := Button.new()
 var _engineering_clear_button := Button.new()
@@ -404,9 +413,11 @@ func _build_ui() -> void:
 	_formation_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
 	_formation_scroll.mouse_filter = Control.MOUSE_FILTER_STOP
 	_formation_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_location_garrison_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_formation_scroll.add_child(_formation_list)
+	_formation_scroll.add_child(_location_garrison_list)
 	add_child(_formation_scroll)
-	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
+	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
 	_interrupted_project_selector.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -425,6 +436,8 @@ func _build_ui() -> void:
 	_engineering_clear_button.text = "清除工程草稿"
 	_engineering_undo_button.visible = false
 	_engineering_clear_button.visible = false
+	_location_details_button.text = "查看当前地点详情"
+	_location_details_button.visible = false
 	_resume_project_button.visible = false
 	_interrupted_project_selector.visible = false
 	_return_button.text = "返回黑石城"
@@ -448,13 +461,14 @@ func _build_ui() -> void:
 	_restore_default_route_button.pressed.connect(_restore_default_route)
 	_engineering_undo_button.pressed.connect(_undo_engineering_draft)
 	_engineering_clear_button.pressed.connect(_clear_engineering_draft)
+	_location_details_button.pressed.connect(_open_selected_location_detail)
 
 
 func _layout_ui() -> void:
 	var panel_rect := _side_panel_rect()
 	var action_height := 34.0
 	var action_gap := 4.0
-	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _return_button]
+	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _location_details_button, _return_button]
 	var visible_action_buttons: Array[Button] = []
 	for button in action_buttons:
 		if button.visible:
@@ -490,6 +504,8 @@ func _layout_ui() -> void:
 	_interrupted_project_selector.position = Vector2(panel_inner.position.x, action_top - 36.0)
 	_interrupted_project_selector.size = Vector2(panel_inner.size.x, 30.0)
 	for button in _formation_buttons:
+		button.custom_minimum_size = Vector2(panel_inner.size.x - 10.0, 38)
+	for button in _location_garrison_buttons:
 		button.custom_minimum_size = Vector2(panel_inner.size.x - 10.0, 38)
 	for index in visible_action_buttons.size():
 		var button := visible_action_buttons[index]
@@ -547,8 +563,161 @@ func _deployed_members_by_formation(armies: Array) -> Dictionary:
 	return deployed
 
 
+func _selected_location(model: Dictionary, army: Dictionary = {}) -> Dictionary:
+	# The side-panel button belongs to an explicitly inspected, stationary army.
+	# A previously viewed map point must not make that action describe some other
+	# city after the player changes subject.
+	if _selected_army_id != &"" and not army.is_empty() and StringName(army.get("phase", &"")) == ARMY_REGISTRY.PHASE_STATIONED:
+		return _point_from_model(model, StringName(army.get("target_node_id", &"")))
+	if _selected_point_id != &"":
+		var selected_point := _point_from_model(model, _selected_point_id)
+		if not selected_point.is_empty():
+			return selected_point
+	if not army.is_empty() and StringName(army.get("phase", &"")) == ARMY_REGISTRY.PHASE_STATIONED:
+		return _point_from_model(model, StringName(army.get("target_node_id", &"")))
+	return {}
+
+
+func _location_garrison_armies(model: Dictionary, point_id: StringName) -> Array[Dictionary]:
+	var stationed: Array[Dictionary] = []
+	for army_value in Array(model.get("armies", [])):
+		var army: Dictionary = Dictionary(army_value)
+		# A route target is not a garrison. Only a completed, stationary army at
+		# the exact point is shown, so transit never inflates a location's force.
+		if StringName(army.get("phase", &"")) != ARMY_REGISTRY.PHASE_STATIONED \
+			or StringName(army.get("target_node_id", &"")) != point_id:
+			continue
+		stationed.append(army.duplicate(true))
+	stationed.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+		return String(left.get("army_id", &"")) < String(right.get("army_id", &""))
+	)
+	return stationed
+
+
+func _location_garrison_member_total(stationed: Array[Dictionary]) -> int:
+	var total := 0
+	for army in stationed:
+		total += _army_member_count(army)
+	return total
+
+
+func _refresh_location_garrison_controls(model: Dictionary, location: Dictionary) -> void:
+	var active := _location_detail_mode and not location.is_empty()
+	_formation_list.visible = not active
+	_location_garrison_list.visible = active
+	if not active:
+		return
+	var point_id := StringName(location.get("point_id", _selected_point_id))
+	var stationed := _location_garrison_armies(model, point_id)
+	var signature_parts: Array[String] = [String(point_id)]
+	for army in stationed:
+		signature_parts.append("%s:%d" % [String(army.get("army_id", &"")), _army_member_count(army)])
+	var signature := "|".join(signature_parts)
+	if signature == _location_garrison_signature:
+		return
+	for child in _location_garrison_list.get_children():
+		child.queue_free()
+	_location_garrison_buttons.clear()
+	_location_garrison_signature = signature
+	var heading := Label.new()
+	heading.text = "实际驻军"
+	heading.add_theme_font_size_override("font_size", 14)
+	heading.add_theme_color_override("font_color", Color("3e3428"))
+	_location_garrison_list.add_child(heading)
+	if stationed.is_empty():
+		var empty := Label.new()
+		empty.text = "暂无已抵达并驻扎的军队。"
+		empty.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		empty.add_theme_font_size_override("font_size", 13)
+		empty.add_theme_color_override("font_color", Color("64594a"))
+		_location_garrison_list.add_child(empty)
+		return
+	for army in stationed:
+		var army_id := StringName(army.get("army_id", &""))
+		var button := Button.new()
+		button.text = "驻军 · %d 人 · 查看状态" % _army_member_count(army)
+		button.tooltip_text = "定位并查看这支已驻扎军队。"
+		button.set_meta("army_id", army_id)
+		button.pressed.connect(_inspect_location_garrison.bind(army_id, point_id))
+		_location_garrison_list.add_child(button)
+		_location_garrison_buttons.append(button)
+
+
+func _location_controller_label(location: Dictionary) -> String:
+	var controller := StringName(location.get("military_controller_faction_id", &"player"))
+	if controller == &"player":
+		return "我方"
+	match controller:
+		&"river_lords": return "河主军"
+		&"border_rebels": return "边境叛军"
+		_: return "敌方"
+
+
+func _location_kind_label(location: Dictionary) -> String:
+	match StringName(location.get("location_role", location.get("point_kind", &"GARRISON"))):
+		&"HOME_CITY": return "主城"
+		&"CITY", &"ENEMY_CITY": return "城池"
+		&"ENGINEERED_GARRISON": return "工程驻点"
+		_: return "驻点"
+
+
+func _location_use_label(location: Dictionary) -> String:
+	var controller := StringName(location.get("military_controller_faction_id", &"player"))
+	if controller != &"player":
+		return "敌方控制：不能作为我方派遣起点；占领后可驻军、续令。"
+	if bool(location.get("allows_inner_city_actions", false)):
+		return "可驻军、续令；可返回黑石城使用内城建设与军备。"
+	return "可驻军、续令；本阶段不开放内城建设。"
+
+
+func _open_selected_location_detail() -> void:
+	var model := _model()
+	var location := _selected_location(model, _selected_army(model))
+	if location.is_empty():
+		_set_status_error("当前没有可查看的地点。")
+		refresh()
+		return
+	_selected_point_id = StringName(location.get("point_id", &""))
+	_location_detail_mode = true
+	_clear_status_error()
+	_set_context_status("正在查看%s；查看不会下令或扣除资源。" % str(location.get("display_name", "地点")))
+	refresh()
+
+
+func _select_location_detail(point_id: StringName) -> void:
+	var location := _point_from_model(_model(), point_id)
+	if location.is_empty():
+		return
+	_selected_point_id = point_id
+	_location_detail_mode = true
+	_clear_status_error()
+	_set_context_status("正在查看%s；查看不会下令或扣除资源。" % str(location.get("display_name", point_id)))
+	refresh()
+
+
+func _inspect_location_garrison(army_id: StringName, point_id: StringName) -> void:
+	# This changes only which read-model subject is shown. The army remains at
+	# the garrison until an existing dispatch path issues a real command.
+	_selected_army_id = army_id
+	_location_detail_mode = false
+	_selected_point_id = &""
+	_selected_specialist_id = &""
+	_selected_scout_id = &""
+	_selected_formation_ids.clear()
+	var location := _point_from_model(_model(), point_id)
+	if not location.is_empty():
+		_camera_center = Vector2(location.get("world_position", _camera_center))
+		_camera_zoom = maxf(_camera_zoom, 0.90)
+		_clamp_camera()
+	_clear_status_error()
+	_set_context_status("已定位驻军；长按%s可继续下令。" % str(location.get("display_name", "该地点")))
+	refresh()
+
+
 func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_title_label.text = "%s · 军令与攻城" % THEATER.get_theater_name()
+	_location_details_button.visible = false
+	_refresh_location_garrison_controls(model, {})
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
 	var specialists: Dictionary = field.get("specialists_by_id", {})
 	var projects: Dictionary = field.get("projects_by_id", {})
@@ -628,6 +797,39 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		_set_context_status("已选%s：%s" % [specialist_role, specialist_phase])
 		_detail_label.text = "当前选择：%s\n状态：%s\n当前位置：%s\n任务目标：%s" % [specialist_role, specialist_phase, current_name, target_name]
 		return
+	if _location_detail_mode:
+		var location := _selected_location(model, army)
+		if location.is_empty():
+			_location_detail_mode = false
+			_selected_point_id = &""
+		else:
+			_refresh_location_garrison_controls(model, location)
+			_confirm_button.visible = false
+			_block_button.visible = false
+			_recover_button.visible = false
+			_retreat_button.visible = false
+			_scout_button.visible = false
+			_engineer_button.visible = false
+			_side_road_button.visible = false
+			_resume_project_button.visible = false
+			_restore_default_route_button.visible = false
+			_engineering_undo_button.visible = false
+			_engineering_clear_button.visible = false
+			_interrupted_project_selector.visible = false
+			var point_id := StringName(location.get("point_id", &""))
+			var stationed := _location_garrison_armies(model, point_id)
+			_set_context_status("正在查看%s；查看不会下令或扣除资源。" % str(location.get("display_name", "地点")))
+			_detail_label.text = "%s\n外观类型：%s\n控制方：%s\n用途：%s\n建设：%s\n实际驻军：%d 支、%d 人" % [
+				str(location.get("display_name", "地点")),
+				_location_kind_label(location),
+				_location_controller_label(location),
+				_location_use_label(location),
+				"可用" if bool(location.get("allows_inner_city_actions", false)) else "本阶段未开放",
+				stationed.size(),
+				_location_garrison_member_total(stationed),
+			]
+			_specialist_status_label.text = "点击驻军可定位查看；长按我方地点仍可直接选择派遣对象。"
+			return
 	var source_id := _source_point_id(model, army)
 	var source := _point_from_model(model, source_id)
 	var draft_text := "未画路线"
@@ -734,6 +936,9 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_STATIONED:
 			_confirm_button.disabled = _draft_route.is_empty()
 			_confirm_button.text = "确认下一段军令"
+			if _selected_army_id != &"":
+				_location_details_button.visible = true
+				_location_details_button.text = "查看%s地点详情" % str(source.get("display_name", source_id))
 		else:
 			_confirm_button.text = "确认并锁定军令"
 		return
@@ -818,6 +1023,8 @@ func _toggle_formation(formation_id: StringName) -> void:
 	# actionable state in the persistent status line.
 	_cancel_direct_dispatch("")
 	_clear_status_error()
+	_location_detail_mode = false
+	_selected_point_id = &""
 	if formation_id in _selected_formation_ids:
 		_selected_formation_ids.erase(formation_id)
 	else:
@@ -1157,6 +1364,8 @@ func _on_gui_input(event: InputEvent) -> void:
 			# its route and confirm button cannot survive into this new operation.
 			_reset_march_draft()
 			_selected_army_id = &""
+			_location_detail_mode = false
+			_selected_point_id = &""
 			_selected_specialist_id = specialist_id
 			_selected_formation_ids.clear()
 			if StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT:
@@ -1183,6 +1392,8 @@ func _on_gui_input(event: InputEvent) -> void:
 				return
 		var damaged_road_id := _damaged_road_id_at_screen(_dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}, event.position)
 		if damaged_road_id != &"":
+			_location_detail_mode = false
+			_selected_point_id = &""
 			_selected_damaged_road_id = damaged_road_id
 			_status_label.text = "已选中受损道路；可安排空闲工程师前往维修。"
 			refresh()
@@ -1192,10 +1403,17 @@ func _on_gui_input(event: InputEvent) -> void:
 		if selected_id != &"":
 			_reset_march_draft()
 			_selected_army_id = selected_id
+			_location_detail_mode = false
+			_selected_point_id = &""
 			_selected_specialist_id = &""
 			_selected_formation_ids.clear()
 			_status_label.text = "已选中该军队；续令、撤逃与路线草稿只作用于它。"
 			refresh()
+			accept_event()
+			return
+		var selected_point_id := _point_id_at_screen(event.position)
+		if selected_point_id != &"":
+			_select_location_detail(selected_point_id)
 			accept_event()
 			return
 		if not _can_draw_route():
@@ -1556,6 +1774,8 @@ func _select_map_subject_from_tap(screen_position: Vector2) -> void:
 		var specialist := Dictionary(Dictionary(field.get("specialists_by_id", {})).get(specialist_id, {}))
 		_reset_march_draft()
 		_selected_army_id = &""
+		_location_detail_mode = false
+		_selected_point_id = &""
 		_selected_specialist_id = specialist_id
 		_selected_scout_id = specialist_id if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else &""
 		_status_label.text = "已选中%s；长按其所在友方地点可直接下达目标。" % _specialist_role_label(specialist)
@@ -1565,6 +1785,8 @@ func _select_map_subject_from_tap(screen_position: Vector2) -> void:
 	if army_id != &"":
 		_reset_march_draft()
 		_selected_army_id = army_id
+		_location_detail_mode = false
+		_selected_point_id = &""
 		_selected_specialist_id = &""
 		_selected_scout_id = &""
 		_status_label.text = "已选中该军队；长按其驻扎点可继续下令。"

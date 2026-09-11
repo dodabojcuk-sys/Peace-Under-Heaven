@@ -21,6 +21,21 @@ route drafting, and every command continue to use the established invertible
 2D map transform. The 3D layer uses the inverse-compatible ground mapping only
 to display those same coordinates.
 
+## Location-information contract
+
+Location presentation keeps three independently sourced facts visible: the
+authored visual kind, the runtime military controller, and the authored
+inner-city capability. The Blackstone home city is the only first-pass point
+with inner-city construction/military access. Captured Silverford and Redcliff
+remain city-shaped but receive only station/reissue access; completed
+engineering camps receive the same tactical access while remaining camps.
+`MacroMarchR0` rebuilds its location detail from the theatre, WarLoop and
+ArmyRegistry read models on refresh. It lists only `STATIONED` armies whose
+`target_node_id` exactly matches the point, so an army travelling toward a
+location is never rendered as its garrison. Opening or clicking a row changes
+only presentation selection and camera focus; it cannot issue an order, spend
+food, change ownership, reveal fog or write a save.
+
 ## Projection contract
 
 The low-poly ground is horizontal in XZ. Its two horizontal basis vectors are

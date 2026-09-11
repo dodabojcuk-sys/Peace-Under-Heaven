@@ -9,30 +9,46 @@ scout_visibility_range = 190
 world_bounds = Rect2i(0, 0, 1500, 980)
 points = {
 &"blackstone_city": {
+"allows_inner_city_actions": true,
 "display_name": "黑石城",
+"location_role": &"HOME_CITY",
+"military_controller_faction_id": &"player",
 "point_id": &"blackstone_city",
+"point_kind": &"FRIENDLY_CITY",
 "world_position": Vector2i(135, 650)
 },
 &"forest_garrison": {
+"allows_inner_city_actions": false,
 "display_name": "林间驻点",
+"location_role": &"GARRISON",
+"military_controller_faction_id": &"player",
 "point_id": &"forest_garrison",
 "point_kind": &"FRIENDLY_GARRISON",
 "world_position": Vector2i(760, 610)
 },
 &"northwatch_garrison": {
+"allows_inner_city_actions": false,
 "display_name": "北望驻点",
+"location_role": &"GARRISON",
+"military_controller_faction_id": &"player",
 "point_id": &"northwatch_garrison",
 "point_kind": &"FRIENDLY_GARRISON",
 "world_position": Vector2i(680, 210)
 },
 &"reedbank_garrison": {
+"allows_inner_city_actions": false,
 "display_name": "芦湾驻点",
+"location_role": &"GARRISON",
+"military_controller_faction_id": &"player",
 "point_id": &"reedbank_garrison",
 "point_kind": &"FRIENDLY_GARRISON",
 "world_position": Vector2i(1010, 675)
 },
 &"ridge_watch": {
+"allows_inner_city_actions": false,
 "display_name": "北岭瞭望台",
+"location_role": &"GARRISON",
+"military_controller_faction_id": &"player",
 "point_id": &"ridge_watch",
 "point_kind": &"FRIENDLY_GARRISON",
 "world_position": Vector2i(530, 275)
@@ -47,6 +63,8 @@ points = {
 "military_controller_faction_id": &"border_rebels",
 "point_id": &"redcliff_city",
 "point_kind": &"ENEMY_CITY",
+"location_role": &"CITY",
+"allows_inner_city_actions": false,
 "required_for_victory": true,
 "story_owner_faction_id": &"river_lords",
 "surrender_allowed": false,
@@ -62,6 +80,8 @@ points = {
 "military_controller_faction_id": &"river_lords",
 "point_id": &"silverford_city",
 "point_kind": &"ENEMY_CITY",
+"location_role": &"CITY",
+"allows_inner_city_actions": false,
 "required_for_victory": true,
 "story_owner_faction_id": &"river_lords",
 "surrender_allowed": true,

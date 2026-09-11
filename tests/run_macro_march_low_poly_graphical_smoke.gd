@@ -23,6 +23,7 @@ func _run() -> void:
 	await _check_formal_art_assets()
 	await _record_render_baseline()
 	await _check_dynamic_actor_and_mode_switch()
+	await _check_location_detail_panel()
 	await _check_gui_specialist_selection_overlays()
 	await _check_draft_confirmation_priority()
 	await _check_long_hold_draw_interaction()
@@ -124,6 +125,50 @@ func _check_dynamic_actor_and_mode_switch() -> void:
 			and presentation.visible
 			and city.export_v5_campaign_snapshot() == snapshot_before_toggle,
 		"图形进程在低模模式接收鼠标绘线、确认军令并更新军队位置；选中部队使用旗帜配合既有空心圈而非遮挡模型的实心圆盘，二维/三维切换不重发军令或改写状态"
+	)
+	scene.queue_free()
+	await process_frame
+
+
+func _check_location_detail_panel() -> void:
+	_clear_isolated_campaign_generations()
+	root.size = Vector2i(1152, 648)
+	var scene := CITY_SCENE.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var city: Node = scene.get_node("ConstructionController")
+	city.food = 80
+	scene.open_macro_march_r0()
+	await process_frame
+	var macro: MacroMarchR0 = scene.get_node("UI/MacroMarchR0")
+	macro._camera_center = Vector2(1000, 500)
+	macro._camera_zoom = 0.52
+	macro.refresh()
+	# Freeze the authoritative clock before comparing snapshots so this test isolates
+	# a read-only location inspection from unrelated simulation progress.
+	city.set_city_time_paused(true)
+	var before_snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	var before_panel := await _capture_viewport_image()
+	var silverford_position := macro._world_to_screen(Vector2(THEATER.get_point(&"silverford_city").get("world_position", Vector2.ZERO)))
+	_click_map(macro, silverford_position, MOUSE_BUTTON_LEFT)
+	await process_frame
+	var after_panel := await _capture_viewport_image()
+	var changed_pixels := _changed_pixels(before_panel, after_panel, macro._side_panel_rect())
+	var panel_changed := changed_pixels > 30
+	var has_controller := macro._detail_label.text.contains("控制方：河主军")
+	var has_source_restriction := macro._detail_label.text.contains("不能作为我方派遣起点")
+	var after_snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	var snapshot_unchanged: bool = after_snapshot == before_snapshot
+	_check(
+		macro._location_detail_mode
+			and macro._selected_point_id == &"silverford_city"
+			and has_controller
+			and has_source_restriction
+			and macro._location_garrison_list.visible
+			and panel_changed
+			and snapshot_unchanged,
+		"图形进程点击敌城后在侧栏清楚显示地点控制、用途和零驻军；整张面板实际更新且查看不产生资源或军令副作用"
 	)
 	scene.queue_free()
 	await process_frame

@@ -2,6 +2,17 @@
 
 ## 2026-09-11
 
+- Added first-pass Blackstone location capabilities and a read-only location
+  detail panel. Theatre Resources now distinguish visual point kind, runtime
+  controller and inner-city capability; occupied enemy cities become player
+  station/reissue points without gaining city construction, and completed
+  engineering camps expose the same station/reissue capability without city
+  construction. The panel lists only genuinely stationary armies and derives
+  every count from ArmyRegistry snapshots. It has no order, food, combat or
+  save write path. The Macro March contract now covers enemy inspection,
+  occupation, occupied-city direct continuation, transit exclusion, engineered
+  camp availability and V5 restore. Verification:
+  `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-location-capabilities/`.
 - Fixed Route B's stationed-army continuation through the current long-hold
   object-strip interaction rather than the obsolete draw/confirm fixture. A
   captured Silverford remains authored as an `ENEMY_CITY` for its city

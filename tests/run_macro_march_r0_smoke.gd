@@ -180,6 +180,7 @@ func _run() -> void:
 	await _drop_scene(restored_context.scene)
 	await _run_map_draft_contract()
 	await _run_camera_and_layout_contract()
+	await _run_location_detail_contract()
 	_finish()
 
 
@@ -505,6 +506,189 @@ func _run_camera_and_layout_contract() -> void:
 		"正式地图将城内编队的 0 人标为已出征，按军队快照显示当前 7 人，并保留原军令起点与目标"
 	)
 	await _drop_scene(scene)
+
+
+func _run_location_detail_contract() -> void:
+	# Location capability is authored by the playable Resource; runtime control
+	# and actual garrisons must still come from the same war/army authority that
+	# commands use. Keep this isolated from the regression theatre above.
+	_clear_isolated_campaign_generations()
+	THEATER.use_playable_definition()
+	var scene := CITY_SCENE.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var city: Node = scene.get_node("ConstructionController")
+	city.set_process(false)
+	# This runner first exercises the regression theatre. Rebuild a clean
+	# playable-theatre authority here instead of carrying its incompatible roads
+	# and deployed roster into the formal location path below.
+	city.restart_first_map()
+	city._war_loop_state = WarLoopState.new()
+	city._ensure_war_loop_initialized()
+	city.food = 120
+	var macro_screen: MacroMarchR0 = scene.get_node("UI/MacroMarchR0")
+	scene.open_macro_march_r0()
+	macro_screen._camera_center = Vector2(930, 500)
+	macro_screen._camera_zoom = 0.68
+	macro_screen.refresh()
+	var before_inspection: Dictionary = city.export_v5_campaign_snapshot()
+	var silverford_world := Vector2(THEATER.get_point(&"silverford_city").world_position)
+	var enemy_click := InputEventMouseButton.new()
+	enemy_click.button_index = MOUSE_BUTTON_LEFT
+	enemy_click.pressed = true
+	enemy_click.position = macro_screen._world_to_screen(silverford_world)
+	macro_screen._on_gui_input(enemy_click)
+	_check(
+		macro_screen._location_detail_mode
+			and macro_screen._selected_point_id == &"silverford_city"
+			and macro_screen._detail_label.text.contains("控制方：河主军")
+			and macro_screen._detail_label.text.contains("不能作为我方派遣起点")
+			and city.export_v5_campaign_snapshot() == before_inspection,
+		"点击敌城显示控制方、用途与禁用派遣原因，查看不写入军令或资源"
+	)
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var available_formations: Array[StringName] = []
+	for formation in roster:
+		if int(formation.get("member_count", 0)) > 0:
+			available_formations.append(StringName(formation.get("formation_id", &"")))
+	var north_route: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
+	var issued: Dictionary = city.commit_macro_march_from_city([
+		available_formations[0], available_formations[1],
+	], &"northwatch_garrison", StringName(north_route.route_id), Array(north_route.points))
+	var army_id := StringName(Dictionary(issued.get("army", {})).get("army_id", &""))
+	var north_wait := 0
+	while north_wait < 40000 and StringName(city._army_registry.get_army(army_id).get("phase", &"")) != ArmyRegistry.PHASE_STATIONED:
+		city._process(0.1)
+		north_wait += 100
+	var red_route: Dictionary = THEATER.get_route(&"road.northwatch.redcliff")
+	var red_issue: Dictionary = city.commit_macro_march_from_station(army_id, &"redcliff_city", StringName(red_route.route_id), Array(red_route.points))
+	var occupation_wait := 0
+	while occupation_wait < 80000 and StringName(Dictionary(city.get_macro_march_read_model().get("war_loop", {})).get("cities_by_id", {}).get(&"redcliff_city", {}).get("military_controller_faction_id", &"enemy")) != &"player":
+		city._process(0.1)
+		occupation_wait += 100
+	var red_control := StringName(Dictionary(macro_screen._point_from_model(city.get_macro_march_read_model(), &"redcliff_city")).get("military_controller_faction_id", &"enemy"))
+	var arrived_army: Dictionary = city._army_registry.get_army(army_id)
+	macro_screen._selected_army_id = army_id
+	macro_screen.refresh()
+	var food_before_detail: int = city.food
+	macro_screen._location_details_button.emit_signal("pressed")
+	var garrison_button: Button = macro_screen._location_garrison_buttons.front() if not macro_screen._location_garrison_buttons.is_empty() else null
+	if garrison_button != null:
+		garrison_button.emit_signal("pressed")
+	var food_after_inspection: int = city.food
+	macro_screen._camera_center = Vector2(1000, 500)
+	macro_screen._camera_zoom = 0.52
+	macro_screen.refresh()
+	var continuation_food_before: int = city.food
+	var captured_source_screen := macro_screen._world_to_screen(Vector2(THEATER.get_point(&"redcliff_city").world_position))
+	var continuation_target_screen := macro_screen._world_to_screen(Vector2(THEATER.get_point(&"silverford_city").world_position))
+	var continuation_press := InputEventMouseButton.new()
+	continuation_press.button_index = MOUSE_BUTTON_LEFT
+	continuation_press.pressed = true
+	continuation_press.position = captured_source_screen
+	macro_screen._on_gui_input(continuation_press)
+	await create_timer(MacroMarchR0.DRAW_HOLD_SECONDS + 0.08).timeout
+	await process_frame
+	var army_option_index := -1
+	for index in range(macro_screen._direct_dispatch_options.size()):
+		var option: Dictionary = Dictionary(macro_screen._direct_dispatch_options[index])
+		if StringName(option.get("kind", &"")) == &"ARMY" and StringName(option.get("army_id", &"")) == army_id:
+			army_option_index = index
+			break
+	if army_option_index >= 0:
+		var choose_army := InputEventMouseMotion.new()
+		choose_army.position = macro_screen._direct_dispatch_option_rect(army_option_index).get_center()
+		macro_screen._on_gui_input(choose_army)
+		var choose_target := InputEventMouseMotion.new()
+		choose_target.position = continuation_target_screen
+		macro_screen._on_gui_input(choose_target)
+		var continuation_release := InputEventMouseButton.new()
+		continuation_release.button_index = MOUSE_BUTTON_LEFT
+		continuation_release.pressed = false
+		continuation_release.position = continuation_target_screen
+		macro_screen._on_gui_input(continuation_release)
+	await process_frame
+	var continued_army: Dictionary = city._army_registry.get_army(army_id)
+	_check(
+		available_formations.size() >= 2
+			and bool(issued.get("success", false)) and bool(red_issue.get("success", false))
+			and red_control == &"player"
+			and StringName(Dictionary(arrived_army).get("phase", &"")) == ArmyRegistry.PHASE_STATIONED
+			and StringName(Dictionary(arrived_army).get("target_node_id", &"")) == &"redcliff_city"
+			and macro_screen._selected_army_id == army_id
+			and not macro_screen._location_detail_mode
+			and food_after_inspection == food_before_detail,
+		"占领城池保留城池外观但同步变为我方驻军地点；驻军查看不扣粮或改写军令"
+	)
+	_check(
+		army_option_index >= 0
+			and StringName(continued_army.get("phase", &"")) == ArmyRegistry.PHASE_MARCHING
+			and StringName(Dictionary(continued_army.get("macro_march", {})).get("target_point_id", &"")) == &"silverford_city"
+			and city.food < continuation_food_before,
+		"已占领城池通过正式长按选择条将真实驻军续令至下一座敌城，只创建一笔新军令"
+	)
+	macro_screen._select_location_detail(&"redcliff_city")
+	_check(
+		macro_screen._location_garrison_buttons.is_empty()
+			and macro_screen._detail_label.text.contains("实际驻军：0 支、0 人"),
+		"目标已改为银渡城的在途军队不会被计入赤崖城驻军"
+	)
+	var engineer_dispatch: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var engineer_id := StringName(Dictionary(engineer_dispatch.get("specialist", {})).get("specialist_id", &""))
+	var camp_project: Dictionary = city.begin_field_road_project(
+		engineer_id, &"blackstone_city", &"camp.site.location", [Vector2i(135, 650), Vector2i(250, 650)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var runtime_before: Dictionary = city._war_loop_state.field_tactics.get_runtime_points()
+	city.advance_war_loop_time(40000)
+	var runtime_after: Dictionary = city._war_loop_state.field_tactics.get_runtime_points()
+	var camp_point := Dictionary(runtime_after.get(&"camp.site.location", {}))
+	var saved: Dictionary = city.export_v5_campaign_snapshot()
+	var restored_scene := CITY_SCENE.instantiate()
+	root.add_child(restored_scene)
+	await process_frame
+	await process_frame
+	var restored_city: Node = restored_scene.get_node("ConstructionController")
+	var restored: Dictionary = restored_city.restore_v5_campaign_snapshot(saved)
+	var restored_points: Dictionary = restored_city._war_loop_state.field_tactics.get_runtime_points()
+	var restored_model: Dictionary = restored_city.get_macro_march_read_model()
+	var restored_red := Dictionary(macro_screen._point_from_model(restored_model, &"redcliff_city"))
+	_check(
+		bool(engineer_dispatch.get("success", false)) and not camp_project.is_empty()
+			and not runtime_before.has(&"camp.site.location")
+			and StringName(camp_point.get("location_role", &"")) == &"ENGINEERED_GARRISON"
+			and not bool(camp_point.get("allows_inner_city_actions", true))
+			and bool(restored.get("success", false))
+			and restored_points.has(&"camp.site.location")
+			and StringName(restored_red.get("military_controller_faction_id", &"enemy")) == &"player",
+		"工程驻点仅在工程完成后开放驻军用途；保存重开后工程点、城市控制权与建设能力保持一致"
+	)
+	await _drop_scene(restored_scene)
+	await _drop_scene(scene)
+	THEATER.use_regression_definition_for_tests()
+
+
+func _clear_isolated_campaign_generations() -> void:
+	# The caller supplies a temporary V5 store. Clear only that store before this
+	# playable-theatre contract so production events from the earlier regression
+	# fixture cannot leave a formation already deployed.
+	var save_directory := ""
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with("--txwzs-v5-save-dir="):
+			save_directory = argument.trim_prefix("--txwzs-v5-save-dir=")
+			break
+	if save_directory.is_empty() or not save_directory.begins_with(OS.get_temp_dir().path_join("")):
+		return
+	var directory := DirAccess.open(save_directory)
+	if directory == null:
+		return
+	directory.list_dir_begin()
+	var entry := directory.get_next()
+	while not entry.is_empty():
+		if not directory.current_is_dir() and (entry.begins_with("campaign_") or entry.begins_with(".pending_")):
+			DirAccess.remove_absolute(save_directory.path_join(entry))
+		entry = directory.get_next()
+	directory.list_dir_end()
 
 
 func _new_city(food_amount: int) -> Dictionary:
