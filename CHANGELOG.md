@@ -25,6 +25,9 @@
   force/enemy digests before it can be confirmed.
 - Added an isolated four-process A/B/C/D V5 chain for active takeover,
   terminal pending result, one-time writeback and post-writeback recovery.
+- Added a formal macro-siege victory runner: actual C0 ticks now prove that
+  victory occupies the original target, stations the original army, and treats
+  repeat confirmation as the same committed result.
 
 ## 2026-09-11 - Wartime arrow tower R0
 
