@@ -38,6 +38,10 @@
   delay. A completed work slows only invaders on its own route; a damaged or
   destroyed work proportionally loses that blocking ability without adding a
   second route-position owner.
+- After battle activation, the selected route now keeps a read-only facility
+  summary visible for construction, active, damaged, repairing, and destroyed
+  records. It consumes the active `BattleSession` projection and leaves plan,
+  resource, and repair ownership unchanged.
 
 ## 2026-09-12 - Formal Blackstone defense deployment
 

@@ -374,6 +374,20 @@ offset_bottom = -206.0
 text = "维修战时工事"
 theme_type_variation = &"PrimaryButton"
 
+[node name="WartimeFacilityStatusLabel" type="Label" parent="UI/RootPanel"]
+visible = false
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -286.0
+offset_right = 452.0
+offset_bottom = -252.0
+theme_override_colors/font_color = Color(0.78, 0.81, 0.76, 1)
+theme_override_font_sizes/font_size = 13
+theme_type_variation = &"SecondaryLabel"
+autowrap_mode = 2
+text = "当前路线工事"
+
 [node name="Title" type="Label" parent="UI/RootPanel/WartimePlanPanel"]
 offset_left = 14.0
 offset_top = 8.0

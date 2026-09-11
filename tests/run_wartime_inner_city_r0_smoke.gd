@@ -44,6 +44,7 @@ func _run() -> void:
 	var barricade_button := plan_panel.get_node("BarricadeButton") as Button
 	var confirm_button := plan_panel.get_node("ConfirmButton") as Button
 	var repair_button := battle.get_node("UI/RootPanel/WartimeRepairButton") as Button
+	var facility_status_label := battle.get_node("UI/RootPanel/WartimeFacilityStatusLabel") as Label
 	_check(
 		plan_panel.visible and confirm_button.disabled,
 		"正式战前界面显示可操作的临时工事计划，而非城市永久建造"
@@ -134,6 +135,10 @@ func _run() -> void:
 			and Array(effects.get("facilities", [])).all(func(record: Dictionary) -> bool: return StringName(record.get("phase", &"")) == BattleSession.FACILITY_PHASE_CONSTRUCTING),
 		"确认后的临时工事先进入真实施工状态，尚未提前获得观察、破门或火力"
 	)
+	_check(
+		facility_status_label.visible and facility_status_label.text.contains("施工"),
+		"活动 C0 为当前路线持续显示真实工事施工状态，而非只留下短暂事件日志"
+	)
 	battle.tick_timer.stop()
 	battle.issue_squad_order(1, BattleOrder.Command.ADVANCE)
 	battle.step_battle_for_test(4)
@@ -208,6 +213,11 @@ func _run() -> void:
 				),
 		"受损拒马从保存耐久投影较弱的真实减伤，而非继续提供完好拒马的固定保护"
 	)
+	battle._refresh_battle_ui()
+	_check(
+		facility_status_label.visible and facility_status_label.text.contains("拒马：受损"),
+		"活动 C0 的持续工事摘要从同一保存记录显示受损而非将其误报为完工"
+	)
 	var wood_before_repair := int(city.get("wood"))
 	battle._refresh_battle_ui()
 	_check(
@@ -240,6 +250,10 @@ func _run() -> void:
 		StringName(barricade_record.get("phase", &"")) == BattleSession.FACILITY_PHASE_REPAIRING
 			and int(city.get("wood")) == wood_before_repair - repair_cost,
 		"正式维修按钮一次扣除权威维修费用并将同一拒马置为可保存维修态"
+	)
+	_check(
+		facility_status_label.text.contains("拒马：维修 0/%d" % BattleSession.FACILITY_REPAIR_TICKS),
+		"活动 C0 的持续工事摘要在正式维修提交后显示同一可保存维修进度"
 	)
 	repair_button.emit_signal("pressed")
 	await process_frame

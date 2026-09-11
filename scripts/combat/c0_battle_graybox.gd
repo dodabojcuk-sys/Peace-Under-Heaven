@@ -66,6 +66,9 @@ const DEBUG_PLAYER_COUNT := 50
 	$UI/RootPanel/WartimePlanPanel/ConfirmButton
 )
 @onready var wartime_repair_button: Button = $UI/RootPanel/WartimeRepairButton
+@onready var wartime_facility_status_label: Label = (
+	$UI/RootPanel/WartimeFacilityStatusLabel
+)
 @onready var exit_button: Button = $UI/RootPanel/ExitButton
 @onready var squad_controls: HBoxContainer = (
 	$UI/RootPanel/SquadControls
@@ -1082,6 +1085,7 @@ func _refresh_battle_ui() -> void:
 	start_button.visible = request.phase == BattleRequest.PHASE_RESERVED
 	_refresh_wartime_plan_ui()
 	_refresh_wartime_repair_ui()
+	_refresh_wartime_facility_status_ui()
 	_refresh_recent_actions()
 	_refresh_exit_ui()
 
@@ -1249,6 +1253,50 @@ func _refresh_wartime_repair_ui() -> void:
 	]
 	wartime_repair_button.visible = true
 	wartime_repair_button.disabled = wood_cost <= 0
+
+
+## The active facility record is durable session state, not a transient action
+## message. Keep the focused route's construction, damage, and repair phase
+## visible while the plan buttons themselves are correctly hidden after start.
+func _refresh_wartime_facility_status_ui() -> void:
+	wartime_facility_status_label.visible = false
+	if request == null or request.phase != BattleRequest.PHASE_ACTIVE or coordinator.active_session == null:
+		return
+	var route_id := _selected_deployment_route()
+	var entries: Array[String] = []
+	for record_value in Array(coordinator.active_session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("route_id", &"")) != route_id:
+			continue
+		entries.append(_get_wartime_facility_status_text(record))
+	if entries.is_empty():
+		return
+	wartime_facility_status_label.text = "%s · %s" % [
+		_get_route_name(route_id),
+		"｜".join(entries),
+	]
+	wartime_facility_status_label.visible = true
+
+
+func _get_wartime_facility_status_text(record: Dictionary) -> String:
+	var name := _get_facility_name(StringName(record.get("kind", &"")))
+	var phase := StringName(record.get("phase", &""))
+	var progress := int(record.get("progress_ticks", 0))
+	var required := int(record.get("required_ticks", 0))
+	var durability := int(record.get("durability", 0))
+	var max_durability := int(record.get("max_durability", 0))
+	match phase:
+		BattleSession.FACILITY_PHASE_CONSTRUCTING:
+			return "%s：施工 %d/%d" % [name, progress, required]
+		BattleSession.FACILITY_PHASE_REPAIRING:
+			return "%s：维修 %d/%d" % [name, progress, required]
+		BattleSession.FACILITY_PHASE_DAMAGED:
+			return "%s：受损 %d/%d" % [name, durability, max_durability]
+		BattleSession.FACILITY_PHASE_DESTROYED:
+			return "%s：已摧毁" % name
+		BattleSession.FACILITY_PHASE_ACTIVE:
+			return "%s：完工" % name
+	return "%s：状态未知" % name
 
 
 func _repair_damaged_wartime_facility() -> void:

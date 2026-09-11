@@ -134,6 +134,12 @@ macro-siege handoff transaction, so parallel siege display order cannot deny a
 legitimate battle its repair. This is still assault-side facility lifecycle
 coverage, not the complete independent city-defence gameplay promised later.
 
+Once battle begins, the editable plan is hidden as intended. The same C0
+surface instead shows a persistent route-focused read-only summary of each
+saved facility's construction, active, damaged durability, repair, or
+destroyed phase. This is a projection of the active `BattleSession`; it does
+not create a UI-owned construction or durability state.
+
 The current C0 scene is an assault, not a city-defence simulation. These
 facilities therefore are siege preparation, not an assertion that the game now
 has defensive wall repair, defenders, traps or a permanent wartime build mode.
