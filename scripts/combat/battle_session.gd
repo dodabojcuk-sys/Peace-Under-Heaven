@@ -23,6 +23,10 @@ const SIEGE_RAM_GATE_DAMAGE := 160
 ## contribute to that route's ordinary enemy-damage intent, never a UI-only
 ## counter or a second casualty authority.
 const ARROW_TOWER_DAMAGE_PER_VOLLEY := 24
+## A completed route trap spends itself on the first invader that reaches its
+## route objective. It is one normal enemy-HP intent and one destroyed facility
+## record, never a hidden casualty or damage loop.
+const SPIKE_TRAP_DAMAGE_ON_TRIGGER := 80
 const ARROW_TOWER_ATTACK_INTERVAL_TICKS := 4
 ## Barricades reduce the ordinary route damage intent before the shared squad
 ## HP writer applies it; they never introduce a parallel casualty system.
@@ -41,12 +45,14 @@ const FACILITY_BUILD_TICKS := {
 	WartimeFacilityPlan.KIND_SIEGE_RAM: 4,
 	WartimeFacilityPlan.KIND_ARROW_TOWER: 4,
 	WartimeFacilityPlan.KIND_BARRICADE: 3,
+	WartimeFacilityPlan.KIND_SPIKE_TRAP: 2,
 }
 const FACILITY_MAX_DURABILITY := {
 	WartimeFacilityPlan.KIND_WATCH_PLATFORM: 100,
 	WartimeFacilityPlan.KIND_SIEGE_RAM: 140,
 	WartimeFacilityPlan.KIND_ARROW_TOWER: 120,
 	WartimeFacilityPlan.KIND_BARRICADE: 180,
+	WartimeFacilityPlan.KIND_SPIKE_TRAP: 80,
 }
 const FACILITY_REPAIR_TICKS := 2
 ## City-gate repair is a temporary, battle-local construction action.  It
@@ -1056,6 +1062,7 @@ func _build_damage_intents() -> Dictionary:
 	}
 	var player_damage: Dictionary = {}
 	var facility_damage: Dictionary = {}
+	_apply_spike_trap_damage_intents(enemy_damage, facility_damage)
 	if current_tick % ATTACK_INTERVAL_TICKS != 0:
 		return {
 			"gate_damage": gate_damage,
@@ -1155,6 +1162,42 @@ func _apply_arrow_tower_damage_intents(enemy_damage: Dictionary) -> void:
 				"damage": damage,
 				"tick": current_tick,
 			})
+
+
+## A trap only resolves when the saved enemy route actually reaches its
+## objective. The facility damage is intentionally folded into the existing
+## lifecycle writer so it is consumed once, checkpointed with the enemy HP,
+## and can use the existing explicit re-lay/repair transaction later.
+func _apply_spike_trap_damage_intents(
+	enemy_damage: Dictionary,
+	facility_damage: Dictionary
+) -> void:
+	for record_value in Array(wartime_facility_state.get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if (
+			StringName(record.get("kind", &"")) != WartimeFacilityPlan.KIND_SPIKE_TRAP
+			or StringName(record.get("phase", &"")) != FACILITY_PHASE_ACTIVE
+		):
+			continue
+		var route_id := StringName(record.get("route_id", &""))
+		if not routes.has(route_id) or not _enemy_has_reached_objective(route_id):
+			continue
+		var route: Dictionary = routes[route_id]
+		if int(route.get("enemy_total_hp", 0)) <= 0:
+			continue
+		var damage := mini(
+			SPIKE_TRAP_DAMAGE_ON_TRIGGER,
+			int(route.get("enemy_total_hp", 0))
+		)
+		enemy_damage[route_id] = int(enemy_damage.get(route_id, 0)) + damage
+		facility_damage[StringName(record.get("facility_id", &""))] = int(record.get("durability", 0))
+		last_tick_facility_events.append({
+			"kind": WartimeFacilityPlan.KIND_SPIKE_TRAP,
+			"route_id": route_id,
+			"event": &"TRAP_TRIGGERED",
+			"damage": damage,
+			"tick": current_tick,
+		})
 
 
 func _get_arrow_tower_volley_damage(record: Dictionary) -> int:
@@ -1327,6 +1370,11 @@ func _apply_wartime_facility_damage(damage_by_id: Dictionary) -> void:
 		if damage <= 0:
 			continue
 		var was_constructing := StringName(record.get("phase", &"")) == FACILITY_PHASE_CONSTRUCTING
+		var was_triggered_trap := (
+			StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_SPIKE_TRAP
+			and StringName(record.get("phase", &"")) == FACILITY_PHASE_ACTIVE
+			and damage_by_id.has(facility_id)
+		)
 		record.durability = maxi(int(record.get("durability", 0)) - damage, 0)
 		record.phase = (
 			FACILITY_PHASE_DESTROYED
@@ -1334,6 +1382,11 @@ func _apply_wartime_facility_damage(damage_by_id: Dictionary) -> void:
 			else FACILITY_PHASE_INTERRUPTED if was_constructing else FACILITY_PHASE_DAMAGED
 		)
 		facilities[index] = record
+		## The trigger already emitted its player-facing event before this shared
+		## lifecycle writer consumes the trap. Do not turn one arrival into a
+		## second, misleading "destroyed by enemy" notification.
+		if was_triggered_trap and int(record.durability) == 0:
+			continue
 		last_tick_facility_events.append({
 			"kind": record.kind, "route_id": record.route_id,
 			"event": &"CONSTRUCTION_INTERRUPTED" if was_constructing else (
@@ -1596,7 +1649,14 @@ func _apply_mission_objective_damage() -> void:
 						if constructing_watch_platform_id != &"":
 							facility_damage[constructing_watch_platform_id] = raw_damage
 						else:
-							damage += raw_damage
+							var constructing_spike_trap_id := _get_constructing_facility_id(
+								WartimeFacilityPlan.KIND_SPIKE_TRAP,
+								route_id
+							)
+							if constructing_spike_trap_id != &"":
+								facility_damage[constructing_spike_trap_id] = raw_damage
+							else:
+								damage += raw_damage
 	_apply_wartime_facility_damage(facility_damage)
 	mission_objective_state.protect_target_hp = maxi(
 		int(mission_objective_state.protect_target_hp) - damage,

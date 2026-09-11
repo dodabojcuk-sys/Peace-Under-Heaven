@@ -913,7 +913,13 @@ static func _has_valid_wartime_request_snapshot(
 		and enemy != null
 		and committed.transaction_id == transaction_id
 		and enemy.transaction_id == transaction_id
-		and bool(WartimeFacilityPlan.validate_snapshot(Dictionary(snapshot.wartime_facility_plan)).valid)
+		# This snapshot belongs exclusively to a macro-siege takeover. Keep the
+		# source-specific facility boundary at restoration rather than making the
+		# generic request object reject a not-yet-activated defense request.
+		and bool(WartimeFacilityPlan.validate_for_source(
+			Dictionary(snapshot.wartime_facility_plan),
+			BattleRequest.SOURCE_MACRO_SIEGE
+		).valid)
 	)
 
 

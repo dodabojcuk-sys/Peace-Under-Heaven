@@ -80,6 +80,7 @@ route-bound facility.
 | Siege ram | 8 wood | After 4 battle ticks of construction, applies 160 real damage to its selected gate | This battle instance only |
 | Arrow tower | 10 wood | After 4 battle ticks of construction, targets the selected defended gate approach every 4 battle ticks (1 second) and contributes 24 damage to the existing enemy-HP intent; after a route barricade is gone, invaders dismantle the tower before resuming gate damage, and its volley scales with remaining durability | This battle instance only |
 | Barricade | 5 wood | After 3 battle ticks of construction, reduces the selected route's ordinary incoming enemy damage to 65%; in `WARTIME_DEFENSE` it instead absorbs the remainder of that route's real gate damage into its durability | This battle instance only |
+| Spike trap | 4 wood | Defense-only. After 2 battle ticks of construction, the first invader to reach its route takes 80 real damage; the trap consumes itself and has no second trigger | This battle instance only |
 
 Facility identity is `kind + route`: one kind may be deployed once on each
 actual approach, but never twice on the same route. This lets a player cover
@@ -87,6 +88,14 @@ both approaches without duplicating a resource, route, or combat owner. The
 plan UI always reflects the selected squad's route; once active, each watch
 platform reveals only its own route and each arrow tower contributes an
 independent, route-local intent to the shared battle tick.
+
+The spike trap is intentionally not an assault tool and is rejected by the
+authority for ordinary or macro-siege sources. Its trigger is checked from the
+same saved enemy route position used for gate damage, then writes both the
+enemy HP intent and the consumed facility phase in that battle tick. A saved
+destroyed trap does not replay its historic hit after restore. The standard
+facility repair transaction can re-lay the exhausted work when that is still a
+legal active-battle action.
 
 Confirmed works enter `CONSTRUCTING` first. The saved battle session owns their
 tick progress; only `ACTIVE` works supply their stated ability. This prevents a

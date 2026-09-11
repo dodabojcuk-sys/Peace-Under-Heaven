@@ -9,6 +9,7 @@ const KIND_WATCH_PLATFORM := &"WATCH_PLATFORM"
 const KIND_SIEGE_RAM := &"SIEGE_RAM"
 const KIND_ARROW_TOWER := &"ARROW_TOWER"
 const KIND_BARRICADE := &"BARRICADE"
+const KIND_SPIKE_TRAP := &"SPIKE_TRAP"
 const FACILITY_KEYS := ["facility_id", "kind", "route_id"]
 const SNAPSHOT_KEYS := ["schema_version", "facilities"]
 
@@ -17,12 +18,14 @@ const FACILITY_COSTS := {
 	KIND_SIEGE_RAM: {&"wood": 8},
 	KIND_ARROW_TOWER: {&"wood": 10},
 	KIND_BARRICADE: {&"wood": 5},
+	KIND_SPIKE_TRAP: {&"wood": 4},
 }
 const FACILITY_REPAIR_COSTS := {
 	KIND_WATCH_PLATFORM: {&"wood": 2},
 	KIND_SIEGE_RAM: {&"wood": 3},
 	KIND_ARROW_TOWER: {&"wood": 3},
 	KIND_BARRICADE: {&"wood": 2},
+	KIND_SPIKE_TRAP: {&"wood": 2},
 }
 
 
@@ -90,16 +93,19 @@ static func validate_for_source(snapshot: Dictionary, source_id: StringName) -> 
 			var facility: Dictionary = Dictionary(facility_value)
 			if StringName(facility.get("kind", &"")) == KIND_SIEGE_RAM:
 				return _failure("守城战不能部署攻城槌")
+	elif has_kind(Dictionary(validation.get("snapshot", {})), KIND_SPIKE_TRAP):
+		return _failure("刺钉陷阱只能用于守城战")
 	return validation
 
 
 static func is_available_for_source(kind: StringName, source_id: StringName) -> bool:
-	return (
-		FACILITY_COSTS.has(kind)
-		and not (
-			source_id == &"WARTIME_DEFENSE"
-			and kind == KIND_SIEGE_RAM
-		)
+	if not FACILITY_COSTS.has(kind):
+		return false
+	if kind == KIND_SPIKE_TRAP:
+		return source_id == &"WARTIME_DEFENSE"
+	return not (
+		source_id == &"WARTIME_DEFENSE"
+		and kind == KIND_SIEGE_RAM
 	)
 
 

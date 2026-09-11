@@ -62,6 +62,9 @@ const DEBUG_PLAYER_COUNT := 50
 @onready var wartime_barricade_button: Button = (
 	$UI/RootPanel/WartimePlanPanel/BarricadeButton
 )
+@onready var wartime_spike_trap_button: Button = (
+	$UI/RootPanel/WartimePlanPanel/SpikeTrapButton
+)
 @onready var wartime_plan_confirm_button: Button = (
 	$UI/RootPanel/WartimePlanPanel/ConfirmButton
 )
@@ -182,6 +185,9 @@ func _ready() -> void:
 	)
 	wartime_barricade_button.pressed.connect(
 		_toggle_wartime_facility.bind(WartimeFacilityPlan.KIND_BARRICADE)
+	)
+	wartime_spike_trap_button.pressed.connect(
+		_toggle_wartime_facility.bind(WartimeFacilityPlan.KIND_SPIKE_TRAP)
 	)
 	wartime_plan_confirm_button.pressed.connect(_confirm_wartime_facility_plan)
 	wartime_repair_button.pressed.connect(_repair_damaged_wartime_facility)
@@ -880,6 +886,8 @@ func _append_wartime_facility_feedback(events: Array[Dictionary]) -> void:
 			_append_recent_action("%s在%s施工受阻，需维修后才能投入战斗" % [_get_facility_name(kind), route_name])
 		elif StringName(event.get("event", &"")) == &"DESTROYED":
 			_append_recent_action("%s在%s被摧毁，已停止作用" % [_get_facility_name(kind), route_name])
+		elif StringName(event.get("event", &"")) == &"TRAP_TRIGGERED":
+			_append_recent_action("刺钉陷阱在%s触发：敌军受创 %d，陷阱已耗尽" % [route_name, int(event.get("damage", 0))])
 		elif StringName(event.get("event", &"")) == &"GATE_DAMAGED":
 			_append_recent_action("攻城槌完成%s破门：城门受损 %d" % [route_name, int(event.get("damage", 0))])
 		elif StringName(event.get("event", &"")) == &"GATE_REPAIR_STARTED":
@@ -900,6 +908,8 @@ func _get_facility_name(kind: StringName) -> String:
 			return "箭塔"
 		WartimeFacilityPlan.KIND_BARRICADE:
 			return "拒马"
+		WartimeFacilityPlan.KIND_SPIKE_TRAP:
+			return "刺钉陷阱"
 	return "战时工事"
 
 
@@ -1134,6 +1144,9 @@ func _refresh_wartime_plan_ui() -> void:
 	var has_barricade := WartimeFacilityPlan.has_kind(
 		pending_plan, WartimeFacilityPlan.KIND_BARRICADE, selected_route
 	)
+	var has_spike_trap := WartimeFacilityPlan.has_kind(
+		pending_plan, WartimeFacilityPlan.KIND_SPIKE_TRAP, selected_route
+	)
 	var is_defense := request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE
 	wartime_watch_button.text = (
 		"瞭望台 · 已选" if has_watch else "瞭望台 · 木材 6"
@@ -1146,10 +1159,15 @@ func _refresh_wartime_plan_ui() -> void:
 	wartime_barricade_button.text = (
 		"拒马 · 已选" if has_barricade else "拒马 · 木材 5"
 	)
+	wartime_spike_trap_button.visible = is_defense
+	wartime_spike_trap_button.text = (
+		"刺钉陷阱 · 已选" if has_spike_trap else "刺钉陷阱 · 木材 4"
+	)
 	wartime_watch_button.disabled = is_committed
 	wartime_ram_button.disabled = is_committed or is_defense
 	wartime_arrow_tower_button.disabled = is_committed
 	wartime_barricade_button.disabled = is_committed
+	wartime_spike_trap_button.disabled = is_committed or not is_defense
 	wartime_plan_confirm_button.visible = not is_committed
 	wartime_plan_confirm_button.disabled = (
 		Array(pending_plan.get("facilities", [])).is_empty()

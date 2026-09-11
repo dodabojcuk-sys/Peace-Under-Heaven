@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-12 - Route-triggered wartime spike traps
+
+- Added the defense-only spike trap to the formal C0 plan: 4 wood, two battle
+  ticks to build, then one 80-damage trigger when an invader reaches that
+  route. It consumes the saved trap record and cannot replay after recovery.
+- Reused the existing facility lifecycle and repair transaction. The trigger
+  is one route-driven enemy-HP intent, not a presentation-only counter or a
+  parallel casualty loop; the incident log emits one clear exhausted-trap
+  message instead of a duplicate destruction notice.
+- Added source rejection for assault and macro-siege plans plus a focused
+  regression for construction, real route arrival, one-time damage, snapshot
+  restore, and no replayed hit. The visible defense plan now includes the
+  trap and no longer overlaps its controls with the squad controls.
+
 ## 2026-09-12 - Route-local wartime defenses
 
 - Made wartime facility identity route-local: the same facility kind may now

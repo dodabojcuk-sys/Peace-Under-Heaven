@@ -75,6 +75,7 @@ func _run() -> void:
 	var ram_button := plan_panel.get_node("RamButton") as Button
 	var arrow_button := plan_panel.get_node("ArrowTowerButton") as Button
 	var barricade_button := plan_panel.get_node("BarricadeButton") as Button
+	var spike_trap_button := plan_panel.get_node("SpikeTrapButton") as Button
 	var confirm_button := plan_panel.get_node("ConfirmButton") as Button
 	var watched_enemy_count_label := battle.get_node(
 		"UI/RootPanel/SideLane/EnemyMarker/Count"
@@ -86,6 +87,14 @@ func _run() -> void:
 		watched_enemy_count_label.text.contains("敌情未明")
 			and not watched_enemy_count_label.text.contains("敌军 7"),
 		"守城路线在瞭望台完工前只显示可见威胁，不泄露精确来敌兵力"
+	)
+	_check(
+		spike_trap_button.visible
+			and not spike_trap_button.disabled
+			and not WartimeFacilityPlan.is_available_for_source(
+				WartimeFacilityPlan.KIND_SPIKE_TRAP, BattleRequest.SOURCE_MACRO_SIEGE
+			),
+		"守城面板提供刺钉陷阱，而围城来源不会获得错误的防守陷阱入口"
 	)
 	var wood_before_plan := int(city.get("wood"))
 	var invalid_plan := WartimeFacilityPlan.empty_snapshot()
@@ -173,6 +182,64 @@ func _run() -> void:
 		and dual_restore_success
 		and Dictionary(restored_dual_route_session.get_wartime_facility_state().get("arrow_towers_by_route", {})).size() == 2,
 		"同类瞭望台与箭塔可分别部署至两条守城路线、同时生效并通过同一战斗快照恢复"
+	)
+	var trap_attempt: Dictionary = city.get_expedition_attempt()
+	var trap_plan := WartimeFacilityPlan.empty_snapshot()
+	trap_plan.facilities.append(WartimeFacilityPlan.make_facility(
+		WartimeFacilityPlan.KIND_SPIKE_TRAP, CommittedForceSnapshot.SIDE_ROUTE
+	))
+	trap_attempt.wartime_facility_plan = trap_plan.duplicate(true)
+	var trap_request := BattleRequest.from_expedition_attempt(
+		trap_attempt, battle.request.mission_definition
+	)
+	if trap_request != null:
+		trap_request.phase = BattleRequest.PHASE_ACTIVE
+	var trap_session := BattleSession.new(trap_request)
+	for _tick in range(int(BattleSession.FACILITY_BUILD_TICKS[WartimeFacilityPlan.KIND_SPIKE_TRAP])):
+		trap_session.step_tick()
+	var trap_route := trap_session.get_route_state(CommittedForceSnapshot.SIDE_ROUTE)
+	trap_route.enemy_position_fixed = int(trap_route.get("distance_fixed", 0))
+	trap_session.routes[CommittedForceSnapshot.SIDE_ROUTE] = trap_route
+	var trap_enemy_hp_before := int(trap_route.get("enemy_total_hp", 0))
+	trap_session.step_tick()
+	var triggered_trap := _facility_by_kind(
+		trap_session, WartimeFacilityPlan.KIND_SPIKE_TRAP
+	)
+	var trap_triggered := trap_session.get_last_tick_facility_events().any(
+		func(event: Dictionary) -> bool:
+			return StringName(event.get("event", &"")) == &"TRAP_TRIGGERED"
+	)
+	var trap_destroyed_twice := trap_session.get_last_tick_facility_events().any(
+		func(event: Dictionary) -> bool:
+			return (
+				StringName(event.get("kind", &"")) == WartimeFacilityPlan.KIND_SPIKE_TRAP
+				and StringName(event.get("event", &"")) == &"DESTROYED"
+			)
+	)
+	var trap_snapshot := trap_session.get_snapshot()
+	var restored_trap_session := BattleSession.new(trap_request)
+	var trap_restore_success := restored_trap_session.restore_snapshot(trap_snapshot)
+	var trap_enemy_hp_after_trigger := int(
+		restored_trap_session.get_route_state(CommittedForceSnapshot.SIDE_ROUTE).get("enemy_total_hp", 0)
+	)
+	restored_trap_session.step_tick()
+	_check(
+		trap_request != null
+			and bool(WartimeFacilityPlan.validate_for_source(
+				trap_plan, BattleRequest.SOURCE_WARTIME_DEFENSE
+			).get("valid", false))
+			and not bool(WartimeFacilityPlan.validate_for_source(
+				trap_plan, BattleRequest.SOURCE_MACRO_SIEGE
+			).get("valid", false))
+			and StringName(triggered_trap.get("phase", &"")) == BattleSession.FACILITY_PHASE_DESTROYED
+			and trap_triggered
+			and not trap_destroyed_twice
+			and int(trap_session.get_route_state(CommittedForceSnapshot.SIDE_ROUTE).get("enemy_total_hp", 0))
+				== trap_enemy_hp_before - BattleSession.SPIKE_TRAP_DAMAGE_ON_TRIGGER
+			and trap_restore_success
+			and int(restored_trap_session.get_route_state(CommittedForceSnapshot.SIDE_ROUTE).get("enemy_total_hp", 0))
+				== trap_enemy_hp_after_trigger,
+		"刺钉陷阱在敌军实际抵达路线时一次性造成伤害并耗尽；冷恢复后不重播或重复扣除敌军生命"
 	)
 	_check(battle.start_battle(), "守城工事确认后由同一正式 C0 时钟启动")
 	battle.tick_timer.stop()

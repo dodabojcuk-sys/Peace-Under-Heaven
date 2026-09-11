@@ -358,9 +358,9 @@ visible = false
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 24.0
-offset_top = -286.0
+offset_top = -430.0
 offset_right = 452.0
-offset_bottom = -154.0
+offset_bottom = -298.0
 theme_type_variation = &"CommandPanel"
 
 [node name="WartimeRepairButton" type="Button" parent="UI/RootPanel"]
@@ -444,6 +444,13 @@ offset_top = 82.0
 offset_right = 146.0
 offset_bottom = 122.0
 text = "拒马 · 木材 5"
+
+[node name="SpikeTrapButton" type="Button" parent="UI/RootPanel/WartimePlanPanel"]
+offset_left = 154.0
+offset_top = 82.0
+offset_right = 286.0
+offset_bottom = 122.0
+text = "刺钉陷阱 · 木材 4"
 
 [node name="ConfirmButton" type="Button" parent="UI/RootPanel/WartimePlanPanel"]
 offset_left = 294.0

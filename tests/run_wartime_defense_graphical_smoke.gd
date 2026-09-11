@@ -42,10 +42,12 @@ func _run() -> void:
 	var watch_button := plan_panel.get_node("WatchButton") as Button
 	var arrow_button := plan_panel.get_node("ArrowTowerButton") as Button
 	var barricade_button := plan_panel.get_node("BarricadeButton") as Button
+	var spike_trap_button := plan_panel.get_node("SpikeTrapButton") as Button
 	var confirm_button := plan_panel.get_node("ConfirmButton") as Button
 	watch_button.emit_signal("pressed")
 	arrow_button.emit_signal("pressed")
 	barricade_button.emit_signal("pressed")
+	spike_trap_button.emit_signal("pressed")
 	await _frames(2)
 	_capture("wartime-defense-01-plan-engine-gui.png")
 	_check(
@@ -53,6 +55,8 @@ func _run() -> void:
 		and plan_panel.visible
 		and confirm_button.visible
 		and not confirm_button.disabled
+		and spike_trap_button.visible
+		and spike_trap_button.text.contains("已选")
 		and str(plan_panel.get_node("Title").text).contains("东门壕沟"),
 		"可见守城工事面板经正式按钮选择侧翼瞭望台、箭塔和拒马"
 	)
@@ -96,6 +100,27 @@ func _run() -> void:
 			== BattleSession.FACILITY_PHASE_INTERRUPTED
 		and not interruption_projection.has("barricade_route_id"),
 		"可见战斗刻在敌军先于施工完工抵达时中断拒马，未完成设施不提供阻挡投影"
+	)
+	## The trap finishes on the next normal tick while that same invader is still
+	## at the endpoint, so this capture proves a real route-arrival trigger
+	## rather than a manually decremented enemy counter.
+	battle.step_battle_for_test(1)
+	battle._refresh_battle_ui()
+	await _frames(1)
+	_capture("wartime-defense-03c-spike-trap-triggered-engine-gui.png")
+	var triggered_trap := _facility_by_kind(
+		session, WartimeFacilityPlan.KIND_SPIKE_TRAP
+	)
+	var trap_triggered := false
+	for event_value in session.get_last_tick_facility_events():
+		var facility_event: Dictionary = Dictionary(event_value)
+		if StringName(facility_event.get("event", &"")) == &"TRAP_TRIGGERED":
+			trap_triggered = true
+			break
+	_check(
+		StringName(triggered_trap.get("phase", &"")) == BattleSession.FACILITY_PHASE_DESTROYED
+		and trap_triggered,
+		"可见战斗刻在完工刺钉陷阱处产生一次路线伤害并耗尽同一工事记录"
 	)
 	## Return the invader to the beginning only after recording the interrupted
 	## state, so the following gate-repair evidence remains a readable scene.
