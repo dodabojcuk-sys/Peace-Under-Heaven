@@ -724,37 +724,128 @@ static func _has_valid_references(roads: Dictionary, camps: Dictionary, speciali
 	return true
 
 
-static func _has_valid_supply_state(inventory: Dictionary, transports: Dictionary, roads: Dictionary) -> bool:
+static func _is_snapshot_id(value: Variant) -> bool:
+	return (typeof(value) == TYPE_STRING_NAME or typeof(value) == TYPE_STRING) and StringName(value) != &""
+
+
+static func _is_snapshot_int(value: Variant) -> bool:
+	return typeof(value) == TYPE_INT
+
+
+static func _supply_segment_endpoints(segment: Dictionary, roads: Dictionary) -> Dictionary:
+	if not segment.has("road_id") or not segment.has("forward") or typeof(segment.get("forward")) != TYPE_BOOL:
+		return {}
+	var road_id_value: Variant = segment.get("road_id")
+	if not _is_snapshot_id(road_id_value):
+		return {}
+	var road := Dictionary(roads.get(StringName(road_id_value), {}))
+	if road.is_empty() or not road.get("route_world_points", null) is Array:
+		return {}
+	var points: Array = Array(road.get("route_world_points", [])).duplicate(true)
+	if points.size() < 2:
+		return {}
+	for point in points:
+		if not point is Vector2i:
+			return {}
+	if not _is_snapshot_id(road.get("source_point_id")) or not _is_snapshot_id(road.get("target_point_id")):
+		return {}
+	var forward := bool(segment.get("forward"))
+	if not forward:
+		points.reverse()
+	return {
+		"road_id": StringName(road_id_value),
+		"source_point_id": StringName(road.get("source_point_id")) if forward else StringName(road.get("target_point_id")),
+		"target_point_id": StringName(road.get("target_point_id")) if forward else StringName(road.get("source_point_id")),
+		"points": points,
+	}
+
+
+static func _has_valid_supply_state(inventory: Dictionary, transports: Dictionary, roads: Dictionary, next_sequence: Variant) -> bool:
+	if not _is_snapshot_int(next_sequence) or int(next_sequence) <= 0:
+		return false
+	var source_totals: Dictionary = {}
+	var greatest_sequence := 0
 	for point_id_value in inventory:
-		if StringName(point_id_value) == &"" or typeof(inventory[point_id_value]) != TYPE_INT or int(inventory[point_id_value]) < 0:
+		if not _is_snapshot_id(point_id_value) or not _is_snapshot_int(inventory[point_id_value]) or int(inventory[point_id_value]) < 0:
 			return false
+		source_totals[StringName(point_id_value)] = int(inventory[point_id_value])
 	for transport_id_value in transports:
+		if not _is_snapshot_id(transport_id_value) or not transports[transport_id_value] is Dictionary:
+			return false
 		var transport: Dictionary = Dictionary(transports[transport_id_value])
 		var transport_id := StringName(transport_id_value)
+		var id_text := String(transport_id)
+		if not id_text.begins_with("supply.") or id_text.length() != 13 or not id_text.substr(7).is_valid_int():
+			return false
+		var sequence := int(id_text.substr(7))
+		if sequence <= 0 or sequence >= int(next_sequence):
+			return false
+		greatest_sequence = maxi(greatest_sequence, sequence)
 		if (
-			transport_id == &"" or StringName(transport.get("transport_id", &"")) != transport_id
-			or StringName(transport.get("source_point_id", &"")) == &""
-			or StringName(transport.get("target_point_id", &"")) == &""
-			or int(transport.get("amount", 0)) <= 0
-			or int(transport.get("total_milliseconds", 0)) <= 0
-			or int(transport.get("elapsed_milliseconds", -1)) < 0
-			or int(transport.get("elapsed_milliseconds", 0)) > int(transport.get("total_milliseconds", 0))
-			or StringName(transport.get("phase", &"")) not in [SUPPLY_MOVING, SUPPLY_WAITING_ROUTE, SUPPLY_WAITING_CAPACITY, SUPPLY_COMPLETED]
+			not _is_snapshot_id(transport.get("transport_id")) or StringName(transport.get("transport_id")) != transport_id
+			or not _is_snapshot_id(transport.get("source_point_id")) or not _is_snapshot_id(transport.get("target_point_id"))
+			or not _is_snapshot_int(transport.get("amount")) or int(transport.get("amount")) <= 0
+			or not _is_snapshot_int(transport.get("total_milliseconds")) or int(transport.get("total_milliseconds")) <= 0
+			or not _is_snapshot_int(transport.get("elapsed_milliseconds")) or int(transport.get("elapsed_milliseconds")) < 0
+			or int(transport.get("elapsed_milliseconds")) > int(transport.get("total_milliseconds"))
+			or not _is_snapshot_id(transport.get("phase")) or StringName(transport.get("phase")) not in [SUPPLY_MOVING, SUPPLY_WAITING_ROUTE, SUPPLY_WAITING_CAPACITY, SUPPLY_COMPLETED]
+			or typeof(transport.get("deposited")) != TYPE_BOOL
+			or not _is_snapshot_int(transport.get("last_checkpoint_elapsed_milliseconds"))
+			or not transport.get("world_position", null) is Vector2i
 			or not transport.get("route_segments", null) is Array
 			or not transport.get("route_world_points", null) is Array
 		):
 			return false
-		if bool(transport.get("deposited", false)) != (StringName(transport.get("phase", &"")) == SUPPLY_COMPLETED):
+		var phase := StringName(transport.get("phase"))
+		var elapsed := int(transport.get("elapsed_milliseconds"))
+		var total := int(transport.get("total_milliseconds"))
+		if int(transport.get("last_checkpoint_elapsed_milliseconds")) < 0 or int(transport.get("last_checkpoint_elapsed_milliseconds")) > elapsed:
+			return false
+		if bool(transport.get("deposited")) != (phase == SUPPLY_COMPLETED):
 			return false
 		var route_segments: Array = Array(transport.get("route_segments", []))
-		if route_segments.is_empty() or Array(transport.get("route_world_points", [])).size() < 2:
+		var route_points: Array = Array(transport.get("route_world_points", []))
+		if route_segments.is_empty() or route_points.size() < 2:
 			return false
+		var expected_points: Array = []
+		var previous_target := &""
+		var route_tokens: Array[String] = []
 		for segment_value in route_segments:
 			if not segment_value is Dictionary:
 				return false
-			var road_id := StringName(Dictionary(segment_value).get("road_id", &""))
-			if road_id == &"" or not roads.has(road_id) or not Dictionary(segment_value).has("forward"):
+			var endpoints := _supply_segment_endpoints(Dictionary(segment_value), roads)
+			if endpoints.is_empty() or (previous_target != &"" and StringName(endpoints.get("source_point_id", &"")) != previous_target):
 				return false
+			previous_target = StringName(endpoints.get("target_point_id", &""))
+			route_tokens.append("%s:%s" % [String(endpoints.get("road_id", &"")), "f" if bool(Dictionary(segment_value).get("forward")) else "r"])
+			var segment_points: Array = Array(endpoints.get("points", []))
+			if expected_points.is_empty():
+				expected_points.append_array(segment_points)
+			else:
+				if expected_points.back() != segment_points.front():
+					return false
+				expected_points.append_array(segment_points.slice(1))
+		# The stored display polyline can be a canonicalized copy of the physical
+		# polyline, so validate its anchored endpoints and all physical segment
+		# joins above without requiring an identical intermediate-point encoding.
+		if StringName(transport.get("route_id", &"")) != StringName("%s%s" % [PATH_PREFIX, "|".join(route_tokens)]) or StringName(transport.get("source_point_id")) != StringName(_supply_segment_endpoints(Dictionary(route_segments.front()), roads).get("source_point_id", &"")) or StringName(transport.get("target_point_id")) != previous_target or Vector2(route_points.front()) != Vector2(expected_points.front()) or Vector2(route_points.back()) != Vector2(expected_points.back()):
+			return false
+		if phase in [SUPPLY_WAITING_CAPACITY, SUPPLY_COMPLETED] and elapsed != total:
+			return false
+		if phase in [SUPPLY_MOVING, SUPPLY_WAITING_ROUTE] and elapsed >= total:
+			return false
+		if phase == SUPPLY_WAITING_ROUTE and (not _is_snapshot_id(transport.get("blocked_road_id")) or not roads.has(StringName(transport.get("blocked_road_id")))):
+			return false
+		if phase != SUPPLY_WAITING_ROUTE and StringName(transport.get("blocked_road_id", &"")) != &"":
+			return false
+		source_totals[StringName(transport.get("source_point_id"))] = int(source_totals.get(StringName(transport.get("source_point_id")), 0)) + int(transport.get("amount"))
+	if greatest_sequence >= int(next_sequence):
+		return false
+	# R0 deliberately has one finite Silverford stock.  Counting every durable
+	# payload (including completed receipts) detects snapshots that claim both
+	# the original location inventory and the same cargo at once.
+	if int(source_totals.get(&"silverford_city", 0)) > 20:
+		return false
 	return true
 
 
@@ -997,6 +1088,11 @@ func mark_supply_transport_waiting_capacity(transport_id: StringName) -> bool:
 	var transport := Dictionary(supply_transports_by_id.get(transport_id, {}))
 	if transport.is_empty() or StringName(transport.get("phase", &"")) == SUPPLY_COMPLETED:
 		return false
+	# A full warehouse is a durable state transition, not a per-frame event.  The
+	# controller retries the same payload after capacity changes, so repeatedly
+	# asking it to checkpoint while nothing changed would create unbounded saves.
+	if StringName(transport.get("phase", &"")) == SUPPLY_WAITING_CAPACITY and StringName(transport.get("blocked_road_id", &"")) == &"":
+		return false
 	transport.phase = SUPPLY_WAITING_CAPACITY
 	transport.blocked_road_id = &""
 	supply_transports_by_id[transport_id] = transport
@@ -1010,7 +1106,23 @@ func consume_supply_checkpoint_required() -> bool:
 	return required
 
 
-func _advance_supply_transports(delta_milliseconds: int) -> Array[StringName]:
+func _supply_route_segment_index_at_progress(route_segments: Array, route_points: Array, elapsed_milliseconds: int, total_milliseconds: int) -> int:
+	if route_segments.is_empty() or route_points.size() < 2:
+		return 0
+	var total_length := _points_length(route_points)
+	if total_length <= 0.001:
+		return 0
+	var travelled_length := total_length * clampf(float(elapsed_milliseconds) / maxf(float(total_milliseconds), 1.0), 0.0, 1.0)
+	var consumed_length := 0.0
+	for index in range(route_segments.size()):
+		var segment_length := _points_length(_route_segment_world_points(Dictionary(route_segments[index])))
+		if travelled_length <= consumed_length + segment_length + 0.001:
+			return index
+		consumed_length += segment_length
+	return route_segments.size() - 1
+
+
+func _advance_supply_transports(delta_milliseconds: int, repaired_road_open_offsets: Dictionary = {}) -> Array[StringName]:
 	var ready_to_unload: Array[StringName] = []
 	var transport_ids: Array = supply_transports_by_id.keys()
 	transport_ids.sort()
@@ -1037,7 +1149,17 @@ func _advance_supply_transports(delta_milliseconds: int) -> Array[StringName]:
 				continue
 			transport.phase = SUPPLY_MOVING
 			transport.blocked_road_id = &""
-			elapsed = mini(elapsed + delta_milliseconds, total)
+			# Roads repaired during this step become usable only after their real
+			# work-completion offset.  Convoys retain the same clock as projects;
+			# they never receive the portion of the frame that the bridge was still
+			# damaged.  This also keeps one large step equivalent to split steps.
+			var deferred_milliseconds := 0
+			var current_segment_index := _supply_route_segment_index_at_progress(route_segments, route_points, elapsed, total)
+			for segment_index in range(current_segment_index, route_segments.size()):
+				var road_id := StringName(Dictionary(route_segments[segment_index]).get("road_id", &""))
+				deferred_milliseconds = maxi(deferred_milliseconds, int(repaired_road_open_offsets.get(road_id, 0)))
+			var usable_milliseconds := maxi(delta_milliseconds - clampi(deferred_milliseconds, 0, delta_milliseconds), 0)
+			elapsed = mini(elapsed + usable_milliseconds, total)
 			transport.elapsed_milliseconds = elapsed
 			transport.world_position = Vector2i(_position_along_points(route_points, float(elapsed) / float(total)))
 			if elapsed >= int(transport.get("last_checkpoint_elapsed_milliseconds", 0)) + 1000 or elapsed >= total:
@@ -1472,6 +1594,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 	var specialist_project_ids: Dictionary = {}
 	var project_step_facts: Dictionary = {}
 	var supply_ready_to_unload: Array[StringName] = []
+	var repaired_road_open_offsets: Dictionary = {}
 	# A repair may begin in the middle of this world step. Keep the unused part
 	# of the step for its work progress so one long advance and split advances
 	# produce identical durable state.
@@ -1583,6 +1706,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 				repaired_road.durability = int(repaired_road.max_durability)
 				repaired_road.state = ROAD_OPEN
 				roads_by_id[StringName(project.road_id)] = repaired_road
+				repaired_road_open_offsets[StringName(project.road_id)] = work_start_offset + work_consumed
 			else:
 				opened_road_ids.append_array(_open_completed_construction_segments(project_id, project))
 			engineer.phase = SPECIALIST_IDLE
@@ -1606,7 +1730,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 	# Construction and repairs update before convoys evaluate their remaining
 	# road segments, so a bridge completed in this same world step is usable for
 	# the unused portion of that step without creating a second clock.
-	supply_ready_to_unload = _advance_supply_transports(delta_milliseconds)
+	supply_ready_to_unload = _advance_supply_transports(delta_milliseconds, repaired_road_open_offsets)
 	for patrol_id_value in patrols_by_id.keys():
 		var patrol_id := StringName(patrol_id_value)
 		var patrol := Dictionary(patrols_by_id[patrol_id])
@@ -2084,7 +2208,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	var required := legacy_required.duplicate()
 	required.append_array(["supply_inventory_by_point_id", "supply_transports_by_id", "next_supply_transport_sequence"])
 	var is_legacy_supply_snapshot := snapshot.size() == legacy_required.size()
-	if (not is_legacy_supply_snapshot and snapshot.size() != required.size()) or int(snapshot.get("schema_version", 0)) != SCHEMA_VERSION:
+	if (not is_legacy_supply_snapshot and snapshot.size() != required.size()) or typeof(snapshot.get("schema_version")) != TYPE_INT or int(snapshot.get("schema_version")) != SCHEMA_VERSION:
 		return false
 	for key in legacy_required:
 		if not snapshot.has(key):
@@ -2097,9 +2221,9 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		not snapshot.roads_by_id is Dictionary or not snapshot.camps_by_id is Dictionary
 		or not snapshot.specialists_by_id is Dictionary or not snapshot.projects_by_id is Dictionary
 		or not snapshot.patrols_by_id is Dictionary or not snapshot.intel_by_subject_id is Dictionary
-		or int(snapshot.world_milliseconds) < 0 or int(snapshot.next_specialist_sequence) <= 0
-		or int(snapshot.next_project_sequence) <= 0 or int(snapshot.next_camp_sequence) <= 0
-		or (not is_legacy_supply_snapshot and (not snapshot.supply_inventory_by_point_id is Dictionary or not snapshot.supply_transports_by_id is Dictionary or int(snapshot.next_supply_transport_sequence) <= 0))
+		or typeof(snapshot.world_milliseconds) != TYPE_INT or int(snapshot.world_milliseconds) < 0 or typeof(snapshot.next_specialist_sequence) != TYPE_INT or int(snapshot.next_specialist_sequence) <= 0
+		or typeof(snapshot.next_project_sequence) != TYPE_INT or int(snapshot.next_project_sequence) <= 0 or typeof(snapshot.next_camp_sequence) != TYPE_INT or int(snapshot.next_camp_sequence) <= 0
+		or (not is_legacy_supply_snapshot and (not snapshot.supply_inventory_by_point_id is Dictionary or not snapshot.supply_transports_by_id is Dictionary or typeof(snapshot.next_supply_transport_sequence) != TYPE_INT or int(snapshot.next_supply_transport_sequence) <= 0))
 	):
 		return false
 	if not _has_valid_references(
@@ -2109,7 +2233,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	):
 		return false
 	if not is_legacy_supply_snapshot and not _has_valid_supply_state(
-		Dictionary(snapshot.supply_inventory_by_point_id), Dictionary(snapshot.supply_transports_by_id), Dictionary(snapshot.roads_by_id)
+		Dictionary(snapshot.supply_inventory_by_point_id), Dictionary(snapshot.supply_transports_by_id), Dictionary(snapshot.roads_by_id), snapshot.next_supply_transport_sequence
 	):
 		return false
 	roads_by_id = Dictionary(snapshot.roads_by_id).duplicate(true)

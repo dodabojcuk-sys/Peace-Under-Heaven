@@ -2,6 +2,18 @@
 
 ## 2026-09-11
 
+- Closed the Silverford supply R0 correctness follow-up. Capacity-full convoys
+  now checkpoint only on their first durable wait transition, avoiding a new
+  save generation on every unchanged frame. A repair completed inside a world
+  step supplies its actual completion offset to cargo movement, so transport
+  consumes only post-repair time and remains equivalent across large, 30 FPS,
+  60 FPS and irregular advances. Tightened persisted transport validation
+  before coercion (types, IDs/sequences, directed continuity, phase/progress
+  consistency, and finite Silverford stock/cargo conservation). Post-credit
+  siege-sync and checkpoint-save fault coverage now verifies full rollback and
+  one-time retry. Silverford's completed location view persistently reports
+  `本批 20 粮已入库` from the authoritative completed transport.
+
 - Added Silverford supply R0 to the playable theatre: one authored, finite 20
   food inventory becomes a persisted FieldTacticsState transport only after
   Silverford is player-controlled. Departure removes location inventory once;

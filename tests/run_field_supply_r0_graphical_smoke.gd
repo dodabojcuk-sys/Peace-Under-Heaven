@@ -74,8 +74,20 @@ func _run() -> void:
 		and macro._supply_transport_button.disabled \
 		and macro._detail_label.text.contains("运输中")
 	_capture("field-supply-02-moving-engine-gui.png")
+	city.set_city_time_paused(false)
+	city.advance_war_loop_time(int(transport.get("total_milliseconds", 0)))
+	city.set_city_time_paused(true)
+	await process_frame
+	macro.refresh()
+	var completed_feedback := bool(_first_transport(Dictionary(city.get_field_tactics_read_model().get("supply_transports_by_id", {}))).get("deposited", false)) \
+		and macro._supply_transport_button.visible \
+		and macro._supply_transport_button.disabled \
+		and macro._supply_transport_button.text.contains("本批 20 粮已入库") \
+		and macro._detail_label.text.contains("本批 20 粮已入库")
+	_capture("field-supply-03-completed-engine-gui.png")
 	_check(button_ready, "GUI 点击银渡城显示有限库存、实际道路、预计耗时和可用运回按钮")
 	_check(dispatched_once, "可见运输按钮的已连接动作只创建一笔在途货物，不提前向 NationState 入库")
+	_check(completed_feedback, "运输完成后地点详情从权威完成记录持续显示本批 20 粮已入库")
 	# The explicit visual Button signal is intentionally not used as the action
 	# proof above; it remains covered by this real Control input path.
 	print("FIELD_SUPPLY_R0_GUI_EVIDENCE map_pointer_input=true button_action_signal=true")

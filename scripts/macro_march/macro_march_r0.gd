@@ -739,12 +739,17 @@ func _inspect_location_garrison(army_id: StringName, point_id: StringName) -> vo
 func _supply_transport_status(field: Dictionary, point_id: StringName) -> Dictionary:
 	var inventory := maxi(int(Dictionary(field.get("supply_inventory_by_point_id", {})).get(point_id, 0)), 0)
 	var active: Dictionary = {}
+	var completed: Dictionary = {}
 	for transport_value in Dictionary(field.get("supply_transports_by_id", {})).values():
 		var transport: Dictionary = Dictionary(transport_value)
-		if StringName(transport.get("source_point_id", &"")) == point_id and not bool(transport.get("deposited", false)):
+		if StringName(transport.get("source_point_id", &"")) != point_id:
+			continue
+		if bool(transport.get("deposited", false)):
+			if completed.is_empty() or String(transport.get("transport_id", &"")) > String(completed.get("transport_id", &"")):
+				completed = transport.duplicate(true)
+		elif active.is_empty():
 			active = transport.duplicate(true)
-			break
-	return {"inventory": inventory, "active": active}
+	return {"inventory": inventory, "active": active, "completed": completed}
 
 
 func _supply_phase_label(transport: Dictionary) -> String:
@@ -850,6 +855,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			var supply_copy := ""
 			if inspected_point_id == &"silverford_city" and StringName(inspected_location.get("military_controller_faction_id", &"")) == &"player":
 				var active_transport := Dictionary(supply_status.get("active", {}))
+				var completed_transport := Dictionary(supply_status.get("completed", {}))
 				var available_supply := int(supply_status.get("inventory", 0))
 				var preview := _dispatch_adapter.preview_field_supply_transport(inspected_point_id) if _dispatch_adapter != null else {}
 				_supply_transport_button.visible = true
@@ -860,6 +866,11 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 				elif bool(preview.get("valid", false)):
 					_supply_transport_button.text = "运回黑石城（%d 粮）" % available_supply
 					supply_copy = "\n银渡城余粮：%d 粮\n运回黑石城：沿 %d 段道路，约 %.1f 秒" % [available_supply, Array(preview.get("route_segments", [])).size(), float(preview.get("duration_milliseconds", 0)) / 1000.0]
+				elif not completed_transport.is_empty():
+					var delivered_amount := int(completed_transport.get("amount", 0))
+					_supply_transport_button.text = "本批 %d 粮已入库" % delivered_amount
+					_supply_transport_button.disabled = true
+					supply_copy = "\n银渡城余粮：%d 粮\n本批 %d 粮已入库" % [available_supply, delivered_amount]
 				else:
 					_supply_transport_button.text = "无法运回黑石城"
 					supply_copy = "\n银渡城余粮：%d 粮\n无法运输：%s" % [available_supply, str(preview.get("error", "没有可通行道路"))]

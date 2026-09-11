@@ -487,6 +487,9 @@ var _war_loop_state: WarLoopState = WAR_LOOP_STATE.new()
 var _war_loop_frame_remainder_milliseconds := 0.0
 var _macro_march_frame_remainders_by_order: Dictionary = {}
 var _macro_march_traces_for_war_step: Dictionary = {}
+# Test-only fault seam for verifying the atomic boundary after a NationState
+# supply credit. It is never serialized and production code has no caller.
+var _field_supply_fault_for_test: StringName = &""
 
 
 func _ready() -> void:
@@ -6042,6 +6045,10 @@ func advance_war_loop_time_seconds(delta_seconds: float) -> Dictionary:
 	)
 
 
+func set_field_supply_fault_for_test(fault_id: StringName) -> void:
+	_field_supply_fault_for_test = fault_id
+
+
 func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dictionary:
 	if city_time_paused or elapsed_milliseconds <= 0.0:
 		return {}
@@ -6073,6 +6080,12 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		_war_loop_state.restore_snapshot(war_before)
 		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 		return _macro_failure(&"SUPPLY_SETTLEMENT_FAILED", str(supply_settlement.get("error", "粮草入库未能提交")))
+	if _field_supply_fault_for_test == &"AFTER_CREDIT_SIEGE_SYNC":
+		_field_supply_fault_for_test = &""
+		_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
+		_war_loop_state.restore_snapshot(war_before)
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		return _macro_failure(&"SIEGE_ARMY_SYNC_FAILED", "测试注入：粮草入库后的攻城同步失败")
 	var supply_checkpoint_required := _war_loop_state.field_tactics.consume_supply_checkpoint_required()
 	var resumed_armies := _resume_macro_marches_on_repaired_roads()
 	var field_checkpoint_required := (
@@ -6093,11 +6106,13 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 			var surviving_count := ceili(float(maxi(int(result.attacker_total_hp), 0)) / float(maxi(int(result.attacker_hp_per_member), 1)))
 			if surviving_count <= 0:
 				if StringName(result.phase) != WarLoopState.PHASE_FAILED:
+					_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
 					_war_loop_state.restore_snapshot(war_before)
 					_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 					return _macro_failure(&"SIEGE_ZERO_SURVIVOR_STATE", "全灭攻城未进入失败状态")
 				result = _close_lost_macro_siege(result, StringName("%s.lost" % String(result.siege_id)))
 				if not bool(result.get("success", false)):
+					_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
 					_war_loop_state.restore_snapshot(war_before)
 					_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 					return result
@@ -6106,6 +6121,7 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 				StringName(result.army_id), StringName(result.order_id), surviving_count
 			)
 			if army.is_empty():
+				_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
 				_war_loop_state.restore_snapshot(war_before)
 				_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 				return _macro_failure(&"SIEGE_ARMY_SYNC_FAILED", "攻城伤亡无法同步到军队")
@@ -6118,7 +6134,9 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 	if not result.is_empty() or field_checkpoint_required:
 		_refresh_city_ui()
 		city_state_changed.emit()
-		if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		var checkpoint_success := _field_supply_fault_for_test != &"CHECKPOINT_SAVE_FAILED" and bool(_persist_macro_march_checkpoint().get("success", false))
+		_field_supply_fault_for_test = &"" if _field_supply_fault_for_test == &"CHECKPOINT_SAVE_FAILED" else _field_supply_fault_for_test
+		if not checkpoint_success:
 			_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
 			_war_loop_state.restore_snapshot(war_before)
 			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
