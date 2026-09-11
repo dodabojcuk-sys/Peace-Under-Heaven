@@ -563,10 +563,20 @@ func _deployed_members_by_formation(armies: Array) -> Dictionary:
 	return deployed
 
 
-func _selected_location(model: Dictionary, army: Dictionary = {}) -> Dictionary:
-	# The side-panel button belongs to an explicitly inspected, stationary army.
-	# A previously viewed map point must not make that action describe some other
-	# city after the player changes subject.
+func _selected_location(model: Dictionary, army: Dictionary = {}, specialist: Dictionary = {}) -> Dictionary:
+	# The side-panel button belongs to the currently inspected world subject. A
+	# deliberate map inspection must win over an older specialist selection; the
+	# selected subject resumes only after the player exits that location view.
+	if _location_detail_mode and _selected_point_id != &"":
+		var inspected_point := _point_from_model(model, _selected_point_id)
+		if not inspected_point.is_empty():
+			return inspected_point
+	# Specialists are included only when they are physically at a named point;
+	# an in-transit position is not a location.
+	if _selected_specialist_id != &"" and not specialist.is_empty() and bool(specialist.get("alive", false)):
+		var specialist_point := _point_from_model(model, StringName(specialist.get("current_point_id", &"")))
+		if not specialist_point.is_empty():
+			return specialist_point
 	if _selected_army_id != &"" and not army.is_empty() and StringName(army.get("phase", &"")) == ARMY_REGISTRY.PHASE_STATIONED:
 		return _point_from_model(model, StringName(army.get("target_node_id", &"")))
 	if _selected_point_id != &"":
@@ -672,7 +682,9 @@ func _location_use_label(location: Dictionary) -> String:
 
 func _open_selected_location_detail() -> void:
 	var model := _model()
-	var location := _selected_location(model, _selected_army(model))
+	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+	var specialist := Dictionary(Dictionary(field.get("specialists_by_id", {})).get(_selected_specialist_id, {}))
+	var location := _selected_location(model, _selected_army(model), specialist)
 	if location.is_empty():
 		_set_status_error("当前没有可查看的地点。")
 		refresh()
@@ -761,6 +773,42 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			model, StringName(scout.get("current_point_id", &"")), "野外"
 		)
 		return
+	# An explicit location inspection is a read-only view and must win over an
+	# older specialist selection. Direct gestures above still own the panel while
+	# their pointer is down, so this cannot mask a pending command.
+	if _location_detail_mode:
+		var inspected_location := _selected_location(model, army, Dictionary(specialists.get(_selected_specialist_id, {})))
+		if inspected_location.is_empty():
+			_location_detail_mode = false
+			_selected_point_id = &""
+		else:
+			_refresh_location_garrison_controls(model, inspected_location)
+			_confirm_button.visible = false
+			_block_button.visible = false
+			_recover_button.visible = false
+			_retreat_button.visible = false
+			_scout_button.visible = false
+			_engineer_button.visible = false
+			_side_road_button.visible = false
+			_resume_project_button.visible = false
+			_restore_default_route_button.visible = false
+			_engineering_undo_button.visible = false
+			_engineering_clear_button.visible = false
+			_interrupted_project_selector.visible = false
+			var inspected_point_id := StringName(inspected_location.get("point_id", &""))
+			var inspected_stationed := _location_garrison_armies(model, inspected_point_id)
+			_set_context_status("正在查看%s；查看不会下令或扣除资源。" % str(inspected_location.get("display_name", "地点")))
+			_detail_label.text = "%s\n外观类型：%s\n控制方：%s\n用途：%s\n建设：%s\n实际驻军：%d 支、%d 人" % [
+				str(inspected_location.get("display_name", "地点")),
+				_location_kind_label(inspected_location),
+				_location_controller_label(inspected_location),
+				_location_use_label(inspected_location),
+				"可用" if bool(inspected_location.get("allows_inner_city_actions", false)) else "本阶段未开放",
+				inspected_stationed.size(),
+				_location_garrison_member_total(inspected_stationed),
+			]
+			_specialist_status_label.text = "点击驻军可定位查看；长按我方地点仍可直接选择派遣对象。"
+			return
 	var selected_specialist := Dictionary(specialists.get(_selected_specialist_id, {}))
 	# Replanning keeps the last valid draft as a safe fallback until mouse-up,
 	# but its confirmation cannot remain actionable while the live gesture is
@@ -794,42 +842,13 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		var specialist_phase := _specialist_phase_label(selected_specialist)
 		var current_name := _point_display_name(model, StringName(selected_specialist.get("current_point_id", &"")), "野外")
 		var target_name := _point_display_name(model, StringName(selected_specialist.get("target_point_id", &"")), current_name)
+		var specialist_location := _selected_location(model, {}, selected_specialist)
+		if not specialist_location.is_empty():
+			_location_details_button.visible = true
+			_location_details_button.text = "查看所在地点：%s" % str(specialist_location.get("display_name", "地点"))
 		_set_context_status("已选%s：%s" % [specialist_role, specialist_phase])
 		_detail_label.text = "当前选择：%s\n状态：%s\n当前位置：%s\n任务目标：%s" % [specialist_role, specialist_phase, current_name, target_name]
 		return
-	if _location_detail_mode:
-		var location := _selected_location(model, army)
-		if location.is_empty():
-			_location_detail_mode = false
-			_selected_point_id = &""
-		else:
-			_refresh_location_garrison_controls(model, location)
-			_confirm_button.visible = false
-			_block_button.visible = false
-			_recover_button.visible = false
-			_retreat_button.visible = false
-			_scout_button.visible = false
-			_engineer_button.visible = false
-			_side_road_button.visible = false
-			_resume_project_button.visible = false
-			_restore_default_route_button.visible = false
-			_engineering_undo_button.visible = false
-			_engineering_clear_button.visible = false
-			_interrupted_project_selector.visible = false
-			var point_id := StringName(location.get("point_id", &""))
-			var stationed := _location_garrison_armies(model, point_id)
-			_set_context_status("正在查看%s；查看不会下令或扣除资源。" % str(location.get("display_name", "地点")))
-			_detail_label.text = "%s\n外观类型：%s\n控制方：%s\n用途：%s\n建设：%s\n实际驻军：%d 支、%d 人" % [
-				str(location.get("display_name", "地点")),
-				_location_kind_label(location),
-				_location_controller_label(location),
-				_location_use_label(location),
-				"可用" if bool(location.get("allows_inner_city_actions", false)) else "本阶段未开放",
-				stationed.size(),
-				_location_garrison_member_total(stationed),
-			]
-			_specialist_status_label.text = "点击驻军可定位查看；长按我方地点仍可直接选择派遣对象。"
-			return
 	var source_id := _source_point_id(model, army)
 	var source := _point_from_model(model, source_id)
 	var draft_text := "未画路线"
@@ -938,7 +957,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			_confirm_button.text = "确认下一段军令"
 			if _selected_army_id != &"":
 				_location_details_button.visible = true
-				_location_details_button.text = "查看%s地点详情" % str(source.get("display_name", source_id))
+				_location_details_button.text = "查看所在地点：%s" % str(source.get("display_name", source_id))
 		else:
 			_confirm_button.text = "确认并锁定军令"
 		return
@@ -1718,7 +1737,15 @@ func _update_direct_specialist_preview(screen_position: Vector2) -> void:
 func _finish_direct_dispatch(screen_position: Vector2) -> void:
 	_direct_dispatch_cursor_screen = screen_position
 	if not _direct_dispatch_picker_open:
+		# A short tap on a friendly point starts the same pending gesture as a
+		# hold, but it is still an inspection when no coincident unit was selected.
+		# Preserve a real army/specialist selection; otherwise expose the location
+		# instead of swallowing the tap behind the direct-dispatch affordance.
+		var tapped_source_id := _direct_dispatch_source_point_id
+		var has_tapped_subject := _selected_army_id != &"" or _selected_specialist_id != &""
 		_cancel_direct_dispatch("已保持当前选择；长按起点可直接派遣。")
+		if not has_tapped_subject and tapped_source_id != &"":
+			_select_location_detail(tapped_source_id)
 		return
 	if not _map_rect().has_point(screen_position):
 		_cancel_direct_dispatch("目标位于地图外，未下达军令。", true)
@@ -1823,6 +1850,9 @@ func _commit_direct_march() -> void:
 	_selected_army_id = StringName(Dictionary(result.get("army", {})).get("army_id", &""))
 	_selected_formation_ids.clear()
 	_selected_specialist_id = &""
+	_selected_scout_id = &""
+	_selected_point_id = &""
+	_location_detail_mode = false
 	_clear_status_error()
 	_cancel_direct_dispatch("已出发：军令已锁定，粮食只扣除一次。")
 	refresh()
@@ -1843,6 +1873,10 @@ func _commit_direct_specialist() -> void:
 		return
 	_selected_specialist_id = StringName(Dictionary(result.get("specialist", {})).get("specialist_id", _direct_dispatch_locked.get("specialist_id", &"")))
 	_selected_scout_id = _selected_specialist_id if role == FieldTacticsState.SPECIALIST_SCOUT else &""
+	_selected_army_id = &""
+	_selected_formation_ids.clear()
+	_selected_point_id = &""
+	_location_detail_mode = false
 	_clear_status_error()
 	_cancel_direct_dispatch("%s已出发；任务已锁定。" % ("工程师" if role == FieldTacticsState.SPECIALIST_ENGINEER else "侦察兵"))
 	refresh()

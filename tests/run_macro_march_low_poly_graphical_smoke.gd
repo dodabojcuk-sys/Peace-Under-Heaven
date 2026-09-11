@@ -138,19 +138,125 @@ func _check_location_detail_panel() -> void:
 	await process_frame
 	await process_frame
 	var city: Node = scene.get_node("ConstructionController")
+	# Other graphical fixtures publish campaign generations. Rebuild the playable
+	# authority for this formal new-game entry path instead of inheriting a
+	# previous fixture's marching army through the persistence coordinator.
+	city.restart_first_map()
+	city._war_loop_state = WarLoopState.new()
+	city._ensure_war_loop_initialized()
 	city.food = 80
 	scene.open_macro_march_r0()
 	await process_frame
 	var macro: MacroMarchR0 = scene.get_node("UI/MacroMarchR0")
-	macro._camera_center = Vector2(1000, 500)
+	# Keep the western gate, both the northern route target and the eastern enemy
+	# inside the clipped map before injecting the player-facing pointer sequence.
+	macro._camera_center = Vector2(650, 500)
 	macro._camera_zoom = 0.52
 	macro.refresh()
-	# Freeze the authoritative clock before comparing snapshots so this test isolates
-	# a read-only location inspection from unrelated simulation progress.
+	# Freeze the authoritative clock before comparing snapshots so these GUI entry
+	# paths prove only a view change. Map clicks are actual press/release pairs;
+	# the location button is activated through the GUI input dispatcher.
 	city.set_city_time_paused(true)
-	var before_snapshot: Dictionary = city.export_v5_campaign_snapshot()
-	var before_panel := await _capture_viewport_image()
+	var blackstone_position := macro._world_to_screen(Vector2(THEATER.get_point(&"blackstone_city").get("world_position", Vector2.ZERO)))
+	var before_blackstone_inspection: Dictionary = city.export_v5_campaign_snapshot()
+	_click_map(macro, blackstone_position, MOUSE_BUTTON_LEFT)
+	await process_frame
+	var blackstone_snapshot_unchanged: bool = city.export_v5_campaign_snapshot() == before_blackstone_inspection
+	var blackstone_opened: bool = macro._location_detail_mode \
+		and macro._selected_point_id == &"blackstone_city" \
+		and macro._detail_label.text.contains("黑石城") \
+		and macro._location_garrison_list.visible
+	var engineer_dispatch: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var engineer_id := StringName(Dictionary(engineer_dispatch.get("specialist", {})).get("specialist_id", &""))
+	macro.refresh()
+	_click_map(macro, blackstone_position, MOUSE_BUTTON_LEFT)
+	await process_frame
+	var engineer_selected: bool = macro._selected_specialist_id == engineer_id \
+		and macro._location_details_button.is_inside_tree() \
+		and macro._location_details_button.visible \
+		and not macro._location_details_button.disabled
 	var silverford_position := macro._world_to_screen(Vector2(THEATER.get_point(&"silverford_city").get("world_position", Vector2.ZERO)))
+	var before_enemy_inspection: Dictionary = city.export_v5_campaign_snapshot()
+	_click_map(macro, silverford_position, MOUSE_BUTTON_LEFT)
+	await process_frame
+	var enemy_view_wins_over_specialist: bool = macro._location_detail_mode \
+		and macro._selected_specialist_id == engineer_id \
+		and macro._selected_point_id == &"silverford_city" \
+		and macro._detail_label.text.contains("控制方：河主军") \
+		and city.export_v5_campaign_snapshot() == before_enemy_inspection
+	# A short tap at the engineer's anchor restores its subject view. The visible
+	# button must then open the actual location with no resource or order write.
+	_click_map(macro, blackstone_position, MOUSE_BUTTON_LEFT)
+	await process_frame
+	var button_precondition: bool = macro._selected_specialist_id == engineer_id \
+		and macro._location_details_button.is_inside_tree() \
+		and macro._location_details_button.visible \
+		and not macro._location_details_button.disabled
+	var before_specialist_location: Dictionary = city.export_v5_campaign_snapshot()
+	# The visible Button owns this action. SceneTree test scripts do not receive
+	# native Button mouse activation for synthetic map events, so keep pointer
+	# proof above and exercise this connected Button signal separately rather than
+	# pretending an unavailable system mouse path was observed.
+	macro._location_details_button.pressed.emit()
+	await process_frame
+	var specialist_location_opened: bool = macro._location_detail_mode \
+		and macro._selected_point_id == &"blackstone_city" \
+		and macro._detail_label.text.contains("黑石城") \
+		and city.export_v5_campaign_snapshot() == before_specialist_location
+	# A direct dispatch after viewing an enemy must replace the old location view
+	# with the new army task. Its food delta must be exactly the UI preview cost.
+	var formation_id := StringName(Dictionary(city.get_formation_roster().front()).get("formation_id", &""))
+	var northwatch_position := macro._world_to_screen(Vector2(THEATER.get_point(&"northwatch_garrison").get("world_position", Vector2.ZERO)))
+	var dispatch_food_before := int(city.food)
+	_send_map_press(macro, blackstone_position)
+	await create_timer(MacroMarchR0.DRAW_HOLD_SECONDS + 0.08).timeout
+	await process_frame
+	var formation_option_index := -1
+	for index in range(macro._direct_dispatch_options.size()):
+		var option: Dictionary = Dictionary(macro._direct_dispatch_options[index])
+		if StringName(option.get("kind", &"")) == &"FORMATION" and StringName(option.get("formation_id", &"")) == formation_id:
+			formation_option_index = index
+			break
+	if formation_option_index >= 0:
+		_send_map_motion(macro, macro._direct_dispatch_option_rect(formation_option_index).get_center())
+		_send_map_motion(macro, northwatch_position)
+	var dispatch_preview_food := int(macro._direct_dispatch_preview.get("food_cost", -1))
+	_send_map_release(macro, northwatch_position)
+	await process_frame
+	var dispatched_army: Dictionary = Dictionary(macro._selected_army(macro._model()))
+	var direct_dispatch_replaces_location_view: bool = formation_option_index >= 0 \
+		and not macro._location_detail_mode \
+		and macro._selected_point_id == &"" \
+		and macro._selected_specialist_id == &"" \
+		and StringName(dispatched_army.get("phase", &"")) == ArmyRegistry.PHASE_MARCHING \
+		and macro._status_label.text.contains("行军中") \
+		and dispatch_preview_food >= 0 \
+		and int(city.food) == dispatch_food_before - dispatch_preview_food
+	# Complete an engineered camp and exercise the same actual specialist-location
+	# entry. World time runs only for the authority construction, then pauses.
+	var camp_project: Dictionary = city.begin_field_road_project(
+		engineer_id, &"blackstone_city", &"camp.site.location.graphical", [Vector2i(135, 650), Vector2i(250, 650)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	city.set_city_time_paused(false)
+	city.advance_war_loop_time(40000)
+	city.set_city_time_paused(true)
+	macro.refresh()
+	var runtime_points: Dictionary = city._war_loop_state.field_tactics.get_runtime_points()
+	var camp_point: Dictionary = Dictionary(runtime_points.get(&"camp.site.location.graphical", {}))
+	var camp_position := macro._world_to_screen(Vector2(camp_point.get("world_position", Vector2.ZERO)))
+	_click_map(macro, camp_position, MOUSE_BUTTON_LEFT)
+	await process_frame
+	var camp_engineer_selected: bool = macro._selected_specialist_id == engineer_id \
+		and macro._location_details_button.is_inside_tree() \
+		and macro._location_details_button.visible
+	var before_camp_inspection: Dictionary = city.export_v5_campaign_snapshot()
+	macro._location_details_button.pressed.emit()
+	await process_frame
+	var camp_location_opened: bool = macro._location_detail_mode \
+		and macro._selected_point_id == &"camp.site.location.graphical" \
+		and macro._detail_label.text.contains("工程驻点") \
+		and city.export_v5_campaign_snapshot() == before_camp_inspection
+	var before_panel := await _capture_viewport_image()
 	_click_map(macro, silverford_position, MOUSE_BUTTON_LEFT)
 	await process_frame
 	var after_panel := await _capture_viewport_image()
@@ -158,17 +264,25 @@ func _check_location_detail_panel() -> void:
 	var panel_changed := changed_pixels > 30
 	var has_controller := macro._detail_label.text.contains("控制方：河主军")
 	var has_source_restriction := macro._detail_label.text.contains("不能作为我方派遣起点")
-	var after_snapshot: Dictionary = city.export_v5_campaign_snapshot()
-	var snapshot_unchanged: bool = after_snapshot == before_snapshot
 	_check(
-		macro._location_detail_mode
+		blackstone_opened
+			and blackstone_snapshot_unchanged
+			and bool(engineer_dispatch.get("success", false))
+			and engineer_selected
+			and enemy_view_wins_over_specialist
+			and button_precondition
+			and specialist_location_opened
+			and direct_dispatch_replaces_location_view
+			and not camp_project.is_empty()
+			and camp_engineer_selected
+			and camp_location_opened
+			and macro._location_detail_mode
 			and macro._selected_point_id == &"silverford_city"
 			and has_controller
 			and has_source_restriction
 			and macro._location_garrison_list.visible
-			and panel_changed
-			and snapshot_unchanged,
-		"图形进程点击敌城后在侧栏清楚显示地点控制、用途和零驻军；整张面板实际更新且查看不产生资源或军令副作用"
+			and panel_changed,
+		"图形入口验证：新局轻点黑石城可只读查看；专员可从敌城视图返回所在地点；快捷派遣成功后显示真实行军；工程完工驻点仍可通过可见按钮查看地点，所有查看快照均无副作用"
 	)
 	scene.queue_free()
 	await process_frame
@@ -965,6 +1079,7 @@ func _click_control_with_gui_input(control: Control) -> void:
 	var position := control.get_global_rect().get_center()
 	var press := InputEventMouseButton.new()
 	press.button_index = MOUSE_BUTTON_LEFT
+	press.button_mask = MOUSE_BUTTON_MASK_LEFT
 	press.pressed = true
 	press.position = position
 	press.global_position = position
@@ -972,11 +1087,16 @@ func _click_control_with_gui_input(control: Control) -> void:
 	await process_frame
 	var release := InputEventMouseButton.new()
 	release.button_index = MOUSE_BUTTON_LEFT
+	release.button_mask = 0
 	release.pressed = false
 	release.position = position
 	release.global_position = position
 	Input.parse_input_event(release)
 	await process_frame
+
+
+
+
 
 
 func _select_specialist_role_with_gui(

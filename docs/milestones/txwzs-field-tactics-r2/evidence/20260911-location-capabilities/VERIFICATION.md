@@ -27,9 +27,28 @@ The Macro March contract opens the formal city scene and verifies:
    after completion, has tactical station/reissue capability but no inner-city
    capability, and survives V5 save/restore along with captured-city control.
 
-This is engine GUI-event evidence for the map interaction and explicit
-authority checks for occupation/project setup. It is not desktop-system-input
-or player-feel acceptance evidence.
+The graphical location-entry contract additionally verifies, with world time
+paused around every inspection:
+
+1. A fresh press/release on Blackstone with no outgoing army opens its detail
+   without changing the full authority snapshot.
+2. A selected engineer can inspect Silverford without its old specialist panel
+   overwriting the explicit enemy-city detail, then return to Blackstone through
+   the visible, enabled `查看所在地点` action with no snapshot side effect.
+3. After that enemy inspection, a normal Blackstone hold → formation strip →
+   Northwatch release publishes exactly one marching army, charges exactly its
+   authority preview food, and replaces the old location view with that army's
+   live task copy.
+4. After a real engineer project completes, the engineer at its runtime camp
+   again exposes the visible location action and opens the engineered-garrison
+   detail without changing authority state.
+
+Map interaction in those cases uses real engine GUI `InputEvent` press/release
+pairs. The SceneTree graphical runner cannot make synthetic Button mouse events
+activate Godot's native `pressed` path; it instead first asserts that the
+location Button is in the scene tree, visible and enabled, then exercises its
+connected action signal. This is explicit button-action coverage, not
+desktop-system-input or player-feel acceptance evidence.
 
 ## Commands and results
 
@@ -46,7 +65,7 @@ Godot binary:
 | `tests/run_field_tactics_r2_smoke.gd` | PASS, 72 assertions. |
 | `tests/run_field_tactics_r2_playthrough_smoke.gd` | PASS. Route A: 39,400 ms, 12 food, 4 army casualties. Route B: 79,400 ms, 36 food, 3 army casualties, 0 specialist losses, 1 natural ambush. |
 | `tests/run_field_tactics_r2_persistence_smoke.gd` | PASS: completed camps, roads, multisegment orders, blocked transfer and repair recovery across processes. |
-| `tests/run_macro_march_low_poly_graphical_smoke.gd` | PASS, 19 assertions in a Metal graphical process at 1152×648, 1280×720 and 1920×1080, including a paused, read-only enemy-city detail-panel inspection. |
+| `tests/run_macro_march_low_poly_graphical_smoke.gd` | PASS, 19 assertions in a Metal graphical process at 1152×648, 1280×720 and 1920×1080, including fresh Blackstone tap inspection, specialist/enemy/location view priority, post-dispatch task focus and an engineered-camp location action under paused snapshot comparison. |
 | `tests/run_macro_march_direct_dispatch_graphical_smoke.gd` | PASS, 18 assertions in a Metal graphical process. |
 | `git diff --check` | PASS. |
 

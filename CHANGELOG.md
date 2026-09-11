@@ -2,6 +2,18 @@
 
 ## 2026-09-11
 
+- Completed the location-detail entry and view-switching follow-up. A short
+  tap on an unoccupied friendly point now opens its read-only detail instead of
+  being swallowed by the direct-dispatch hold affordance. Selected stationary
+  armies and specialists at named points expose a clear `查看所在地点` action;
+  an explicit location view wins over stale specialist detail, while a
+  successful direct dispatch clears that view and displays the newly published
+  army or specialist task. The change is presentation-only: it does not alter
+  orders, food, formations, specialist tasks or V5 ownership. The low-poly GUI
+  contract now covers fresh Blackstone inspection, specialist/enemy/location
+  switching, post-dispatch task focus and a completed engineered camp with its
+  engineer present, with paused authority snapshots around every inspection.
+  Evidence: `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-location-capabilities/`.
 - Added first-pass Blackstone location capabilities and a read-only location
   detail panel. Theatre Resources now distinguish visual point kind, runtime
   controller and inner-city capability; occupied enemy cities become player
