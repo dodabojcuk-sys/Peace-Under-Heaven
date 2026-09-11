@@ -130,6 +130,35 @@ func _run() -> void:
 			).is_empty(),
 		"权威工事提交拒绝不属于本战斗的施工分队且不扣资源或写入计划"
 	)
+	var legacy_plan := {
+		"schema_version": WartimeFacilityPlan.LEGACY_SCHEMA_VERSION,
+		"facilities": [{
+			"facility_id": &"barricade-side_gate",
+			"kind": WartimeFacilityPlan.KIND_BARRICADE,
+			"route_id": CommittedForceSnapshot.SIDE_ROUTE,
+		}],
+	}
+	var legacy_plan_attempt: Dictionary = city.get_expedition_attempt()
+	legacy_plan_attempt.wartime_facility_plan = legacy_plan.duplicate(true)
+	var legacy_plan_request := BattleRequest.from_expedition_attempt(
+		legacy_plan_attempt, battle.request.mission_definition
+	)
+	if legacy_plan_request != null:
+		legacy_plan_request.phase = BattleRequest.PHASE_ACTIVE
+	var legacy_plan_session := BattleSession.new(legacy_plan_request)
+	var normalized_legacy_plan: Dictionary = Dictionary(
+		WartimeFacilityPlan.validate_snapshot(legacy_plan).get("snapshot", {})
+	)
+	var migrated_legacy_barricade := _facility_by_kind(
+		legacy_plan_session, WartimeFacilityPlan.KIND_BARRICADE
+	)
+	_check(
+		legacy_plan_request != null
+			and int(normalized_legacy_plan.get("schema_version", 0)) == WartimeFacilityPlan.SCHEMA_VERSION
+			and int(Dictionary(Array(normalized_legacy_plan.get("facilities", []))[0]).get("construction_squad_id", -1)) == 0
+			and int(migrated_legacy_barricade.get("construction_squad_id", 0)) > 0,
+		"旧版无施工分队的战时计划保持可读，并在活动会话首次构造时一次绑定真实小队"
+	)
 	watch_button.emit_signal("pressed")
 	arrow_button.emit_signal("pressed")
 	barricade_button.emit_signal("pressed")

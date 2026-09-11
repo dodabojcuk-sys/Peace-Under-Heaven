@@ -79,3 +79,6 @@ The same formal C0 plan regression asserts all three visibly selected defense
 works preserve squad `1` as their construction detachment. A direct submission
 using uncommitted squad `999` is rejected by the Controller before it changes
 wood, the saved plan, or the battle request.
+The same regression upgrades a schema-1 plan without a construction identity
+to schema 2, then verifies first active-session construction binds the legacy
+facility to a real committed squad exactly once.
