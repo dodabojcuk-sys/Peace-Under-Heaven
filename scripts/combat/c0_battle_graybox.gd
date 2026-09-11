@@ -317,7 +317,7 @@ func start_battle(apply_deployment_plan := false) -> bool:
 	if WartimeFacilityPlan.has_kind(
 		request.wartime_facility_plan, WartimeFacilityPlan.KIND_ARROW_TOWER
 	):
-		_append_recent_action("箭塔已就位：每 1 秒对正门敌军齐射 24 点伤害")
+		_append_recent_action("战时工事开始施工；完工后才提供观察、破门或箭塔火力")
 	tick_timer.start()
 	_refresh_battle_ui()
 	return true
@@ -827,12 +827,25 @@ func _advance_one_tick() -> BattleResult:
 
 func _append_wartime_facility_feedback(events: Array[Dictionary]) -> void:
 	for event in events:
-		if StringName(event.get("kind", &"")) != WartimeFacilityPlan.KIND_ARROW_TOWER:
-			continue
-		_append_recent_action("箭塔齐射%s：敌军受创 %d" % [
-			_get_route_name(StringName(event.get("route_id", &""))),
-			int(event.get("damage", 0)),
-		])
+		var kind := StringName(event.get("kind", &""))
+		var route_name := _get_route_name(StringName(event.get("route_id", &"")))
+		if StringName(event.get("event", &"")) == &"CONSTRUCTION_COMPLETED":
+			_append_recent_action("%s已在%s完工并投入战斗" % [_get_facility_name(kind), route_name])
+		elif StringName(event.get("event", &"")) == &"GATE_DAMAGED":
+			_append_recent_action("攻城槌完成%s破门：城门受损 %d" % [route_name, int(event.get("damage", 0))])
+		elif kind == WartimeFacilityPlan.KIND_ARROW_TOWER:
+			_append_recent_action("箭塔齐射%s：敌军受创 %d" % [route_name, int(event.get("damage", 0))])
+
+
+func _get_facility_name(kind: StringName) -> String:
+	match kind:
+		WartimeFacilityPlan.KIND_WATCH_PLATFORM:
+			return "瞭望台"
+		WartimeFacilityPlan.KIND_SIEGE_RAM:
+			return "攻城槌"
+		WartimeFacilityPlan.KIND_ARROW_TOWER:
+			return "箭塔"
+	return "战时工事"
 
 
 func _resume_active_battle_if_available() -> void:

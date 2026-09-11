@@ -76,6 +76,7 @@ func _run() -> void:
 	var frozen_request: Dictionary = Dictionary(handoff.get("battle_request_snapshot", {}))
 	_check(
 		not frozen_request.is_empty()
+		and int(before.get("attacker_total_hp", 0)) < int(before.get("attacker_initial_count", 0)) * int(before.get("attacker_hp_per_member", 1))
 		and Dictionary(frozen_request.get("macro_siege_start_state", {})).get("attacker_total_hp", -1) == before.get("attacker_total_hp", -2)
 		and Dictionary(frozen_request.get("macro_siege_start_state", {})).get("defender_total_hp", -1) == before.get("defender_total_hp", -2),
 		"首次接管冻结宏观已发生的双方 HP，而非以人数重建满血队伍"

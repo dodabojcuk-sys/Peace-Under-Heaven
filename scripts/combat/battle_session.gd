@@ -24,11 +24,18 @@ const SIEGE_RAM_GATE_DAMAGE := 160
 ## counter or a second casualty authority.
 const ARROW_TOWER_DAMAGE_PER_VOLLEY := 24
 const ARROW_TOWER_ATTACK_INTERVAL_TICKS := 4
-const SNAPSHOT_SCHEMA_VERSION := 1
+const FACILITY_PHASE_CONSTRUCTING := &"CONSTRUCTING"
+const FACILITY_PHASE_ACTIVE := &"ACTIVE"
+const FACILITY_BUILD_TICKS := {
+	WartimeFacilityPlan.KIND_WATCH_PLATFORM: 2,
+	WartimeFacilityPlan.KIND_SIEGE_RAM: 4,
+	WartimeFacilityPlan.KIND_ARROW_TOWER: 4,
+}
+const SNAPSHOT_SCHEMA_VERSION := 2
 const SNAPSHOT_KEYS := [
 	"schema_version", "current_tick", "next_order_id", "squads", "routes",
 	"pending_orders", "accepted_orders", "retreat_was_ordered",
-	"forced_retreat_requested", "mission_objective_state",
+	"forced_retreat_requested", "mission_objective_state", "wartime_facility_state",
 ]
 
 var request: BattleRequest
@@ -114,7 +121,7 @@ func initialize(request_value: BattleRequest) -> bool:
 			"gate_hp": int(enemy_route.gate_hp),
 			"distance_fixed": _get_initial_route_distance_fixed(route_id),
 		}
-	_apply_wartime_facilities()
+	_initialize_wartime_facilities()
 	_initialize_mission_objective_state()
 	return true
 
@@ -153,6 +160,7 @@ func step_tick() -> bool:
 	current_tick += 1
 	_apply_orders_for_current_tick()
 	_update_positions()
+	_advance_wartime_facilities()
 	var damage_intents := _build_damage_intents()
 	_apply_damage_intents(damage_intents)
 	_check_outcome()
@@ -184,7 +192,23 @@ func get_mission_objective_state() -> Dictionary:
 
 
 func get_wartime_facility_state() -> Dictionary:
-	return wartime_facility_state.duplicate(true)
+	var projection := wartime_facility_state.duplicate(true)
+	for record_value in Array(wartime_facility_state.get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("phase", &"")) != FACILITY_PHASE_ACTIVE:
+			continue
+		var kind := StringName(record.get("kind", &""))
+		var route_id := StringName(record.get("route_id", &""))
+		if kind == WartimeFacilityPlan.KIND_WATCH_PLATFORM:
+			projection["enemy_observation_ready"] = true
+			projection["watch_route_id"] = route_id
+		elif kind == WartimeFacilityPlan.KIND_SIEGE_RAM:
+			projection["siege_ram_route_id"] = route_id
+		elif kind == WartimeFacilityPlan.KIND_ARROW_TOWER:
+			projection["arrow_tower_route_id"] = route_id
+			projection["arrow_tower_damage_per_volley"] = ARROW_TOWER_DAMAGE_PER_VOLLEY
+			projection["arrow_tower_attack_interval_ticks"] = ARROW_TOWER_ATTACK_INTERVAL_TICKS
+	return projection
 
 
 func get_last_tick_facility_events() -> Array[Dictionary]:
@@ -275,6 +299,7 @@ func get_snapshot() -> Dictionary:
 		"retreat_was_ordered": retreat_was_ordered,
 		"forced_retreat_requested": forced_retreat_requested,
 		"mission_objective_state": mission_objective_state.duplicate(true),
+		"wartime_facility_state": wartime_facility_state.duplicate(true),
 	}
 
 
@@ -368,6 +393,12 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	retreat_was_ordered = bool(snapshot.retreat_was_ordered)
 	forced_retreat_requested = bool(snapshot.forced_retreat_requested)
 	mission_objective_state = Dictionary(snapshot.mission_objective_state).duplicate(true)
+	if int(snapshot.schema_version) == 1:
+		# Version-one sessions applied their confirmed plan at tick zero. Preserve
+		# that already-paid historical effect instead of starting a second build.
+		_initialize_wartime_facilities(true)
+	else:
+		wartime_facility_state = Dictionary(snapshot.wartime_facility_state).duplicate(true)
 	return true
 
 
@@ -425,7 +456,8 @@ func get_state_digest() -> String:
 	return "|".join(parts)
 
 
-func _apply_wartime_facilities() -> void:
+func _initialize_wartime_facilities(legacy_active := false) -> void:
+	wartime_facility_state = {"facilities": []}
 	var plan: Dictionary = request.wartime_facility_plan
 	for facility_value in Array(plan.get("facilities", [])):
 		if not facility_value is Dictionary:
@@ -433,20 +465,57 @@ func _apply_wartime_facilities() -> void:
 		var facility: Dictionary = facility_value
 		var kind := StringName(facility.get("kind", &""))
 		var route_id := StringName(facility.get("route_id", &""))
-		if kind == WartimeFacilityPlan.KIND_WATCH_PLATFORM:
-			wartime_facility_state["enemy_observation_ready"] = true
-			wartime_facility_state["watch_route_id"] = route_id
-		elif kind == WartimeFacilityPlan.KIND_SIEGE_RAM and routes.has(route_id):
-			var route: Dictionary = routes[route_id]
-			var damage := mini(SIEGE_RAM_GATE_DAMAGE, int(route.gate_hp))
-			route.gate_hp = int(route.gate_hp) - damage
-			routes[route_id] = route
-			wartime_facility_state["siege_ram_route_id"] = route_id
-			wartime_facility_state["siege_ram_gate_damage"] = damage
-		elif kind == WartimeFacilityPlan.KIND_ARROW_TOWER and routes.has(route_id):
-			wartime_facility_state["arrow_tower_route_id"] = route_id
-			wartime_facility_state["arrow_tower_damage_per_volley"] = ARROW_TOWER_DAMAGE_PER_VOLLEY
-			wartime_facility_state["arrow_tower_attack_interval_ticks"] = ARROW_TOWER_ATTACK_INTERVAL_TICKS
+		var record := {
+			"facility_id": StringName(facility.get("facility_id", &"")),
+			"kind": kind,
+			"route_id": route_id,
+			"phase": FACILITY_PHASE_ACTIVE if legacy_active else FACILITY_PHASE_CONSTRUCTING,
+			"progress_ticks": int(FACILITY_BUILD_TICKS.get(kind, 0)) if legacy_active else 0,
+			"required_ticks": int(FACILITY_BUILD_TICKS.get(kind, 0)),
+		}
+		Array(wartime_facility_state.facilities).append(record)
+
+
+func _advance_wartime_facilities() -> void:
+	var facilities: Array = Array(wartime_facility_state.get("facilities", [])).duplicate(true)
+	for index in facilities.size():
+		var record: Dictionary = Dictionary(facilities[index])
+		if StringName(record.get("phase", &"")) != FACILITY_PHASE_CONSTRUCTING:
+			continue
+		record.progress_ticks = mini(
+			int(record.get("progress_ticks", 0)) + 1,
+			int(record.get("required_ticks", 0))
+		)
+		if int(record.progress_ticks) >= int(record.required_ticks):
+			record.phase = FACILITY_PHASE_ACTIVE
+			_apply_completed_wartime_facility(record, true)
+		facilities[index] = record
+	wartime_facility_state.facilities = facilities
+
+
+func _apply_completed_wartime_facility(record: Dictionary, emit_event: bool) -> void:
+	var kind := StringName(record.get("kind", &""))
+	var route_id := StringName(record.get("route_id", &""))
+	if kind == WartimeFacilityPlan.KIND_WATCH_PLATFORM:
+		pass
+	elif kind == WartimeFacilityPlan.KIND_SIEGE_RAM and routes.has(route_id):
+		var route: Dictionary = routes[route_id]
+		var damage := mini(SIEGE_RAM_GATE_DAMAGE, int(route.gate_hp))
+		route.gate_hp = int(route.gate_hp) - damage
+		routes[route_id] = route
+		if emit_event:
+			last_tick_facility_events.append({
+				"kind": kind, "route_id": route_id, "event": &"GATE_DAMAGED", "damage": damage, "tick": current_tick,
+			})
+	elif kind == WartimeFacilityPlan.KIND_ARROW_TOWER and routes.has(route_id):
+		pass
+	if emit_event:
+		last_tick_facility_events.append({
+			"kind": kind,
+			"route_id": route_id,
+			"event": &"CONSTRUCTION_COMPLETED",
+			"tick": current_tick,
+		})
 
 
 func _orders_to_snapshot(orders: Array[BattleOrder]) -> Array[Dictionary]:
@@ -514,11 +583,15 @@ func _has_matching_snapshot_value_types(value: Dictionary, expected: Dictionary)
 
 
 func _is_valid_snapshot(snapshot: Dictionary) -> bool:
+	var schema_version = snapshot.get("schema_version", null)
+	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, SNAPSHOT_SCHEMA_VERSION]:
+		return false
+	var expected_keys: Array = SNAPSHOT_KEYS.duplicate()
+	if int(schema_version) == 1:
+		expected_keys.erase("wartime_facility_state")
 	return (
-		snapshot.size() == SNAPSHOT_KEYS.size()
-		and _has_exact_snapshot_keys(snapshot)
-		and typeof(snapshot.get("schema_version", null)) == TYPE_INT
-		and int(snapshot.schema_version) == SNAPSHOT_SCHEMA_VERSION
+		snapshot.size() == expected_keys.size()
+		and _has_exact_snapshot_keys(snapshot, expected_keys)
 		and typeof(snapshot.get("current_tick", null)) == TYPE_INT
 		and int(snapshot.current_tick) >= 0
 		and int(snapshot.current_tick) < MAX_BATTLE_TICKS
@@ -531,14 +604,59 @@ func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 		and typeof(snapshot.get("retreat_was_ordered", null)) == TYPE_BOOL
 		and typeof(snapshot.get("forced_retreat_requested", null)) == TYPE_BOOL
 		and typeof(snapshot.get("mission_objective_state", null)) == TYPE_DICTIONARY
+		and (
+			int(schema_version) == 1
+			or _has_valid_wartime_facility_state(Dictionary(snapshot.get("wartime_facility_state", {})))
+		)
 	)
 
 
-func _has_exact_snapshot_keys(snapshot: Dictionary) -> bool:
-	for key in SNAPSHOT_KEYS:
+func _has_exact_snapshot_keys(snapshot: Dictionary, expected_keys: Array = SNAPSHOT_KEYS) -> bool:
+	for key in expected_keys:
 		if not snapshot.has(key):
 			return false
 	return true
+
+
+func _has_valid_wartime_facility_state(state: Dictionary) -> bool:
+	if state.size() != 1 or typeof(state.get("facilities", null)) != TYPE_ARRAY:
+		return false
+	var expected_by_id: Dictionary = {}
+	for planned_value in Array(request.wartime_facility_plan.get("facilities", [])):
+		if not planned_value is Dictionary:
+			return false
+		var planned: Dictionary = planned_value
+		expected_by_id[StringName(planned.get("facility_id", &""))] = planned
+	var seen_ids: Dictionary = {}
+	for record_value in Array(state.facilities):
+		if not record_value is Dictionary:
+			return false
+		var record: Dictionary = record_value
+		if record.size() != 6:
+			return false
+		var facility_id := StringName(record.get("facility_id", &""))
+		var planned: Dictionary = Dictionary(expected_by_id.get(facility_id, {}))
+		if (
+			planned.is_empty()
+			or seen_ids.has(facility_id)
+			or typeof(record.get("facility_id", null)) != TYPE_STRING_NAME
+			or typeof(record.get("kind", null)) != TYPE_STRING_NAME
+			or typeof(record.get("route_id", null)) != TYPE_STRING_NAME
+			or typeof(record.get("phase", null)) != TYPE_STRING_NAME
+			or typeof(record.get("progress_ticks", null)) != TYPE_INT
+			or typeof(record.get("required_ticks", null)) != TYPE_INT
+			or StringName(record.kind) != StringName(planned.kind)
+			or StringName(record.route_id) != StringName(planned.route_id)
+			or StringName(record.phase) not in [FACILITY_PHASE_CONSTRUCTING, FACILITY_PHASE_ACTIVE]
+			or int(record.required_ticks) != int(FACILITY_BUILD_TICKS.get(StringName(record.kind), -1))
+			or int(record.progress_ticks) < 0
+			or int(record.progress_ticks) > int(record.required_ticks)
+			or (StringName(record.phase) == FACILITY_PHASE_CONSTRUCTING and int(record.progress_ticks) >= int(record.required_ticks))
+			or (StringName(record.phase) == FACILITY_PHASE_ACTIVE and int(record.progress_ticks) != int(record.required_ticks))
+		):
+			return false
+		seen_ids[facility_id] = true
+	return seen_ids.size() == expected_by_id.size()
 
 
 func _apply_orders_for_current_tick() -> void:
@@ -653,7 +771,15 @@ func _build_damage_intents() -> Dictionary:
 func _apply_arrow_tower_damage_intents(enemy_damage: Dictionary) -> void:
 	if current_tick % ARROW_TOWER_ATTACK_INTERVAL_TICKS != 0:
 		return
-	var route_id := StringName(wartime_facility_state.get("arrow_tower_route_id", &""))
+	var route_id: StringName = &""
+	for record_value in Array(wartime_facility_state.get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if (
+			StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_ARROW_TOWER
+			and StringName(record.get("phase", &"")) == FACILITY_PHASE_ACTIVE
+		):
+			route_id = StringName(record.get("route_id", &""))
+			break
 	if not routes.has(route_id):
 		return
 	var route: Dictionary = routes[route_id]

@@ -97,16 +97,23 @@ func _run() -> void:
 	_check(battle.start_battle(), "确认工事后的正式 C0 仍能启动唯一战斗会话")
 	var effects := battle.coordinator.active_session.get_wartime_facility_state()
 	_check(
-		bool(effects.get("enemy_observation_ready", false))
-			and int(effects.get("siege_ram_gate_damage", 0)) == BattleSession.SIEGE_RAM_GATE_DAMAGE
-			and int(effects.get("arrow_tower_damage_per_volley", 0)) == BattleSession.ARROW_TOWER_DAMAGE_PER_VOLLEY,
-		"战斗会话只读取确认后的临时计划，并把观察、攻城和箭塔火力写入真实战斗状态"
+		not bool(effects.get("enemy_observation_ready", false))
+			and Array(effects.get("facilities", [])).all(func(record: Dictionary) -> bool: return StringName(record.get("phase", &"")) == BattleSession.FACILITY_PHASE_CONSTRUCTING),
+		"确认后的临时工事先进入真实施工状态，尚未提前获得观察、破门或火力"
 	)
 	battle.tick_timer.stop()
+	battle.issue_squad_order(1, BattleOrder.Command.ADVANCE)
+	battle.step_battle_for_test(4)
+	effects = battle.coordinator.active_session.get_wartime_facility_state()
+	_check(
+		bool(effects.get("enemy_observation_ready", false))
+			and StringName(effects.get("siege_ram_route_id", &"")) == CommittedForceSnapshot.FRONT_ROUTE
+			and int(effects.get("arrow_tower_damage_per_volley", 0)) == BattleSession.ARROW_TOWER_DAMAGE_PER_VOLLEY,
+		"工事完成后才把观察、攻城和箭塔火力接入真实战斗状态"
+	)
 	var enemy_hp_before_arrow_tower := int(
 		battle.coordinator.active_session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).enemy_total_hp
 	)
-	battle.issue_squad_order(1, BattleOrder.Command.ADVANCE)
 	battle.step_battle_for_test(4)
 	_check(
 		int(battle.coordinator.active_session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).enemy_total_hp)

@@ -26,11 +26,14 @@ resource ledger. The attempt can pay for its plan exactly once while it is
 
 | Facility | Cost | Battle effect | Lifetime |
 | --- | ---: | --- | --- |
-| Watch platform | 6 wood | Marks detailed enemy observation as available to the battle presentation | This battle instance only |
-| Siege ram | 8 wood | Applies 160 real damage to its selected gate at session initialization | This battle instance only |
-| Arrow tower | 10 wood | Targets the selected defended gate approach every 4 battle ticks (1 second) and contributes 24 damage to the existing enemy-HP intent | This battle instance only |
+| Watch platform | 6 wood | After 2 battle ticks of construction, marks detailed enemy observation as available to the battle presentation | This battle instance only |
+| Siege ram | 8 wood | After 4 battle ticks of construction, applies 160 real damage to its selected gate | This battle instance only |
+| Arrow tower | 10 wood | After 4 battle ticks of construction, targets the selected defended gate approach every 4 battle ticks (1 second) and contributes 24 damage to the existing enemy-HP intent | This battle instance only |
 
-The arrow tower does not own a second combat loop. Its selected route is the
+Confirmed works enter `CONSTRUCTING` first. The saved battle session owns their
+tick progress; only `ACTIVE` works supply their stated ability. This prevents a
+confirmed plan from granting observation, gate damage or tower fire before the
+same world ticks have actually completed construction. The arrow tower does not own a second combat loop. Its selected route is the
 existing battle model's gate approach and every volley is added to
 `BattleSession`'s regular enemy-damage intent before the shared damage writer
 applies route HP. It consequently survives/replays through the same active
@@ -53,7 +56,10 @@ restart-at-tick-zero behavior; snapshots created by R0 restore the exact
 authoritative battle tick, routes, squad health, accepted/pending orders and
 objective facts. UI, nodes and animation state are forbidden.
 
-Each nonterminal C0 tick requests the existing runtime V5 checkpoint. A failed
+Battle-session snapshot schema 2 also retains per-facility phase and progress.
+Schema-1 session snapshots remain compatible: because their old behavior had
+already applied the paid plan at tick zero, they restore those records as
+active and never reapply ram damage. Each nonterminal C0 tick requests the existing runtime V5 checkpoint. A failed
 checkpoint restores the in-memory session to the preceding committed snapshot;
 a terminal result clears the active session snapshot before normal result
 settlement applies its already-established atomic transaction.
