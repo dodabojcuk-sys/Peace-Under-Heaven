@@ -163,17 +163,96 @@ func _run() -> void:
 				and int(record.get("durability", 0)) == int(record.get("max_durability", -1))
 			)
 			break
-	_check(
+	var retreat_applied := (
 		reactivated
-			and repaired_after_restore
-			and restored_battle.open_exit_confirmation()
-			and restored_battle.confirm_exit_as_retreat()
-			and StringName(restored_city.get_expedition_attempt().phase) == BattleRequest.PHASE_APPLIED
-			and int(restored_city.get("food")) == food_before,
-		"守城维修跨进程恢复后继续同一实例并通过待回写结果事务撤离，不重复扣粮或改写主线出征"
+		and repaired_after_restore
+		and restored_battle.open_exit_confirmation()
+		and restored_battle.confirm_exit_as_retreat()
+		and StringName(restored_city.get_expedition_attempt().phase) == BattleRequest.PHASE_APPLIED
+		and int(restored_city.get("food")) == food_before
+	)
+	var retreat_result_id := StringName(restored_city.get_expedition_attempt().result_id)
+	var retreat_summary: Dictionary = restored_city.get_committed_battle_result_summary(retreat_result_id)
+	var retreat_return_requested := (
+		retreat_applied and restored_battle.request_return_to_city() != null
+	)
+	await process_frame
+	await process_frame
+	_check(
+		retreat_return_requested
+			and StringName(retreat_summary.get("source_id", &""))
+				== BattleRequest.SOURCE_WARTIME_DEFENSE
+			and StringName(retreat_summary.get("mission_id", &""))
+				== &"wartime_defense.blackstone_gate.v0"
+			and restored_city.get_formal_battle_scene() == null
+			and int(restored_city.get("first_war_state"))
+				== 0,
+		"守城维修跨进程恢复后通过来源专属撤离回写返回城市，保留守城身份且不伪装为主线出征"
+	)
+
+	# Do not forge a loss state: let the formal protection objective resolve
+	# through the same enemy-route and gate-damage clock used in the scene.
+	var defeat_scene := CITY_SCENE.instantiate() as Node2D
+	root.add_child(defeat_scene)
+	await process_frame
+	var defeat_city: Node = defeat_scene.get_node("ConstructionController")
+	var defeat_roster: Array[Dictionary] = defeat_city.get_formation_roster()
+	var defeat_formation_id := StringName(defeat_roster[0].formation_id)
+	var defeat_food_before := int(defeat_city.get("food"))
+	var defeat_started: Dictionary = defeat_city.begin_wartime_defense_attempt([defeat_formation_id])
+	var defeat_entered: bool = (
+		bool(defeat_started.get("success", false))
+		and defeat_city.enter_wartime_defense_battle()
+	)
+	await process_frame
+	var defeat_battle := defeat_city.get_formal_battle_scene() as C0BattleGraybox
+	var defeat_result: BattleResult
+	if defeat_battle != null and defeat_battle.start_battle():
+		defeat_battle.tick_timer.stop()
+		defeat_result = defeat_battle.step_battle_for_test(260)
+	var defeat_summary: Dictionary = (
+		defeat_battle.confirm_pending_result()
+		if defeat_battle != null and defeat_result != null
+		else {}
+	)
+	var defeat_snapshot: Dictionary = defeat_city.export_v5_campaign_snapshot()
+	_check(
+		defeat_entered
+			and defeat_result != null
+			and defeat_result.outcome == BattleOutcome.Value.DEFEAT
+			and not defeat_summary.is_empty()
+			and StringName(defeat_summary.get("source_id", &""))
+				== BattleRequest.SOURCE_WARTIME_DEFENSE
+			and StringName(defeat_summary.get("mission_id", &""))
+				== &"wartime_defense.blackstone_gate.v0"
+			and bool(defeat_city.get("city_fallen"))
+			and defeat_city.get_city_defense() == 0
+			and int(defeat_city.get("food")) == defeat_food_before,
+		"敌军自然抵达并击破城门后，守城失败只写回同一守城结果与真实城防，不产生第二次出征粮食事务"
+	)
+	if defeat_battle != null:
+		defeat_battle.abort_formal_entry()
+	await process_frame
+	var defeat_restored_scene := CITY_SCENE.instantiate() as Node2D
+	root.add_child(defeat_restored_scene)
+	await process_frame
+	var defeat_restored_city: Node = defeat_restored_scene.get_node("ConstructionController")
+	var defeat_restored: Dictionary = defeat_restored_city.restore_v5_campaign_snapshot(defeat_snapshot)
+	_check(
+		bool(defeat_restored.get("success", false))
+			and bool(defeat_restored_city.get("city_fallen"))
+			and defeat_restored_city.get_city_defense() == 0
+			and StringName(
+				Dictionary(defeat_restored_city.get_committed_battle_result_summary(
+					StringName(defeat_city.get_expedition_attempt().result_id)
+				)).get("mission_id", &"")
+			) == &"wartime_defense.blackstone_gate.v0",
+		"已结算的守城失守在 V5 冷恢复后保留原结果与城门状态，不会被主线运行时投影忽略"
 	)
 	city_scene.queue_free()
 	restored_scene.queue_free()
+	defeat_scene.queue_free()
+	defeat_restored_scene.queue_free()
 	await process_frame
 	_finish()
 

@@ -3072,10 +3072,14 @@ func _launch_active_expedition_battle() -> bool:
 		self,
 		request
 	)
-	battle.formal_return_completed.connect(_on_first_war_returned)
+	if request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		battle.formal_return_completed.connect(_on_wartime_defense_returned)
+	else:
+		battle.formal_return_completed.connect(_on_first_war_returned)
 	battle.formal_entry_cancelled.connect(_on_first_war_entry_cancelled)
 	var previous_first_war_state := first_war_state
-	first_war_state = FirstWarState.IN_BATTLE
+	if request.source_id != BattleRequest.SOURCE_WARTIME_DEFENSE:
+		first_war_state = FirstWarState.IN_BATTLE
 	_formal_battle_scene = battle
 	get_tree().root.add_child(battle)
 	if battle.request == null:
@@ -3384,6 +3388,21 @@ func _on_first_war_returned(summary: Dictionary) -> void:
 	else:
 		first_war_state = FirstWarState.IN_BATTLE
 	first_war_result.visible = true
+	_refresh_city_ui()
+	city_state_changed.emit()
+
+
+## Gate defense is a durable battle source, not a disguised mainline assault.
+## Returning from it preserves the ordinary first-war projection while the
+## already-applied defense result remains available from the city state.
+func _on_wartime_defense_returned(summary: Dictionary) -> void:
+	if (
+		summary.is_empty()
+		or StringName(summary.get("source_id", &""))
+			!= BattleRequest.SOURCE_WARTIME_DEFENSE
+	):
+		return
+	_formal_battle_scene = null
 	_refresh_city_ui()
 	city_state_changed.emit()
 
@@ -4942,6 +4961,13 @@ func _restore_first_war_runtime_from_persistence() -> void:
 			_update_first_war_state_for_current_day()
 		return
 	if StringName(_expedition_attempt.get("source_id", &"FIRST_WAR")) == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		if not _last_battle_result_summary.is_empty():
+			city_defense_damage += int(
+				_last_battle_result_summary.get("city_defense_damage", 0)
+			)
+			city_fallen = StringName(
+				_last_battle_result_summary.get("outcome", &"")
+			) == &"DEFEAT"
 		if _current_mainline_level.cleared:
 			first_war_state = FirstWarState.RESOLVED_VICTORY
 			_first_war_result_acknowledged = true
@@ -8831,7 +8857,11 @@ func _apply_durable_expedition_result_atomic(
 		"overflow_food_reward": planned_food - accepted_food,
 		"formal_city_entry": true,
 		"source_id": request.source_id,
-		"mission_id": &"",
+		"mission_id": (
+			request.mission_definition.mission_id
+			if request.mission_definition != null
+			else &""
+		),
 		"planned_food_cost": request.committed_food_cost,
 		"actual_food_cost": request.committed_food_cost,
 		"food_already_committed": true,
@@ -8892,8 +8922,11 @@ func _install_durable_expedition_settlement(
 ) -> Dictionary:
 	city_defense_damage += planned_defense_damage
 	enemy_count = next_enemy_count
-	if StringName(_expedition_attempt.get("source_id", &"FIRST_WAR")) == &"FIRST_WAR":
+	var settlement_source := StringName(_expedition_attempt.get("source_id", &"FIRST_WAR"))
+	if settlement_source == &"FIRST_WAR":
 		_first_war_pending_outcome = BattleOutcome.to_id(battle_result.outcome)
+		city_fallen = battle_result.outcome == BattleOutcome.Value.DEFEAT
+	elif settlement_source == BattleRequest.SOURCE_WARTIME_DEFENSE:
 		city_fallen = battle_result.outcome == BattleOutcome.Value.DEFEAT
 	if bool(summary.get("mainline_cleared", false)):
 		_current_mainline_level.mark_cleared(current_day)
@@ -8924,7 +8957,13 @@ func _rollback_durable_expedition_settlement(
 		return false
 	if not _active_battle_reservation.is_empty():
 		_active_battle_reservation.phase = BATTLE_PHASE_RESULT_PENDING
-	first_war_state = FirstWarState.IN_BATTLE
+	if StringName(_expedition_attempt.get("source_id", &"FIRST_WAR")) == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		# Defense owns no first-war projection. A failed defense settlement must
+		# restore the durable attempt without impersonating a mainline assault.
+		first_war_state = FirstWarState.PREPARATION
+		_update_first_war_state_for_current_day()
+	else:
+		first_war_state = FirstWarState.IN_BATTLE
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return true

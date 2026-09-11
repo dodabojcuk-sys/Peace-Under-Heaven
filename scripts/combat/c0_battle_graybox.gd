@@ -511,12 +511,7 @@ func confirm_pending_result() -> Dictionary:
 			_outcome_id_text(StringName(summary.outcome)),
 			int(summary.survivor_count),
 			int(summary.casualty_count),
-			(
-				"粮草已于出征确认时扣除 %d"
-				% int(summary.get("actual_food_cost", 0))
-				if _uses_prepared_expedition()
-				else "粮草 -%d" % int(summary.get("actual_food_cost", 0))
-			),
+			_prepared_cost_text(int(summary.get("actual_food_cost", 0))),
 			int(summary.accepted_wood_reward),
 			int(summary.accepted_food_reward),
 			"\n首通奖励已结算"
@@ -966,10 +961,14 @@ func _refresh_battle_ui() -> void:
 	_presentation_snapshot = next_snapshot
 	title_label.text = str(next_snapshot.title)
 	status_label.text = (
-		"战前部署 · 参战 %d 人 · 粮草已锁定 %d"
+		"战前部署 · 参战 %d 人 · %s"
 		% [
 			request.committed_force.get_committed_total(),
-			request.committed_food_cost,
+			(
+				"守城无出征粮草消耗"
+				if request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE
+				else "粮草已锁定 %d" % request.committed_food_cost
+			),
 		]
 		if request.phase == BattleRequest.PHASE_RESERVED
 		else "%s · %.1f 秒" % [
@@ -1545,11 +1544,7 @@ func _show_pending_result(battle_result: BattleResult) -> void:
 			battle_result.finished_tick,
 			battle_result.survivor_count,
 			battle_result.casualty_count,
-			(
-				"粮草已于出征确认时扣除"
-				if _uses_prepared_expedition()
-				else "确认后结算粮草与伤亡"
-			),
+			_prepared_cost_text(),
 			_formation_result_text_from_result(battle_result),
 		]
 	)
@@ -1594,6 +1589,22 @@ func _apply_northern_visual_palette() -> void:
 
 func _uses_prepared_expedition() -> bool:
 	return prepared_expedition_request != null and not noticeboard_mission_mode
+
+
+## The defense source shares the durable battle transaction but has no
+## departure-food charge. Keep the result text sourced from that fact rather
+## than presenting it as the ordinary expedition economy.
+func _prepared_cost_text(actual_food_cost: int = -1) -> String:
+	if request != null and request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		return "守城无出征粮草消耗"
+	var cost := (
+		request.committed_food_cost
+		if actual_food_cost < 0 and request != null
+		else maxi(actual_food_cost, 0)
+	)
+	if _uses_prepared_expedition():
+		return "粮草已于出征确认时扣除 %d" % cost
+	return "粮草 -%d" % cost
 
 
 func _formation_result_text(summary: Dictionary) -> String:

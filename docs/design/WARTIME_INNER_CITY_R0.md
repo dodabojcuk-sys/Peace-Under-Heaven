@@ -29,6 +29,14 @@ and barricade works; a siege ram is neither displayed nor accepted by the
 controller transaction. Construction and repair stay attached to the same
 frozen battle session.
 
+When a defense result is confirmed, the summary retains this source and mission
+identity. Returning from its C0 scene does not invoke the ordinary first-war
+result panel or change the first-war state to `IN_BATTLE`. A route-driven gate
+loss applies the recorded defense loss once and restores it from the settled V5
+result; it does not reset the gate because the first-war runtime projection was
+rebuilt. This is a durable defense conclusion, not a substitute for the later
+full defence/city-fall campaign flow.
+
 ## Ownership
 
 | Fact | Owner |

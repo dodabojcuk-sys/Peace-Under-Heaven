@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-12 - Defense result ownership and recovery
+
+- Separated Blackstone gate-defense return handling from the first-war return
+  path. A defense retreat no longer leaves the ordinary first-war projection
+  `IN_BATTLE`; its applied result retains the durable defense source and
+  mission identity.
+- Defense gate loss now writes the same durable result summary, applies the
+  authoritative gate loss once, and restores that settled loss from V5 rather
+  than discarding it while rebuilding the first-war runtime projection.
+- Extended the focused defense smoke through source-aware retreat return,
+  a natural route-driven gate defeat, and settled-result V5 restore. These are
+  Godot engine/GUI evidence, not player mouse acceptance.
+
 ## 2026-09-12 - Durable defense enemy approach
 
 - Added persisted enemy route progress to active battle session schema 4 for
