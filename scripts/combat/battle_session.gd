@@ -1080,6 +1080,22 @@ func _get_active_arrow_tower_id(route_id: StringName) -> StringName:
 	return &""
 
 
+## A watch platform is a route-local observation work, not a second fog-of-war
+## owner. When invaders reach an undefended route after its barricade and tower
+## are gone, they can damage the saved platform; the existing projection then
+## immediately stops exposing its exact count until a repair completes.
+func _get_active_watch_platform_id(route_id: StringName) -> StringName:
+	for record_value in Array(wartime_facility_state.get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if (
+			StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_WATCH_PLATFORM
+			and StringName(record.get("phase", &"")) in [FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED]
+			and StringName(record.get("route_id", &"")) == route_id
+		):
+			return StringName(record.get("facility_id", &""))
+	return &""
+
+
 func _apply_damage_intents(intents: Dictionary) -> void:
 	var gate_damage: Dictionary = intents.gate_damage
 	var enemy_damage: Dictionary = intents.enemy_damage
@@ -1328,7 +1344,11 @@ func _apply_mission_objective_damage() -> void:
 				if arrow_tower_id != &"":
 					facility_damage[arrow_tower_id] = raw_damage
 				else:
-					damage += raw_damage
+					var watch_platform_id := _get_active_watch_platform_id(route_id)
+					if watch_platform_id != &"":
+						facility_damage[watch_platform_id] = raw_damage
+					else:
+						damage += raw_damage
 	_apply_wartime_facility_damage(facility_damage)
 	mission_objective_state.protect_target_hp = maxi(
 		int(mission_objective_state.protect_target_hp) - damage,

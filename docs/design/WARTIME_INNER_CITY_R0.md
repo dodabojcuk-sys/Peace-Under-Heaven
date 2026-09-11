@@ -95,12 +95,15 @@ never restores that transient notification as a new volley after reload.
 
 In `WARTIME_DEFENSE`, a reached invader route first spends its ordinary damage
 against a barricade. Once that route has no active barricade, it damages its
-active or damaged arrow tower before it can resume gate damage. A damaged tower
-still fires a durability-proportional volley; a destroyed tower fires nothing.
-The damage intent and facility lifecycle are applied in the same battle tick,
-so the tower may make its final eligible volley on the tick it is destroyed,
-but never on a later tick. The existing repair transaction can restore a
-destroyed tower to its full saved volley after its repair ticks complete.
+active or damaged arrow tower; after the tower is gone, it damages the route's
+watch platform before it can resume gate damage. A damaged tower still fires a
+durability-proportional volley; a destroyed tower fires nothing. A damaged or
+destroyed watch platform immediately stops revealing that route's exact enemy
+count, and resumes only after repair completes. The damage intent and facility
+lifecycle are applied in the same battle tick, so the tower may make its final
+eligible volley on the tick it is destroyed, but never on a later tick. The
+existing repair transaction can restore a destroyed tower to its full saved
+volley after its repair ticks complete.
 
 Repair controls are scoped to the selected squad's route. If that route has
 more than one damaged or destroyed facility, C0 exposes a local `switch repair

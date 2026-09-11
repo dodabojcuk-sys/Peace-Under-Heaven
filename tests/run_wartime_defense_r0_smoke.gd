@@ -324,6 +324,15 @@ func _run() -> void:
 				== enemy_hp_before_silent_interval,
 		"箭塔被拆除后不再攻击，后续战斗刻不会伪造额外齐射或敌军伤害"
 	)
+	var damaged_watch := _facility_by_kind(restored_session, WartimeFacilityPlan.KIND_WATCH_PLATFORM)
+	_check(
+		StringName(damaged_watch.get("phase", &"")) in [
+			BattleSession.FACILITY_PHASE_DAMAGED,
+			BattleSession.FACILITY_PHASE_DESTROYED,
+		]
+			and StringName(restored_session.get_wartime_facility_state().get("watch_route_id", &"")) != deployment_after_route,
+		"拒马与箭塔失效后，敌军损坏同路瞭望台；受损瞭望台立即停止提供精确敌情"
+	)
 	var quiet_arrow_route: Dictionary = restored_session.get_route_state(deployment_after_route)
 	quiet_arrow_route.enemy_total_hp = 0
 	restored_session.routes[deployment_after_route] = quiet_arrow_route
@@ -334,8 +343,11 @@ func _run() -> void:
 	) as Button
 	var multiple_repair_targets_visible := restored_repair_target_button.visible
 	if multiple_repair_targets_visible:
-		restored_repair_target_button.emit_signal("pressed")
-		await process_frame
+		for _switch in range(3):
+			if StringName(restored_battle._selected_repairable_facility().get("facility_id", &"")) == StringName(arrow_tower.get("facility_id", &"")):
+				break
+			restored_repair_target_button.emit_signal("pressed")
+			await process_frame
 	var arrow_target_selected := StringName(
 		restored_battle._selected_repairable_facility().get("facility_id", &"")
 	) == StringName(arrow_tower.get("facility_id", &""))
@@ -359,6 +371,27 @@ func _run() -> void:
 			and int(restored_session.get_wartime_facility_state().get("arrow_tower_damage_per_volley", 0))
 				== BattleSession.ARROW_TOWER_DAMAGE_PER_VOLLEY,
 		"正式维修入口能恢复被摧毁箭塔的耐久和完整齐射能力"
+	)
+	restored_battle._refresh_battle_ui()
+	for _switch in range(3):
+		if StringName(restored_battle._selected_repairable_facility().get("facility_id", &"")) == StringName(damaged_watch.get("facility_id", &"")):
+			break
+		restored_repair_target_button.emit_signal("pressed")
+		await process_frame
+	var watch_repair_started := StringName(
+		restored_battle._selected_repairable_facility().get("facility_id", &"")
+	) == StringName(damaged_watch.get("facility_id", &""))
+	if watch_repair_started:
+		restored_repair_button.emit_signal("pressed")
+		await process_frame
+		restored_battle.step_battle_for_test(BattleSession.FACILITY_REPAIR_TICKS)
+	var repaired_watch := _facility_by_kind(restored_session, WartimeFacilityPlan.KIND_WATCH_PLATFORM)
+	_check(
+		watch_repair_started
+			and StringName(repaired_watch.get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE
+			and StringName(restored_session.get_wartime_facility_state().get("watch_route_id", &""))
+				== deployment_after_route,
+		"维修同一路线的瞭望台后，保存会话重新提供该路线的真实敌情投影"
 	)
 	var retreat_applied := (
 		reactivated

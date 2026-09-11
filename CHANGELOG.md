@@ -18,6 +18,10 @@
   temporary works are damaged together. It changes only C0's current UI focus;
   the already-established repair transaction remains the sole writer of costs,
   lifecycle state, and checkpoints.
+- A reached defense route now damages its watch platform after its barricade
+  and arrow tower are gone. Observation stops on damage, resumes after the
+  existing formal repair completes, and remains a projection of the saved
+  facility record rather than an independent fog-of-war cache.
 
 ## 2026-09-12 - Defense observation projection
 
