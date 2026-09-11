@@ -7,6 +7,7 @@ const PHASE_ACTIVE := &"ACTIVE"
 const PHASE_RESULT_PENDING := &"RESULT_PENDING"
 const PHASE_APPLIED := &"APPLIED"
 const PHASE_CANCELLED := &"CANCELLED"
+const SOURCE_MACRO_SIEGE := &"MACRO_SIEGE"
 
 var transaction_id: StringName
 var level_id: StringName
@@ -73,7 +74,11 @@ func is_valid() -> bool:
 		and enemy_force.transaction_id == transaction_id
 		and committed_food_cost >= 0
 		and city_defense_snapshot >= 0
-		and source_id in [&"FIRST_WAR", MissionDefinition.SOURCE_NOTICEBOARD]
+		and source_id in [
+			&"FIRST_WAR",
+			MissionDefinition.SOURCE_NOTICEBOARD,
+			SOURCE_MACRO_SIEGE,
+		]
 		and first_clear_key != &""
 		and reward_wood >= 0
 		and reward_food >= 0

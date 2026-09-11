@@ -286,6 +286,11 @@ func request_macro_siege_retreat(city_id: StringName = &"") -> Dictionary:
 	return city.request_macro_siege_retreat(city_id) if city != null else {}
 
 
+func enter_macro_siege_wartime(army_id: StringName, city_id: StringName) -> bool:
+	var city := _get_city()
+	return city != null and city.enter_macro_siege_wartime(army_id, city_id)
+
+
 func block_macro_march_at_segment(
 	army_id: StringName,
 	order_id: StringName,

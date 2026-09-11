@@ -2,7 +2,7 @@ class_name WarLoopState
 extends RefCounted
 
 
-const SCHEMA_VERSION := 3
+const SCHEMA_VERSION := 4
 const PHASE_IDLE := &"IDLE"
 const PHASE_SIEGING := &"SIEGING"
 const PHASE_OCCUPIED := &"OCCUPIED"
@@ -10,6 +10,9 @@ const PHASE_FAILED := &"FAILED"
 const RESOLUTION_SURRENDER := &"SURRENDER"
 const RESOLUTION_COMBAT := &"COMBAT"
 const RESOLUTION_RETREAT := &"RETREAT"
+const WARTIME_HANDOFF_RESERVED := &"RESERVED"
+const WARTIME_HANDOFF_ACTIVE := &"ACTIVE"
+const WARTIME_HANDOFF_RESULT_PENDING := &"RESULT_PENDING"
 
 var cities_by_id: Dictionary = {}
 var required_city_ids: Dictionary = {}
@@ -137,12 +140,21 @@ func begin_siege(
 		"surrender_checked_at_arrival": true,
 		"surrender_checked_after_breach": false,
 		"elapsed_remainder_milliseconds": 0,
+		# This is only a durable ownership relation. The army, city and siege
+		# facts remain the authoritative records above; the wartime instance may
+		# temporarily become the sole simulator for this siege.
+		"wartime_handoff": {},
 	}
 	return active_siege.duplicate(true)
 
 
 func advance_siege(rules: WarLoopRules) -> Dictionary:
-	if active_siege.is_empty() or StringName(active_siege.phase) != PHASE_SIEGING or rules == null:
+	if (
+		active_siege.is_empty()
+		or StringName(active_siege.phase) != PHASE_SIEGING
+		or has_active_wartime_handoff(StringName(active_siege.get("city_id", &"")))
+		or rules == null
+	):
 		return {}
 	active_siege.tick = int(active_siege.tick) + 1
 	var attacker_members := _alive_members(int(active_siege.attacker_total_hp), int(active_siege.attacker_hp_per_member))
@@ -251,7 +263,13 @@ func close_failed_siege_at(city_id: StringName, resolution_id: StringName) -> Di
 
 func advance_siege_elapsed(city_id: StringName, elapsed_milliseconds: int, rules: WarLoopRules) -> Array[Dictionary]:
 	var siege := get_siege(city_id)
-	if siege.is_empty() or StringName(siege.get("phase", &"")) != PHASE_SIEGING or elapsed_milliseconds <= 0 or rules == null:
+	if (
+		siege.is_empty()
+		or StringName(siege.get("phase", &"")) != PHASE_SIEGING
+		or has_active_wartime_handoff(city_id)
+		or elapsed_milliseconds <= 0
+		or rules == null
+	):
 		return []
 	var accumulated := int(siege.get("elapsed_remainder_milliseconds", 0)) + elapsed_milliseconds
 	var ticks := accumulated / rules.combat_tick_milliseconds
@@ -273,6 +291,138 @@ func _write_siege(city_id: StringName, siege: Dictionary) -> void:
 		active_siege = siege.duplicate(true)
 	elif parallel_sieges_by_city.has(city_id):
 		parallel_sieges_by_city[city_id] = siege.duplicate(true)
+
+
+func begin_wartime_handoff(city_id: StringName, transaction_id: StringName) -> Dictionary:
+	var siege := get_siege(city_id)
+	if (
+		siege.is_empty()
+		or transaction_id == &""
+		or StringName(siege.get("phase", &"")) != PHASE_SIEGING
+		or not Dictionary(siege.get("wartime_handoff", {})).is_empty()
+	):
+		return {}
+	siege.wartime_handoff = {
+		"transaction_id": transaction_id,
+		"phase": WARTIME_HANDOFF_RESERVED,
+		"result_id": &"",
+		"battle_session_snapshot": {},
+	}
+	_write_siege(city_id, siege)
+	return siege.duplicate(true)
+
+
+func set_wartime_handoff_phase(
+	city_id: StringName,
+	transaction_id: StringName,
+	phase: StringName
+) -> Dictionary:
+	var siege := get_siege(city_id)
+	var handoff: Dictionary = Dictionary(siege.get("wartime_handoff", {}))
+	if (
+		siege.is_empty()
+		or transaction_id == &""
+		or StringName(handoff.get("transaction_id", &"")) != transaction_id
+		or phase not in [WARTIME_HANDOFF_ACTIVE, WARTIME_HANDOFF_RESULT_PENDING]
+	):
+		return {}
+	var current_phase := StringName(handoff.get("phase", &""))
+	if (
+		(current_phase == WARTIME_HANDOFF_RESERVED and phase != WARTIME_HANDOFF_ACTIVE)
+		or (current_phase == WARTIME_HANDOFF_ACTIVE and phase != WARTIME_HANDOFF_RESULT_PENDING)
+		or current_phase == WARTIME_HANDOFF_RESULT_PENDING
+	):
+		return {}
+	handoff.phase = phase
+	siege.wartime_handoff = handoff
+	_write_siege(city_id, siege)
+	return siege.duplicate(true)
+
+
+func checkpoint_wartime_handoff_session(
+	city_id: StringName,
+	transaction_id: StringName,
+	session_snapshot: Dictionary
+) -> Dictionary:
+	var siege := get_siege(city_id)
+	var handoff: Dictionary = Dictionary(siege.get("wartime_handoff", {}))
+	if (
+		siege.is_empty()
+		or session_snapshot.is_empty()
+		or StringName(handoff.get("transaction_id", &"")) != transaction_id
+		or StringName(handoff.get("phase", &"")) not in [WARTIME_HANDOFF_ACTIVE, WARTIME_HANDOFF_RESULT_PENDING]
+	):
+		return {}
+	handoff.battle_session_snapshot = session_snapshot.duplicate(true)
+	siege.wartime_handoff = handoff
+	_write_siege(city_id, siege)
+	return siege.duplicate(true)
+
+
+func resolve_wartime_handoff(
+	city_id: StringName,
+	transaction_id: StringName,
+	result_id: StringName,
+	victory: bool,
+	retreated: bool,
+	attacker_total_hp: int,
+	defender_total_hp: int,
+	gate_hp: int
+) -> Dictionary:
+	var siege := get_siege(city_id)
+	var handoff: Dictionary = Dictionary(siege.get("wartime_handoff", {}))
+	if (
+		siege.is_empty()
+		or result_id == &""
+		or attacker_total_hp < 0
+		or defender_total_hp < 0
+		or gate_hp < 0
+		or StringName(handoff.get("transaction_id", &"")) != transaction_id
+		or StringName(handoff.get("phase", &"")) != WARTIME_HANDOFF_RESULT_PENDING
+	):
+		return {}
+	siege.attacker_total_hp = attacker_total_hp
+	siege.defender_total_hp = defender_total_hp
+	siege.gate_hp = gate_hp
+	siege.gate_breached = gate_hp == 0
+	if victory:
+		siege.phase = PHASE_OCCUPIED
+		siege.resolution = RESOLUTION_COMBAT
+	else:
+		siege.phase = PHASE_FAILED
+		siege.resolution = RESOLUTION_RETREAT if retreated else RESOLUTION_COMBAT
+	handoff.result_id = result_id
+	siege.wartime_handoff = handoff
+	_write_siege(city_id, siege)
+	return siege.duplicate(true)
+
+
+func get_wartime_handoff(city_id: StringName) -> Dictionary:
+	return Dictionary(get_siege(city_id).get("wartime_handoff", {})).duplicate(true)
+
+
+func cancel_reserved_wartime_handoff(city_id: StringName, transaction_id: StringName) -> Dictionary:
+	var siege := get_siege(city_id)
+	var handoff: Dictionary = Dictionary(siege.get("wartime_handoff", {}))
+	if (
+		siege.is_empty()
+		or StringName(handoff.get("transaction_id", &"")) != transaction_id
+		or StringName(handoff.get("phase", &"")) != WARTIME_HANDOFF_RESERVED
+		or not Dictionary(handoff.get("battle_session_snapshot", {})).is_empty()
+	):
+		return {}
+	siege.wartime_handoff = {}
+	_write_siege(city_id, siege)
+	return siege.duplicate(true)
+
+
+func has_active_wartime_handoff(city_id: StringName) -> bool:
+	var handoff := get_wartime_handoff(city_id)
+	return StringName(handoff.get("phase", &"")) in [
+		WARTIME_HANDOFF_RESERVED,
+		WARTIME_HANDOFF_ACTIVE,
+		WARTIME_HANDOFF_RESULT_PENDING,
+	]
 
 
 func advance_parallel_sieges(rules: WarLoopRules) -> Array[Dictionary]:
@@ -379,6 +529,19 @@ func get_snapshot() -> Dictionary:
 
 func restore_snapshot(snapshot: Dictionary) -> bool:
 	var normalized := snapshot.duplicate(true)
+	if int(normalized.get("schema_version", 0)) == 3:
+		if not _has_exact_keys(normalized, [
+			"schema_version", "cities_by_id", "required_city_ids", "active_siege",
+			"completed_resolution_ids", "next_siege_sequence", "field_tactics", "parallel_sieges_by_city",
+		]):
+			return false
+		_normalize_wartime_handoff_migration(Dictionary(normalized.active_siege))
+		for city_id_value in Dictionary(normalized.parallel_sieges_by_city):
+			var parallel_value = normalized.parallel_sieges_by_city[city_id_value]
+			if not parallel_value is Dictionary:
+				return false
+			_normalize_wartime_handoff_migration(Dictionary(parallel_value))
+		normalized.schema_version = SCHEMA_VERSION
 	if int(normalized.get("schema_version", 0)) in [1, 2]:
 		if not _has_exact_keys(normalized, [
 			"schema_version", "cities_by_id", "required_city_ids", "active_siege",
@@ -395,6 +558,9 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		if int(snapshot.get("schema_version", 0)) == 1:
 			normalized.field_tactics = FieldTacticsState.new().get_snapshot()
 			normalized.parallel_sieges_by_city = {}
+		_normalize_wartime_handoff_migration(Dictionary(normalized.active_siege))
+		for city_id_value in Dictionary(normalized.parallel_sieges_by_city):
+			_normalize_wartime_handoff_migration(Dictionary(normalized.parallel_sieges_by_city[city_id_value]))
 	if (
 		not _has_exact_keys(normalized, [
 			"schema_version", "cities_by_id", "required_city_ids", "active_siege",
@@ -489,6 +655,7 @@ static func _has_valid_active_siege(siege: Dictionary, cities: Dictionary) -> bo
 		"defender_hp_per_member", "defender_attack_per_member", "defender_armor_per_member",
 		"defender_total_hp", "gate_breached", "surrender_checked_at_arrival",
 		"surrender_checked_after_breach", "elapsed_remainder_milliseconds",
+		"wartime_handoff",
 	]
 	if not _has_exact_keys(siege, expected_siege_keys):
 		return false
@@ -517,6 +684,7 @@ static func _has_valid_active_siege(siege: Dictionary, cities: Dictionary) -> bo
 		or typeof(siege.get("surrender_checked_at_arrival", null)) != TYPE_BOOL
 		or typeof(siege.get("surrender_checked_after_breach", null)) != TYPE_BOOL
 		or not _is_non_negative_int(siege.get("elapsed_remainder_milliseconds", null))
+		or not _has_valid_wartime_handoff(Dictionary(siege.get("wartime_handoff", {})))
 	):
 		return false
 	if int(siege.gate_hp) == 0 and not bool(siege.gate_breached):
@@ -526,6 +694,32 @@ static func _has_valid_active_siege(siege: Dictionary, cities: Dictionary) -> bo
 	if StringName(siege.phase) != PHASE_SIEGING and StringName(siege.resolution) == &"":
 		return false
 	return true
+
+
+static func _normalize_wartime_handoff_migration(siege: Dictionary) -> void:
+	if not siege.is_empty() and not siege.has("wartime_handoff"):
+		siege.wartime_handoff = {}
+
+
+static func _has_valid_wartime_handoff(handoff: Dictionary) -> bool:
+	if handoff.is_empty():
+		return true
+	if not _has_exact_keys(handoff, [
+		"transaction_id", "phase", "result_id", "battle_session_snapshot",
+	]):
+		return false
+	return (
+		typeof(handoff.get("transaction_id", null)) == TYPE_STRING_NAME
+		and StringName(handoff.get("transaction_id", &"")) != &""
+		and typeof(handoff.get("phase", null)) == TYPE_STRING_NAME
+		and StringName(handoff.get("phase", &"")) in [
+			WARTIME_HANDOFF_RESERVED,
+			WARTIME_HANDOFF_ACTIVE,
+			WARTIME_HANDOFF_RESULT_PENDING,
+		]
+		and typeof(handoff.get("result_id", null)) == TYPE_STRING_NAME
+		and typeof(handoff.get("battle_session_snapshot", null)) == TYPE_DICTIONARY
+	)
 
 
 static func _has_valid_parallel_sieges(parallel: Dictionary, cities: Dictionary, primary: Dictionary) -> bool:

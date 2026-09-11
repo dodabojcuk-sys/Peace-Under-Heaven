@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-11 - Macro siege wartime handoff checkpoint
+
+- Added a strict, schema-4 `WarLoopState` handoff relation for a real macro
+  siege. The relation records only transaction/session ownership; existing
+  macro army, city, siege, resource and result owners remain unchanged.
+- Added a formal Macro March `进入战时围城` entry. It builds the C0 request
+  from the original macro formations and current siege facts without creating
+  a city expedition, default squads, or a second food transaction.
+- While the handoff is reserved, active, or awaiting a result, world time
+  skips only that siege's autonomous ticks. The C0 session checkpoints into
+  the relation and can reopen from the saved session state.
+- Added a focused formal smoke that verifies source identity, no duplicate
+  food/force commit, world-time ownership, V5 publication, reopen recovery,
+  and retreat writeback to the original macro army.
+
 ## 2026-09-11 - Wartime arrow tower R0
 
 - Added a battle-only arrow-tower choice to the formal C0 prebattle plan.

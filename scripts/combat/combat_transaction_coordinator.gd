@@ -15,6 +15,8 @@ var _pending_result_authority: Dictionary = {}
 var last_result_error_id: StringName = &""
 var _army_id: StringName = &""
 var _army_mode := false
+var _macro_siege_city_id: StringName = &""
+var _macro_siege_mode := false
 var _adopted_expedition := false
 
 
@@ -78,6 +80,8 @@ func create_request(
 	last_result_error_id = &""
 	_army_id = &""
 	_army_mode = false
+	_macro_siege_city_id = &""
+	_macro_siege_mode = false
 	_adopted_expedition = false
 	var transaction_id: StringName = (
 		_city_controller.reserve_battle_force(committed_total, self)
@@ -190,6 +194,8 @@ func adopt_expedition_request(request: BattleRequest) -> bool:
 	last_result_error_id = &""
 	_army_id = &""
 	_army_mode = false
+	_macro_siege_city_id = &""
+	_macro_siege_mode = false
 	_adopted_expedition = true
 	active_request = request
 	return true
@@ -267,13 +273,52 @@ func create_army_request(
 	return active_request
 
 
+## Macro sieges retain their existing army and order.  The controller creates
+## the request from those facts and atomically installs the durable handoff
+## relation before this coordinator exposes the reserved instance to the UI.
+func create_macro_siege_request(
+	army_id: StringName,
+	city_id: StringName
+) -> BattleRequest:
+	if (
+		_city_controller == null
+		or active_request != null
+		or army_id == &""
+		or city_id == &""
+		or not _city_controller.has_method("prepare_macro_siege_battle_request")
+	):
+		return null
+	var request: BattleRequest = _city_controller.prepare_macro_siege_battle_request(
+		army_id, city_id, self
+	)
+	if request == null or not request.is_valid() or request.source_id != BattleRequest.SOURCE_MACRO_SIEGE:
+		return null
+	return_contract = null
+	_return_completed = false
+	_pending_result_authority = {}
+	_bound_session = null
+	last_result_error_id = &""
+	_adopted_expedition = false
+	_army_id = army_id
+	_army_mode = false
+	_macro_siege_city_id = city_id
+	_macro_siege_mode = true
+	active_request = request
+	return active_request
+
+
 func activate_request() -> bool:
 	if (
 		active_request == null
 		or active_request.phase != BattleRequest.PHASE_RESERVED
 	):
 		return false
-	if _army_mode:
+	if _macro_siege_mode:
+		if not _city_controller.authorize_macro_siege_battle_activation(
+			_army_id, _macro_siege_city_id, active_request.transaction_id, self
+		):
+			return false
+	elif _army_mode:
 		if not _city_controller.authorize_army_encounter_activation(
 			_army_id,
 			active_request.transaction_id,
@@ -407,25 +452,36 @@ func complete_return_to_city(current_frame: int) -> bool:
 	return_contract = null
 	_army_id = &""
 	_army_mode = false
+	_macro_siege_city_id = &""
+	_macro_siege_mode = false
 	_adopted_expedition = false
 	return true
 
 
 func cancel_request() -> bool:
-	if (
-		active_request == null
-		or active_request.phase != BattleRequest.PHASE_RESERVED
-		or not _city_controller.cancel_battle_reservation(
+	if active_request == null or active_request.phase != BattleRequest.PHASE_RESERVED:
+		return false
+	var cancelled := false
+	if _macro_siege_mode:
+		cancelled = _city_controller.cancel_reserved_macro_siege_battle(
+			_army_id, _macro_siege_city_id, active_request.transaction_id, self
+		)
+	else:
+		cancelled = _city_controller.cancel_battle_reservation(
 			active_request.transaction_id,
 			self
 		)
-	):
+	if not cancelled:
 		return false
 	active_request.phase = BattleRequest.PHASE_CANCELLED
 	active_request = null
 	_bound_session = null
 	_pending_result_authority = {}
 	_adopted_expedition = false
+	_army_id = &""
+	_army_mode = false
+	_macro_siege_city_id = &""
+	_macro_siege_mode = false
 	return true
 
 
@@ -452,7 +508,12 @@ func mark_result_pending() -> bool:
 		_pending_result_authority = authority_snapshot.duplicate(true)
 	elif _pending_result_authority != authority_snapshot:
 		return false
-	if _army_mode:
+	if _macro_siege_mode:
+		if not _city_controller.authorize_macro_siege_battle_result_pending(
+			_army_id, _macro_siege_city_id, active_request.transaction_id, self
+		):
+			return false
+	elif _army_mode:
 		if not _city_controller.authorize_army_encounter_result_pending(
 			_army_id,
 			active_request.transaction_id,
@@ -495,5 +556,6 @@ func get_authorized_settlement_for_bound_city(
 	return {
 		"battle_result": BattleResult.from_authority_snapshot(authority_snapshot),
 		"request": active_request,
-		"army_id": _army_id if _army_mode else &"",
+		"army_id": _army_id if (_army_mode or _macro_siege_mode) else &"",
+		"macro_siege_city_id": _macro_siege_city_id if _macro_siege_mode else &"",
 	}

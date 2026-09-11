@@ -97,6 +97,7 @@ var _confirm_button := Button.new()
 var _block_button := Button.new()
 var _recover_button := Button.new()
 var _retreat_button := Button.new()
+var _siege_battle_button := Button.new()
 var _scout_button := Button.new()
 var _engineer_button := Button.new()
 var _side_road_button := Button.new()
@@ -452,7 +453,7 @@ func _build_ui() -> void:
 	_formation_scroll.add_child(_formation_list)
 	_formation_scroll.add_child(_location_garrison_list)
 	add_child(_formation_scroll)
-	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
+	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _siege_battle_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
 	_interrupted_project_selector.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -461,6 +462,8 @@ func _build_ui() -> void:
 	_block_button.visible = false
 	_recover_button.visible = false
 	_retreat_button.text = "撤逃并沿原路返回"
+	_siege_battle_button.text = "进入战时围城"
+	_siege_battle_button.visible = false
 	_scout_button.text = "派遣侦察兵（4 粮）"
 	_engineer_button.text = "派遣工程师（8 粮）"
 	_side_road_button.text = "工程师拖线修路"
@@ -489,6 +492,7 @@ func _build_ui() -> void:
 	_focus_subject_button.text = "聚焦选中"
 	_confirm_button.pressed.connect(_confirm_draft)
 	_retreat_button.pressed.connect(_request_retreat)
+	_siege_battle_button.pressed.connect(_enter_siege_battle)
 	_scout_button.pressed.connect(_dispatch_scout)
 	_engineer_button.pressed.connect(_dispatch_engineer)
 	_side_road_button.pressed.connect(_build_side_road)
@@ -514,7 +518,7 @@ func _layout_ui() -> void:
 	var panel_rect := _side_panel_rect()
 	var action_height := 34.0
 	var action_gap := 4.0
-	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _resume_project_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button]
+	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _siege_battle_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _resume_project_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button]
 	var visible_action_buttons: Array[Button] = []
 	for button in action_buttons:
 		if button.visible:
@@ -908,6 +912,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_location_details_button.visible = false
 	_supply_transport_button.visible = false
 	_stationed_reinforcement_button.visible = false
+	_siege_battle_button.visible = false
 	_refresh_location_garrison_controls(model, {})
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
 	if not _reinforcement_feedback_text.is_empty() and (
@@ -1228,6 +1233,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		_block_button.visible = false
 		_recover_button.visible = false
 		_retreat_button.visible = StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING
+		_siege_battle_button.visible = StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_STATIONED:
 			_confirm_button.disabled = _draft_route.is_empty()
 			_confirm_button.text = "确认下一段军令"
@@ -2614,6 +2620,25 @@ func _request_retreat() -> void:
 	if not bool(result.get("success", false)):
 		_status_label.text = str(result.get("error", "撤逃军令失败"))
 	refresh()
+
+
+func _enter_siege_battle() -> void:
+	if _dispatch_adapter == null:
+		return
+	var army := _selected_army(_model())
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	var city_id := StringName(macro.get("target_point_id", &""))
+	if (
+		army.is_empty()
+		or StringName(army.get("phase", &"")) != ARMY_REGISTRY.PHASE_SIEGING
+		or city_id == &""
+	):
+		_set_status_error("当前军队没有可接管的围城")
+		refresh()
+		return
+	if not _dispatch_adapter.enter_macro_siege_wartime(StringName(army.get("army_id", &"")), city_id):
+		_set_status_error("围城战时实例无法建立；原攻城状态未改变")
+		refresh()
 
 
 func _dispatch_scout() -> void:

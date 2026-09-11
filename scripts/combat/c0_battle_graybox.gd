@@ -139,6 +139,9 @@ var formal_committed_count := 0
 var prepared_expedition_request: BattleRequest
 var noticeboard_mission_mode := false
 var mission_definition: MissionDefinition
+var macro_siege_mode := false
+var macro_siege_army_id: StringName = &""
+var macro_siege_city_id: StringName = &""
 var _squad_ui: Dictionary = {}
 var _squad_markers: Dictionary = {}
 var _confirmed_summary: Dictionary = {}
@@ -263,6 +266,23 @@ func configure_noticeboard_mission(
 		if mission_definition != null
 		else 0
 	)
+
+
+## The macro army has already paid its departure cost and reached a real siege.
+## This entry only names that existing source; request construction remains in
+## ConstructionController so reopening cannot synthesize a second army.
+func configure_macro_siege(
+	city_scene_value: Node2D,
+	city_controller_value: Node,
+	army_id: StringName,
+	city_id: StringName
+) -> void:
+	formal_city_mode = true
+	macro_siege_mode = true
+	city_scene = city_scene_value
+	city_controller = city_controller_value
+	macro_siege_army_id = army_id
+	macro_siege_city_id = city_id
 
 
 func _start_battle_from_ui() -> void:
@@ -650,6 +670,13 @@ func _restore_city_presentation() -> void:
 
 
 func _create_battle_request() -> void:
+	if macro_siege_mode:
+		request = coordinator.create_macro_siege_request(
+			macro_siege_army_id, macro_siege_city_id
+		)
+		if request == null:
+			push_error("C0 macro siege coordinator rejected the existing siege")
+		return
 	if prepared_expedition_request != null:
 		if coordinator.has_method("adopt_expedition_request"):
 			if coordinator.adopt_expedition_request(prepared_expedition_request):
@@ -823,8 +850,13 @@ func _resume_active_battle_if_available() -> void:
 		if city_controller != null and city_controller.has_method("get_expedition_attempt")
 		else {}
 	)
-	var snapshot: Dictionary = Dictionary(
-		attempt.get("battle_session_snapshot", {})
+	var snapshot: Dictionary = (
+		city_controller.get_macro_siege_battle_session_snapshot(
+			macro_siege_city_id, request.transaction_id
+		)
+		if macro_siege_mode and city_controller != null
+		and city_controller.has_method("get_macro_siege_battle_session_snapshot")
+		else Dictionary(attempt.get("battle_session_snapshot", {}))
 	)
 	if not snapshot.is_empty() and not coordinator.active_session.restore_snapshot(snapshot):
 		push_error("C0 active battle session snapshot rejected")
@@ -836,6 +868,20 @@ func _resume_active_battle_if_available() -> void:
 
 
 func _checkpoint_active_battle_session() -> bool:
+	if (
+		macro_siege_mode
+		and city_controller != null
+		and request != null
+		and coordinator.active_session != null
+		and city_controller.has_method("checkpoint_macro_siege_battle_session")
+	):
+		var macro_result: Dictionary = city_controller.checkpoint_macro_siege_battle_session(
+			macro_siege_army_id,
+			macro_siege_city_id,
+			request.transaction_id,
+			coordinator.active_session.get_snapshot()
+		)
+		return bool(macro_result.get("success", false))
 	if (
 		not _uses_prepared_expedition()
 		or city_controller == null
