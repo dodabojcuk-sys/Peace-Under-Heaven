@@ -353,6 +353,46 @@ text = "开始战斗"
 custom_minimum_size = Vector2(200, 44)
 theme_type_variation = &"PrimaryButton"
 
+[node name="WartimePlanPanel" type="Panel" parent="UI/RootPanel"]
+visible = false
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -286.0
+offset_right = 452.0
+offset_bottom = -198.0
+theme_type_variation = &"CommandPanel"
+
+[node name="Title" type="Label" parent="UI/RootPanel/WartimePlanPanel"]
+offset_left = 14.0
+offset_top = 8.0
+offset_right = 412.0
+offset_bottom = 30.0
+theme_override_colors/font_color = Color(0.92, 0.82, 0.56, 1)
+text = "战时工事（仅本次战斗）"
+
+[node name="WatchButton" type="Button" parent="UI/RootPanel/WartimePlanPanel"]
+offset_left = 14.0
+offset_top = 38.0
+offset_right = 146.0
+offset_bottom = 78.0
+text = "瞭望台 · 木材 6"
+
+[node name="RamButton" type="Button" parent="UI/RootPanel/WartimePlanPanel"]
+offset_left = 154.0
+offset_top = 38.0
+offset_right = 286.0
+offset_bottom = 78.0
+text = "攻城槌 · 木材 8"
+
+[node name="ConfirmButton" type="Button" parent="UI/RootPanel/WartimePlanPanel"]
+offset_left = 294.0
+offset_top = 38.0
+offset_right = 414.0
+offset_bottom = 78.0
+text = "确认工事"
+theme_type_variation = &"PrimaryButton"
+
 [node name="SquadControls" type="HBoxContainer" parent="UI/RootPanel"]
 anchor_top = 1.0
 anchor_bottom = 1.0

@@ -144,6 +144,14 @@ func persist_expedition_departure(attempt_id: StringName) -> Dictionary:
 	)
 
 
+func persist_expedition_battle_checkpoint(attempt_id: StringName) -> Dictionary:
+	return _persist_expedition_checkpoint(
+		attempt_id,
+		&"",
+		&"expedition_battle_checkpoint"
+	)
+
+
 func persist_expedition_settlement(
 	attempt_id: StringName,
 	result_id: StringName

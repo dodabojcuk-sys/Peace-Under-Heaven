@@ -18,6 +18,13 @@ const RETREAT_INCOMING_BASIS_POINTS := 11500
 const RETREAT_SPEED_NUMERATOR := 5
 const RETREAT_SPEED_DENOMINATOR := 4
 const FIRST_CLEAR_KEY := &"first_map.main_assault.v0"
+const SIEGE_RAM_GATE_DAMAGE := 160
+const SNAPSHOT_SCHEMA_VERSION := 1
+const SNAPSHOT_KEYS := [
+	"schema_version", "current_tick", "next_order_id", "squads", "routes",
+	"pending_orders", "accepted_orders", "retreat_was_ordered",
+	"forced_retreat_requested", "mission_objective_state",
+]
 
 var request: BattleRequest
 var session_id: StringName
@@ -34,6 +41,7 @@ var result: BattleResult
 var _terminal_authority_record: Dictionary = {}
 var mission_definition: MissionDefinition
 var mission_objective_state: Dictionary = {}
+var wartime_facility_state: Dictionary = {}
 
 
 func _init(request_value: BattleRequest = null) -> void:
@@ -63,6 +71,7 @@ func initialize(request_value: BattleRequest) -> bool:
 	_terminal_authority_record = {}
 	mission_definition = request.mission_definition
 	mission_objective_state = {}
+	wartime_facility_state = {}
 	for squad_snapshot in request.committed_force.squads:
 		var initial_members := int(squad_snapshot.initial_members)
 		squads.append({
@@ -95,6 +104,7 @@ func initialize(request_value: BattleRequest) -> bool:
 			"gate_hp": int(enemy_route.gate_hp),
 			"distance_fixed": _get_initial_route_distance_fixed(route_id),
 		}
+	_apply_wartime_facilities()
 	_initialize_mission_objective_state()
 	return true
 
@@ -162,6 +172,115 @@ func get_mission_objective_state() -> Dictionary:
 	return mission_objective_state.duplicate(true)
 
 
+func get_wartime_facility_state() -> Dictionary:
+	return wartime_facility_state.duplicate(true)
+
+
+## Only authoritative simulation facts are persisted.  The request itself is
+## stored by the city attempt; this snapshot never contains scene nodes,
+## animation state or UI selection.
+func get_snapshot() -> Dictionary:
+	if request == null or completed:
+		return {}
+	return {
+		"schema_version": SNAPSHOT_SCHEMA_VERSION,
+		"current_tick": current_tick,
+		"next_order_id": next_order_id,
+		"squads": squads.duplicate(true),
+		"routes": routes.duplicate(true),
+		"pending_orders": _orders_to_snapshot(pending_orders),
+		"accepted_orders": _orders_to_snapshot(accepted_orders),
+		"retreat_was_ordered": retreat_was_ordered,
+		"forced_retreat_requested": forced_retreat_requested,
+		"mission_objective_state": mission_objective_state.duplicate(true),
+	}
+
+
+func restore_snapshot(snapshot: Dictionary) -> bool:
+	if request == null or request.phase != BattleRequest.PHASE_ACTIVE:
+		return false
+	if not _is_valid_snapshot(snapshot):
+		return false
+	var restored_squads: Array[Dictionary] = []
+	var expected_squads: Dictionary = {}
+	for original in squads:
+		expected_squads[int(original.squad_id)] = original
+	for squad_value in Array(snapshot.squads):
+		if not squad_value is Dictionary:
+			return false
+		var squad: Dictionary = squad_value
+		var squad_id := int(squad.get("squad_id", 0))
+		var original: Dictionary = expected_squads.get(squad_id, {})
+		if (
+			original.is_empty()
+			or StringName(squad.get("formation_id", &"")) != StringName(original.formation_id)
+			or StringName(squad.get("route_id", &"")) != StringName(original.route_id)
+			or int(squad.get("initial_members", 0)) != int(original.initial_members)
+			or int(squad.get("total_hp", -1)) < 0
+			or int(squad.get("total_hp", 0)) > int(original.initial_members) * request.committed_force.hp_per_member
+			or int(squad.get("position_fixed", -1)) < 0
+			or int(squad.get("position_fixed", 0)) > _get_route_distance_fixed(StringName(original.route_id))
+			or int(squad.get("active_order", -1)) not in [BattleOrder.Command.ADVANCE, BattleOrder.Command.HOLD, BattleOrder.Command.RETREAT]
+			or typeof(squad.get("exited", null)) != TYPE_BOOL
+		):
+			return false
+		restored_squads.append(squad.duplicate(true))
+	if restored_squads.size() != squads.size():
+		return false
+	var restored_routes: Dictionary = Dictionary(snapshot.routes).duplicate(true)
+	for route_id in [CommittedForceSnapshot.FRONT_ROUTE, CommittedForceSnapshot.SIDE_ROUTE]:
+		var original_route: Dictionary = routes.get(route_id, {})
+		var restored_route: Dictionary = restored_routes.get(route_id, {})
+		if (
+			original_route.is_empty()
+			or restored_route.is_empty()
+			or int(restored_route.get("enemy_initial_members", -1)) != int(original_route.enemy_initial_members)
+			or int(restored_route.get("gate_initial_hp", -1)) != int(original_route.gate_initial_hp)
+			or int(restored_route.get("distance_fixed", -1)) != int(original_route.distance_fixed)
+			or int(restored_route.get("enemy_total_hp", -1)) < 0
+			or int(restored_route.get("gate_hp", -1)) < 0
+			or int(restored_route.get("gate_hp", 0)) > int(original_route.gate_initial_hp)
+		):
+			return false
+	var restored_pending: Variant = _orders_from_snapshot(Array(snapshot.pending_orders))
+	var restored_accepted: Variant = _orders_from_snapshot(Array(snapshot.accepted_orders))
+	if restored_pending == null or restored_accepted == null:
+		return false
+	var valid_squad_ids: Dictionary = {}
+	for squad in restored_squads:
+		valid_squad_ids[int(squad.squad_id)] = true
+	var accepted_ids: Dictionary = {}
+	var highest_order_id := 0
+	for order in restored_accepted:
+		if (
+			order.session_id != session_id
+			or not valid_squad_ids.has(order.squad_id)
+			or order.issued_tick > int(snapshot.current_tick)
+		):
+			return false
+		accepted_ids[order.order_id] = true
+		highest_order_id = maxi(highest_order_id, order.order_id)
+	for order in restored_pending:
+		if (
+			not accepted_ids.has(order.order_id)
+			or order.session_id != session_id
+			or not valid_squad_ids.has(order.squad_id)
+		):
+			return false
+	if int(snapshot.next_order_id) <= highest_order_id:
+		return false
+	current_tick = int(snapshot.current_tick)
+	next_order_id = int(snapshot.next_order_id)
+	squads = restored_squads
+	routes = restored_routes
+	pending_orders = restored_pending
+	accepted_orders = restored_accepted
+	retreat_was_ordered = bool(snapshot.retreat_was_ordered)
+	forced_retreat_requested = bool(snapshot.forced_retreat_requested)
+	mission_objective_state = Dictionary(snapshot.mission_objective_state).duplicate(true)
+	return true
+
+
 func request_forced_retreat() -> bool:
 	if completed or request == null:
 		return false
@@ -210,8 +329,100 @@ func get_state_digest() -> String:
 		)
 	if not mission_objective_state.is_empty():
 		parts.append(str(mission_objective_state))
+	if not wartime_facility_state.is_empty():
+		parts.append(str(wartime_facility_state))
 	parts.append(get_orders_digest())
 	return "|".join(parts)
+
+
+func _apply_wartime_facilities() -> void:
+	var plan: Dictionary = request.wartime_facility_plan
+	for facility_value in Array(plan.get("facilities", [])):
+		if not facility_value is Dictionary:
+			continue
+		var facility: Dictionary = facility_value
+		var kind := StringName(facility.get("kind", &""))
+		var route_id := StringName(facility.get("route_id", &""))
+		if kind == WartimeFacilityPlan.KIND_WATCH_PLATFORM:
+			wartime_facility_state["enemy_observation_ready"] = true
+			wartime_facility_state["watch_route_id"] = route_id
+		elif kind == WartimeFacilityPlan.KIND_SIEGE_RAM and routes.has(route_id):
+			var route: Dictionary = routes[route_id]
+			var damage := mini(SIEGE_RAM_GATE_DAMAGE, int(route.gate_hp))
+			route.gate_hp = int(route.gate_hp) - damage
+			routes[route_id] = route
+			wartime_facility_state["siege_ram_route_id"] = route_id
+			wartime_facility_state["siege_ram_gate_damage"] = damage
+
+
+func _orders_to_snapshot(orders: Array[BattleOrder]) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for order in orders:
+		result.append({
+			"order_id": order.order_id,
+			"session_id": order.session_id,
+			"squad_id": order.squad_id,
+			"issued_tick": order.issued_tick,
+			"command": int(order.command),
+		})
+	return result
+
+
+func _orders_from_snapshot(records: Array):
+	var result: Array[BattleOrder] = []
+	var seen_ids: Dictionary = {}
+	for record_value in records:
+		if not record_value is Dictionary:
+			return null
+		var record: Dictionary = record_value
+		if (
+			record.size() != 5
+			or typeof(record.get("order_id", null)) != TYPE_INT
+			or int(record.order_id) <= 0
+			or seen_ids.has(int(record.order_id))
+			or typeof(record.get("session_id", null)) != TYPE_STRING_NAME
+			or typeof(record.get("squad_id", null)) != TYPE_INT
+			or int(record.squad_id) <= 0
+			or typeof(record.get("issued_tick", null)) != TYPE_INT
+			or int(record.issued_tick) < 0
+			or typeof(record.get("command", null)) != TYPE_INT
+			or int(record.command) not in [BattleOrder.Command.ADVANCE, BattleOrder.Command.HOLD, BattleOrder.Command.RETREAT]
+		):
+			return null
+		seen_ids[int(record.order_id)] = true
+		result.append(BattleOrder.new(
+			int(record.order_id), StringName(record.session_id), int(record.squad_id),
+			int(record.issued_tick), int(record.command) as BattleOrder.Command
+		))
+	return result
+
+
+func _is_valid_snapshot(snapshot: Dictionary) -> bool:
+	return (
+		snapshot.size() == SNAPSHOT_KEYS.size()
+		and _has_exact_snapshot_keys(snapshot)
+		and typeof(snapshot.get("schema_version", null)) == TYPE_INT
+		and int(snapshot.schema_version) == SNAPSHOT_SCHEMA_VERSION
+		and typeof(snapshot.get("current_tick", null)) == TYPE_INT
+		and int(snapshot.current_tick) >= 0
+		and int(snapshot.current_tick) < MAX_BATTLE_TICKS
+		and typeof(snapshot.get("next_order_id", null)) == TYPE_INT
+		and int(snapshot.next_order_id) > 0
+		and typeof(snapshot.get("squads", null)) == TYPE_ARRAY
+		and typeof(snapshot.get("routes", null)) == TYPE_DICTIONARY
+		and typeof(snapshot.get("pending_orders", null)) == TYPE_ARRAY
+		and typeof(snapshot.get("accepted_orders", null)) == TYPE_ARRAY
+		and typeof(snapshot.get("retreat_was_ordered", null)) == TYPE_BOOL
+		and typeof(snapshot.get("forced_retreat_requested", null)) == TYPE_BOOL
+		and typeof(snapshot.get("mission_objective_state", null)) == TYPE_DICTIONARY
+	)
+
+
+func _has_exact_snapshot_keys(snapshot: Dictionary) -> bool:
+	for key in SNAPSHOT_KEYS:
+		if not snapshot.has(key):
+			return false
+	return true
 
 
 func _apply_orders_for_current_tick() -> void:

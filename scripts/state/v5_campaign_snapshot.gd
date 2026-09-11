@@ -3,7 +3,7 @@ extends RefCounted
 
 
 const MACRO_MARCH_THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
-const SCHEMA_VERSION := 7
+const SCHEMA_VERSION := 9
 const SNAPSHOT_KIND := &"campaign_authoritative"
 const CITY_ID := "blackstone_city"
 const ROOT_KEYS := [
@@ -96,6 +96,24 @@ const EXPEDITION_ATTEMPT_KEYS := [
 	"reward_food",
 	"settled",
 	"result_id",
+	"wartime_facility_plan",
+	"battle_session_snapshot",
+]
+const V7_EXPEDITION_ATTEMPT_KEYS := [
+	"attempt_id", "mainline_id", "phase", "created_day",
+	"created_day_elapsed_milliseconds", "food_cost", "food_before",
+	"food_after", "committed_total", "selected_formations",
+	"committed_force_snapshot", "enemy_force_snapshot",
+	"city_defense_snapshot", "first_clear_key", "reward_wood",
+	"reward_food", "settled", "result_id",
+]
+const V8_EXPEDITION_ATTEMPT_KEYS := [
+	"attempt_id", "mainline_id", "phase", "created_day",
+	"created_day_elapsed_milliseconds", "food_cost", "food_before",
+	"food_after", "committed_total", "selected_formations",
+	"committed_force_snapshot", "enemy_force_snapshot",
+	"city_defense_snapshot", "first_clear_key", "reward_wood",
+	"reward_food", "settled", "result_id", "wartime_facility_plan",
 ]
 const PLACEMENT_KEYS := [
 	"placement_id",
@@ -165,7 +183,7 @@ static func validate_structure(
 		)
 	var source_version := int(snapshot.get("schema_version", 0))
 	if (
-		(source_version == SCHEMA_VERSION and not _has_exact_keys(snapshot, ROOT_KEYS))
+		(source_version in [7, 8, SCHEMA_VERSION] and not _has_exact_keys(snapshot, ROOT_KEYS))
 		or (source_version == 6 and not _has_exact_keys(snapshot, V6_ROOT_KEYS))
 		or (source_version == 5 and not _has_exact_keys(snapshot, V5_ROOT_KEYS))
 		or (source_version == 4 and not _has_exact_keys(snapshot, V4_ROOT_KEYS))
@@ -174,7 +192,7 @@ static func validate_structure(
 		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段不完整或含未知字段")
 	if (
 		typeof(snapshot.schema_version) != TYPE_INT
-		or int(snapshot.schema_version) not in [2, 3, 4, 5, 6, SCHEMA_VERSION]
+		or int(snapshot.schema_version) not in [2, 3, 4, 5, 6, 7, 8, SCHEMA_VERSION]
 		or typeof(snapshot.snapshot_kind) != TYPE_STRING_NAME
 		or StringName(snapshot.snapshot_kind) != SNAPSHOT_KIND
 		or typeof(snapshot.city_id) != TYPE_STRING
@@ -219,6 +237,16 @@ static func validate_structure(
 		normalized = migration.snapshot
 	if int(normalized.schema_version) == 6:
 		var migration := _migrate_v6_war_loop(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if int(normalized.schema_version) == 7:
+		var migration := _migrate_v7_wartime_facilities(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if int(normalized.schema_version) == 8:
+		var migration := _migrate_v8_battle_session(normalized)
 		if not bool(migration.valid):
 			return migration
 		normalized = migration.snapshot
@@ -523,6 +551,34 @@ static func _migrate_v6_war_loop(snapshot: Dictionary) -> Dictionary:
 		"completed_resolution_ids": {},
 		"next_siege_sequence": 1,
 	}
+	normalized.schema_version = 7
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _migrate_v7_wartime_facilities(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V7 CampaignSnapshot 根字段非法")
+	var attempt: Dictionary = Dictionary(normalized.expedition_attempt)
+	if not attempt.is_empty():
+		if not _has_exact_keys(attempt, V7_EXPEDITION_ATTEMPT_KEYS):
+			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "V7 出征尝试字段非法")
+		attempt.wartime_facility_plan = WartimeFacilityPlan.empty_snapshot()
+		normalized.expedition_attempt = attempt
+	normalized.schema_version = 8
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _migrate_v8_battle_session(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V8 CampaignSnapshot 根字段非法")
+	var attempt: Dictionary = Dictionary(normalized.expedition_attempt)
+	if not attempt.is_empty():
+		if not _has_exact_keys(attempt, V8_EXPEDITION_ATTEMPT_KEYS):
+			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "V8 出征尝试字段非法")
+		attempt.battle_session_snapshot = {}
+		normalized.expedition_attempt = attempt
 	normalized.schema_version = SCHEMA_VERSION
 	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
 
@@ -980,8 +1036,15 @@ static func _validate_expedition_attempt(
 		or int(attempt.reward_food) < 0
 		or typeof(attempt.settled) != TYPE_BOOL
 		or typeof(attempt.result_id) != TYPE_STRING_NAME
+		or typeof(attempt.wartime_facility_plan) != TYPE_DICTIONARY
+		or typeof(attempt.battle_session_snapshot) != TYPE_DICTIONARY
 	):
 		return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征尝试领域值非法")
+	var facility_plan_validation := WartimeFacilityPlan.validate_snapshot(
+		Dictionary(attempt.wartime_facility_plan)
+	)
+	if not bool(facility_plan_validation.get("valid", false)):
+		return _failure(&"INVALID_EXPEDITION_ATTEMPT", "战时工事计划非法")
 	if (
 		bool(attempt.settled)
 		!= (StringName(attempt.phase) == &"APPLIED")

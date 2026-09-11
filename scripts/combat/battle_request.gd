@@ -22,6 +22,7 @@ var first_clear_key: StringName
 var reward_wood: int
 var reward_food: int
 var mission_definition: MissionDefinition
+var wartime_facility_plan: Dictionary
 
 
 func _init(
@@ -37,7 +38,8 @@ func _init(
 	first_clear_key_value: StringName = &"first_map.main_assault.v0",
 	reward_wood_value := 30,
 	reward_food_value := 20,
-	mission_definition_value: MissionDefinition = null
+	mission_definition_value: MissionDefinition = null,
+	wartime_facility_plan_value: Dictionary = {}
 ) -> void:
 	transaction_id = transaction_id_value
 	level_id = level_id_value
@@ -53,6 +55,11 @@ func _init(
 	reward_wood = reward_wood_value
 	reward_food = reward_food_value
 	mission_definition = mission_definition_value
+	wartime_facility_plan = (
+		wartime_facility_plan_value.duplicate(true)
+		if not wartime_facility_plan_value.is_empty()
+		else WartimeFacilityPlan.empty_snapshot()
+	)
 
 
 func is_valid() -> bool:
@@ -70,6 +77,7 @@ func is_valid() -> bool:
 		and first_clear_key != &""
 		and reward_wood >= 0
 		and reward_food >= 0
+		and bool(WartimeFacilityPlan.validate_snapshot(wartime_facility_plan).valid)
 		and (
 			source_id != MissionDefinition.SOURCE_NOTICEBOARD
 			or (
@@ -111,7 +119,9 @@ static func from_expedition_attempt(attempt: Dictionary) -> BattleRequest:
 		&"FIRST_WAR",
 		StringName(attempt.get("first_clear_key", &"")),
 		int(attempt.get("reward_wood", 0)),
-		int(attempt.get("reward_food", 0))
+		int(attempt.get("reward_food", 0)),
+		null,
+		Dictionary(attempt.get("wartime_facility_plan", WartimeFacilityPlan.empty_snapshot()))
 	)
 	request.phase = StringName(attempt.get("phase", PHASE_RESERVED))
 	return request if request.is_valid() else null

@@ -2,6 +2,17 @@
 
 ## 2026-09-11
 
+- Added Wartime Inner City R0 as a battle-only C0 preparation and recovery
+  slice. Formal expeditions can confirm a one-time watch platform and siege
+  ram through the existing NationState/ConstructionController transaction;
+  their effects are consumed only by BattleSession and never create permanent
+  city placements or field projects. Campaign schema 9 strictly persists the
+  immutable facility plan plus an active simulation snapshot, migrates V7/V8
+  attempts conservatively without grants, and restores a formal C0 instance at
+  its saved tick. The new focused runner covers the formal UI controls,
+  transaction boundary, legacy migration, actual effects, formal restore and
+  tamper rejection. This is not yet a complete defensive wartime-city mode.
+
 - Integrated Blackstone First Campaign R0 without adding a second campaign
   owner. Macro March now renders a read-only two-city objective/result card
   from the existing WarLoop control facts and keeps the northern direct attack

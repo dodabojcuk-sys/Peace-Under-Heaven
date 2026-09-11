@@ -112,6 +112,12 @@ func persist_expedition_departure(attempt_id: StringName) -> Dictionary:
 	return _runtime_persistence.persist_expedition_departure(attempt_id)
 
 
+func persist_expedition_battle_checkpoint(attempt_id: StringName) -> Dictionary:
+	if _runtime_persistence == null:
+		return {"success": false, "uncertain": false}
+	return _runtime_persistence.persist_expedition_battle_checkpoint(attempt_id)
+
+
 func persist_expedition_settlement(
 	attempt_id: StringName,
 	result_id: StringName

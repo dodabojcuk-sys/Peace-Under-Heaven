@@ -2646,6 +2646,8 @@ func commit_expedition_attempt(formation_ids: Array) -> Dictionary:
 		"reward_food": 20,
 		"settled": false,
 		"result_id": &"",
+		"wartime_facility_plan": WartimeFacilityPlan.empty_snapshot(),
+		"battle_session_snapshot": {},
 	}
 	var prior_attempt := _expedition_attempt.duplicate(true)
 	var prior_reservation := _active_battle_reservation.duplicate(true)
@@ -2713,10 +2715,150 @@ func _install_expedition_attempt(candidate: Dictionary) -> Dictionary:
 	return {"success": true, "attempt_id": StringName(candidate.attempt_id)}
 
 
+## A battle-only facility plan is paid through the city resource authority but
+## remains attached to the single immutable expedition attempt.  It never
+## creates a regular-city placement or field-construction project.
+func commit_wartime_facility_plan(
+	attempt_id: StringName,
+	plan_snapshot: Dictionary
+) -> Dictionary:
+	if _expedition_commit_in_progress or _expedition_commit_blocked:
+		return _expedition_failure(&"BATTLE_PLAN_BUSY", "战时布防事务正在处理")
+	if (
+		attempt_id == &""
+		or _expedition_attempt.is_empty()
+		or StringName(_expedition_attempt.get("attempt_id", &"")) != attempt_id
+		or StringName(_expedition_attempt.get("phase", &"")) != BATTLE_PHASE_RESERVED
+	):
+		return _expedition_failure(&"BATTLE_PLAN_STATE", "当前出征不能修改战时布防")
+	var plan_validation := WartimeFacilityPlan.validate_snapshot(plan_snapshot)
+	if not bool(plan_validation.get("valid", false)):
+		return _expedition_failure(&"BATTLE_PLAN_INVALID", str(plan_validation.get("error", "战时布防非法")))
+	var normalized_plan: Dictionary = Dictionary(plan_validation.snapshot).duplicate(true)
+	if Array(normalized_plan.facilities).is_empty():
+		return _expedition_failure(&"BATTLE_PLAN_EMPTY", "请至少选择一项战时工事")
+	if not Dictionary(_expedition_attempt.get("wartime_facility_plan", {})).is_empty() and not Array(Dictionary(_expedition_attempt.get("wartime_facility_plan", {})).get("facilities", [])).is_empty():
+		return _expedition_failure(&"BATTLE_PLAN_LOCKED", "战时布防已经确认，不能重复扣费")
+	var costs := WartimeFacilityPlan.get_costs(normalized_plan)
+	if costs.is_empty():
+		return _expedition_failure(&"BATTLE_PLAN_COST", "战时工事费用无法计算")
+	var operations: Array[Dictionary] = []
+	for resource_id_value in costs.keys():
+		operations.append({
+			"resource_id": StringName(resource_id_value),
+			"operation": NationState.RESOURCE_OPERATION_SPEND,
+			"amount": int(costs[resource_id_value]),
+		})
+	var prior_attempt := _expedition_attempt.duplicate(true)
+	_expedition_commit_in_progress = true
+	var install_plan := func() -> Dictionary:
+		if (
+			StringName(_expedition_attempt.get("attempt_id", &"")) != attempt_id
+			or StringName(_expedition_attempt.get("phase", &"")) != BATTLE_PHASE_RESERVED
+		):
+			return {"success": false}
+		_expedition_attempt.wartime_facility_plan = normalized_plan.duplicate(true)
+		return {"success": true}
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		operations,
+		&"wartime_facility_preparation",
+		install_plan
+	)
+	if not bool(transaction.get("success", false)):
+		_expedition_commit_in_progress = false
+		return _expedition_failure(
+			StringName(transaction.get("error_id", &"BATTLE_PLAN_RESOURCE")),
+			str(transaction.get("error", "战时工事资源不足"))
+		)
+	_refresh_city_ui()
+	city_state_changed.emit()
+	var persisted := _persist_expedition_departure(attempt_id)
+	if bool(persisted.get("success", false)):
+		_expedition_commit_in_progress = false
+		return {"success": true, "plan": normalized_plan.duplicate(true)}
+	if bool(persisted.get("uncertain", false)):
+		_expedition_commit_blocked = true
+		_expedition_commit_in_progress = false
+		return _expedition_failure(&"SAVE_OUTCOME_UNCERTAIN", "战时布防存档结果无法确认；请冷启动恢复")
+	var refund_operations: Array[Dictionary] = []
+	for resource_id_value in costs.keys():
+		refund_operations.append({
+			"resource_id": StringName(resource_id_value),
+			"operation": NationState.RESOURCE_OPERATION_ADD,
+			"amount": int(costs[resource_id_value]),
+		})
+	var rollback := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		refund_operations,
+		&"wartime_facility_preparation_rollback",
+		func() -> Dictionary:
+			_expedition_attempt = prior_attempt.duplicate(true)
+			return {"success": true}
+	)
+	if not bool(rollback.get("success", false)):
+		_expedition_commit_blocked = true
+		push_error("Wartime facility plan rollback failed")
+	_refresh_city_ui()
+	city_state_changed.emit()
+	_expedition_commit_in_progress = false
+	return _expedition_failure(&"SAVE_FAILED", "战时布防保存失败，资源与计划已回滚")
+
+
+func checkpoint_active_battle_session(
+	attempt_id: StringName,
+	session_snapshot: Dictionary
+) -> Dictionary:
+	if (
+		attempt_id == &""
+		or _expedition_attempt.is_empty()
+		or StringName(_expedition_attempt.get("attempt_id", &"")) != attempt_id
+		or StringName(_expedition_attempt.get("phase", &"")) != BATTLE_PHASE_ACTIVE
+	):
+		return _expedition_failure(&"BATTLE_SESSION_STATE", "当前没有可保存的活动战时实例")
+	var request := BattleRequest.from_expedition_attempt(_expedition_attempt)
+	var session_probe := BattleSession.new(request)
+	if request == null or not session_probe.restore_snapshot(session_snapshot):
+		return _expedition_failure(&"BATTLE_SESSION_INVALID", "战时实例快照非法")
+	var prior_snapshot: Dictionary = Dictionary(
+		_expedition_attempt.get("battle_session_snapshot", {})
+	).duplicate(true)
+	_expedition_attempt.battle_session_snapshot = session_snapshot.duplicate(true)
+	var persisted := _persist_active_battle_checkpoint(attempt_id)
+	if bool(persisted.get("success", false)):
+		return {"success": true}
+	_expedition_attempt.battle_session_snapshot = prior_snapshot
+	if bool(persisted.get("uncertain", false)):
+		_expedition_commit_blocked = true
+		return _expedition_failure(&"SAVE_OUTCOME_UNCERTAIN", "战时实例存档结果无法确认；请冷启动恢复")
+	return _expedition_failure(&"SAVE_FAILED", "战时实例检查点保存失败，已保留上一次检查点")
+
+
+func clear_active_battle_session_checkpoint(attempt_id: StringName) -> bool:
+	if (
+		attempt_id == &""
+		or _expedition_attempt.is_empty()
+		or StringName(_expedition_attempt.get("attempt_id", &"")) != attempt_id
+		or StringName(_expedition_attempt.get("phase", &"")) != BATTLE_PHASE_ACTIVE
+	):
+		return false
+	_expedition_attempt.battle_session_snapshot = {}
+	return true
+
+
 func _persist_expedition_departure(attempt_id: StringName) -> Dictionary:
 	var root := get_parent()
 	if root != null and root.has_method("persist_expedition_departure"):
 		return root.persist_expedition_departure(attempt_id)
+	if DisplayServer.get_name() == "headless":
+		return {"success": true, "headless_test_store_disabled": true}
+	return {"success": false, "uncertain": false}
+
+
+func _persist_active_battle_checkpoint(attempt_id: StringName) -> Dictionary:
+	var root := get_parent()
+	if root != null and root.has_method("persist_expedition_battle_checkpoint"):
+		return root.persist_expedition_battle_checkpoint(attempt_id)
 	if DisplayServer.get_name() == "headless":
 		return {"success": true, "headless_test_store_disabled": true}
 	return {"success": false, "uncertain": false}
@@ -4095,6 +4237,24 @@ func validate_v5_campaign_snapshot(
 					"valid": false,
 					"error_id": &"EXPEDITION_ROSTER_IDENTITY_MISMATCH",
 					"error": "出征编队身份偏离永久 roster",
+				}
+		var active_session_snapshot: Dictionary = Dictionary(
+			attempt.get("battle_session_snapshot", {})
+		)
+		if not active_session_snapshot.is_empty():
+			if StringName(attempt.get("phase", &"")) != BATTLE_PHASE_ACTIVE:
+				return {
+					"valid": false,
+					"error_id": &"BATTLE_SESSION_PHASE_MISMATCH",
+					"error": "战斗会话快照只能附着于活动出征",
+				}
+			var request := BattleRequest.from_expedition_attempt(attempt)
+			var session_probe := BattleSession.new(request)
+			if request == null or not session_probe.restore_snapshot(active_session_snapshot):
+				return {
+					"valid": false,
+					"error_id": &"INVALID_BATTLE_SESSION_SNAPSHOT",
+					"error": "活动战时实例快照非法",
 				}
 		if bool(attempt.settled):
 			var summary: Dictionary = Dictionary(
@@ -7248,6 +7408,9 @@ func authorize_prepared_battle_request(
 		or Dictionary(
 			_expedition_attempt.get("enemy_force_snapshot", {})
 		) != request.enemy_force.to_dictionary()
+		or Dictionary(
+			_expedition_attempt.get("wartime_facility_plan", {})
+		) != request.wartime_facility_plan
 	):
 		return false
 	return true

@@ -48,6 +48,17 @@ const DEBUG_PLAYER_COUNT := 50
 )
 @onready var side_gate: ColorRect = $UI/RootPanel/SideLane/SideGate
 @onready var start_button: Button = $UI/RootPanel/StartButton
+@onready var battlefield_panel: Panel = $UI/RootPanel/Battlefield
+@onready var wartime_plan_panel: Panel = $UI/RootPanel/WartimePlanPanel
+@onready var wartime_watch_button: Button = (
+	$UI/RootPanel/WartimePlanPanel/WatchButton
+)
+@onready var wartime_ram_button: Button = (
+	$UI/RootPanel/WartimePlanPanel/RamButton
+)
+@onready var wartime_plan_confirm_button: Button = (
+	$UI/RootPanel/WartimePlanPanel/ConfirmButton
+)
 @onready var exit_button: Button = $UI/RootPanel/ExitButton
 @onready var squad_controls: HBoxContainer = (
 	$UI/RootPanel/SquadControls
@@ -134,11 +145,19 @@ var _resume_timer_after_exit_cancel := false
 var _selected_squad_id := -1
 var _presentation_snapshot: Dictionary = {}
 var _recent_actions: Array[String] = []
+var _pending_wartime_facility_plan: Dictionary = {}
 
 
 func _ready() -> void:
 	tick_timer.timeout.connect(_on_tick_timeout)
 	start_button.pressed.connect(_start_battle_from_ui)
+	wartime_watch_button.pressed.connect(
+		_toggle_wartime_facility.bind(WartimeFacilityPlan.KIND_WATCH_PLATFORM)
+	)
+	wartime_ram_button.pressed.connect(
+		_toggle_wartime_facility.bind(WartimeFacilityPlan.KIND_SIEGE_RAM)
+	)
+	wartime_plan_confirm_button.pressed.connect(_confirm_wartime_facility_plan)
 	exit_button.pressed.connect(request_exit_or_return)
 	exit_cancel_button.pressed.connect(cancel_exit_confirmation)
 	exit_confirm_button.pressed.connect(confirm_exit_as_retreat)
@@ -158,6 +177,9 @@ func _ready() -> void:
 	else:
 		_create_city_fixture()
 	_create_battle_request()
+	if request != null:
+		_pending_wartime_facility_plan = request.wartime_facility_plan.duplicate(true)
+		_resume_active_battle_if_available()
 	_create_squad_controls()
 	_apply_northern_visual_palette()
 	_append_recent_action("选择小队，安排战前路线")
@@ -251,7 +273,11 @@ func start_battle(apply_deployment_plan := false) -> bool:
 		return false
 	if coordinator.active_session == null and coordinator.create_session() == null:
 		return false
+	if not _checkpoint_active_battle_session():
+		status_label.text = "战时实例检查点保存失败；请检查存档后重试"
+		return false
 	start_button.disabled = true
+	wartime_plan_panel.visible = false
 	for squad_id in _squad_ui:
 		_squad_ui[squad_id].route_button.disabled = true
 	if (
@@ -737,12 +763,68 @@ func _on_tick_timeout() -> void:
 
 
 func _advance_one_tick() -> BattleResult:
+	var prior_session_snapshot: Dictionary = (
+		coordinator.active_session.get_snapshot()
+		if coordinator.active_session != null
+		else {}
+	)
 	var battle_result := coordinator.advance_battle_tick()
+	if battle_result == null and coordinator.active_session != null:
+		if not _checkpoint_active_battle_session():
+			coordinator.active_session.restore_snapshot(prior_session_snapshot)
+			status_label.text = "战时实例检查点保存失败；本战斗刻未提交"
+			_refresh_battle_ui()
+			return null
+	if battle_result != null and city_controller != null and city_controller.has_method("clear_active_battle_session_checkpoint"):
+		city_controller.clear_active_battle_session_checkpoint(request.transaction_id)
 	_refresh_battle_ui()
 	if battle_result != null:
 		tick_timer.stop()
 		_show_pending_result(battle_result)
 	return battle_result
+
+
+func _resume_active_battle_if_available() -> void:
+	if (
+		request == null
+		or request.phase != BattleRequest.PHASE_ACTIVE
+		or coordinator.active_session != null
+	):
+		return
+	if coordinator.create_session() == null:
+		push_error("C0 failed to reconstruct active battle session")
+		return
+	var attempt: Dictionary = (
+		city_controller.get_expedition_attempt()
+		if city_controller != null and city_controller.has_method("get_expedition_attempt")
+		else {}
+	)
+	var snapshot: Dictionary = Dictionary(
+		attempt.get("battle_session_snapshot", {})
+	)
+	if not snapshot.is_empty() and not coordinator.active_session.restore_snapshot(snapshot):
+		push_error("C0 active battle session snapshot rejected")
+		return
+	tick_timer.start()
+	_append_recent_action(
+		"已恢复第 %d 战斗刻" % coordinator.active_session.current_tick
+	)
+
+
+func _checkpoint_active_battle_session() -> bool:
+	if (
+		not _uses_prepared_expedition()
+		or city_controller == null
+		or request == null
+		or coordinator.active_session == null
+		or not city_controller.has_method("checkpoint_active_battle_session")
+	):
+		return true
+	var result: Dictionary = city_controller.checkpoint_active_battle_session(
+		request.transaction_id,
+		coordinator.active_session.get_snapshot()
+	)
+	return bool(result.get("success", false))
 
 
 func _refresh_battle_ui() -> void:
@@ -820,8 +902,103 @@ func _refresh_battle_ui() -> void:
 	_refresh_selected_squad(next_snapshot)
 	_refresh_mission_objects(next_snapshot.objective)
 	start_button.visible = request.phase == BattleRequest.PHASE_RESERVED
+	_refresh_wartime_plan_ui()
 	_refresh_recent_actions()
 	_refresh_exit_ui()
+
+
+func _refresh_wartime_plan_ui() -> void:
+	if request == null:
+		wartime_plan_panel.visible = false
+		battlefield_panel.offset_bottom = -202.0
+		return
+	var can_edit := (
+		_uses_prepared_expedition()
+		and request.phase == BattleRequest.PHASE_RESERVED
+	)
+	wartime_plan_panel.visible = can_edit
+	battlefield_panel.offset_bottom = -300.0 if can_edit else -202.0
+	if not can_edit:
+		return
+	var saved_plan: Dictionary = request.wartime_facility_plan
+	var is_committed := not Array(saved_plan.get("facilities", [])).is_empty()
+	var pending_plan: Dictionary = (
+		saved_plan if is_committed else _pending_wartime_facility_plan
+	)
+	var has_watch := WartimeFacilityPlan.has_kind(
+		pending_plan, WartimeFacilityPlan.KIND_WATCH_PLATFORM
+	)
+	var has_ram := WartimeFacilityPlan.has_kind(
+		pending_plan, WartimeFacilityPlan.KIND_SIEGE_RAM
+	)
+	wartime_watch_button.text = (
+		"瞭望台 · 已选" if has_watch else "瞭望台 · 木材 6"
+	)
+	wartime_ram_button.text = (
+		"攻城槌 · 已选" if has_ram else "攻城槌 · 木材 8"
+	)
+	wartime_watch_button.disabled = is_committed
+	wartime_ram_button.disabled = is_committed
+	wartime_plan_confirm_button.visible = not is_committed
+	wartime_plan_confirm_button.disabled = (
+		Array(pending_plan.get("facilities", [])).is_empty()
+	)
+	if is_committed:
+		wartime_plan_panel.get_node("Title").text = "战时工事已确认（仅本次战斗）"
+	else:
+		wartime_plan_panel.get_node("Title").text = "战时工事（仅本次战斗）"
+
+
+func _toggle_wartime_facility(kind: StringName) -> void:
+	if (
+		request == null
+		or request.phase != BattleRequest.PHASE_RESERVED
+		or not _uses_prepared_expedition()
+		or not Array(request.wartime_facility_plan.get("facilities", [])).is_empty()
+	):
+		return
+	var facilities: Array = Array(
+		_pending_wartime_facility_plan.get("facilities", [])
+	).duplicate(true)
+	var remaining: Array[Dictionary] = []
+	var removed := false
+	for facility_value in facilities:
+		var facility: Dictionary = facility_value
+		if StringName(facility.get("kind", &"")) == kind:
+			removed = true
+			continue
+		remaining.append(facility)
+	if not removed:
+		remaining.append(WartimeFacilityPlan.make_facility(
+			kind, CommittedForceSnapshot.FRONT_ROUTE
+		))
+	_pending_wartime_facility_plan = {
+		"schema_version": WartimeFacilityPlan.SCHEMA_VERSION,
+		"facilities": remaining,
+	}
+	_refresh_battle_ui()
+
+
+func _confirm_wartime_facility_plan() -> void:
+	if (
+		city_controller == null
+		or request == null
+		or not city_controller.has_method("commit_wartime_facility_plan")
+	):
+		return
+	var result: Dictionary = city_controller.commit_wartime_facility_plan(
+		request.transaction_id,
+		_pending_wartime_facility_plan
+	)
+	if not bool(result.get("success", false)):
+		status_label.text = str(result.get("error", "战时工事确认失败"))
+		_append_recent_action(status_label.text)
+		_refresh_recent_actions()
+		return
+	request.wartime_facility_plan = Dictionary(result.plan).duplicate(true)
+	_pending_wartime_facility_plan = request.wartime_facility_plan.duplicate(true)
+	_append_recent_action("战时工事已确认，资源已一次性扣除")
+	_refresh_battle_ui()
 
 
 func _refresh_exit_ui() -> void:

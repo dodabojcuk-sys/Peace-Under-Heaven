@@ -190,7 +190,7 @@ func _check_active_attempt_cold_restore() -> void:
 		StringName(attempt_before_reload.phase) == &"ACTIVE"
 			and not snapshot.is_empty()
 			and StringName(snapshot.expedition_attempt.phase) == &"ACTIVE",
-		"ACTIVE attempt 被 V6 持久化，而非把战斗会话序列化进城市"
+		"未推进的 ACTIVE attempt 保留为空战时会话检查点；后续刻度由当前 schema 单独保存"
 	)
 	battle.abort_formal_entry()
 	var restored_context := await _new_city(20, 1)
@@ -208,7 +208,7 @@ func _check_active_attempt_cold_restore() -> void:
 			and restored.food == food_after_departure
 			and StringName(restored.get_expedition_attempt().attempt_id)
 				== StringName(attempt_before_reload.attempt_id),
-		"ACTIVE 尝试重载从 tick 0 复建战场，不二次扣粮或新建 attempt"
+		"旧的空检查点按兼容路径从 tick 0 复建，不二次扣粮或新建 attempt"
 	)
 	var reloaded_battle := restored.get_formal_battle_scene() as C0BattleGraybox
 	if reloaded_battle != null:
