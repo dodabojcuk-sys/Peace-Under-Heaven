@@ -1612,6 +1612,20 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
 text = "进入战役地图"
 
+[node name="EnterWartimeDefenseButton" type="Button" parent="UI/Shell/BuildingDetailPanel/CityGateActions"]
+layout_mode = 0
+offset_top = 208.0
+offset_right = 240.0
+offset_bottom = 246.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "进入黑石守城"
+
 [node name="RemovalConfirmation" type="Control" parent="UI/Shell/BuildingDetailPanel"]
 visible = false
 layout_mode = 1

@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-11 - Durable Blackstone wartime defense source
+
+- Added `WARTIME_DEFENSE`, a V5 schema-10 durable battle source for the
+  Blackstone gate-defense mission. It freezes actual garrison formations,
+  creates no second departure-food transaction, supports the C0 facility
+  plan, and restores RESERVED/ACTIVE state through the same checkpoint owner.
+- V9 first-war saves migrate once to explicit `FIRST_WAR` source fields; new
+  snapshots validate source/mission identity rather than treating a missing
+  field as a defense request.
+
 ## 2026-09-11 - Wartime facility repair transaction
 
 - Added a formal C0 repair action for damaged or destroyed temporary

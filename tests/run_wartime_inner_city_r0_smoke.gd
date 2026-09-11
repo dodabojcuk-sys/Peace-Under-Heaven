@@ -92,11 +92,24 @@ func _run() -> void:
 	legacy.schema_version = 7
 	legacy.expedition_attempt.erase("wartime_facility_plan")
 	legacy.expedition_attempt.erase("battle_session_snapshot")
+	legacy.expedition_attempt.erase("source_id")
+	legacy.expedition_attempt.erase("mission_id")
 	var legacy_validation: Dictionary = city.validate_v5_campaign_snapshot(legacy)
 	_check(
 		bool(legacy_validation.get("valid", false))
 			and Array(Dictionary(legacy_validation.snapshot).expedition_attempt.wartime_facility_plan.facilities).is_empty(),
 		"V7 活动出征快照迁移为空战时计划，不会补发工事或资源"
+	)
+	var legacy_v9: Dictionary = snapshot.duplicate(true)
+	legacy_v9.schema_version = 9
+	legacy_v9.expedition_attempt.erase("source_id")
+	legacy_v9.expedition_attempt.erase("mission_id")
+	var legacy_v9_validation: Dictionary = city.validate_v5_campaign_snapshot(legacy_v9)
+	_check(
+		bool(legacy_v9_validation.get("valid", false))
+			and StringName(Dictionary(legacy_v9_validation.snapshot).expedition_attempt.source_id) == &"FIRST_WAR"
+			and StringName(Dictionary(legacy_v9_validation.snapshot).expedition_attempt.mission_id) == &"",
+		"V9 既有出征迁移为显式 FIRST_WAR 来源，不错误补成守城任务"
 	)
 	_check(battle.start_battle(), "确认工事后的正式 C0 仍能启动唯一战斗会话")
 	var effects := battle.coordinator.active_session.get_wartime_facility_state()

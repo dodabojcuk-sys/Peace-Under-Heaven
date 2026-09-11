@@ -8,6 +8,22 @@ theatre. It is a narrow assault preparation slice: the player may confirm
 temporary siege works after the normal expedition has reserved food and before
 the battle begins.
 
+## Blackstone gate defense source
+
+`WARTIME_DEFENSE` is a separate durable source for the Blackstone gate-defense
+scenario. It uses the existing V5 `expedition_attempt` ledger only as the
+single frozen battle transaction: the same formation snapshots, reservation,
+active-session checkpoint and result writer remain authoritative. It has a
+distinct `source_id` and fixed mission id, costs no departure food, and does
+not advance or settle the ordinary first-war pressure track. It must therefore
+not be substituted with the noticeboard's transient protection missions.
+
+The first R0 defense objective is a real `PROTECT_AND_ELIMINATE` task: two
+enemy approaches attack the saved Blackstone gate objective whenever they are
+not stopped by a frontline squad. The ordinary C0 facility plan is available
+from this source; construction and repair stay attached to the same frozen
+battle session.
+
 ## Ownership
 
 | Fact | Owner |

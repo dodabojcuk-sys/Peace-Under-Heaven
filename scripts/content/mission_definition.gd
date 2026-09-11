@@ -3,6 +3,7 @@ extends Resource
 
 
 const SOURCE_NOTICEBOARD := &"NOTICEBOARD"
+const SOURCE_WARTIME_DEFENSE := &"WARTIME_DEFENSE"
 const RETURN_CITY := &"CITY"
 const OBJECTIVE_ELIMINATE := &"ELIMINATE_ALL"
 const OBJECTIVE_PROTECT := &"PROTECT_AND_ELIMINATE"
@@ -50,7 +51,7 @@ func is_valid() -> bool:
 		or objective_text.is_empty()
 		or risk_label.is_empty()
 		or layout_id == &""
-		or source != SOURCE_NOTICEBOARD
+		or source not in [SOURCE_NOTICEBOARD, SOURCE_WARTIME_DEFENSE]
 		or return_destination != RETURN_CITY
 		or committed_count <= 0
 		or front_enemy_count < 0

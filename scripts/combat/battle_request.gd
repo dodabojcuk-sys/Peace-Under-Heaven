@@ -8,6 +8,7 @@ const PHASE_RESULT_PENDING := &"RESULT_PENDING"
 const PHASE_APPLIED := &"APPLIED"
 const PHASE_CANCELLED := &"CANCELLED"
 const SOURCE_MACRO_SIEGE := &"MACRO_SIEGE"
+const SOURCE_WARTIME_DEFENSE := &"WARTIME_DEFENSE"
 
 var transaction_id: StringName
 var level_id: StringName
@@ -81,6 +82,7 @@ func is_valid() -> bool:
 			&"FIRST_WAR",
 			MissionDefinition.SOURCE_NOTICEBOARD,
 			SOURCE_MACRO_SIEGE,
+			SOURCE_WARTIME_DEFENSE,
 		]
 		and first_clear_key != &""
 		and reward_wood >= 0
@@ -104,7 +106,10 @@ func is_noticeboard_mission() -> bool:
 	)
 
 
-static func from_expedition_attempt(attempt: Dictionary) -> BattleRequest:
+static func from_expedition_attempt(
+	attempt: Dictionary,
+	mission_definition_value: MissionDefinition = null
+) -> BattleRequest:
 	if attempt.is_empty():
 		return null
 	var committed := CommittedForceSnapshot.from_dictionary(
@@ -124,11 +129,11 @@ static func from_expedition_attempt(attempt: Dictionary) -> BattleRequest:
 		true,
 		int(attempt.get("food_cost", 0)),
 		int(attempt.get("city_defense_snapshot", 0)),
-		&"FIRST_WAR",
+		StringName(attempt.get("source_id", &"FIRST_WAR")),
 		StringName(attempt.get("first_clear_key", &"")),
 		int(attempt.get("reward_wood", 0)),
 		int(attempt.get("reward_food", 0)),
-		null,
+		mission_definition_value,
 		Dictionary(attempt.get("wartime_facility_plan", WartimeFacilityPlan.empty_snapshot()))
 	)
 	request.phase = StringName(attempt.get("phase", PHASE_RESERVED))
