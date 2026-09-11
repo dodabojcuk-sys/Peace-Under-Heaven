@@ -64,7 +64,31 @@ func _run_a(scene: Node, city: Node) -> void:
 	await process_frame
 	await process_frame
 	var battle := city.get_formal_battle_scene() as C0BattleGraybox
+	var plan_panel := battle.get_node("UI/RootPanel/WartimePlanPanel") as Panel if battle != null else null
+	var watch_button := plan_panel.get_node("WatchButton") as Button if plan_panel != null else null
+	var confirm_button := plan_panel.get_node("ConfirmButton") as Button if plan_panel != null else null
+	_require(
+		plan_panel != null and plan_panel.visible and watch_button != null and confirm_button != null,
+		"A 宏观围城冷恢复链从正式可见工事面板确认计划"
+	)
+	if watch_button != null and confirm_button != null:
+		watch_button.emit_signal("pressed")
+		await process_frame
+		confirm_button.emit_signal("pressed")
+		await process_frame
 	_require(battle != null and battle.start_battle(), "A 激活唯一战时会话")
+	if battle != null:
+		(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+		await process_frame
+		var facilities: Array = Array(
+			battle.coordinator.active_session.get_wartime_facility_state().get("facilities", [])
+		)
+		_require(
+			facilities.size() == 1
+				and StringName(Dictionary(facilities[0]).get("phase", &"")) == BattleSession.FACILITY_PHASE_CONSTRUCTING
+				and int(Dictionary(facilities[0]).get("progress_ticks", -1)) == 1,
+			"A 保存瞭望台施工中的实际战斗刻，而非完工后的替代状态"
+		)
 	var active_siege: Dictionary = city.get_macro_march_read_model().war_loop.active_siege
 	_require(
 		StringName(Dictionary(active_siege.get("wartime_handoff", {})).get("phase", &"")) == WarLoopState.WARTIME_HANDOFF_ACTIVE,
@@ -89,6 +113,21 @@ func _run_b(scene: Node, city: Node) -> void:
 	if battle == null or battle.coordinator.active_session == null:
 		return
 	var session := battle.coordinator.active_session
+	var restored_facilities: Array = Array(session.get_wartime_facility_state().get("facilities", []))
+	_require(
+		restored_facilities.size() == 1
+			and StringName(Dictionary(restored_facilities[0]).get("phase", &"")) == BattleSession.FACILITY_PHASE_CONSTRUCTING
+			and int(Dictionary(restored_facilities[0]).get("progress_ticks", -1)) == 1,
+		"B 独立进程读取施工中状态，不提前授予观察能力"
+	)
+	(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+	await process_frame
+	var completed_facilities: Array = Array(session.get_wartime_facility_state().get("facilities", []))
+	_require(
+		completed_facilities.size() == 1
+			and StringName(Dictionary(completed_facilities[0]).get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE,
+		"B 从恢复的施工进度继续完成瞭望台，不重建或重复扣费"
+	)
 	_require(session.request_forced_retreat(), "B 建立真实撤退请求")
 	battle.coordinator.advance_battle_tick()
 	for squad in session.squads:

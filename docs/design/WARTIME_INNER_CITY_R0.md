@@ -76,8 +76,10 @@ visible C0 plan controls, pre-confirm zero write, one-time resource debit,
 legacy migration, actual watch/ram/tower session effects, active-instance
 restore through the formal city entry, and rejection of tampered duplicate
 identities, malformed numeric fields and conflicting pending orders. Its scene
-rebuild exercise is **same-process** evidence only. The existing V5 cold-process
-runner proves campaign storage mechanics, but a dedicated independent-process
-active-C0 restore chain remains required before claiming that new battle-session
-facts have cross-process evidence. Existing C0, expedition-causality and V5
+rebuild exercise is **same-process** evidence only. The macro-siege A/B
+independent-process runner additionally saves a watch platform at construction
+tick 1/2 and cold-restores it to its single active completion tick, proving that
+this construction state does not become an immediately-active substitute or
+charge a second plan. It does not yet prove facility damage/repair or a complete
+defensive scenario across processes. Existing C0, expedition-causality and V5
 persistence runners remain regression gates.

@@ -13,6 +13,8 @@
 - Extended the formal macro handoff smoke with visible plan controls, one-time
   plan payment, active construction completion, request persistence, and a
   real V5 legacy pending-result restore sample.
+- Extended the independent macro A/B recovery chain to save a facility at
+  construction tick 1/2 and resume the exact remaining tick after cold start.
 
 ## 2026-09-11 - Macro siege request and HP continuity
 
