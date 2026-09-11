@@ -576,6 +576,10 @@ func begin_road_repair(engineer_id: StringName, road_id: StringName) -> Dictiona
 		"progress_milliseconds": 0,
 		"required_milliseconds": 2500,
 		"max_durability": int(road.get("max_durability", 0)),
+		# A repair may be rolled back within the same world step when its engineer
+		# is contacted before the actual completion instant. Preserve the damaged
+		# road fact so that correction does not leave a repaired bridge open.
+		"repair_initial_durability": int(road.get("durability", 0)),
 		"build_camp": false,
 		"camp_id": &"",
 		"phase": &"TRAVELING" if travel_milliseconds > 0 else &"BUILDING",
@@ -807,6 +811,12 @@ static func _has_valid_supply_state(inventory: Dictionary, transports: Dictionar
 		var route_points: Array = Array(transport.get("route_world_points", []))
 		if route_segments.is_empty() or route_points.size() < 2:
 			return false
+		for route_point in route_points:
+			# Check the concrete coordinate type before converting/comparing it. A
+			# malformed middle point must reject a snapshot, never reach Vector2()
+			# and turn an invalid save into a script error.
+			if not route_point is Vector2i:
+				return false
 		var expected_points: Array = []
 		var previous_target := &""
 		var route_tokens: Array[String] = []
@@ -825,10 +835,10 @@ static func _has_valid_supply_state(inventory: Dictionary, transports: Dictionar
 				if expected_points.back() != segment_points.front():
 					return false
 				expected_points.append_array(segment_points.slice(1))
-		# The stored display polyline can be a canonicalized copy of the physical
-		# polyline, so validate its anchored endpoints and all physical segment
-		# joins above without requiring an identical intermediate-point encoding.
-		if StringName(transport.get("route_id", &"")) != StringName("%s%s" % [PATH_PREFIX, "|".join(route_tokens)]) or StringName(transport.get("source_point_id")) != StringName(_supply_segment_endpoints(Dictionary(route_segments.front()), roads).get("source_point_id", &"")) or StringName(transport.get("target_point_id")) != previous_target or Vector2(route_points.front()) != Vector2(expected_points.front()) or Vector2(route_points.back()) != Vector2(expected_points.back()):
+		# A supply route is a durable physical promise. Rebuild its directed road
+		# polyline exactly so a manipulated middle point cannot move cargo across a
+		# river or shorten the route while preserving the endpoints.
+		if StringName(transport.get("route_id", &"")) != StringName("%s%s" % [PATH_PREFIX, "|".join(route_tokens)]) or StringName(transport.get("source_point_id")) != StringName(_supply_segment_endpoints(Dictionary(route_segments.front()), roads).get("source_point_id", &"")) or StringName(transport.get("target_point_id")) != previous_target or route_points != expected_points:
 			return false
 		if phase in [SUPPLY_WAITING_CAPACITY, SUPPLY_COMPLETED] and elapsed != total:
 			return false
@@ -1727,10 +1737,6 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 				)
 			completed.append(project_id)
 		projects_by_id[project_id] = project
-	# Construction and repairs update before convoys evaluate their remaining
-	# road segments, so a bridge completed in this same world step is usable for
-	# the unused portion of that step without creating a second clock.
-	supply_ready_to_unload = _advance_supply_transports(delta_milliseconds, repaired_road_open_offsets)
 	for patrol_id_value in patrols_by_id.keys():
 		var patrol_id := StringName(patrol_id_value)
 		var patrol := Dictionary(patrols_by_id[patrol_id])
@@ -1851,6 +1857,19 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 							if contact_progress < int(interrupted_project.get("progress_milliseconds", 0)):
 								interrupted_project.progress_milliseconds = contact_progress
 								_remove_project_roads_opened_after(project_id, interrupted_project, contact_progress, opened_road_ids)
+								if StringName(interrupted_project.get("project_kind", &"")) == &"REPAIR":
+									var repaired_road_id := StringName(interrupted_project.get("road_id", &""))
+									var reverted_road := Dictionary(roads_by_id.get(repaired_road_id, {}))
+									if not reverted_road.is_empty():
+										reverted_road.state = ROAD_DAMAGED
+										# Older repair projects predate the within-step correction field. Their
+										# stored road is still the damaged authoritative fact, so retain that
+										# value rather than manufacturing a zero-durability bridge on restore.
+										reverted_road.durability = int(interrupted_project.get(
+											"repair_initial_durability", reverted_road.get("durability", 0)
+										))
+										roads_by_id[repaired_road_id] = reverted_road
+									repaired_road_open_offsets.erase(repaired_road_id)
 								completed.erase(project_id)
 						if StringName(interrupted_project.get("phase", &"")) in [&"TRAVELING", &"BUILDING", &"COMPLETE"] and int(interrupted_project.get("progress_milliseconds", 0)) < int(interrupted_project.get("required_milliseconds", 0)):
 							interrupted_project.phase = &"INTERRUPTED"
@@ -1858,6 +1877,10 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 							projects_by_id[project_id] = interrupted_project
 					specialists_by_id[specialist_id] = specialist
 				engagements.append({"patrol_id": patrol_id, "specialist_id": specialist_id, "guard_army_ids": guard_army_ids, "point_id": patrol.current_point_id, "world_position": Vector2i(_timed_trace_position_at(patrol_traces, contact_milliseconds)), "contact_milliseconds": contact_milliseconds})
+	# Repair completion is provisional until the time-aware specialist contacts
+	# above are resolved. Only then may a convoy consume the post-repair remainder
+	# of this world step; an interrupted repair leaves its damaged road unavailable.
+	supply_ready_to_unload = _advance_supply_transports(delta_milliseconds, repaired_road_open_offsets)
 	_refresh_intel()
 	return {"success": true, "completed_project_ids": completed, "opened_road_ids": opened_road_ids, "engagements": engagements, "patrol_movements": patrol_movements, "ready_supply_transport_ids": supply_ready_to_unload, "world_milliseconds": world_milliseconds, "delta_milliseconds": delta_milliseconds}
 

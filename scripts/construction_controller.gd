@@ -6080,12 +6080,6 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		_war_loop_state.restore_snapshot(war_before)
 		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 		return _macro_failure(&"SUPPLY_SETTLEMENT_FAILED", str(supply_settlement.get("error", "粮草入库未能提交")))
-	if _field_supply_fault_for_test == &"AFTER_CREDIT_SIEGE_SYNC":
-		_field_supply_fault_for_test = &""
-		_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
-		_war_loop_state.restore_snapshot(war_before)
-		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
-		return _macro_failure(&"SIEGE_ARMY_SYNC_FAILED", "测试注入：粮草入库后的攻城同步失败")
 	var supply_checkpoint_required := _war_loop_state.field_tactics.consume_supply_checkpoint_required()
 	var resumed_armies := _resume_macro_marches_on_repaired_roads()
 	var field_checkpoint_required := (
@@ -6117,9 +6111,16 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 					_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 					return result
 				break
-			var army := _army_registry.replace_macro_composition(
-				StringName(result.army_id), StringName(result.order_id), surviving_count
-			)
+			# The fault seam makes the existing production composition-sync failure
+			# branch observable after a supply credit.  It deliberately returns an
+			# empty registry result instead of adding a parallel test-only rollback.
+			var army: Dictionary = {}
+			if _field_supply_fault_for_test == &"SIEGE_ARMY_REPLACE_FAIL":
+				_field_supply_fault_for_test = &""
+			else:
+				army = _army_registry.replace_macro_composition(
+					StringName(result.army_id), StringName(result.order_id), surviving_count
+				)
 			if army.is_empty():
 				_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
 				_war_loop_state.restore_snapshot(war_before)

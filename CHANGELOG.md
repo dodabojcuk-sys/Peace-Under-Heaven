@@ -2,6 +2,15 @@
 
 ## 2026-09-11
 
+- Closed the remaining Silverford supply R0 correctness boundaries. Repair
+  completion is now provisional until timed specialist/patrol contact is
+  resolved, preventing a killed engineer from opening a road or moving cargo
+  in the same step. Persisted transport validation rebuilds and compares the
+  entire directed-road polyline after concrete point-type checks. Capacity
+  waiting now has isolated V5 generation-sequence proof rather than a consumed
+  in-memory marker. The post-credit siege test reaches the existing army-sync
+  rollback path; it no longer uses a test-only rollback branch.
+
 - Closed the Silverford supply R0 correctness follow-up. Capacity-full convoys
   now checkpoint only on their first durable wait transition, avoiding a new
   save generation on every unchanged frame. A repair completed inside a world

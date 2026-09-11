@@ -55,6 +55,39 @@ func _run() -> void:
 			var duplicate_credit: bool = int(city.food) != food_before
 			print("SUPPLY_RESTORED_DONE phase=%s deposited=%s food=%d duplicate_credit=%s" % [transport.get("phase", &""), transport.get("deposited", false), city.food, duplicate_credit])
 			passed = bool(transport.get("deposited", false)) and city.food == 100 and not duplicate_credit
+		"D":
+			# This is intentionally a separate, real isolated V5 store rather than
+			# the Field's one-shot checkpoint-consumed flag.  The coordinator's
+			# generation sequence proves a warehouse wait does not publish per frame.
+			var silverford := Dictionary(city._war_loop_state.cities_by_id.get(&"silverford_city", {}))
+			silverford.military_controller_faction_id = &"player"
+			city._war_loop_state.cities_by_id[&"silverford_city"] = silverford
+			city.food = city.get_resource_capacity(&"food")
+			var initial_status: Dictionary = scene.get_runtime_persistence_status()
+			var started: Dictionary = city.begin_field_supply_transport(&"silverford_city")
+			var transport := _transport(city)
+			city.advance_war_loop_time(int(transport.get("total_milliseconds", 0)))
+			transport = _transport(city)
+			var wait_status: Dictionary = scene.get_runtime_persistence_status()
+			for _frame in range(12):
+				city.advance_war_loop_time(137)
+			var stable_status: Dictionary = scene.get_runtime_persistence_status()
+			city.food = city.get_resource_capacity(&"food") - int(transport.get("amount", 0))
+			city.advance_war_loop_time(1)
+			transport = _transport(city)
+			var settled_status: Dictionary = scene.get_runtime_persistence_status()
+			print("SUPPLY_CAPACITY_WAIT initial_sequence=%d wait_sequence=%d stable_sequence=%d settled_sequence=%d deposited=%s" % [
+				int(initial_status.get("save_sequence", -1)), int(wait_status.get("save_sequence", -1)),
+				int(stable_status.get("save_sequence", -1)), int(settled_status.get("save_sequence", -1)),
+				transport.get("deposited", false),
+			])
+			passed = bool(started.get("success", false)) \
+				and StringName(transport.get("phase", &"")) == FieldTacticsState.SUPPLY_COMPLETED \
+				and bool(transport.get("deposited", false)) \
+				and not str(wait_status.get("save_directory", "")).is_empty() \
+				and int(wait_status.get("save_sequence", 0)) > int(initial_status.get("save_sequence", 0)) \
+				and int(stable_status.get("save_sequence", 0)) == int(wait_status.get("save_sequence", 0)) \
+				and int(settled_status.get("save_sequence", 0)) > int(stable_status.get("save_sequence", 0))
 	print("FIELD_SUPPLY_R0_WORKER_%s %s pid=%d" % [mode, "PASS" if passed else "FAIL", OS.get_process_id()])
 	_write_result_marker(save_directory, mode, passed)
 	scene.queue_free()

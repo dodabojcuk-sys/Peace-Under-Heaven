@@ -16,11 +16,12 @@ func _run() -> void:
 	var a := _run_worker("A", save_directory)
 	var b := _run_worker("B", save_directory)
 	var c := _run_worker("C", save_directory)
+	var d := _run_worker("D", save_directory.path_join("capacity_wait"))
 	# Keep child output visible: a green exit code alone must not hide a missing
 	# phase assertion or an early worker return.
-	for worker in [a, b, c]:
+	for worker in [a, b, c, d]:
 		print("FIELD_SUPPLY_R0_WORKER_%s_OUTPUT\n%s" % [worker.mode, worker.output])
-	_check(_workers_passed([a, b, c]), "三个独立进程覆盖运输前、在途、入库后恢复")
+	_check(_workers_passed([a, b, c, d]), "独立进程覆盖运输前、在途、入库后恢复及仓满等待真实存档")
 	_check(
 		str(a.output).contains("SUPPLY_PRE=20")
 			and str(a.output).contains("SUPPLY_MID phase=MOVING")
@@ -29,6 +30,11 @@ func _run() -> void:
 			and str(c.output).contains("SUPPLY_RESTORED_DONE")
 			and str(c.output).contains("duplicate_credit=false"),
 		"跨进程恢复核对库存、在途进度、一次性入库和完成态不重记"
+	)
+	_check(
+		str(d.output).contains("SUPPLY_CAPACITY_WAIT")
+			and str(d.output).contains("deposited=true"),
+		"仓满等待使用真实隔离 V5 保存代次：稳定等待不新增代次，腾出容量后才发布入库代次"
 	)
 	_remove_tree(save_directory)
 	if failures.is_empty():

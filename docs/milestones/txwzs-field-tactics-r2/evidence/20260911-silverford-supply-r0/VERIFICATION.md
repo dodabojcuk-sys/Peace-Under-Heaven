@@ -47,8 +47,8 @@ Godot binary:
 | Check | Result |
 | --- | --- |
 | Editor import / parse | PASS: Godot 4.5.1 editor run completed without script parse errors. |
-| `tests/run_field_supply_r0_smoke.gd` | PASS, 10 assertions: departure/delivery idempotence, no-route atomicity, warehouse-full waiting without repeated checkpoints, damage/resume, strict Field restore, legacy no-seed behavior, real-repair same-step timing at large/30/60/irregular steps, and two post-credit rollback injections. |
-| `tests/run_field_supply_r0_persistence_smoke.gd` | PASS: isolated A/B/C Godot processes print and assert `SUPPLY_PRE=20`, `SUPPLY_RESTORED_MID`, one `SUPPLY_DELIVERED deposited=true food=100`, then `SUPPLY_RESTORED_DONE ... duplicate_credit=false`. |
+| `tests/run_field_supply_r0_smoke.gd` | PASS, 11 assertions: departure/delivery idempotence, no-route atomicity, warehouse-full waiting, damage/resume, strict Field restore, legacy no-seed behavior, real-repair timing at large/30/60/irregular steps, an existing siege-sync rollback, checkpoint-save rollback, and repair-engineer patrol contact before road opening. |
+| `tests/run_field_supply_r0_persistence_smoke.gd` | PASS: isolated A/B/C processes retain the before/transit/completed chain; isolated D prints `SUPPLY_CAPACITY_WAIT initial_sequence=1 wait_sequence=3 stable_sequence=3 settled_sequence=4 deposited=true`, proving unchanged capacity waiting does not write more V5 generations and release of capacity publishes the one delivery generation. |
 | `tests/run_field_supply_r0_graphical_smoke.gd` | PASS, 3 assertions in a Metal graphical process: map GUI press/release opens Silverford's factual detail; the visible enabled button's connected action creates exactly one moving transport with no early NationState credit; completed durable state reads `本批 20 粮已入库`. |
 | `tests/run_macro_march_r0_smoke.gd` | PASS, 35 assertions. |
 | `tests/run_field_tactics_r2_smoke.gd` | PASS, 72 assertions. |
@@ -69,22 +69,33 @@ system-mouse or player-feel evidence.
 
 `mark_supply_transport_waiting_capacity()` now requests a critical checkpoint
 only when the convoy first enters the durable capacity-wait phase; unchanged
-render/world frames do not publish new save generations. It still retries once
+render/world frames do not publish new save generations. This is now proved by
+an isolated V5 store's real `save_sequence`, not only by consuming the Field
+flag: 12 subsequent world advances retain the wait generation, while freeing
+capacity publishes the completed-delivery generation. It still retries once
 capacity changes. Repairs completed inside one world step carry their actual
 completion offset into convoy advancement, so cargo uses only the post-repair
 remainder. The R0 timing fixture uses a genuine `REPAIR` project (not a direct
 road-state mutation) and compares a large step with 30 FPS, 60 FPS and
 irregular splits.
 
-Transport snapshot validation now checks field types before conversion,
-sequence identity/range, directed-road continuity and endpoints, phase versus
+Transport snapshot validation now checks every coordinate's concrete type
+before conversion, then rebuilds the complete world polyline from its directed
+road IDs. Sequence identity/range, directed-road continuity, phase versus
 elapsed/deposited consistency, and the R0 Silverford inventory-plus-cargo
-conservation bound. Invalid data is rejected before Field state changes.
-Two test-only controller fault seams verify that an injected failure after a
-successful NationState credit, and an injected critical-checkpoint failure,
-both restore the complete pre-step authority snapshot; retrying the former
-credits exactly 20 once. These seams are non-persistent and have no production
-caller.
+conservation bound are also strict. Invalid middle point type or geometry is
+rejected before Field state changes; compatible old snapshots remain valid.
+
+Repair opening is provisional until the real, timed patrol/specialist contact
+pass finishes. If the engineer is contacted before completion, its project is
+interrupted, the pre-repair damaged road/durability is restored, and the convoy
+does not consume that step's temporary opening. The same outcome is asserted
+for one 3500 ms advance and irregular split advances. The post-credit siege
+fault now makes the actual `replace_macro_composition()` result empty, so the
+existing `SIEGE_ARMY_SYNC_FAILED` rollback branch restores the complete
+pre-step authority snapshot; it is no longer a parallel test-only rollback.
+The existing critical-checkpoint failure path is covered separately. These
+non-persistent test seams have no production caller.
 
 The completed-state graphical capture is
 `../20260911-silverford-supply-r0-correctness/field-supply-03-completed-engine-gui.png`.

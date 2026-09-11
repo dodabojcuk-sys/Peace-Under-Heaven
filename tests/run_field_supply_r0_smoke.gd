@@ -21,6 +21,7 @@ func _run() -> void:
 	await _check_strict_supply_snapshot_rejection()
 	await _check_capacity_checkpoint_and_repair_time_boundary()
 	await _check_supply_delivery_failure_rollback()
+	await _check_repair_contact_precedes_supply_opening()
 	if failures.is_empty():
 		print("FIELD_SUPPLY_R0_SMOKE PASS assertions=%d" % assertions)
 		quit(0)
@@ -52,6 +53,39 @@ func _first_transport(field: Dictionary) -> Dictionary:
 	var ids: Array = Dictionary(field.get("supply_transports_by_id", {})).keys()
 	ids.sort()
 	return Dictionary(Dictionary(field.get("supply_transports_by_id", {})).get(ids.front(), {})) if not ids.is_empty() else {}
+
+
+func _start_real_siege_for_supply_failure(city: Node) -> Dictionary:
+	# Build the same ArmyRegistry + WarLoop siege state used by normal arrival,
+	# then let the regular world-time loop hit its existing composition-sync
+	# failure branch after the supply credit.  This fixture does not invent a
+	# second settlement rollback path.
+	var field: FieldTacticsState = city._war_loop_state.field_tactics
+	field.patrols_by_id.clear()
+	var roster: Array = city.get_formation_roster()
+	if roster.is_empty():
+		return {}
+	var route: Dictionary = city.plan_field_path(&"blackstone_city", &"redcliff_city")
+	if not bool(route.get("valid", false)):
+		return {}
+	var issued: Dictionary = city.commit_macro_march_from_city(
+		[StringName(Dictionary(roster.front()).get("formation_id", &""))],
+		&"redcliff_city", StringName(route.get("route_id", &"")), Array(route.get("points", []))
+	)
+	var army: Dictionary = Dictionary(issued.get("army", {}))
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	if army.is_empty() or macro.is_empty():
+		return {}
+	var advanced: Dictionary = city.advance_macro_march_time(
+		StringName(army.get("army_id", &"")), StringName(macro.get("order_id", &"")), 0,
+		int(macro.get("total_millis", 0))
+	)
+	var active_sieges: Array = city._war_loop_state.get_active_sieges()
+	return {
+		"issued": issued,
+		"advanced": advanced,
+		"siege": Dictionary(active_sieges.front()) if not active_sieges.is_empty() else {},
+	}
 
 
 func _check_departure_arrival_and_once_only_credit() -> void:
@@ -222,6 +256,14 @@ func _check_strict_supply_snapshot_rejection() -> void:
 	Dictionary(invalid_completed.supply_transports_by_id[transport_id]).phase = FieldTacticsState.SUPPLY_COMPLETED
 	var duplicate_payload := valid_snapshot.duplicate(true)
 	Dictionary(duplicate_payload.supply_inventory_by_point_id)[&"silverford_city"] = 20
+	var invalid_middle_type := valid_snapshot.duplicate(true)
+	var invalid_middle_points: Array = Array(Dictionary(invalid_middle_type.supply_transports_by_id[transport_id]).get("route_world_points", [])).duplicate(true)
+	invalid_middle_points[1] = "not-a-world-point"
+	Dictionary(invalid_middle_type.supply_transports_by_id[transport_id]).route_world_points = invalid_middle_points
+	var invalid_middle_geometry := valid_snapshot.duplicate(true)
+	var shifted_middle_points: Array = Array(Dictionary(invalid_middle_geometry.supply_transports_by_id[transport_id]).get("route_world_points", [])).duplicate(true)
+	shifted_middle_points[1] = Vector2i(shifted_middle_points[1]) + Vector2i(31, -17)
+	Dictionary(invalid_middle_geometry.supply_transports_by_id[transport_id]).route_world_points = shifted_middle_points
 	_check(
 		bool(issued.get("success", false))
 			and not state.restore_snapshot(invalid_type)
@@ -229,8 +271,10 @@ func _check_strict_supply_snapshot_rejection() -> void:
 			and not state.restore_snapshot(invalid_route)
 			and not state.restore_snapshot(invalid_completed)
 			and not state.restore_snapshot(duplicate_payload)
+			and not state.restore_snapshot(invalid_middle_type)
+			and not state.restore_snapshot(invalid_middle_geometry)
 			and state.get_snapshot() == current_before,
-		"补给快照在类型、序号、断路、完成态或库存货物重复时拒绝恢复且不污染当前状态"
+		"补给快照在类型、序号、断路、完成态、库存货物重复或中间折线篡改时拒绝恢复且不污染当前状态"
 	)
 	scene.queue_free()
 	await process_frame
@@ -327,23 +371,25 @@ func _check_supply_delivery_failure_rollback() -> void:
 	var fixture := await _new_city()
 	var scene: Node = fixture.scene
 	var city: Node = fixture.city
+	var siege_setup := _start_real_siege_for_supply_failure(city)
 	var issued: Dictionary = city.begin_field_supply_transport(&"silverford_city")
 	var transport := _first_transport(_field(city))
 	var before: Dictionary = city.export_v5_campaign_snapshot()
 	var food_before := int(city.food)
-	city.set_field_supply_fault_for_test(&"AFTER_CREDIT_SIEGE_SYNC")
+	city.set_field_supply_fault_for_test(&"SIEGE_ARMY_REPLACE_FAIL")
 	var injected: Dictionary = city.advance_war_loop_time(int(transport.get("total_milliseconds", 0)))
 	var after_credit_failure: Dictionary = city.export_v5_campaign_snapshot()
 	var retry: Dictionary = city.advance_war_loop_time(int(transport.get("total_milliseconds", 0)))
 	var delivered := _first_transport(_field(city))
 	_check(
-		bool(issued.get("success", false))
+		not Dictionary(siege_setup.get("siege", {})).is_empty()
+			and bool(issued.get("success", false))
 			and StringName(injected.get("error_id", &"")) == &"SIEGE_ARMY_SYNC_FAILED"
 			and city.food == food_before + 20
 			and before == after_credit_failure
 			and bool(delivered.get("deposited", false))
-			and int(retry.get("world_milliseconds", 0)) > 0,
-		"入库成功后的攻城同步失败会完整回滚；恢复正常后重试只入库一次"
+			and bool(retry.get("success", false)),
+		"入库后的真实攻城编队同步失败走既有回滚分支；恢复正常后重试只入库一次"
 	)
 	scene.queue_free()
 	await process_frame
@@ -363,6 +409,68 @@ func _check_supply_delivery_failure_rollback() -> void:
 			and city.food == food_before
 			and city.export_v5_campaign_snapshot() == before,
 		"关键保存失败会回滚已入库粮草和运输完成态，不留下半笔事务"
+	)
+	scene.queue_free()
+	await process_frame
+
+
+func _check_repair_contact_precedes_supply_opening() -> void:
+	var fixture := await _new_city()
+	var scene: Node = fixture.scene
+	var city: Node = fixture.city
+	var field: FieldTacticsState = city._war_loop_state.field_tactics
+	var issued: Dictionary = city.begin_field_supply_transport(&"silverford_city")
+	var transport := _first_transport(_field(city))
+	var route_segments: Array = Array(transport.get("route_segments", []))
+	var repair_road_id := StringName(Dictionary(route_segments.back()).get("road_id", &""))
+	var damaged_road := Dictionary(field.roads_by_id.get(repair_road_id, {}))
+	damaged_road.state = FieldTacticsState.ROAD_DAMAGED
+	damaged_road.road_kind = FieldTacticsState.ROAD_NORMAL
+	field.roads_by_id[repair_road_id] = damaged_road
+	var engineer := field.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"blackstone_city")
+	var engineer_id := StringName(engineer.get("specialist_id", &""))
+	var repair := field.begin_road_repair(engineer_id, repair_road_id)
+	# This patrol is already within timed-contact range at the repair point. It
+	# exercises Field's real patrol/specialist contact before any repair work is
+	# consumed, making the event-order invariant exact for large and split steps.
+	field.patrols_by_id[&"patrol.supply.repair_contact"] = {
+		"patrol_id": &"patrol.supply.repair_contact",
+		"strength": 1,
+		"world_position": Vector2i(160, 650),
+		"current_point_id": &"blackstone_city",
+		"route_point_ids": [&"blackstone_city", &"northwatch_garrison"],
+		"target_route_index": 0,
+		"wait_remaining_milliseconds": 3500,
+		"move_total_milliseconds": 2500,
+		"move_elapsed_milliseconds": 0,
+		"move_start_position": Vector2i(160, 650),
+		"move_route_world_points": [Vector2i(160, 650), Vector2i(135, 650)],
+	}
+	var start_snapshot := field.get_snapshot()
+	var one_step := FieldTacticsState.new()
+	var split_step := FieldTacticsState.new()
+	one_step.restore_snapshot(start_snapshot)
+	split_step.restore_snapshot(start_snapshot)
+	var one_result := one_step.advance_world(3500)
+	_advance_field_in_steps(split_step, 3500, [17, 33, 11, 29])
+	var one_project := Dictionary(one_step.projects_by_id.get(StringName(repair.get("project_id", &"")), {}))
+	var split_project := Dictionary(split_step.projects_by_id.get(StringName(repair.get("project_id", &"")), {}))
+	var one_road := Dictionary(one_step.roads_by_id.get(repair_road_id, {}))
+	var split_road := Dictionary(split_step.roads_by_id.get(repair_road_id, {}))
+	var one_transport := Dictionary(one_step.supply_transports_by_id.get(StringName(transport.get("transport_id", &"")), {}))
+	var split_transport := Dictionary(split_step.supply_transports_by_id.get(StringName(transport.get("transport_id", &"")), {}))
+	_check(
+		bool(issued.get("success", false)) and not repair.is_empty()
+			and not bool(Dictionary(one_step.specialists_by_id.get(engineer_id, {})).get("alive", true))
+			and StringName(one_project.get("phase", &"")) == &"INTERRUPTED"
+			and int(one_project.get("progress_milliseconds", 9999)) < int(one_project.get("required_milliseconds", 0))
+			and StringName(one_road.get("state", &"")) == FieldTacticsState.ROAD_DAMAGED
+			and int(one_road.get("durability", -1)) == int(damaged_road.get("durability", -2))
+			and int(one_transport.get("elapsed_milliseconds", -1)) == 0
+			and StringName(one_transport.get("phase", &"")) == FieldTacticsState.SUPPLY_WAITING_ROUTE
+			and Array(one_result.get("ready_supply_transport_ids", [])).is_empty()
+			and one_project == split_project and one_road == split_road and one_transport == split_transport,
+		"工程师在维修完成前遭遇巡逻时中断工程、保持道路受损且运输不提前通车或入库；大步与拆帧一致"
 	)
 	scene.queue_free()
 	await process_frame
