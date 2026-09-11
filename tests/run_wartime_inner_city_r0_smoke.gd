@@ -185,6 +185,29 @@ func _run() -> void:
 			and int(barricade_record.get("durability", 0)) < int(barricade_record.get("max_durability", 0)),
 		"敌军同一刻的未抵消伤害写入拒马耐久与受损状态，而非丢失为表现事件"
 	)
+	var damaged_effects := session.get_wartime_facility_state()
+	var damaged_incoming_basis_points := int(
+		damaged_effects.get("barricade_incoming_damage_basis_points", BattleSession.BASIS_POINTS)
+	)
+	var hp_before_damaged_barricade := int(session.squads[0].total_hp)
+	var enemy_members_before_damaged_barricade := session._alive_members(
+		int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).enemy_total_hp)
+	)
+	var raw_damage_before_damaged_barricade := session._calculate_enemy_damage(
+		enemy_members_before_damaged_barricade,
+		BattleSession.BASIS_POINTS
+	)
+	battle.step_battle_for_test(4)
+	_check(
+		damaged_incoming_basis_points > BattleSession.BARRICADE_INCOMING_DAMAGE_BASIS_POINTS
+			and damaged_incoming_basis_points < BattleSession.BASIS_POINTS
+			and int(session.squads[0].total_hp)
+				== hp_before_damaged_barricade - session._positive_integer_divide(
+					raw_damage_before_damaged_barricade * damaged_incoming_basis_points,
+					BattleSession.BASIS_POINTS
+				),
+		"受损拒马从保存耐久投影较弱的真实减伤，而非继续提供完好拒马的固定保护"
+	)
 	var wood_before_repair := int(city.get("wood"))
 	battle._refresh_battle_ui()
 	_check(

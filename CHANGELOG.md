@@ -30,6 +30,10 @@
 - The C0 repair action now targets the damaged facility on the selected
   squad's route and names both the facility and route in its label. It no
   longer silently repairs the first damaged record in the session.
+- A damaged barricade now derives its actual incoming-damage reduction from
+  its persisted remaining durability. The same deterministic projection is
+  used for squad damage, protected-gate damage, and the UI-facing facility
+  state, so a damaged record no longer claims full intact protection.
 
 ## 2026-09-12 - Formal Blackstone defense deployment
 

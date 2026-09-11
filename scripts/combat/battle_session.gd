@@ -214,10 +214,22 @@ func get_wartime_facility_state() -> Dictionary:
 	var projection := wartime_facility_state.duplicate(true)
 	for record_value in Array(wartime_facility_state.get("facilities", [])):
 		var record: Dictionary = Dictionary(record_value)
-		if StringName(record.get("phase", &"")) != FACILITY_PHASE_ACTIVE:
-			continue
+		var phase := StringName(record.get("phase", &""))
 		var kind := StringName(record.get("kind", &""))
 		var route_id := StringName(record.get("route_id", &""))
+		## A damaged barricade remains a route fact because its surviving
+		## durability still mitigates a proportional share of the next hit.
+		## Other facilities only project their effects once fully active.
+		if kind == WartimeFacilityPlan.KIND_BARRICADE:
+			if phase not in [FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED]:
+				continue
+			projection["barricade_route_id"] = route_id
+			projection["barricade_incoming_damage_basis_points"] = (
+				_get_barricade_incoming_damage_basis_points(record)
+			)
+			continue
+		if phase != FACILITY_PHASE_ACTIVE:
+			continue
 		if kind == WartimeFacilityPlan.KIND_WATCH_PLATFORM:
 			projection["enemy_observation_ready"] = true
 			projection["watch_route_id"] = route_id
@@ -227,9 +239,6 @@ func get_wartime_facility_state() -> Dictionary:
 			projection["arrow_tower_route_id"] = route_id
 			projection["arrow_tower_damage_per_volley"] = ARROW_TOWER_DAMAGE_PER_VOLLEY
 			projection["arrow_tower_attack_interval_ticks"] = ARROW_TOWER_ATTACK_INTERVAL_TICKS
-		elif kind == WartimeFacilityPlan.KIND_BARRICADE:
-			projection["barricade_route_id"] = route_id
-			projection["barricade_incoming_damage_basis_points"] = BARRICADE_INCOMING_DAMAGE_BASIS_POINTS
 	return projection
 
 
@@ -957,8 +966,27 @@ func _get_wartime_facility_incoming_damage_basis_points(route_id: StringName) ->
 			and StringName(record.get("phase", &"")) in [FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED]
 			and StringName(record.get("route_id", &"")) == route_id
 		):
-			return BARRICADE_INCOMING_DAMAGE_BASIS_POINTS
+			return _get_barricade_incoming_damage_basis_points(record)
 	return BASIS_POINTS
+
+
+## A complete barricade passes 65% of ordinary route damage. Once damaged,
+## remaining durability deterministically reduces the amount it can absorb:
+## at zero it protects nothing, without introducing a second HP or casualty
+## authority. Integer math keeps the result stable across snapshots and ticks.
+func _get_barricade_incoming_damage_basis_points(record: Dictionary) -> int:
+	if StringName(record.get("phase", &"")) == FACILITY_PHASE_ACTIVE:
+		return BARRICADE_INCOMING_DAMAGE_BASIS_POINTS
+	var max_durability := maxi(int(record.get("max_durability", 0)), 1)
+	var durability := clampi(int(record.get("durability", 0)), 0, max_durability)
+	var maximum_absorbed_basis_points := (
+		BASIS_POINTS - BARRICADE_INCOMING_DAMAGE_BASIS_POINTS
+	)
+	var absorbed_basis_points := _positive_integer_divide(
+		maximum_absorbed_basis_points * durability,
+		max_durability
+	)
+	return clampi(BASIS_POINTS - absorbed_basis_points, BARRICADE_INCOMING_DAMAGE_BASIS_POINTS, BASIS_POINTS)
 
 
 func _get_active_barricade_id(route_id: StringName) -> StringName:
@@ -1211,7 +1239,7 @@ func _apply_mission_objective_damage() -> void:
 			var barricade_id := _get_active_barricade_id(route_id)
 			if barricade_id != &"":
 				var passed_damage := _positive_integer_divide(
-					raw_damage * BARRICADE_INCOMING_DAMAGE_BASIS_POINTS,
+					raw_damage * _get_wartime_facility_incoming_damage_basis_points(route_id),
 					BASIS_POINTS
 				)
 				damage += passed_damage

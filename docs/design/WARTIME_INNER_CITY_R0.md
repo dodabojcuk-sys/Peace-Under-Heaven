@@ -105,11 +105,13 @@ positive durability is not retained as a second result.
 
 The barricade uses the same single route-damage intent: after it is actually
 complete, the selected route's enemy hit is multiplied by 6500 basis points
-before the existing squad-HP writer applies it. In the protection objective,
-that same split is applied to the saved gate target: the barricade absorbs the
-remainder into its own durability and the gate receives only the passed
-damage. It does not hide or rewrite casualties, introduce a second combat
-loop, or affect another route.
+before the existing squad-HP writer applies it. A damaged barricade retains a
+durability-proportional share of that reduction: at full recorded durability it
+passes 6500 basis points, and as durability reaches zero it passes 10000.
+In the protection objective, that same split is applied to the saved gate
+target: the barricade absorbs the remainder into its own durability and the
+gate receives only the passed damage. It does not hide or rewrite casualties,
+introduce a second combat loop, or affect another route.
 
 When a facility is damaged or destroyed, the active C0 panel exposes the next
 eligible facility on the currently selected squad's route and its repair cost.
@@ -172,7 +174,8 @@ and verifies the settled reload. This proves neither construction nor repair
 becomes an immediately-active substitute, a result does not replay after
 restart, and a second plan is not charged. The focused
 C0 smoke additionally asserts one authority resource debit, duplicate-click
-idempotence, completion and active-session restoration. These are still
+idempotence, completion, damaged-barricade attenuation, and active-session
+restoration. These are still
 assault-side lifecycle checks, not a complete defensive scenario. Existing C0,
 expedition-causality and V5 persistence runners remain regression gates.
 
