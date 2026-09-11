@@ -744,11 +744,12 @@ static func _has_valid_wartime_handoff(handoff: Dictionary) -> bool:
 		"result_authority_snapshot",
 	]):
 		return false
-	return (
+	var phase := StringName(handoff.get("phase", &""))
+	if not (
 		typeof(handoff.get("transaction_id", null)) == TYPE_STRING_NAME
 		and StringName(handoff.get("transaction_id", &"")) != &""
 		and typeof(handoff.get("phase", null)) == TYPE_STRING_NAME
-		and StringName(handoff.get("phase", &"")) in [
+		and phase in [
 			WARTIME_HANDOFF_RESERVED,
 			WARTIME_HANDOFF_ACTIVE,
 			WARTIME_HANDOFF_RESULT_PENDING,
@@ -756,6 +757,18 @@ static func _has_valid_wartime_handoff(handoff: Dictionary) -> bool:
 		and typeof(handoff.get("result_id", null)) == TYPE_STRING_NAME
 		and typeof(handoff.get("battle_session_snapshot", null)) == TYPE_DICTIONARY
 		and typeof(handoff.get("result_authority_snapshot", null)) == TYPE_DICTIONARY
+	):
+		return false
+	var result_snapshot: Dictionary = Dictionary(handoff.result_authority_snapshot)
+	if phase != WARTIME_HANDOFF_RESULT_PENDING:
+		return result_snapshot.is_empty()
+	if result_snapshot.is_empty():
+		return false
+	var result := BattleResult.from_authority_snapshot(result_snapshot)
+	return (
+		result.is_consistent()
+		and result.transaction_id == StringName(handoff.transaction_id)
+		and result.session_id == StringName("%s-session" % handoff.transaction_id)
 	)
 
 
