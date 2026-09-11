@@ -56,6 +56,9 @@ const DEBUG_PLAYER_COUNT := 50
 @onready var wartime_ram_button: Button = (
 	$UI/RootPanel/WartimePlanPanel/RamButton
 )
+@onready var wartime_arrow_tower_button: Button = (
+	$UI/RootPanel/WartimePlanPanel/ArrowTowerButton
+)
 @onready var wartime_plan_confirm_button: Button = (
 	$UI/RootPanel/WartimePlanPanel/ConfirmButton
 )
@@ -156,6 +159,9 @@ func _ready() -> void:
 	)
 	wartime_ram_button.pressed.connect(
 		_toggle_wartime_facility.bind(WartimeFacilityPlan.KIND_SIEGE_RAM)
+	)
+	wartime_arrow_tower_button.pressed.connect(
+		_toggle_wartime_facility.bind(WartimeFacilityPlan.KIND_ARROW_TOWER)
 	)
 	wartime_plan_confirm_button.pressed.connect(_confirm_wartime_facility_plan)
 	exit_button.pressed.connect(request_exit_or_return)
@@ -288,6 +294,10 @@ func start_battle(apply_deployment_plan := false) -> bool:
 		_append_recent_action("正门集中部署已同步推进，命令将在下一战斗刻生效")
 	else:
 		_append_recent_action("战斗开始，小队命令将在下一战斗刻生效")
+	if WartimeFacilityPlan.has_kind(
+		request.wartime_facility_plan, WartimeFacilityPlan.KIND_ARROW_TOWER
+	):
+		_append_recent_action("箭塔已就位：每 1 秒对正门敌军齐射 24 点伤害")
 	tick_timer.start()
 	_refresh_battle_ui()
 	return true
@@ -917,7 +927,7 @@ func _refresh_wartime_plan_ui() -> void:
 		and request.phase == BattleRequest.PHASE_RESERVED
 	)
 	wartime_plan_panel.visible = can_edit
-	battlefield_panel.offset_bottom = -300.0 if can_edit else -202.0
+	battlefield_panel.offset_bottom = -344.0 if can_edit else -202.0
 	if not can_edit:
 		return
 	var saved_plan: Dictionary = request.wartime_facility_plan
@@ -931,14 +941,21 @@ func _refresh_wartime_plan_ui() -> void:
 	var has_ram := WartimeFacilityPlan.has_kind(
 		pending_plan, WartimeFacilityPlan.KIND_SIEGE_RAM
 	)
+	var has_arrow_tower := WartimeFacilityPlan.has_kind(
+		pending_plan, WartimeFacilityPlan.KIND_ARROW_TOWER
+	)
 	wartime_watch_button.text = (
 		"瞭望台 · 已选" if has_watch else "瞭望台 · 木材 6"
 	)
 	wartime_ram_button.text = (
 		"攻城槌 · 已选" if has_ram else "攻城槌 · 木材 8"
 	)
+	wartime_arrow_tower_button.text = (
+		"箭塔 · 已选" if has_arrow_tower else "箭塔 · 木材 10"
+	)
 	wartime_watch_button.disabled = is_committed
 	wartime_ram_button.disabled = is_committed
+	wartime_arrow_tower_button.disabled = is_committed
 	wartime_plan_confirm_button.visible = not is_committed
 	wartime_plan_confirm_button.disabled = (
 		Array(pending_plan.get("facilities", [])).is_empty()

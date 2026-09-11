@@ -19,6 +19,11 @@ const RETREAT_SPEED_NUMERATOR := 5
 const RETREAT_SPEED_DENOMINATOR := 4
 const FIRST_CLEAR_KEY := &"first_map.main_assault.v0"
 const SIEGE_RAM_GATE_DAMAGE := 160
+## Each battle route is the defended gate approach.  Arrow towers therefore
+## contribute to that route's ordinary enemy-damage intent, never a UI-only
+## counter or a second casualty authority.
+const ARROW_TOWER_DAMAGE_PER_VOLLEY := 24
+const ARROW_TOWER_ATTACK_INTERVAL_TICKS := 4
 const SNAPSHOT_SCHEMA_VERSION := 1
 const SNAPSHOT_KEYS := [
 	"schema_version", "current_tick", "next_order_id", "squads", "routes",
@@ -353,6 +358,10 @@ func _apply_wartime_facilities() -> void:
 			routes[route_id] = route
 			wartime_facility_state["siege_ram_route_id"] = route_id
 			wartime_facility_state["siege_ram_gate_damage"] = damage
+		elif kind == WartimeFacilityPlan.KIND_ARROW_TOWER and routes.has(route_id):
+			wartime_facility_state["arrow_tower_route_id"] = route_id
+			wartime_facility_state["arrow_tower_damage_per_volley"] = ARROW_TOWER_DAMAGE_PER_VOLLEY
+			wartime_facility_state["arrow_tower_attack_interval_ticks"] = ARROW_TOWER_ATTACK_INTERVAL_TICKS
 
 
 func _orders_to_snapshot(orders: Array[BattleOrder]) -> Array[Dictionary]:
@@ -482,6 +491,7 @@ func _build_damage_intents() -> Dictionary:
 			"enemy_damage": enemy_damage,
 			"player_damage": player_damage,
 		}
+	_apply_arrow_tower_damage_intents(enemy_damage)
 
 	for squad in squads:
 		if not _squad_can_fight(squad):
@@ -528,6 +538,21 @@ func _build_damage_intents() -> Dictionary:
 		"enemy_damage": enemy_damage,
 		"player_damage": player_damage,
 	}
+
+
+## The shared damage application below remains the only writer of route HP.
+## This hook merely adds an interval-bound intent for the already selected
+## battle route; snapshots retain the resulting HP like all other combat.
+func _apply_arrow_tower_damage_intents(enemy_damage: Dictionary) -> void:
+	if current_tick % ARROW_TOWER_ATTACK_INTERVAL_TICKS != 0:
+		return
+	var route_id := StringName(wartime_facility_state.get("arrow_tower_route_id", &""))
+	if not routes.has(route_id):
+		return
+	var route: Dictionary = routes[route_id]
+	if int(route.get("enemy_total_hp", 0)) <= 0:
+		return
+	enemy_damage[route_id] = int(enemy_damage.get(route_id, 0)) + ARROW_TOWER_DAMAGE_PER_VOLLEY
 
 
 func _apply_damage_intents(intents: Dictionary) -> void:

@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-11 - Wartime arrow tower R0
+
+- Added a battle-only arrow-tower choice to the formal C0 prebattle plan.
+- The tower pays 10 wood once through the existing expedition transaction and
+  contributes 24 real enemy HP damage to its selected gate approach every four
+  battle ticks; it does not create a second battle or casualty owner.
+- Extended the formal C0 smoke to verify plan cost, real route damage and
+  active-session restoration with the facility selected.
+
 ## 2026-09-11
 
 - Added Wartime Inner City R0 as a battle-only C0 preparation and recovery

@@ -28,6 +28,14 @@ resource ledger. The attempt can pay for its plan exactly once while it is
 | --- | ---: | --- | --- |
 | Watch platform | 6 wood | Marks detailed enemy observation as available to the battle presentation | This battle instance only |
 | Siege ram | 8 wood | Applies 160 real damage to its selected gate at session initialization | This battle instance only |
+| Arrow tower | 10 wood | Targets the selected defended gate approach every 4 battle ticks (1 second) and contributes 24 damage to the existing enemy-HP intent | This battle instance only |
+
+The arrow tower does not own a second combat loop. Its selected route is the
+existing battle model's gate approach and every volley is added to
+`BattleSession`'s regular enemy-damage intent before the shared damage writer
+applies route HP. It consequently survives/replays through the same active
+battle snapshot as all other route damage, and cannot double-apply casualties
+after a restore.
 
 The current C0 scene is an assault, not a city-defence simulation. These
 facilities therefore are siege preparation, not an assertion that the game now
@@ -52,6 +60,6 @@ settlement applies its already-established atomic transaction.
 
 `tests/run_wartime_inner_city_r0_smoke.gd` covers the formal city departure,
 visible C0 plan controls, pre-confirm zero write, one-time resource debit,
-legacy migration, actual session effects, active-instance restore through the
+legacy migration, actual watch/ram/tower session effects, active-instance restore through the
 formal city entry, and rejection of a tampered snapshot. Existing C0,
 expedition-causality and V5 persistence runners remain regression gates.

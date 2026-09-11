@@ -40,6 +40,7 @@ func _run() -> void:
 	var plan_panel := battle.get_node("UI/RootPanel/WartimePlanPanel") as Panel
 	var watch_button := plan_panel.get_node("WatchButton") as Button
 	var ram_button := plan_panel.get_node("RamButton") as Button
+	var arrow_tower_button := plan_panel.get_node("ArrowTowerButton") as Button
 	var confirm_button := plan_panel.get_node("ConfirmButton") as Button
 	_check(
 		plan_panel.visible and confirm_button.disabled,
@@ -47,12 +48,14 @@ func _run() -> void:
 	)
 	watch_button.emit_signal("pressed")
 	ram_button.emit_signal("pressed")
+	arrow_tower_button.emit_signal("pressed")
 	await process_frame
 	_check(
 		watch_button.text.contains("已选")
 			and ram_button.text.contains("已选")
+			and arrow_tower_button.text.contains("已选")
 			and not confirm_button.disabled,
-		"瞭望台和攻城槌在确认前仅修改战前草稿"
+		"瞭望台、攻城槌和箭塔在确认前仅修改战前草稿"
 	)
 	var before_confirm: Dictionary = city.export_v5_campaign_snapshot()
 	confirm_button.emit_signal("pressed")
@@ -60,8 +63,8 @@ func _run() -> void:
 	var attempt: Dictionary = city.get_expedition_attempt()
 	var plan: Dictionary = attempt.wartime_facility_plan
 	_check(
-		Array(plan.facilities).size() == 2
-			and city.wood == wood_before - 14
+		Array(plan.facilities).size() == 3
+			and city.wood == wood_before - 24
 			and city.get_building_count() == building_count_before,
 		"确认工事只扣一次木材并写入出征尝试，不污染常态内城 placement"
 	)
@@ -71,7 +74,7 @@ func _run() -> void:
 	_check(
 		not bool(duplicate.get("success", false))
 			and city.export_v5_campaign_snapshot() != before_confirm
-			and city.wood == wood_before - 14,
+		and city.wood == wood_before - 24,
 		"重复确认被拒绝，资源不重复扣除"
 	)
 	var snapshot: Dictionary = city.export_v5_campaign_snapshot()
@@ -95,12 +98,21 @@ func _run() -> void:
 	var effects := battle.coordinator.active_session.get_wartime_facility_state()
 	_check(
 		bool(effects.get("enemy_observation_ready", false))
-			and int(effects.get("siege_ram_gate_damage", 0)) == BattleSession.SIEGE_RAM_GATE_DAMAGE,
-		"战斗会话只读取确认后的临时计划，并把观察与攻城效果写入真实战斗状态"
+			and int(effects.get("siege_ram_gate_damage", 0)) == BattleSession.SIEGE_RAM_GATE_DAMAGE
+			and int(effects.get("arrow_tower_damage_per_volley", 0)) == BattleSession.ARROW_TOWER_DAMAGE_PER_VOLLEY,
+		"战斗会话只读取确认后的临时计划，并把观察、攻城和箭塔火力写入真实战斗状态"
 	)
 	battle.tick_timer.stop()
+	var enemy_hp_before_arrow_tower := int(
+		battle.coordinator.active_session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).enemy_total_hp
+	)
 	battle.issue_squad_order(1, BattleOrder.Command.ADVANCE)
-	battle.step_battle_for_test(3)
+	battle.step_battle_for_test(4)
+	_check(
+		int(battle.coordinator.active_session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).enemy_total_hp)
+			== enemy_hp_before_arrow_tower - BattleSession.ARROW_TOWER_DAMAGE_PER_VOLLEY,
+		"箭塔按既有战斗间隔向所选路线的真实敌军生命值提交一次伤害"
+	)
 	attempt = city.get_expedition_attempt()
 	var active_session_snapshot: Dictionary = attempt.battle_session_snapshot
 	var restored_request := BattleRequest.from_expedition_attempt(attempt)
