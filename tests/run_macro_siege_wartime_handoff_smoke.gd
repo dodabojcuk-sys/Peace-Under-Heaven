@@ -86,14 +86,18 @@ func _run() -> void:
 	var barricade_button := plan_panel.get_node("BarricadeButton") as Button
 	var plan_confirm_button := plan_panel.get_node("ConfirmButton") as Button
 	var repair_button := battle.get_node("UI/RootPanel/WartimeRepairButton") as Button
+	var macro_route_button := battle.get_node(
+		"UI/RootPanel/SquadControls/Squad1/RouteButton"
+	) as Button
 	var wood_before_plan := int(city.get("wood"))
 	_check(
 		plan_panel.visible
 			and watch_button.visible
 			and not watch_button.disabled
 			and plan_confirm_button.visible
-			and plan_confirm_button.disabled,
-		"宏观围城正式界面也提供战时工事草稿入口，尚未扣除建设资源"
+			and plan_confirm_button.disabled
+			and macro_route_button.disabled,
+		"宏观围城正式界面提供战时工事草稿，但不允许临时改写已冻结的原军队部署"
 	)
 	watch_button.emit_signal("pressed")
 	barricade_button.emit_signal("pressed")

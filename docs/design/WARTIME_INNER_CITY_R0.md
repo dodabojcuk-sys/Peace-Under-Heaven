@@ -66,6 +66,12 @@ construction resource transaction; it never creates another city departure or
 deducts the macro army's food a second time. Once active, either plan is
 immutable.
 
+The macro army's existing formation routes are also frozen with that handoff.
+C0 keeps their route controls disabled for this source rather than presenting
+an edit that would exist only in a transient scene. The player may still
+select one of those existing formations to choose the route for a new
+route-bound facility.
+
 ## Facilities
 
 | Facility | Cost | Battle effect | Lifetime |

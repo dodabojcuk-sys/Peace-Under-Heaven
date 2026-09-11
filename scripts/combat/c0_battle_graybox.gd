@@ -758,9 +758,9 @@ func _create_squad_controls() -> void:
 		route_button.name = "RouteButton"
 		route_button.custom_minimum_size = Vector2(0.0, 44.0)
 		route_button.pressed.connect(_on_route_button_pressed.bind(squad_id))
-		if _uses_prepared_expedition() and not _can_edit_defense_deployment():
+		if _is_route_deployment_locked():
 			route_button.disabled = true
-			route_button.tooltip_text = "正式出征的部署已在确认时锁定"
+			route_button.tooltip_text = "此战斗的原始部署已冻结"
 		panel.add_child(route_button)
 
 		_squad_ui[squad_id] = {
@@ -786,7 +786,7 @@ func _on_route_button_pressed(squad_id: int) -> void:
 	if (
 		request == null
 		or request.phase != BattleRequest.PHASE_RESERVED
-		or (_uses_prepared_expedition() and not _can_edit_defense_deployment())
+		or _is_route_deployment_locked()
 	):
 		return
 	for squad in request.committed_force.squads:
@@ -1070,9 +1070,7 @@ func _refresh_battle_ui() -> void:
 			)
 		)
 		_squad_ui[squad_id].route_button.visible = request.phase == BattleRequest.PHASE_RESERVED
-		_squad_ui[squad_id].route_button.disabled = (
-			_uses_prepared_expedition() and not _can_edit_defense_deployment()
-		)
+		_squad_ui[squad_id].route_button.disabled = _is_route_deployment_locked()
 		_squad_ui[squad_id].select_button.text = (
 			"▶ %s" % str(state.name)
 			if bool(state.selected)
@@ -1684,6 +1682,18 @@ func _can_edit_defense_deployment() -> bool:
 		and request != null
 		and request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE
 		and request.phase == BattleRequest.PHASE_RESERVED
+	)
+
+
+## Macro siege formation routes are already facts of the originating army and
+## its durable handoff.  Letting C0 edit only its in-memory request would make
+## a visible deployment disappear on reopen, so these sources are read-only.
+## Selecting a squad still chooses where a *new* route-bound facility is
+## planned; it does not rewrite the army's original order.
+func _is_route_deployment_locked() -> bool:
+	return (
+		macro_siege_mode
+		or (_uses_prepared_expedition() and not _can_edit_defense_deployment())
 	)
 
 

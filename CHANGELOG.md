@@ -23,6 +23,10 @@
 - Draft headings now resolve route names from the same frozen prepared request
   used by the battle projection, so a formal defense correctly says
   `东门壕沟` rather than the generic side-route fallback.
+- Macro-siege route buttons are now explicitly read-only after takeover. This
+  prevents C0 from advertising a transient formation-route edit that could not
+  be written back to the durable macro handoff; selecting a formation still
+  selects the route for a new facility plan.
 
 ## 2026-09-12 - Formal Blackstone defense deployment
 
