@@ -220,14 +220,19 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	var expected_squads: Dictionary = {}
 	for original in squads:
 		expected_squads[int(original.squad_id)] = original
+	var restored_squad_ids: Dictionary = {}
 	for squad_value in Array(snapshot.squads):
 		if not squad_value is Dictionary:
 			return false
 		var squad: Dictionary = squad_value
+		if typeof(squad.get("squad_id", null)) != TYPE_INT:
+			return false
 		var squad_id := int(squad.get("squad_id", 0))
 		var original: Dictionary = expected_squads.get(squad_id, {})
 		if (
 			original.is_empty()
+			or restored_squad_ids.has(squad_id)
+			or not _has_matching_snapshot_value_types(squad, original)
 			or StringName(squad.get("formation_id", &"")) != StringName(original.formation_id)
 			or StringName(squad.get("route_id", &"")) != StringName(original.route_id)
 			or int(squad.get("initial_members", 0)) != int(original.initial_members)
@@ -239,6 +244,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 			or typeof(squad.get("exited", null)) != TYPE_BOOL
 		):
 			return false
+		restored_squad_ids[squad_id] = true
 		restored_squads.append(squad.duplicate(true))
 	if restored_squads.size() != squads.size():
 		return false
@@ -249,6 +255,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		if (
 			original_route.is_empty()
 			or restored_route.is_empty()
+			or not _has_matching_snapshot_value_types(restored_route, original_route)
 			or int(restored_route.get("enemy_initial_members", -1)) != int(original_route.enemy_initial_members)
 			or int(restored_route.get("gate_initial_hp", -1)) != int(original_route.gate_initial_hp)
 			or int(restored_route.get("distance_fixed", -1)) != int(original_route.distance_fixed)
@@ -264,7 +271,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	var valid_squad_ids: Dictionary = {}
 	for squad in restored_squads:
 		valid_squad_ids[int(squad.squad_id)] = true
-	var accepted_ids: Dictionary = {}
+	var accepted_orders_by_id: Dictionary = {}
 	var highest_order_id := 0
 	for order in restored_accepted:
 		if (
@@ -273,13 +280,14 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 			or order.issued_tick > int(snapshot.current_tick)
 		):
 			return false
-		accepted_ids[order.order_id] = true
+		accepted_orders_by_id[order.order_id] = order
 		highest_order_id = maxi(highest_order_id, order.order_id)
 	for order in restored_pending:
 		if (
-			not accepted_ids.has(order.order_id)
+			not accepted_orders_by_id.has(order.order_id)
 			or order.session_id != session_id
 			or not valid_squad_ids.has(order.squad_id)
+			or not _orders_match(order, accepted_orders_by_id[order.order_id])
 		):
 			return false
 	if int(snapshot.next_order_id) <= highest_order_id:
@@ -414,6 +422,28 @@ func _orders_from_snapshot(records: Array):
 			int(record.issued_tick), int(record.command) as BattleOrder.Command
 		))
 	return result
+
+
+func _orders_match(left: BattleOrder, right: BattleOrder) -> bool:
+	return (
+		left.order_id == right.order_id
+		and left.session_id == right.session_id
+		and left.squad_id == right.squad_id
+		and left.issued_tick == right.issued_tick
+		and left.command == right.command
+	)
+
+
+## Snapshot dictionaries are untrusted external input. Validate their exact
+## fields and runtime types before numeric/string conversion so malformed data
+## cannot be coerced into a superficially valid authoritative battle state.
+func _has_matching_snapshot_value_types(value: Dictionary, expected: Dictionary) -> bool:
+	if value.size() != expected.size():
+		return false
+	for key in expected:
+		if not value.has(key) or typeof(value[key]) != typeof(expected[key]):
+			return false
+	return true
 
 
 func _is_valid_snapshot(snapshot: Dictionary) -> bool:

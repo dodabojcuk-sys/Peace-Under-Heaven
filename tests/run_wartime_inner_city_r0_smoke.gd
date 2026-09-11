@@ -178,6 +178,29 @@ func _run() -> void:
 		not bool(city.validate_v5_campaign_snapshot(tampered_active).get("valid", false)),
 		"非法活动战时实例被严格拒绝，不能污染城市或重置为伪造胜利"
 	)
+	var duplicate_squad_snapshot := active_session_snapshot.duplicate(true)
+	duplicate_squad_snapshot.squads.append(
+		Dictionary(duplicate_squad_snapshot.squads[0]).duplicate(true)
+	)
+	_check(
+		not BattleSession.new(restored_request).restore_snapshot(duplicate_squad_snapshot),
+		"活动会话恢复拒绝重复小队身份，不能借重复记录覆盖参战编队"
+	)
+	var malformed_numeric_snapshot := active_session_snapshot.duplicate(true)
+	malformed_numeric_snapshot.squads[0].total_hp = "not-a-number"
+	_check(
+		not BattleSession.new(restored_request).restore_snapshot(malformed_numeric_snapshot),
+		"活动会话恢复在转换前拒绝错误数值类型"
+	)
+	var conflicting_pending_snapshot := active_session_snapshot.duplicate(true)
+	conflicting_pending_snapshot.pending_orders = [
+		Dictionary(conflicting_pending_snapshot.accepted_orders[0]).duplicate(true)
+	]
+	conflicting_pending_snapshot.pending_orders[0].command = BattleOrder.Command.RETREAT
+	_check(
+		not BattleSession.new(restored_request).restore_snapshot(conflicting_pending_snapshot),
+		"活动会话恢复拒绝与已接受军令身份相同但内容冲突的待执行记录"
+	)
 	if cold_battle != null:
 		cold_battle.abort_formal_entry()
 	if is_instance_valid(resumed_battle):
