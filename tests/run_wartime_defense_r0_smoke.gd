@@ -79,6 +79,9 @@ func _run() -> void:
 	var watched_enemy_count_label := battle.get_node(
 		"UI/RootPanel/SideLane/EnemyMarker/Count"
 	) as Label
+	var unwatched_enemy_count_label := battle.get_node(
+		"UI/RootPanel/FrontLane/EnemyMarker/Count"
+	) as Label
 	_check(
 		watched_enemy_count_label.text.contains("敌情未明")
 			and not watched_enemy_count_label.text.contains("敌军 7"),
@@ -137,8 +140,9 @@ func _run() -> void:
 	_check(
 		StringName(session.get_wartime_facility_state().get("watch_route_id", &""))
 			== deployment_after_route
-			and watched_enemy_count_label.text.contains("敌军 %d" % expected_observed_count),
-		"瞭望台完成后只读会话观察事实，向玩家选择的正式部署路线界面揭示精确兵力"
+			and watched_enemy_count_label.text.contains("敌军 %d" % expected_observed_count)
+			and unwatched_enemy_count_label.text.contains("敌情未明"),
+		"瞭望台完成后只读会话观察事实，仅向玩家选择的正式部署路线界面揭示精确兵力"
 	)
 	_check(
 		int(session.get_mission_objective_state().get("protect_target_hp", 0)) == target_hp_before
