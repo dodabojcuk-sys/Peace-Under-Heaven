@@ -398,6 +398,34 @@ func materialize_legacy_wartime_request(
 	return siege.duplicate(true)
 
 
+## A reserved macro takeover owns one immutable request snapshot.  Facility
+## planning is the one allowed pre-activation amendment: it replaces that
+## snapshot atomically before the battle session exists, never a second army
+## or resource ledger.
+func replace_reserved_wartime_request_snapshot(
+	city_id: StringName,
+	transaction_id: StringName,
+	battle_request_snapshot: Dictionary
+) -> Dictionary:
+	var siege := get_siege(city_id)
+	var handoff: Dictionary = Dictionary(siege.get("wartime_handoff", {}))
+	if (
+		siege.is_empty()
+		or transaction_id == &""
+		or StringName(handoff.get("transaction_id", &"")) != transaction_id
+		or StringName(handoff.get("phase", &"")) != WARTIME_HANDOFF_RESERVED
+		or not Dictionary(handoff.get("battle_session_snapshot", {})).is_empty()
+		or not Dictionary(handoff.get("result_authority_snapshot", {})).is_empty()
+		or not Dictionary(handoff.get("terminal_combat_state", {})).is_empty()
+		or not _has_valid_wartime_request_snapshot(battle_request_snapshot, transaction_id)
+	):
+		return {}
+	handoff.battle_request_snapshot = battle_request_snapshot.duplicate(true)
+	siege.wartime_handoff = handoff
+	_write_siege(city_id, siege)
+	return siege.duplicate(true)
+
+
 func checkpoint_wartime_handoff_session(
 	city_id: StringName,
 	transaction_id: StringName,
@@ -770,6 +798,27 @@ static func _normalize_wartime_handoff_migration(siege: Dictionary) -> void:
 			handoff.battle_request_snapshot = {}
 		if not handoff.has("terminal_combat_state"):
 			handoff.terminal_combat_state = {}
+		# Schema-five RESULT_PENDING records contain an authoritative terminal
+		# result but predate exact HP persistence. Derive the same rounded values
+		# that that release would have written back once, mark no new result, and
+		# let the first schema-six save make the compatibility fact durable.
+		if (
+			StringName(handoff.get("phase", &"")) == WARTIME_HANDOFF_RESULT_PENDING
+			and Dictionary(handoff.get("terminal_combat_state", {})).is_empty()
+		):
+			var legacy_result := BattleResult.from_authority_snapshot(
+				Dictionary(handoff.get("result_authority_snapshot", {}))
+			)
+			if legacy_result.is_consistent():
+				var defender_remaining := maxi(
+					int(siege.get("defender_initial_count", 0)) - legacy_result.enemy_casualties,
+					0
+				)
+				handoff.terminal_combat_state = {
+					"attacker_total_hp": legacy_result.survivor_count * int(siege.get("attacker_hp_per_member", 1)),
+					"defender_total_hp": defender_remaining * int(siege.get("defender_hp_per_member", 1)),
+					"gate_hp": 0 if legacy_result.outcome == BattleOutcome.Value.VICTORY else int(siege.get("gate_hp", 0)),
+				}
 		siege.wartime_handoff = handoff
 
 

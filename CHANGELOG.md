@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-11 - Macro siege facility planning and pending-result migration
+
+- A reserved macro siege can now use the formal C0 wartime-facility controls.
+  The selected plan is written only into the frozen takeover request and its
+  wood is charged through a dedicated NationState construction transaction;
+  normal expedition reservations and marching food are untouched.
+- Schema-five `RESULT_PENDING` handoffs that predate exact terminal HP now
+  migrate once from their authoritative result using the release's historic
+  whole-member HP/gate rule. This makes an earned result claimable without
+  replaying combat while keeping schema-six records strict about exact fields.
+- Extended the formal macro handoff smoke with visible plan controls, one-time
+  plan payment, active construction completion, request persistence, and a
+  real V5 legacy pending-result restore sample.
+
 ## 2026-09-11 - Macro siege request and HP continuity
 
 - Upgraded `WarLoopState` handoffs to schema 6. A new macro takeover now

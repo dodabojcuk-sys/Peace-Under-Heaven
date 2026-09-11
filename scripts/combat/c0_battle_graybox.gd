@@ -1018,10 +1018,7 @@ func _refresh_wartime_plan_ui() -> void:
 		wartime_plan_panel.visible = false
 		battlefield_panel.offset_bottom = -202.0
 		return
-	var can_edit := (
-		_uses_prepared_expedition()
-		and request.phase == BattleRequest.PHASE_RESERVED
-	)
+	var can_edit := _can_edit_wartime_facilities()
 	wartime_plan_panel.visible = can_edit
 	battlefield_panel.offset_bottom = -344.0 if can_edit else -202.0
 	if not can_edit:
@@ -1057,16 +1054,16 @@ func _refresh_wartime_plan_ui() -> void:
 		Array(pending_plan.get("facilities", [])).is_empty()
 	)
 	if is_committed:
-		wartime_plan_panel.get_node("Title").text = "战时工事已确认（仅本次战斗）"
+		wartime_plan_panel.get_node("Title").text = "围城战时工事已确认（仅本次战斗）" if macro_siege_mode else "战时工事已确认（仅本次战斗）"
 	else:
-		wartime_plan_panel.get_node("Title").text = "战时工事（仅本次战斗）"
+		wartime_plan_panel.get_node("Title").text = "围城战时工事（仅本次战斗）" if macro_siege_mode else "战时工事（仅本次战斗）"
 
 
 func _toggle_wartime_facility(kind: StringName) -> void:
 	if (
 		request == null
 		or request.phase != BattleRequest.PHASE_RESERVED
-		or not _uses_prepared_expedition()
+		or not _can_edit_wartime_facilities()
 		or not Array(request.wartime_facility_plan.get("facilities", [])).is_empty()
 	):
 		return
@@ -1096,13 +1093,26 @@ func _confirm_wartime_facility_plan() -> void:
 	if (
 		city_controller == null
 		or request == null
-		or not city_controller.has_method("commit_wartime_facility_plan")
+		or not _can_edit_wartime_facilities()
 	):
 		return
-	var result: Dictionary = city_controller.commit_wartime_facility_plan(
-		request.transaction_id,
-		_pending_wartime_facility_plan
-	)
+	var result: Dictionary = {}
+	if macro_siege_mode:
+		if not city_controller.has_method("commit_macro_siege_wartime_facility_plan"):
+			return
+		result = city_controller.commit_macro_siege_wartime_facility_plan(
+			macro_siege_army_id,
+			macro_siege_city_id,
+			request.transaction_id,
+			_pending_wartime_facility_plan
+		)
+	else:
+		if not city_controller.has_method("commit_wartime_facility_plan"):
+			return
+		result = city_controller.commit_wartime_facility_plan(
+			request.transaction_id,
+			_pending_wartime_facility_plan
+		)
 	if not bool(result.get("success", false)):
 		status_label.text = str(result.get("error", "战时工事确认失败"))
 		_append_recent_action(status_label.text)
@@ -1112,6 +1122,14 @@ func _confirm_wartime_facility_plan() -> void:
 	_pending_wartime_facility_plan = request.wartime_facility_plan.duplicate(true)
 	_append_recent_action("战时工事已确认，资源已一次性扣除")
 	_refresh_battle_ui()
+
+
+func _can_edit_wartime_facilities() -> bool:
+	return (
+		request != null
+		and request.phase == BattleRequest.PHASE_RESERVED
+		and (_uses_prepared_expedition() or macro_siege_mode)
+	)
 
 
 func _refresh_exit_ui() -> void:

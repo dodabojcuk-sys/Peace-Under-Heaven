@@ -7423,6 +7423,115 @@ func prepare_macro_siege_battle_request(
 	return request
 
 
+## The macro army has already paid its departure cost.  This is deliberately
+## separate from commit_wartime_facility_plan(), which owns an expedition
+## attempt: a siege plan spends only its own construction resources and is
+## persisted into the one frozen macro handoff request before activation.
+func commit_macro_siege_wartime_facility_plan(
+	army_id: StringName,
+	city_id: StringName,
+	transaction_id: StringName,
+	plan_snapshot: Dictionary
+) -> Dictionary:
+	_ensure_war_loop_initialized()
+	var army := _army_registry.get_army(army_id)
+	var siege := _war_loop_state.get_siege(city_id)
+	var handoff := _war_loop_state.get_wartime_handoff(city_id)
+	if (
+		army.is_empty()
+		or siege.is_empty()
+		or transaction_id == &""
+		or StringName(army.get("phase", &"")) != ArmyRegistry.PHASE_SIEGING
+		or StringName(siege.get("army_id", &"")) != army_id
+		or StringName(siege.get("phase", &"")) != WarLoopState.PHASE_SIEGING
+		or StringName(handoff.get("transaction_id", &"")) != transaction_id
+		or StringName(handoff.get("phase", &"")) != WarLoopState.WARTIME_HANDOFF_RESERVED
+	):
+		return _macro_failure(&"WARTIME_PLAN_STATE", "当前围城不能修改战时工事")
+	var plan_validation := WartimeFacilityPlan.validate_snapshot(plan_snapshot)
+	if not bool(plan_validation.get("valid", false)):
+		return _macro_failure(&"WARTIME_PLAN_INVALID", str(plan_validation.get("error", "战时工事非法")))
+	var normalized_plan: Dictionary = Dictionary(plan_validation.snapshot).duplicate(true)
+	if Array(normalized_plan.get("facilities", [])).is_empty():
+		return _macro_failure(&"WARTIME_PLAN_EMPTY", "请至少选择一项战时工事")
+	var request_snapshot: Dictionary = Dictionary(handoff.get("battle_request_snapshot", {}))
+	if request_snapshot.is_empty():
+		return _macro_failure(&"WARTIME_PLAN_REQUEST", "围城战时请求缺失，无法确认工事")
+	if not Array(Dictionary(request_snapshot.get("wartime_facility_plan", {})).get("facilities", [])).is_empty():
+		return _macro_failure(&"WARTIME_PLAN_LOCKED", "战时工事已经确认，不能重复扣费")
+	var costs := WartimeFacilityPlan.get_costs(normalized_plan)
+	if costs.is_empty():
+		return _macro_failure(&"WARTIME_PLAN_COST", "战时工事费用无法计算")
+	var operations: Array[Dictionary] = []
+	for resource_id_value in costs.keys():
+		operations.append({
+			"resource_id": StringName(resource_id_value),
+			"operation": NationState.RESOURCE_OPERATION_SPEND,
+			"amount": int(costs[resource_id_value]),
+		})
+	var updated_request := request_snapshot.duplicate(true)
+	updated_request.wartime_facility_plan = normalized_plan.duplicate(true)
+	var war_before := _war_loop_state.get_snapshot()
+	var install_plan := func() -> Dictionary:
+		var current_siege := _war_loop_state.get_siege(city_id)
+		var current_handoff := _war_loop_state.get_wartime_handoff(city_id)
+		if (
+			current_siege.is_empty()
+			or StringName(current_siege.get("army_id", &"")) != army_id
+			or StringName(current_handoff.get("transaction_id", &"")) != transaction_id
+			or StringName(current_handoff.get("phase", &"")) != WarLoopState.WARTIME_HANDOFF_RESERVED
+			or not Array(
+				Dictionary(
+					Dictionary(current_handoff.get("battle_request_snapshot", {})).get(
+						"wartime_facility_plan", {}
+					)
+				).get("facilities", [])
+			).is_empty()
+		):
+			return {"success": false}
+		return {
+			"success": not _war_loop_state.replace_reserved_wartime_request_snapshot(
+				city_id, transaction_id, updated_request
+			).is_empty()
+		}
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		operations,
+		&"macro_wartime_facility_preparation",
+		install_plan
+	)
+	if not bool(transaction.get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		return _macro_failure(
+			StringName(transaction.get("error_id", &"WARTIME_PLAN_RESOURCE")),
+			str(transaction.get("error", "战时工事资源不足"))
+		)
+	_refresh_city_ui()
+	city_state_changed.emit()
+	if bool(_persist_macro_march_checkpoint().get("success", false)):
+		return {"success": true, "plan": normalized_plan.duplicate(true)}
+	var refund_operations: Array[Dictionary] = []
+	for resource_id_value in costs.keys():
+		refund_operations.append({
+			"resource_id": StringName(resource_id_value),
+			"operation": NationState.RESOURCE_OPERATION_ADD,
+			"amount": int(costs[resource_id_value]),
+		})
+	var rollback := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		refund_operations,
+		&"macro_wartime_facility_preparation_rollback",
+		func() -> Dictionary:
+			_war_loop_state.restore_snapshot(war_before)
+			return {"success": true}
+	)
+	if not bool(rollback.get("success", false)):
+		push_error("Macro wartime facility plan rollback failed")
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return _macro_failure(&"SAVE_FAILED", "战时工事保存失败，资源与计划已回滚")
+
+
 func _build_macro_siege_battle_request(
 	army: Dictionary,
 	siege: Dictionary,

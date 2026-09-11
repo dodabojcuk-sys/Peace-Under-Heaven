@@ -13,14 +13,19 @@ the battle begins.
 | Fact | Owner |
 | --- | --- |
 | Permanent wood and food | `NationState` through `ConstructionController` |
-| Immutable departure / facility plan / active battle snapshot | `ConstructionController.expedition_attempt` in V5 schema 9 |
+| Immutable departure plan / active battle snapshot | `ConstructionController.expedition_attempt` in V5 schema 9 |
+| Macro-siege request / macro facility plan / active session relation | `WarLoopState.wartime_handoff` through `ConstructionController` |
 | Battle ticks, units, routes, orders and temporary effects | `BattleSession` |
 | Activation, result hand-off and settlement | `CombatTransactionCoordinator` / existing result applier |
 | Buttons, selected squad, markers and feedback | C0 presentation only |
 
 No R0 facility creates a city placement, a FieldTactics project, or a second
-resource ledger. The attempt can pay for its plan exactly once while it is
-`RESERVED`; once active, the plan is immutable.
+resource ledger. A normal city attempt can pay for its plan exactly once while
+it is `RESERVED`. A macro siege uses the same visible C0 plan controls but
+commits into its one frozen `wartime_handoff` request through a separate
+construction resource transaction; it never creates another city departure or
+deducts the macro army's food a second time. Once active, either plan is
+immutable.
 
 ## Facilities
 

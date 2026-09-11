@@ -81,6 +81,39 @@ func _run() -> void:
 		and Dictionary(frozen_request.get("macro_siege_start_state", {})).get("defender_total_hp", -1) == before.get("defender_total_hp", -2),
 		"首次接管冻结宏观已发生的双方 HP，而非以人数重建满血队伍"
 	)
+	var plan_panel := battle.get_node("UI/RootPanel/WartimePlanPanel") as Panel
+	var watch_button := plan_panel.get_node("WatchButton") as Button
+	var plan_confirm_button := plan_panel.get_node("ConfirmButton") as Button
+	var wood_before_plan := int(city.get("wood"))
+	_check(
+		plan_panel.visible
+			and watch_button.visible
+			and not watch_button.disabled
+			and plan_confirm_button.visible
+			and plan_confirm_button.disabled,
+		"宏观围城正式界面也提供战时工事草稿入口，尚未扣除建设资源"
+	)
+	watch_button.emit_signal("pressed")
+	await process_frame
+	plan_confirm_button.emit_signal("pressed")
+	await process_frame
+	handoff = Dictionary(city.get_macro_march_read_model().war_loop.active_siege.get("wartime_handoff", {}))
+	frozen_request = Dictionary(handoff.get("battle_request_snapshot", {}))
+	_check(
+		Array(battle.request.wartime_facility_plan.get("facilities", [])).size() == 1
+			and Array(Dictionary(frozen_request.get("wartime_facility_plan", {})).get("facilities", [])).size() == 1
+			and int(city.get("wood")) == wood_before_plan - 6
+			and plan_confirm_button.visible == false,
+		"宏观围城确认工事只扣一次建设木材，并写入冻结接管请求"
+	)
+	var duplicate_plan: Dictionary = city.commit_macro_siege_wartime_facility_plan(
+		army_id, &"redcliff_city", battle.request.transaction_id, battle.request.wartime_facility_plan
+	)
+	_check(
+		not bool(duplicate_plan.get("success", false))
+			and int(city.get("wood")) == wood_before_plan - 6,
+		"宏观围城工事重复提交被权威入口拒绝，不重复扣费"
+	)
 	var frozen_day := battle.request.created_day
 	var frozen_force_digest := battle.request.committed_force.get_digest()
 	var frozen_enemy_digest := battle.request.enemy_force.get_digest()
@@ -122,6 +155,18 @@ func _run() -> void:
 		print("MACRO_WARTIME_DEBUG_START request=%s handoff=%s coordinator=%s" % [battle.request, city.get_macro_march_read_model().war_loop.active_siege.get("wartime_handoff", {}), battle.coordinator])
 	_check(started, "接管后的正式战时实例可激活唯一战斗会话")
 	await process_frame
+	# Drive the formal scene timer signal so each construction tick uses the
+	# same checkpoint path as a running battle rather than an unpersisted unit
+	# test advance on the coordinator.
+	(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+	(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+	var macro_facility_state := battle.coordinator.active_session.get_wartime_facility_state()
+	var macro_facilities: Array = Array(macro_facility_state.get("facilities", []))
+	_check(
+		macro_facilities.size() == 1
+			and StringName(Dictionary(macro_facilities[0]).get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE,
+		"宏观围城确认的瞭望台随正式战斗刻施工完成后才生效"
+	)
 	var active: Dictionary = city.get_macro_march_read_model().war_loop.active_siege
 	_check(
 		StringName(Dictionary(active.get("wartime_handoff", {})).get("phase", &"")) == WarLoopState.WARTIME_HANDOFF_ACTIVE
@@ -168,6 +213,24 @@ func _run() -> void:
 	_check(
 		Dictionary(Dictionary(pending.get("wartime_handoff", {})).get("terminal_combat_state", {})) == terminal_state,
 		"终局回写保存实际残余 HP 与城门耐久，而非由伤亡人数反推"
+	)
+	# Use the production V5 export rather than the UI read projection: the
+	# latter deliberately omits validation-only WarLoop fields such as parallel
+	# siege state and is not itself a restorable snapshot.
+	var legacy_campaign_snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	var legacy_pending_snapshot: Dictionary = Dictionary(
+		legacy_campaign_snapshot.get("war_loop", {})
+	).duplicate(true)
+	legacy_pending_snapshot.schema_version = 5
+	legacy_pending_snapshot.active_siege.wartime_handoff.erase("terminal_combat_state")
+	legacy_pending_snapshot.active_siege.wartime_handoff.erase("battle_request_snapshot")
+	var legacy_probe := WarLoopState.new()
+	var legacy_restored := legacy_probe.restore_snapshot(legacy_pending_snapshot)
+	_check(
+		legacy_restored
+		and StringName(legacy_probe.get_wartime_handoff(&"redcliff_city").get("phase", &"")) == WarLoopState.WARTIME_HANDOFF_RESULT_PENDING
+		and not Dictionary(legacy_probe.get_wartime_handoff(&"redcliff_city").get("terminal_combat_state", {})).is_empty(),
+		"旧 schema 5 待回写战果一次迁移为可领取状态，不重演战斗"
 	)
 	battle.queue_free()
 	await process_frame
