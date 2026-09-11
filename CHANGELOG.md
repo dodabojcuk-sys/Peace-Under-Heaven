@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-12 - Wartime defense target handoff coverage
+
+- Strengthened the reached-invader defense regression to inspect the actual
+  post-destruction facility event. Once a route arrow tower is destroyed, the
+  next normal battle interval must target the same route's watch platform;
+  the old tower must receive neither another facility event nor a phantom
+  volley. This verifies dynamic target selection rather than inferring it only
+  from final facility state.
+
 ## 2026-09-12 - Formal macro-siege full-wipe coverage
 
 - Extended the formal macro-siege handoff smoke with an isolated

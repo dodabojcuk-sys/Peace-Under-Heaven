@@ -776,6 +776,17 @@ func _run() -> void:
 		func(event: Dictionary) -> bool:
 			return StringName(event.get("kind", &"")) == WartimeFacilityPlan.KIND_ARROW_TOWER
 	)
+	var watch_events_after_arrow_destroy := restored_session.get_last_tick_facility_events().filter(
+		func(event: Dictionary) -> bool:
+			return (
+				StringName(event.get("kind", &""))
+					== WartimeFacilityPlan.KIND_WATCH_PLATFORM
+				and StringName(event.get("event", &"")) in [
+					&"DAMAGED",
+					&"DESTROYED",
+				]
+			)
+	)
 	_check(
 		StringName(arrow_tower.get("phase", &"")) == BattleSession.FACILITY_PHASE_DESTROYED
 			and arrow_events_after_destroy.is_empty()
@@ -784,6 +795,15 @@ func _run() -> void:
 		"箭塔被拆除后不再攻击，后续战斗刻不会伪造额外齐射或敌军伤害"
 	)
 	var damaged_watch := _facility_by_kind(restored_session, WartimeFacilityPlan.KIND_WATCH_PLATFORM)
+	_check(
+		not watch_events_after_arrow_destroy.is_empty()
+			and StringName(damaged_watch.get("phase", &"")) in [
+				BattleSession.FACILITY_PHASE_DAMAGED,
+				BattleSession.FACILITY_PHASE_DESTROYED,
+			]
+			and StringName(restored_session.get_wartime_facility_state().get("watch_route_id", &"")) != deployment_after_route,
+		"箭塔摧毁后敌军重新选择同路线瞭望台，且不会继续锁定失效箭塔"
+	)
 	_check(
 		StringName(damaged_watch.get("phase", &"")) in [
 			BattleSession.FACILITY_PHASE_DAMAGED,
