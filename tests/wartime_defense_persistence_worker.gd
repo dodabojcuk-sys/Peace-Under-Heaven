@@ -117,7 +117,13 @@ func _run_b(scene: Node, city: Node) -> void:
 	battle.step_battle_for_test(BattleSession.FACILITY_BUILD_TICKS[WartimeFacilityPlan.KIND_BARRICADE] - 1)
 	# Advance through real enemy route movement until the completed barricade is
 	# damaged by the protection objective rather than constructing damage data.
-	battle.step_battle_for_test(126)
+	# The production mission has intentionally short gate HP. This isolated
+	# lifecycle worker raises only the target's fixture HP so the unblocked front
+	# route cannot end the scenario before the side-route barrier's real delay
+	# has allowed its own invaders to arrive and damage it.
+	session.mission_objective_state.protect_target_hp = 10000
+	session.mission_objective_state.protect_target_max_hp = 10000
+	battle.step_battle_for_test(169)
 	var barricade := _barricade(session)
 	battle._refresh_battle_ui()
 	var repair_button := battle.get_node("UI/RootPanel/WartimeRepairButton") as Button

@@ -136,6 +136,19 @@ func _run() -> void:
 	var target_hp_before := int(objective.get("protect_target_hp", 0))
 	battle.step_battle_for_test(4)
 	var watched_route: Dictionary = session.get_route_state(deployment_after_route)
+	var unwatched_route: Dictionary = session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE)
+	var full_enemy_advance := session._positive_integer_divide(
+		battle.request.committed_force.move_speed_fixed,
+		4
+	)
+	var blocked_enemy_advance := maxi(
+		int(
+			full_enemy_advance
+			* BattleSession.BARRICADE_ENEMY_ADVANCE_BASIS_POINTS
+			/ BattleSession.BASIS_POINTS
+		),
+		1
+	)
 	var expected_observed_count := ceili(
 		float(int(watched_route.get("enemy_total_hp", 0)))
 		/ float(battle.request.committed_force.hp_per_member)
@@ -149,10 +162,18 @@ func _run() -> void:
 	)
 	_check(
 		int(session.get_mission_objective_state().get("protect_target_hp", 0)) == target_hp_before
-			and int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("enemy_position_fixed", 0)) > 0
-			and int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("enemy_position_fixed", 0))
-				< int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).distance_fixed),
-		"守城敌军先沿真实路线推进；未抵达城门前不偷扣保护目标生命"
+			and int(unwatched_route.get("enemy_position_fixed", 0)) == full_enemy_advance * 4
+			and int(watched_route.get("enemy_position_fixed", 0))
+				== full_enemy_advance * 3 + blocked_enemy_advance,
+		"守城拒马在本路线实际延缓敌军推进；未抵达城门前不偷扣保护目标生命"
+	)
+	## The production mission's small gate HP demonstrates ordinary loss quickly.
+	## This fixture needs both real routes to reach the target so it can inspect
+	## a barricade's later damage/repair lifecycle after its deliberate delay.
+	session.mission_objective_state.protect_target_hp = 10000
+	session.mission_objective_state.protect_target_max_hp = 10000
+	var target_hp_before_route_contacts := int(
+		session.get_mission_objective_state().get("protect_target_hp", 0)
 	)
 	var legacy_session_snapshot := session.get_snapshot()
 	legacy_session_snapshot.schema_version = 3
@@ -166,7 +187,7 @@ func _run() -> void:
 			and int(legacy_session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("enemy_position_fixed", -1)) == 0,
 		"V3 活动战时会话升级为从路线起点推进的防守敌军，不伪造旧档的抵近进度"
 	)
-	battle.step_battle_for_test(124)
+	battle.step_battle_for_test(168)
 	var after_construction: Dictionary = session.get_wartime_facility_state()
 	var barricade: Dictionary = {}
 	for record_value in Array(after_construction.get("facilities", [])):
@@ -176,7 +197,7 @@ func _run() -> void:
 			break
 	_check(
 		int(session.get_mission_objective_state().get("protect_target_hp", 0))
-			< target_hp_before
+			< target_hp_before_route_contacts
 			and int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("enemy_position_fixed", 0))
 				== int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).distance_fixed)
 			and int(session.get_route_state(CommittedForceSnapshot.SIDE_ROUTE).get("enemy_position_fixed", 0))

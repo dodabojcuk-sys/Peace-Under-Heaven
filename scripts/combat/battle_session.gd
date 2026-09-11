@@ -27,6 +27,9 @@ const ARROW_TOWER_ATTACK_INTERVAL_TICKS := 4
 ## Barricades reduce the ordinary route damage intent before the shared squad
 ## HP writer applies it; they never introduce a parallel casualty system.
 const BARRICADE_INCOMING_DAMAGE_BASIS_POINTS := 6500
+## A completed barricade also delays invaders on its own defense route. The
+## effect weakens with the same persisted durability that governs protection.
+const BARRICADE_ENEMY_ADVANCE_BASIS_POINTS := 7500
 const FACILITY_PHASE_CONSTRUCTING := &"CONSTRUCTING"
 const FACILITY_PHASE_ACTIVE := &"ACTIVE"
 const FACILITY_PHASE_DAMAGED := &"DAMAGED"
@@ -839,8 +842,16 @@ func _advance_mission_enemy_positions() -> void:
 		var route: Dictionary = Dictionary(routes[route_id])
 		if int(route.get("enemy_total_hp", 0)) <= 0:
 			continue
+		var route_advance_per_tick := maxi(
+			int(
+				advance_per_tick
+				* _get_wartime_facility_enemy_advance_basis_points(route_id)
+				/ BASIS_POINTS
+			),
+			1
+		)
 		route.enemy_position_fixed = mini(
-			int(route.get("enemy_position_fixed", 0)) + advance_per_tick,
+			int(route.get("enemy_position_fixed", 0)) + route_advance_per_tick,
 			int(route.distance_fixed)
 		)
 		routes[route_id] = route
@@ -975,18 +986,46 @@ func _get_wartime_facility_incoming_damage_basis_points(route_id: StringName) ->
 ## at zero it protects nothing, without introducing a second HP or casualty
 ## authority. Integer math keeps the result stable across snapshots and ticks.
 func _get_barricade_incoming_damage_basis_points(record: Dictionary) -> int:
+	return _get_barricade_durability_basis_points(
+		record,
+		BARRICADE_INCOMING_DAMAGE_BASIS_POINTS
+	)
+
+
+func _get_wartime_facility_enemy_advance_basis_points(route_id: StringName) -> int:
+	for record_value in Array(wartime_facility_state.get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if (
+			StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE
+			and StringName(record.get("phase", &"")) in [FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED]
+			and StringName(record.get("route_id", &"")) == route_id
+		):
+			return _get_barricade_durability_basis_points(
+				record,
+				BARRICADE_ENEMY_ADVANCE_BASIS_POINTS
+			)
+	return BASIS_POINTS
+
+
+## Both a damaged barrier's protection and its route delay derive from the
+## one saved durability value. `full_effect_basis_points` is the fraction
+## passed through at full health; no separate simulation state is needed.
+func _get_barricade_durability_basis_points(
+	record: Dictionary,
+	full_effect_basis_points: int
+) -> int:
 	if StringName(record.get("phase", &"")) == FACILITY_PHASE_ACTIVE:
-		return BARRICADE_INCOMING_DAMAGE_BASIS_POINTS
+		return full_effect_basis_points
 	var max_durability := maxi(int(record.get("max_durability", 0)), 1)
 	var durability := clampi(int(record.get("durability", 0)), 0, max_durability)
 	var maximum_absorbed_basis_points := (
-		BASIS_POINTS - BARRICADE_INCOMING_DAMAGE_BASIS_POINTS
+		BASIS_POINTS - full_effect_basis_points
 	)
 	var absorbed_basis_points := _positive_integer_divide(
 		maximum_absorbed_basis_points * durability,
 		max_durability
 	)
-	return clampi(BASIS_POINTS - absorbed_basis_points, BARRICADE_INCOMING_DAMAGE_BASIS_POINTS, BASIS_POINTS)
+	return clampi(BASIS_POINTS - absorbed_basis_points, full_effect_basis_points, BASIS_POINTS)
 
 
 func _get_active_barricade_id(route_id: StringName) -> StringName:

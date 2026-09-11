@@ -113,6 +113,13 @@ target: the barricade absorbs the remainder into its own durability and the
 gate receives only the passed damage. It does not hide or rewrite casualties,
 introduce a second combat loop, or affect another route.
 
+For the defence objective, that same record also slows only the route on which
+it stands: a complete barricade passes 7500 basis points of enemy movement per
+battle tick, and damaged durability interpolates deterministically back to
+10000. A destroyed work therefore neither delays invaders nor absorbs their
+damage. Route position remains the existing battle-session fact; the facility
+adds no second movement owner.
+
 When a facility is damaged or destroyed, the active C0 panel exposes the next
 eligible facility on the currently selected squad's route and its repair cost.
 Pressing that formal action spends only the published repair cost through

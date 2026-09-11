@@ -34,6 +34,10 @@
   its persisted remaining durability. The same deterministic projection is
   used for squad damage, protected-gate damage, and the UI-facing facility
   state, so a damaged record no longer claims full intact protection.
+- The same saved barricade durability now controls a defense-route movement
+  delay. A completed work slows only invaders on its own route; a damaged or
+  destroyed work proportionally loses that blocking ability without adding a
+  second route-position owner.
 
 ## 2026-09-12 - Formal Blackstone defense deployment
 
