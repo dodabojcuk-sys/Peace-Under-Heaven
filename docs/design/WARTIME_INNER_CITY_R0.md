@@ -42,7 +42,7 @@ full defence/city-fall campaign flow.
 | Fact | Owner |
 | --- | --- |
 | Permanent wood and food | `NationState` through `ConstructionController` |
-| Immutable departure plan / active battle snapshot | `ConstructionController.expedition_attempt` in V5 schema 9 |
+| Immutable departure plan / active battle checkpoint / pending result | `ConstructionController.expedition_attempt` in V5 schema 11 |
 | Macro-siege request / macro facility plan / active session relation | `WarLoopState.wartime_handoff` through `ConstructionController` |
 | Battle ticks, units, routes, orders and temporary effects | `BattleSession` |
 | Activation, result hand-off and settlement | `CombatTransactionCoordinator` / existing result applier |
@@ -106,10 +106,14 @@ Those remain follow-up work and must use this same battle-instance ownership.
 
 Schema 9 adds `wartime_facility_plan` and `battle_session_snapshot` to an
 expedition attempt. Schema 7 migrates to an empty plan; schema 8 migrates to an
-empty session snapshot. Empty legacy active snapshots retain the old compatible
-restart-at-tick-zero behavior; snapshots created by R0 restore the exact
-authoritative battle tick, routes, squad health, accepted/pending orders and
-objective facts. UI, nodes and animation state are forbidden.
+empty session snapshot. Schema 11 adds `terminal_result_snapshot` for the
+strict `RESULT_PENDING` boundary. The last nonterminal checkpoint remains a
+normal restorable battle session; the terminal authority is restored beside it
+without replaying a combat tick. Empty legacy active snapshots retain the old
+compatible restart-at-tick-zero behavior; a schema-10 pending record without a
+terminal authority record instead conservatively resumes its last ACTIVE
+checkpoint and never fabricates unrecoverable post-battle HP or rewards. UI,
+nodes and animation state are forbidden.
 
 Battle-session snapshot schema 2 also retains per-facility phase and progress.
 Schema-3 adds per-facility maximum/current durability plus `DAMAGED`,
@@ -118,9 +122,10 @@ full durability once on restore, preserving their historic construction/active
 behavior. Schema-1 session snapshots remain compatible: because their old behavior had
 already applied the paid plan at tick zero, they restore those records as
 active and never reapply ram damage. Each nonterminal C0 tick requests the existing runtime V5 checkpoint. A failed
-checkpoint restores the in-memory session to the preceding committed snapshot;
-a terminal result clears the active session snapshot before normal result
-settlement applies its already-established atomic transaction.
+checkpoint restores the in-memory session to the preceding committed snapshot.
+A terminal result retains that last active checkpoint beside its terminal
+authority until normal result settlement applies its already-established atomic
+transaction, then clears both records.
 
 ## Verification
 
@@ -133,9 +138,11 @@ rebuild exercise is **same-process** evidence only. The macro-siege A/B/C/D/E
 independent-process runner saves watch-platform and barricade construction,
 restores them before activation, damages the completed barricade through a real
 battle tick, begins repair through the visible button, cold-restores
-`REPAIRING`, completes its remaining two ticks, then separately restores and
-writes back the terminal result. This proves neither construction nor repair
-becomes an immediately-active substitute or charges a second plan. The focused
+`REPAIRING`, completes its remaining two ticks, then separately persists a
+pending terminal result, reopens its formal confirmation, writes it back once,
+and verifies the settled reload. This proves neither construction nor repair
+becomes an immediately-active substitute, a result does not replay after
+restart, and a second plan is not charged. The focused
 C0 smoke additionally asserts one authority resource debit, duplicate-click
 idempotence, completion and active-session restoration. These are still
 assault-side lifecycle checks, not a complete defensive scenario. Existing C0,

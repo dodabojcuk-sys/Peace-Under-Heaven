@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-12 - Durable pending-result recovery for wartime defense
+
+- Upgraded V5 campaign snapshots to schema 11. A durable city battle now
+  persists its last active simulation checkpoint separately from the immutable
+  terminal result when it enters `RESULT_PENDING`; reopening the result panel
+  restores that authority without advancing another battle tick.
+- Older schema-10 attempts without a terminal authority record migrate only to
+  their last ACTIVE checkpoint. They do not fabricate post-battle HP, rewards,
+  or a claimable result from missing facts.
+- Added an isolated A/B/C/D/E process runner for formal Blackstone defense:
+  construction, real route-driven damage, repairing, pending-result reopen,
+  one authorized confirmation, and settled-result reopen. Each worker checks
+  both its process result and its explicit completion marker.
+
 ## 2026-09-12 - Defense result ownership and recovery
 
 - Separated Blackstone gate-defense return handling from the first-war return

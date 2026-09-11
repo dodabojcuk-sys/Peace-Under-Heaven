@@ -2656,6 +2656,7 @@ func commit_expedition_attempt(formation_ids: Array) -> Dictionary:
 		"result_id": &"",
 		"wartime_facility_plan": WartimeFacilityPlan.empty_snapshot(),
 		"battle_session_snapshot": {},
+		"terminal_result_snapshot": {},
 		"source_id": &"FIRST_WAR",
 		"mission_id": &"",
 	}
@@ -2777,6 +2778,7 @@ func begin_wartime_defense_attempt(formation_ids: Array) -> Dictionary:
 		"result_id": &"",
 		"wartime_facility_plan": WartimeFacilityPlan.empty_snapshot(),
 		"battle_session_snapshot": {},
+		"terminal_result_snapshot": {},
 		"source_id": BattleRequest.SOURCE_WARTIME_DEFENSE,
 		"mission_id": WARTIME_DEFENSE_MISSION.mission_id,
 	}
@@ -2947,7 +2949,11 @@ func checkpoint_active_battle_session(
 	var prior_snapshot: Dictionary = Dictionary(
 		_expedition_attempt.get("battle_session_snapshot", {})
 	).duplicate(true)
+	var prior_terminal_result: Dictionary = Dictionary(
+		_expedition_attempt.get("terminal_result_snapshot", {})
+	).duplicate(true)
 	_expedition_attempt.battle_session_snapshot = session_snapshot.duplicate(true)
+	_expedition_attempt.terminal_result_snapshot = {}
 	var checkpoint_faulted := _wartime_session_checkpoint_fault_for_test == &"CHECKPOINT_SAVE_FAILED"
 	_wartime_session_checkpoint_fault_for_test = (
 		&"" if checkpoint_faulted else _wartime_session_checkpoint_fault_for_test
@@ -2960,6 +2966,7 @@ func checkpoint_active_battle_session(
 	if bool(persisted.get("success", false)):
 		return {"success": true}
 	_expedition_attempt.battle_session_snapshot = prior_snapshot
+	_expedition_attempt.terminal_result_snapshot = prior_terminal_result
 	if bool(persisted.get("uncertain", false)):
 		_expedition_commit_blocked = true
 		return _expedition_failure(&"SAVE_OUTCOME_UNCERTAIN", "战时实例存档结果无法确认；请冷启动恢复")
@@ -2975,6 +2982,7 @@ func clear_active_battle_session_checkpoint(attempt_id: StringName) -> bool:
 	):
 		return false
 	_expedition_attempt.battle_session_snapshot = {}
+	_expedition_attempt.terminal_result_snapshot = {}
 	return true
 
 
@@ -3034,6 +3042,7 @@ func enter_first_war_battle() -> bool:
 		or StringName(_expedition_attempt.get("phase", &"")) not in [
 			BATTLE_PHASE_RESERVED,
 			BATTLE_PHASE_ACTIVE,
+			BATTLE_PHASE_RESULT_PENDING,
 		]
 	):
 		var available_ids: Array[StringName] = []
@@ -3052,6 +3061,7 @@ func _launch_active_expedition_battle() -> bool:
 		or StringName(_expedition_attempt.phase) not in [
 			BATTLE_PHASE_RESERVED,
 			BATTLE_PHASE_ACTIVE,
+			BATTLE_PHASE_RESULT_PENDING,
 		]
 		or is_instance_valid(_formal_battle_scene)
 	):
@@ -4262,6 +4272,11 @@ func export_v5_campaign_snapshot() -> Dictionary:
 		"war_loop": _war_loop_state.get_snapshot(),
 	}
 	var validation := validate_v5_campaign_snapshot(snapshot)
+	if not bool(validation.valid):
+		push_error(
+			"V5 campaign snapshot validation failed: %s"
+			% String(validation.get("error_id", &"UNKNOWN"))
+		)
 	return (
 		Dictionary(validation.snapshot).duplicate(true)
 		if bool(validation.valid)
@@ -4464,13 +4479,22 @@ func validate_v5_campaign_snapshot(
 			attempt.get("battle_session_snapshot", {})
 		)
 		if not active_session_snapshot.is_empty():
-			if StringName(attempt.get("phase", &"")) != BATTLE_PHASE_ACTIVE:
+			if StringName(attempt.get("phase", &"")) not in [
+				BATTLE_PHASE_ACTIVE,
+				BATTLE_PHASE_RESULT_PENDING,
+			]:
 				return {
 					"valid": false,
 					"error_id": &"BATTLE_SESSION_PHASE_MISMATCH",
 					"error": "战斗会话快照只能附着于活动出征",
 				}
 			var request := get_durable_battle_request(attempt)
+			# RESULT_PENDING preserves the last non-terminal simulation snapshot
+			# separately from its terminal authority record. Validate that snapshot
+			# under the ACTIVE request it was created with; the terminal record is
+			# checked by V5CampaignSnapshot itself.
+			if request != null and request.phase == BattleRequest.PHASE_RESULT_PENDING:
+				request.phase = BattleRequest.PHASE_ACTIVE
 			var session_probe := BattleSession.new(request)
 			if request == null or not session_probe.restore_snapshot(active_session_snapshot):
 				return {
@@ -4897,6 +4921,7 @@ func _apply_validated_v5_campaign_snapshot(
 		and StringName(_expedition_attempt.phase) in [
 			BATTLE_PHASE_RESERVED,
 			BATTLE_PHASE_ACTIVE,
+			BATTLE_PHASE_RESULT_PENDING,
 		]
 	):
 		_active_battle_reservation = {
@@ -5679,6 +5704,7 @@ func has_resumable_expedition() -> bool:
 		and StringName(_expedition_attempt.get("phase", &"")) in [
 			BATTLE_PHASE_RESERVED,
 			BATTLE_PHASE_ACTIVE,
+			BATTLE_PHASE_RESULT_PENDING,
 		]
 		and not is_instance_valid(_formal_battle_scene)
 	)
@@ -5699,7 +5725,7 @@ func _is_durable_expedition_reservation() -> bool:
 		and int(_expedition_attempt.get("committed_total", 0))
 			== int(_active_battle_reservation.get("committed_count", 0))
 		and StringName(_expedition_attempt.get("phase", &""))
-			in [BATTLE_PHASE_RESERVED, BATTLE_PHASE_ACTIVE]
+			in [BATTLE_PHASE_RESERVED, BATTLE_PHASE_ACTIVE, BATTLE_PHASE_RESULT_PENDING]
 	)
 
 
@@ -8313,6 +8339,53 @@ func mark_battle_result_pending(
 ) -> bool:
 	if not is_combat_transaction_coordinator_bound(coordinator):
 		return false
+	# A durable city battle must publish its terminal authority together with the
+	# RESULT_PENDING phase. Otherwise a cold restore would pair a pending result
+	# with only the last ACTIVE checkpoint and either replay a battle tick or
+	# reject the state as internally inconsistent.
+	if _is_durable_expedition_reservation():
+		if (
+			coordinator.active_session == null
+			or not coordinator.active_session.completed
+			or _expedition_attempt.is_empty()
+			or StringName(_expedition_attempt.get("attempt_id", &""))
+				!= transaction_id
+		):
+			return false
+		var terminal_result_snapshot := (
+			coordinator.active_session.get_terminal_result_snapshot()
+		)
+		var terminal_result := BattleResult.from_authority_snapshot(
+			terminal_result_snapshot
+		)
+		if (
+			terminal_result == null
+			or not terminal_result.is_consistent()
+			or terminal_result.transaction_id != transaction_id
+		):
+			return false
+		var prior_terminal_result: Dictionary = Dictionary(
+			_expedition_attempt.get("terminal_result_snapshot", {})
+		).duplicate(true)
+		if not _transition_battle_reservation(
+			transaction_id,
+			BATTLE_PHASE_ACTIVE,
+			BATTLE_PHASE_RESULT_PENDING
+		):
+			return false
+		_expedition_attempt.terminal_result_snapshot = terminal_result_snapshot.duplicate(true)
+		var persisted := _persist_active_battle_checkpoint(transaction_id)
+		if bool(persisted.get("success", false)):
+			return true
+		_expedition_attempt.terminal_result_snapshot = prior_terminal_result
+		_transition_battle_reservation(
+			transaction_id,
+			BATTLE_PHASE_RESULT_PENDING,
+			BATTLE_PHASE_ACTIVE
+		)
+		if bool(persisted.get("uncertain", false)):
+			_expedition_commit_blocked = true
+		return false
 	return _transition_battle_reservation(
 		transaction_id,
 		BATTLE_PHASE_ACTIVE,
@@ -8359,11 +8432,8 @@ func _transition_battle_reservation(
 	):
 		return false
 	_active_battle_reservation.phase = next_phase
-	if (
-		_is_durable_expedition_reservation()
-		and next_phase == BATTLE_PHASE_ACTIVE
-	):
-		_expedition_attempt.phase = BATTLE_PHASE_ACTIVE
+	if _is_durable_expedition_reservation():
+		_expedition_attempt.phase = next_phase
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return true
@@ -8652,7 +8722,7 @@ func _apply_durable_expedition_result_atomic(
 		or request.is_noticeboard_mission()
 		or request.phase != BattleRequest.PHASE_RESULT_PENDING
 		or StringName(_expedition_attempt.get("phase", &""))
-			!= BATTLE_PHASE_ACTIVE
+			!= BATTLE_PHASE_RESULT_PENDING
 		or bool(_expedition_attempt.get("settled", false))
 		or StringName(_expedition_attempt.get("result_id", &"")) != &""
 		or _active_battle_reservation.is_empty()
@@ -8940,6 +9010,8 @@ func _install_durable_expedition_settlement(
 	_expedition_attempt.phase = BATTLE_PHASE_APPLIED
 	_expedition_attempt.settled = true
 	_expedition_attempt.result_id = battle_result.result_id
+	_expedition_attempt.battle_session_snapshot = {}
+	_expedition_attempt.terminal_result_snapshot = {}
 	_active_battle_reservation = {}
 	return {"success": true}
 

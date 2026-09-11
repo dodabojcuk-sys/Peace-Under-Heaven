@@ -891,6 +891,28 @@ func _resume_active_battle_if_available() -> void:
 		_show_pending_result(coordinator.active_session.result)
 		_append_recent_action("已恢复待确认的战果；尚未回写战区")
 		return
+	if (
+		not macro_siege_mode
+		and request.phase == BattleRequest.PHASE_RESULT_PENDING
+		and city_controller != null
+		and city_controller.has_method("get_expedition_attempt")
+	):
+		var pending_attempt: Dictionary = city_controller.get_expedition_attempt()
+		var pending_session_snapshot: Dictionary = Dictionary(
+			pending_attempt.get("battle_session_snapshot", {})
+		)
+		var pending_authority_snapshot: Dictionary = Dictionary(
+			pending_attempt.get("terminal_result_snapshot", {})
+		)
+		if not coordinator.resume_durable_result_pending(
+			pending_session_snapshot,
+			pending_authority_snapshot
+		):
+			push_error("C0 failed to reconstruct pending prepared battle result")
+			return
+		_show_pending_result(coordinator.active_session.result)
+		_append_recent_action("已恢复待确认的战果；尚未回写城市")
+		return
 	if coordinator.create_session() == null:
 		push_error("C0 failed to reconstruct active battle session")
 		return

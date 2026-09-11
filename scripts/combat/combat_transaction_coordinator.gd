@@ -177,6 +177,7 @@ func adopt_expedition_request(request: BattleRequest) -> bool:
 		or request.phase not in [
 			BattleRequest.PHASE_RESERVED,
 			BattleRequest.PHASE_ACTIVE,
+			BattleRequest.PHASE_RESULT_PENDING,
 		]
 		or not _city_controller.has_method(
 			"authorize_prepared_battle_request"
@@ -548,7 +549,23 @@ func resume_macro_siege_result_pending(
 ) -> bool:
 	if (
 		not _macro_siege_mode
-		or active_request == null
+	):
+		return false
+	return resume_durable_result_pending(
+		session_snapshot,
+		result_authority_snapshot
+	)
+
+
+## Rehydrates a formally persisted terminal result without advancing another
+## combat tick.  Prepared-city and macro-siege sources share this exact
+## boundary while retaining their source-specific writeback handlers.
+func resume_durable_result_pending(
+	session_snapshot: Dictionary,
+	result_authority_snapshot: Dictionary
+) -> bool:
+	if (
+		active_request == null
 		or active_request.phase != BattleRequest.PHASE_RESULT_PENDING
 		or active_session != null
 		or session_snapshot.is_empty()
