@@ -17,7 +17,9 @@
 - Follow-up: new formal facility plans now freeze the visibly selected C0 squad
   as their construction detachment (plan schema 2); both regular and macro
   Controller submissions reject IDs outside the frozen committed roster before
-  any resource debit. Historical plan schema 1 remains compatible.
+  any resource debit. Confirmation and interruption feedback name the real
+  committed formation rather than a generic squad index. Historical plan
+  schema 1 remains compatible.
 
 ## 2026-09-12 - Route-triggered wartime spike traps
 

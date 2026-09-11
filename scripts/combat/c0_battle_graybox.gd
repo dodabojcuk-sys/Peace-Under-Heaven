@@ -889,7 +889,7 @@ func _append_wartime_facility_feedback(events: Array[Dictionary]) -> void:
 				"%s在%s失去施工分队（%s），请由可用部队维修后继续" % [
 					_get_facility_name(kind),
 					route_name,
-					BattlePresentationModel.squad_name(int(event.get("squad_id", 0))),
+					_get_committed_squad_name(int(event.get("squad_id", 0))),
 				]
 			)
 		elif StringName(event.get("event", &"")) == &"DESTROYED":
@@ -1248,6 +1248,16 @@ func _selected_deployment_route() -> StringName:
 	return CommittedForceSnapshot.FRONT_ROUTE
 
 
+func _get_committed_squad_name(squad_id: int) -> String:
+	if request != null:
+		for squad in request.committed_force.squads:
+			if int(squad.squad_id) == squad_id:
+				var display_name := str(squad.display_name)
+				if not display_name.is_empty():
+					return display_name
+	return BattlePresentationModel.squad_name(squad_id)
+
+
 func _confirm_wartime_facility_plan() -> void:
 	if (
 		city_controller == null
@@ -1279,7 +1289,11 @@ func _confirm_wartime_facility_plan() -> void:
 		return
 	request.wartime_facility_plan = Dictionary(result.plan).duplicate(true)
 	_pending_wartime_facility_plan = request.wartime_facility_plan.duplicate(true)
-	_append_recent_action("战时工事已确认，资源已一次性扣除")
+	_append_recent_action(
+		"战时工事已确认，由%s施工；资源已一次性扣除" % [
+			_get_committed_squad_name(_selected_squad_id),
+		]
+	)
 	_refresh_battle_ui()
 
 

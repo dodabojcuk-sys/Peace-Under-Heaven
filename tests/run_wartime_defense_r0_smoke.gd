@@ -184,10 +184,14 @@ func _run() -> void:
 	var committed_plan_uses_selected_squad := committed_plan_construction_squad_ids.all(
 		func(squad_id: int) -> bool: return squad_id == 1
 	)
+	var committed_plan_feedback := battle.get_node(
+		"UI/RootPanel/SelectedSquadPanel/RecentActions"
+	) as Label
 	_check(
 		committed_plan_routes.size() == 3
 			and committed_plan_routes.all(func(route_id: StringName) -> bool: return route_id == deployment_after_route)
-			and committed_plan_uses_selected_squad,
+			and committed_plan_uses_selected_squad
+			and committed_plan_feedback.text.contains("北门先锋"),
 		"可见工事草稿与确认计划均绑定玩家当前选定的守城部署路线和施工分队"
 	)
 	## A work is owned by its real approach, not globally by its display kind.
