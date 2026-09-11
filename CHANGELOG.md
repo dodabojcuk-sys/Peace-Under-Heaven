@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-12 - Readable wartime defense action rail
+
+- Moved the temporary-facility plan, focused facility status, and repair
+  controls into a reserved left-bottom action rail. The battlefield now keeps
+  an explicit gap above that rail, preventing construction and repair feedback
+  from covering the side route.
+- Added graphical geometry checks for the planning rail at 1152x648,
+  1280x720, and 1920x1080, plus live repair/gate-repair controls. This changes
+  only presentation layout; routes, combat state, transactions and snapshots
+  remain under their existing owners.
+
 ## 2026-09-12 - Wartime defense target handoff coverage
 
 - Strengthened the reached-invader defense regression to inspect the actual

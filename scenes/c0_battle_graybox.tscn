@@ -358,9 +358,9 @@ visible = false
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 24.0
-offset_top = -430.0
+offset_top = -194.0
 offset_right = 452.0
-offset_bottom = -298.0
+offset_bottom = -62.0
 theme_type_variation = &"CommandPanel"
 
 [node name="WartimeRepairButton" type="Button" parent="UI/RootPanel"]
@@ -368,9 +368,9 @@ visible = false
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 24.0
-offset_top = -246.0
+offset_top = -112.0
 offset_right = 204.0
-offset_bottom = -206.0
+offset_bottom = -72.0
 text = "维修战时工事"
 theme_type_variation = &"PrimaryButton"
 
@@ -379,9 +379,9 @@ visible = false
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 212.0
-offset_top = -246.0
+offset_top = -112.0
 offset_right = 452.0
-offset_bottom = -206.0
+offset_bottom = -72.0
 text = "切换维修目标"
 
 [node name="WartimeGateRepairButton" type="Button" parent="UI/RootPanel"]
@@ -389,9 +389,9 @@ visible = false
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 24.0
-offset_top = -344.0
+offset_top = -194.0
 offset_right = 452.0
-offset_bottom = -304.0
+offset_bottom = -154.0
 text = "维修城门"
 theme_type_variation = &"PrimaryButton"
 
@@ -400,9 +400,9 @@ visible = false
 anchor_top = 1.0
 anchor_bottom = 1.0
 offset_left = 24.0
-offset_top = -286.0
+offset_top = -148.0
 offset_right = 452.0
-offset_bottom = -252.0
+offset_bottom = -116.0
 theme_override_colors/font_color = Color(0.78, 0.81, 0.76, 1)
 theme_override_font_sizes/font_size = 13
 theme_type_variation = &"SecondaryLabel"

@@ -15,19 +15,27 @@ Godot --path . --rendering-driver opengl3 \
 
 OpenGL API 4.1 Metal - Compatibility - Apple M4
 PASS: visible defense planning
+PASS: plan controls do not cover the battle routes at 1152x648, 1280x720, or 1920x1080
 PASS: formal confirmation and construction
 PASS: visible battle tick interrupts a barricade before completion
+PASS: interrupted-work status and repair controls stay outside the side route
 PASS: visible battle tick triggers a completed spike trap once at route arrival
-PASS: formal facility repair names and saves the selected committed crew
-PASS: visible formal gate repair starts saved time
+PASS: visible formal gate repair starts saved time without covering the routes
 PASS: true tick repair
-WARTIME_DEFENSE_GRAPHICAL_SMOKE PASS assertions=7
+WARTIME_DEFENSE_GRAPHICAL_SMOKE PASS assertions=12
 ```
 
 The runner enters C0 through the normal Blackstone city entry, uses the visible
 route and facility-plan controls, confirms through the formal request, and
 captures a rendered frame after each UI refresh. It uses an isolated V5 save
 directory and does not access a retained candidate save.
+
+The current candidate reserves a left-bottom action rail for the plan, focused
+facility status, and repair controls. The battle canvas retains an explicit
+gap above that rail, so construction/repair feedback no longer sits on top of
+the side-route geometry. This is a presentation-only layout adjustment: route
+coordinates, battle ticks, resource transactions, and save ownership are
+unchanged.
 
 ## Captures
 

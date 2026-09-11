@@ -60,6 +60,19 @@ func _run() -> void:
 		and str(plan_panel.get_node("Title").text).contains("东门壕沟"),
 		"可见守城工事面板经正式按钮选择侧翼瞭望台、箭塔和拒马"
 	)
+	_check(
+		not _action_controls_cover_battlefield(battle, [plan_panel]),
+		"战前工事计划位于独立操作区，不覆盖可见路线"
+	)
+	for viewport_size in [Vector2i(1280, 720), Vector2i(1920, 1080)]:
+		root.size = viewport_size
+		await _frames(2)
+		_check(
+			not _action_controls_cover_battlefield(battle, [plan_panel]),
+			"%d×%d 下战前工事计划仍不覆盖路线" % [viewport_size.x, viewport_size.y]
+		)
+	root.size = Vector2i(1152, 648)
+	await _frames(2)
 	confirm_button.emit_signal("pressed")
 	await _frames(2)
 	_capture("wartime-defense-02-construction-engine-gui.png")
@@ -125,6 +138,16 @@ func _run() -> void:
 		and battle.recent_actions_label.text.contains(expected_repair_crew),
 		"正式维修按钮显示并保存玩家当前选中编队作为维修分队"
 	)
+	_check(
+		not _action_controls_cover_battlefield(
+			battle,
+			[
+				facility_repair_button,
+				battle.get_node("UI/RootPanel/WartimeFacilityStatusLabel") as Label,
+			]
+		),
+		"施工中断后的工事状态和维修入口不覆盖侧门路线"
+	)
 	## The trap finishes on the next normal tick while that same invader is still
 	## at the endpoint, so this capture proves a real route-arrival trigger
 	## rather than a manually decremented enemy counter.
@@ -173,6 +196,17 @@ func _run() -> void:
 		and repair_button.text.contains("维修中"),
 		"受损城门的可见正式按钮只启动保存中的维修工期，不提前恢复城防"
 	)
+	_check(
+		not _action_controls_cover_battlefield(
+			battle,
+			[
+				repair_button,
+				battle.get_node("UI/RootPanel/WartimeFacilityStatusLabel") as Label,
+				battle.get_node("UI/RootPanel/WartimeRepairButton") as Button,
+			]
+		),
+		"城门维修期间的状态和操作保持在路线画面之外"
+	)
 	battle.step_battle_for_test(BattleSession.PROTECT_TARGET_REPAIR_TICKS)
 	battle._refresh_battle_ui()
 	await _frames(1)
@@ -215,6 +249,18 @@ func _facility_by_kind(session: BattleSession, kind: StringName) -> Dictionary:
 		if StringName(record.get("kind", &"")) == kind:
 			return record
 	return {}
+
+
+func _action_controls_cover_battlefield(battle: C0BattleGraybox, controls: Array) -> bool:
+	var battlefield := battle.get_node("UI/RootPanel/Battlefield") as Control
+	if battlefield == null:
+		return true
+	var battlefield_rect := battlefield.get_global_rect()
+	for control_value in controls:
+		var control := control_value as Control
+		if control != null and control.visible and battlefield_rect.intersects(control.get_global_rect()):
+			return true
+	return false
 
 
 func _check(condition: bool, description: String) -> void:

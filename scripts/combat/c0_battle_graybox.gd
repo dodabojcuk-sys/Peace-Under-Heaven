@@ -1126,6 +1126,7 @@ func _refresh_battle_ui() -> void:
 	_refresh_wartime_repair_ui()
 	_refresh_wartime_gate_repair_ui()
 	_refresh_wartime_facility_status_ui()
+	_refresh_wartime_action_layout()
 	_refresh_recent_actions()
 	_refresh_exit_ui()
 
@@ -1133,11 +1134,9 @@ func _refresh_battle_ui() -> void:
 func _refresh_wartime_plan_ui() -> void:
 	if request == null:
 		wartime_plan_panel.visible = false
-		battlefield_panel.offset_bottom = -202.0
 		return
 	var can_edit := _can_edit_wartime_facilities()
 	wartime_plan_panel.visible = can_edit
-	battlefield_panel.offset_bottom = -344.0 if can_edit else -202.0
 	if not can_edit:
 		return
 	var saved_plan: Dictionary = request.wartime_facility_plan
@@ -1199,6 +1198,21 @@ func _refresh_wartime_plan_ui() -> void:
 				else "战时工事（部署至%s）" % target_route_name
 			)
 		)
+
+
+## Plan, repair and focused-status controls belong in the left-bottom action
+## rail.  Keeping an explicit gap above it prevents their durable feedback
+## from covering a route, while leaving the battle canvas and route geometry
+## unchanged for simulation and marker placement.
+func _refresh_wartime_action_layout() -> void:
+	var needs_action_rail := (
+		wartime_plan_panel.visible
+		or wartime_repair_button.visible
+		or wartime_repair_target_button.visible
+		or wartime_gate_repair_button.visible
+		or wartime_facility_status_label.visible
+	)
+	battlefield_panel.offset_bottom = -218.0 if needs_action_rail else -202.0
 
 
 func _toggle_wartime_facility(kind: StringName) -> void:
