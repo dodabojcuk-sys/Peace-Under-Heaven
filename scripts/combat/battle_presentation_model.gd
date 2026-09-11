@@ -99,7 +99,9 @@ static func _build_route(
 		var facilities := session.get_wartime_facility_state()
 		enemy_count_known = (
 			bool(facilities.get("enemy_observation_ready", false))
-			and StringName(facilities.get("watch_route_id", &"")) == route_id
+			and route_id in Array(facilities.get("watch_route_ids", [
+				StringName(facilities.get("watch_route_id", &"")),
+			]))
 		)
 	var route_name := _route_name(mission, route_id)
 	var engaged_squads: Array[int] = []

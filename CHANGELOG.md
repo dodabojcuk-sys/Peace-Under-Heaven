@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-12 - Route-local wartime defenses
+
+- Made wartime facility identity route-local: the same facility kind may now
+  be planned once on each real approach, while duplicate copies on one route
+  remain rejected by the deterministic facility identity.
+- Updated the formal C0 plan controls to reflect the selected squad's route,
+  so choosing an arrow tower or watch platform on the second approach no
+  longer silently removes the first approach's work.
+- Extended battle projection and arrow-tower intent collection to process all
+  active route works in one authoritative battle tick. Observation now reveals
+  only the routes with their own completed watch platforms.
+- Added a dual-route simulation and snapshot-restore regression: both watch
+  platforms and both arrow towers finish, reveal/fire on their own routes, and
+  restore as the same four facilities without a second combat owner.
+
 ## 2026-09-12 - Interruptible wartime construction
 
 - Made unfinished defense works part of the real route attack order. Once an

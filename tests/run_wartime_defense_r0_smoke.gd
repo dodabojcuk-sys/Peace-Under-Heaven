@@ -124,6 +124,56 @@ func _run() -> void:
 			and committed_plan_routes.all(func(route_id: StringName) -> bool: return route_id == deployment_after_route),
 		"可见工事草稿与确认计划均绑定玩家当前选定的守城部署路线"
 	)
+	## A work is owned by its real approach, not globally by its display kind.
+	## This isolated session uses the same frozen request facts and battle clock
+	## to prove that two legal approaches can each receive one watch platform
+	## and arrow tower without creating a second resource or combat owner.
+	var dual_route_attempt: Dictionary = city.get_expedition_attempt()
+	var dual_route_plan := WartimeFacilityPlan.empty_snapshot()
+	for facility_kind in [
+		WartimeFacilityPlan.KIND_WATCH_PLATFORM,
+		WartimeFacilityPlan.KIND_ARROW_TOWER,
+	]:
+		for facility_route in [
+			CommittedForceSnapshot.FRONT_ROUTE,
+			CommittedForceSnapshot.SIDE_ROUTE,
+		]:
+			dual_route_plan.facilities.append(
+				WartimeFacilityPlan.make_facility(facility_kind, facility_route)
+			)
+	dual_route_attempt.wartime_facility_plan = dual_route_plan.duplicate(true)
+	var dual_route_request := BattleRequest.from_expedition_attempt(
+		dual_route_attempt, battle.request.mission_definition
+	)
+	if dual_route_request != null:
+		dual_route_request.phase = BattleRequest.PHASE_ACTIVE
+	var dual_route_session := BattleSession.new(dual_route_request)
+	var front_hp_before_dual := int(
+		dual_route_session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("enemy_total_hp", 0)
+	)
+	var side_hp_before_dual := int(
+		dual_route_session.get_route_state(CommittedForceSnapshot.SIDE_ROUTE).get("enemy_total_hp", 0)
+	)
+	for _tick in range(BattleSession.ARROW_TOWER_ATTACK_INTERVAL_TICKS):
+		dual_route_session.step_tick()
+	var dual_effects := dual_route_session.get_wartime_facility_state()
+	var dual_snapshot := dual_route_session.get_snapshot()
+	var restored_dual_route_session := BattleSession.new(dual_route_request)
+	var dual_restore_success := restored_dual_route_session.restore_snapshot(dual_snapshot)
+	_check(
+		dual_route_request != null
+		and bool(WartimeFacilityPlan.validate_snapshot(dual_route_plan).get("valid", false))
+		and Array(dual_effects.get("watch_route_ids", [])).has(CommittedForceSnapshot.FRONT_ROUTE)
+		and Array(dual_effects.get("watch_route_ids", [])).has(CommittedForceSnapshot.SIDE_ROUTE)
+		and Dictionary(dual_effects.get("arrow_towers_by_route", {})).size() == 2
+		and int(dual_route_session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("enemy_total_hp", 0))
+			== front_hp_before_dual - BattleSession.ARROW_TOWER_DAMAGE_PER_VOLLEY
+		and int(dual_route_session.get_route_state(CommittedForceSnapshot.SIDE_ROUTE).get("enemy_total_hp", 0))
+			== side_hp_before_dual - BattleSession.ARROW_TOWER_DAMAGE_PER_VOLLEY
+		and dual_restore_success
+		and Dictionary(restored_dual_route_session.get_wartime_facility_state().get("arrow_towers_by_route", {})).size() == 2,
+		"同类瞭望台与箭塔可分别部署至两条守城路线、同时生效并通过同一战斗快照恢复"
+	)
 	_check(battle.start_battle(), "守城工事确认后由同一正式 C0 时钟启动")
 	battle.tick_timer.stop()
 	var session := battle.coordinator.active_session

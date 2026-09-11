@@ -1121,17 +1121,18 @@ func _refresh_wartime_plan_ui() -> void:
 	var pending_plan: Dictionary = (
 		saved_plan if is_committed else _pending_wartime_facility_plan
 	)
+	var selected_route := _selected_deployment_route()
 	var has_watch := WartimeFacilityPlan.has_kind(
-		pending_plan, WartimeFacilityPlan.KIND_WATCH_PLATFORM
+		pending_plan, WartimeFacilityPlan.KIND_WATCH_PLATFORM, selected_route
 	)
 	var has_ram := WartimeFacilityPlan.has_kind(
-		pending_plan, WartimeFacilityPlan.KIND_SIEGE_RAM
+		pending_plan, WartimeFacilityPlan.KIND_SIEGE_RAM, selected_route
 	)
 	var has_arrow_tower := WartimeFacilityPlan.has_kind(
-		pending_plan, WartimeFacilityPlan.KIND_ARROW_TOWER
+		pending_plan, WartimeFacilityPlan.KIND_ARROW_TOWER, selected_route
 	)
 	var has_barricade := WartimeFacilityPlan.has_kind(
-		pending_plan, WartimeFacilityPlan.KIND_BARRICADE
+		pending_plan, WartimeFacilityPlan.KIND_BARRICADE, selected_route
 	)
 	var is_defense := request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE
 	wartime_watch_button.text = (
@@ -1186,7 +1187,10 @@ func _toggle_wartime_facility(kind: StringName) -> void:
 	var removed := false
 	for facility_value in facilities:
 		var facility: Dictionary = facility_value
-		if StringName(facility.get("kind", &"")) == kind:
+		if (
+			StringName(facility.get("kind", &"")) == kind
+			and StringName(facility.get("route_id", &"")) == _selected_deployment_route()
+		):
 			removed = true
 			continue
 		remaining.append(facility)
@@ -1365,18 +1369,36 @@ func _get_wartime_facility_status_text(record: Dictionary) -> String:
 		BattleSession.FACILITY_PHASE_DAMAGED:
 			if StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE:
 				var effects := coordinator.active_session.get_wartime_facility_state()
+				var barricade_effect := Dictionary(
+					Dictionary(effects.get("barricades_by_route", {})).get(
+						StringName(record.get("route_id", &"")), {}
+					)
+				)
 				var incoming_percent := float(
-					int(effects.get("barricade_incoming_damage_basis_points", BattleSession.BASIS_POINTS))
+					int(barricade_effect.get(
+						"incoming_damage_basis_points",
+						effects.get("barricade_incoming_damage_basis_points", BattleSession.BASIS_POINTS)
+					))
 				) / 100.0
 				var advance_percent := float(
-					int(effects.get("barricade_enemy_advance_basis_points", BattleSession.BASIS_POINTS))
+					int(barricade_effect.get(
+						"enemy_advance_basis_points",
+						effects.get("barricade_enemy_advance_basis_points", BattleSession.BASIS_POINTS)
+					))
 				) / 100.0
 				return "%s：受损 %d/%d · 伤害 %.0f%% · 推进 %.0f%%" % [
 					name, durability, max_durability, incoming_percent, advance_percent,
 				]
 			if StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_ARROW_TOWER:
 				var effects := coordinator.active_session.get_wartime_facility_state()
-				var volley_damage := int(effects.get("arrow_tower_damage_per_volley", 0))
+				var arrow_effect := Dictionary(
+					Dictionary(effects.get("arrow_towers_by_route", {})).get(
+						StringName(record.get("route_id", &"")), {}
+					)
+				)
+				var volley_damage := int(arrow_effect.get(
+					"damage_per_volley", effects.get("arrow_tower_damage_per_volley", 0)
+				))
 				return "%s：受损 %d/%d · 齐射 %d" % [
 					name, durability, max_durability, volley_damage,
 				]

@@ -49,7 +49,6 @@ static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
 		return _failure("战时工事计划类型非法")
 	var normalized: Array[Dictionary] = []
 	var seen_ids: Dictionary = {}
-	var seen_kinds: Dictionary = {}
 	for facility_value in snapshot.facilities:
 		if not facility_value is Dictionary:
 			return _failure("战时工事记录非法")
@@ -65,14 +64,12 @@ static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
 			or seen_ids.has(facility_id)
 			or typeof(facility.kind) != TYPE_STRING_NAME
 			or not FACILITY_COSTS.has(kind)
-			or seen_kinds.has(kind)
 			or typeof(facility.route_id) != TYPE_STRING_NAME
 			or route_id not in [&"FRONT_GATE", &"SIDE_GATE"]
 			or facility_id != StringName("%s-%s" % [kind.to_lower(), route_id.to_lower()])
 		):
 			return _failure("战时工事身份或位置非法")
 		seen_ids[facility_id] = true
-		seen_kinds[kind] = true
 		normalized.append(facility.duplicate(true))
 	return {"valid": true, "error": "", "snapshot": {
 		"schema_version": SCHEMA_VERSION,
@@ -124,9 +121,20 @@ static func get_repair_costs(kind: StringName) -> Dictionary:
 	return Dictionary(FACILITY_REPAIR_COSTS.get(kind, {})).duplicate(true)
 
 
-static func has_kind(snapshot: Dictionary, kind: StringName) -> bool:
+## Facilities are route-bound. A player may defend both legal approaches with
+## the same kind, but can never create a second copy of that kind on one route
+## because its deterministic ID is already unique in validate_snapshot().
+static func has_kind(
+	snapshot: Dictionary,
+	kind: StringName,
+	route_id: StringName = &""
+) -> bool:
 	for facility_value in Array(snapshot.get("facilities", [])):
-		if facility_value is Dictionary and StringName(facility_value.get("kind", &"")) == kind:
+		if (
+			facility_value is Dictionary
+			and StringName(facility_value.get("kind", &"")) == kind
+			and (route_id == &"" or StringName(facility_value.get("route_id", &"")) == route_id)
+		):
 			return true
 	return false
 

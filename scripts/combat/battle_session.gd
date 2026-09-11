@@ -225,6 +225,9 @@ func get_mission_objective_state() -> Dictionary:
 
 func get_wartime_facility_state() -> Dictionary:
 	var projection := wartime_facility_state.duplicate(true)
+	var barricades_by_route: Dictionary = {}
+	var arrow_towers_by_route: Dictionary = {}
+	var watched_route_ids: Array[StringName] = []
 	for record_value in Array(wartime_facility_state.get("facilities", [])):
 		var record: Dictionary = Dictionary(record_value)
 		var phase := StringName(record.get("phase", &""))
@@ -236,33 +239,47 @@ func get_wartime_facility_state() -> Dictionary:
 		if kind == WartimeFacilityPlan.KIND_BARRICADE:
 			if phase not in [FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED]:
 				continue
-			projection["barricade_route_id"] = route_id
-			projection["barricade_incoming_damage_basis_points"] = (
-				_get_barricade_incoming_damage_basis_points(record)
-			)
-			projection["barricade_enemy_advance_basis_points"] = (
-				_get_barricade_durability_basis_points(
-					record,
-					BARRICADE_ENEMY_ADVANCE_BASIS_POINTS
-				)
-			)
+			barricades_by_route[route_id] = {
+				"incoming_damage_basis_points": _get_barricade_incoming_damage_basis_points(record),
+				"enemy_advance_basis_points": _get_barricade_durability_basis_points(
+					record, BARRICADE_ENEMY_ADVANCE_BASIS_POINTS
+				),
+			}
 			continue
 		if kind == WartimeFacilityPlan.KIND_ARROW_TOWER:
 			if phase not in [FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED]:
 				continue
-			projection["arrow_tower_route_id"] = route_id
-			projection["arrow_tower_damage_per_volley"] = (
-				_get_arrow_tower_volley_damage(record)
-			)
-			projection["arrow_tower_attack_interval_ticks"] = ARROW_TOWER_ATTACK_INTERVAL_TICKS
+			arrow_towers_by_route[route_id] = {
+				"damage_per_volley": _get_arrow_tower_volley_damage(record),
+				"attack_interval_ticks": ARROW_TOWER_ATTACK_INTERVAL_TICKS,
+			}
 			continue
 		if phase != FACILITY_PHASE_ACTIVE:
 			continue
 		if kind == WartimeFacilityPlan.KIND_WATCH_PLATFORM:
-			projection["enemy_observation_ready"] = true
-			projection["watch_route_id"] = route_id
+			watched_route_ids.append(route_id)
 		elif kind == WartimeFacilityPlan.KIND_SIEGE_RAM:
 			projection["siege_ram_route_id"] = route_id
+	if not barricades_by_route.is_empty():
+		projection["barricades_by_route"] = barricades_by_route
+		## Retain the old singleton projection for established callers and old
+		## diagnostics. Route-aware callers must use the map above.
+		var first_barricade_route: StringName = barricades_by_route.keys()[0]
+		var first_barricade: Dictionary = Dictionary(barricades_by_route[first_barricade_route])
+		projection["barricade_route_id"] = first_barricade_route
+		projection["barricade_incoming_damage_basis_points"] = int(first_barricade.incoming_damage_basis_points)
+		projection["barricade_enemy_advance_basis_points"] = int(first_barricade.enemy_advance_basis_points)
+	if not arrow_towers_by_route.is_empty():
+		projection["arrow_towers_by_route"] = arrow_towers_by_route
+		var first_arrow_route: StringName = arrow_towers_by_route.keys()[0]
+		var first_arrow: Dictionary = Dictionary(arrow_towers_by_route[first_arrow_route])
+		projection["arrow_tower_route_id"] = first_arrow_route
+		projection["arrow_tower_damage_per_volley"] = int(first_arrow.damage_per_volley)
+		projection["arrow_tower_attack_interval_ticks"] = int(first_arrow.attack_interval_ticks)
+	if not watched_route_ids.is_empty():
+		projection["enemy_observation_ready"] = true
+		projection["watch_route_ids"] = watched_route_ids
+		projection["watch_route_id"] = watched_route_ids[0]
 	return projection
 
 
@@ -1116,30 +1133,28 @@ func _build_damage_intents() -> Dictionary:
 func _apply_arrow_tower_damage_intents(enemy_damage: Dictionary) -> void:
 	if current_tick % ARROW_TOWER_ATTACK_INTERVAL_TICKS != 0:
 		return
-	var route_id: StringName = &""
-	var volley_damage := 0
 	for record_value in Array(wartime_facility_state.get("facilities", [])):
 		var record: Dictionary = Dictionary(record_value)
 		if (
 			StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_ARROW_TOWER
 			and StringName(record.get("phase", &"")) in [FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED]
 		):
-			route_id = StringName(record.get("route_id", &""))
-			volley_damage = _get_arrow_tower_volley_damage(record)
-			break
-	if not routes.has(route_id):
-		return
-	var route: Dictionary = routes[route_id]
-	if int(route.get("enemy_total_hp", 0)) <= 0:
-		return
-	var damage := mini(volley_damage, int(route.enemy_total_hp))
-	enemy_damage[route_id] = int(enemy_damage.get(route_id, 0)) + damage
-	last_tick_facility_events.append({
-		"kind": WartimeFacilityPlan.KIND_ARROW_TOWER,
-		"route_id": route_id,
-		"damage": damage,
-		"tick": current_tick,
-	})
+			var route_id := StringName(record.get("route_id", &""))
+			if not routes.has(route_id):
+				continue
+			var route: Dictionary = routes[route_id]
+			if int(route.get("enemy_total_hp", 0)) <= 0:
+				continue
+			var damage := mini(
+				_get_arrow_tower_volley_damage(record), int(route.enemy_total_hp)
+			)
+			enemy_damage[route_id] = int(enemy_damage.get(route_id, 0)) + damage
+			last_tick_facility_events.append({
+				"kind": WartimeFacilityPlan.KIND_ARROW_TOWER,
+				"route_id": route_id,
+				"damage": damage,
+				"tick": current_tick,
+			})
 
 
 func _get_arrow_tower_volley_damage(record: Dictionary) -> int:
