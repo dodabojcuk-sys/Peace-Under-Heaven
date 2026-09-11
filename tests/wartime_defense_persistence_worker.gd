@@ -12,7 +12,7 @@ func _initialize() -> void:
 func _run() -> void:
 	var mode := _argument_value("--mode=")
 	var save_directory := _argument_value("--txwzs-v5-save-dir=")
-	_require(mode in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"], "worker mode 必须有效")
+	_require(mode in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L", "M"], "worker mode 必须有效")
 	_require(not save_directory.is_empty(), "worker 必须使用隔离存档目录")
 	if not failures.is_empty():
 		_finish(mode, save_directory)
@@ -35,6 +35,8 @@ func _run() -> void:
 		"I": await _run_i(scene, city)
 		"J": await _run_j(scene, city)
 		"K": await _run_k(scene, city)
+		"L": await _run_l(scene, city)
+		"M": await _run_m(scene, city)
 	scene.queue_free()
 	await process_frame
 	_finish(mode, save_directory)
@@ -333,6 +335,94 @@ func _run_k(scene: Node, city: Node) -> void:
 			and int(barricade.get("construction_squad_id", 0)) > 0
 			and not session.get_wartime_facility_state().has("barricade_route_id"),
 		"K 冷启动保留原施工分队身份和无防护中断态，不凭空继续施工"
+	)
+
+
+## L/M are intentionally separate from H/I.  They prove that a repair which
+## has already consumed its authoritative transaction can be interrupted by a
+## reached invader, then restored across an actual process boundary without
+## regaining route protection or silently completing.
+func _run_l(scene: Node, city: Node) -> void:
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var formation_id := StringName(roster[0].get("formation_id", &"")) if not roster.is_empty() else &""
+	var started: Dictionary = city.begin_wartime_defense_attempt([formation_id])
+	_require(bool(started.get("success", false)), "L 从正式守城入口建立维修受阻夹具")
+	if failures.size() > 0 or not city.enter_wartime_defense_battle():
+		_require(false, "L 打开正式维修受阻守城实例")
+		return
+	await process_frame
+	var battle := city.get_formal_battle_scene() as C0BattleGraybox
+	if battle == null:
+		_require(false, "L 守城实例存在")
+		return
+	var route_button := battle.get_node("UI/RootPanel/SquadControls/Squad1/RouteButton") as Button
+	route_button.emit_signal("pressed")
+	await process_frame
+	var panel := battle.get_node("UI/RootPanel/WartimePlanPanel") as Panel
+	var barricade_button := panel.get_node("BarricadeButton") as Button
+	var confirm_button := panel.get_node("ConfirmButton") as Button
+	barricade_button.emit_signal("pressed")
+	await process_frame
+	confirm_button.emit_signal("pressed")
+	await process_frame
+	_require(battle.start_battle(), "L 正式确认拒马后开始战斗")
+	battle.tick_timer.stop()
+	var session := battle.coordinator.active_session
+	var route_id := StringName(battle.request.committed_force.squads[0].route_id)
+	var route: Dictionary = session.get_route_state(route_id)
+	route.enemy_position_fixed = int(route.get("distance_fixed", 0))
+	session.routes[route_id] = route
+	session.current_tick = BattleSession.ATTACK_INTERVAL_TICKS - 1
+	battle.step_battle_for_test(1)
+	route = session.get_route_state(route_id)
+	route.enemy_position_fixed = 0
+	session.routes[route_id] = route
+	battle._refresh_battle_ui()
+	var repair_button := battle.get_node("UI/RootPanel/WartimeRepairButton") as Button
+	repair_button.emit_signal("pressed")
+	await process_frame
+	var repair_started := _barricade(session)
+	route = session.get_route_state(route_id)
+	route.enemy_position_fixed = int(route.get("distance_fixed", 0))
+	session.routes[route_id] = route
+	session.current_tick = BattleSession.ATTACK_INTERVAL_TICKS - 1
+	battle.step_battle_for_test(1)
+	var repair_interrupted := _barricade(session)
+	_require(
+		StringName(repair_started.get("phase", &"")) == BattleSession.FACILITY_PHASE_REPAIRING
+			and StringName(repair_interrupted.get("phase", &"")) == BattleSession.FACILITY_PHASE_INTERRUPTED
+			and int(repair_interrupted.get("construction_squad_id", 0)) > 0
+			and not session.get_wartime_facility_state().has("barricade_route_id"),
+		"L 敌军真实抵达会中断已开始维修的拒马且不恢复防护"
+	)
+	_require(scene.flush_runtime_persistence(&"wartime_defense_l"), "L 发布维修受阻后的真实 V5 代次")
+
+
+func _run_m(scene: Node, city: Node) -> void:
+	var attempt: Dictionary = city.get_expedition_attempt()
+	_require(
+		StringName(attempt.get("source_id", &"")) == BattleRequest.SOURCE_WARTIME_DEFENSE
+			and StringName(attempt.get("phase", &"")) == BattleRequest.PHASE_ACTIVE,
+		"M 冷启动读取维修受阻的活动守城尝试"
+	)
+	if failures.size() > 0:
+		return
+	var opened: bool = city.get_formal_battle_scene() != null or city.enter_wartime_defense_battle()
+	if not opened:
+		_require(false, "M 重开同一维修受阻守城实例")
+		return
+	await process_frame
+	var battle := city.get_formal_battle_scene() as C0BattleGraybox
+	if battle == null:
+		_require(false, "M 恢复 C0 维修受阻实例")
+		return
+	var session := battle.coordinator.active_session
+	var interrupted_repair := _barricade(session)
+	_require(
+		StringName(interrupted_repair.get("phase", &"")) == BattleSession.FACILITY_PHASE_INTERRUPTED
+			and int(interrupted_repair.get("construction_squad_id", 0)) > 0
+			and not session.get_wartime_facility_state().has("barricade_route_id"),
+		"M 冷启动保留维修中断态、分队身份和无防护投影，不自动完工"
 	)
 
 

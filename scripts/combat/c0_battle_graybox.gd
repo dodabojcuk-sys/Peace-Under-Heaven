@@ -877,7 +877,13 @@ func _append_wartime_facility_feedback(events: Array[Dictionary]) -> void:
 		if StringName(event.get("event", &"")) == &"CONSTRUCTION_COMPLETED":
 			_append_recent_action("%s已在%s完工并投入战斗" % [_get_facility_name(kind), route_name])
 		elif StringName(event.get("event", &"")) == &"REPAIR_STARTED":
-			_append_recent_action("%s开始在%s维修" % [_get_facility_name(kind), route_name])
+			_append_recent_action(
+				"%s由%s开始在%s维修" % [
+					_get_facility_name(kind),
+					_get_committed_squad_name(int(event.get("squad_id", 0))),
+					route_name,
+				]
+			)
 		elif StringName(event.get("event", &"")) == &"REPAIR_COMPLETED":
 			_append_recent_action("%s已在%s维修完成并恢复作用" % [_get_facility_name(kind), route_name])
 		elif StringName(event.get("event", &"")) == &"DAMAGED":

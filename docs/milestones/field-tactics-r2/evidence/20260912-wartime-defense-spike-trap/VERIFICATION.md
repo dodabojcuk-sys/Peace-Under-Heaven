@@ -18,9 +18,10 @@ PASS: visible defense planning
 PASS: formal confirmation and construction
 PASS: visible battle tick interrupts a barricade before completion
 PASS: visible battle tick triggers a completed spike trap once at route arrival
+PASS: formal facility repair names and saves the selected committed crew
 PASS: visible formal gate repair starts saved time
 PASS: true tick repair
-WARTIME_DEFENSE_GRAPHICAL_SMOKE PASS assertions=6
+WARTIME_DEFENSE_GRAPHICAL_SMOKE PASS assertions=7
 ```
 
 The runner enters C0 through the normal Blackstone city entry, uses the visible
@@ -36,6 +37,10 @@ directory and does not access a retained candidate save.
   before construction ticks begin.
 - `wartime-defense-03b-construction-interrupted-engine-gui.png`: an enemy
   arrival interrupts the unfinished barricade before it can project a block.
+- `wartime-defense-03d-facility-repair-crew-engine-gui.png`: the visible
+  facility-repair control has bound the selected `北门先锋` as its saved repair
+  crew; the recent-action panel names that same formation and the barricade is
+  still `REPAIRING`, not prematurely active.
 - `wartime-defense-03c-spike-trap-triggered-engine-gui.png`: a completed trap
   triggers at the actual selected-route objective, writes one enemy-HP damage
   event, and is consumed.
@@ -64,7 +69,8 @@ WARTIME_DEFENSE_R0_SMOKE PASS
 
 Godot --headless --path . --script tests/run_wartime_defense_persistence_smoke.gd \
   -- --txwzs-v5-save-dir="$isolated_save_dir"
-WARTIME_DEFENSE_PERSISTENCE_SMOKE PASS assertions=14
+Expected aggregate completion marker after adding the L/M pair:
+WARTIME_DEFENSE_PERSISTENCE_SMOKE PASS assertions=16
 ```
 
 The construction detachment is a real committed battle squad, saved by
@@ -97,4 +103,31 @@ The focused lifecycle check rejects foreign squad `999` without changing the
 damaged facility, then begins the repair with the explicit living squad and
 checks both the saved `construction_squad_id` and `REPAIR_STARTED.squad_id`.
 This is a headless authority/lifecycle check; the existing GUI captures show
-the repair control but do not yet isolate a distinct selected-repair-crew frame.
+the repair control and `wartime-defense-03d-facility-repair-crew-engine-gui.png`
+is the distinct Godot-GUI selected-crew frame. It remains GUI-event evidence,
+not native macOS mouse input.
+
+## Repair interruption regression (same candidate)
+
+The focused lifecycle smoke also moves a real invader to an active repair
+route on an ordinary attack tick. It verifies that the barricade becomes
+`INTERRUPTED`, contributes no route protection, and restores with the same
+construction crew identity. This closes the prior loophole where a facility in
+`REPAIRING` was not a valid invader target. The graphically captured repair
+state is intentionally taken before this targeted interruption fixture; no
+claim is made that the capture itself is a long real-time playthrough.
+
+The isolated L→M worker pair was also run directly against one temporary V5
+directory in this candidate:
+
+```text
+WARTIME_DEFENSE_DISK_WORKER_L PASS
+WARTIME_DEFENSE_DISK_WORKER_M PASS
+```
+
+L follows the formal C0 repair button, then an ordinary reached-route battle
+tick interrupts the saved repair. M is a fresh Godot process that reopens that
+same directory and asserts the persisted `INTERRUPTED` phase, crew identity,
+and absent barricade projection. This is a true isolated-process save chain.
+The aggregate runner remains the full 16-assertion gate; its current candidate
+execution is not substituted for this directly captured L/M evidence.

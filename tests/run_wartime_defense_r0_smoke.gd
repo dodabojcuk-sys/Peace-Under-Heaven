@@ -472,6 +472,72 @@ func _run() -> void:
 			and selected_repair_event,
 		"维修只接受玩家选定的真实存活编队；无效编队不会暗中回退或改变工事"
 	)
+	## A repair is unfinished route work, not an invulnerable shortcut.  A real
+	## reached invader must interrupt it before it restores any route protection,
+	## and that interruption has to survive the ordinary active-session snapshot.
+	var repair_interruption_probe := BattleSession.new(battle.request)
+	var repair_interruption_record := _facility_by_kind(
+		repair_interruption_probe, WartimeFacilityPlan.KIND_BARRICADE
+	)
+	var repair_interruption_id := StringName(repair_interruption_record.get("facility_id", &""))
+	var repair_interruption_builder := int(repair_interruption_record.get("construction_squad_id", 0))
+	var repair_interruption_state: Dictionary = repair_interruption_probe.get_wartime_facility_state()
+	var repair_interruption_facilities: Array = Array(
+		repair_interruption_state.get("facilities", [])
+	).duplicate(true)
+	for repair_index in repair_interruption_facilities.size():
+		var repair_record: Dictionary = Dictionary(repair_interruption_facilities[repair_index])
+		if StringName(repair_record.get("facility_id", &"")) != repair_interruption_id:
+			continue
+		repair_record.phase = BattleSession.FACILITY_PHASE_DAMAGED
+		repair_record.durability = int(repair_record.get("max_durability", 1))
+		repair_interruption_facilities[repair_index] = repair_record
+		break
+	repair_interruption_probe.wartime_facility_state.facilities = repair_interruption_facilities
+	var repair_interruption_started := repair_interruption_probe.begin_wartime_facility_repair(
+		repair_interruption_id, repair_interruption_builder
+	)
+	var repair_interruption_route_id := StringName(repair_interruption_record.get("route_id", &""))
+	var repair_interruption_route: Dictionary = repair_interruption_probe.get_route_state(
+		repair_interruption_route_id
+	)
+	repair_interruption_route.enemy_position_fixed = int(
+		repair_interruption_route.get("distance_fixed", 0)
+	)
+	repair_interruption_probe.routes[repair_interruption_route_id] = repair_interruption_route
+	repair_interruption_probe.current_tick = BattleSession.ATTACK_INTERVAL_TICKS - 1
+	repair_interruption_probe.step_tick()
+	var interrupted_repair_record := _facility_by_kind(
+		repair_interruption_probe, WartimeFacilityPlan.KIND_BARRICADE
+	)
+	var repair_interruption_event := repair_interruption_probe.get_last_tick_facility_events().any(
+		func(event: Dictionary) -> bool:
+			return (
+				StringName(event.get("event", &"")) == &"CONSTRUCTION_INTERRUPTED"
+				and StringName(event.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE
+			)
+	)
+	var repair_interruption_snapshot := repair_interruption_probe.get_snapshot()
+	var repair_interruption_restore := BattleSession.new(battle.request)
+	var repair_interruption_restored := repair_interruption_restore.restore_snapshot(
+		repair_interruption_snapshot
+	)
+	var restored_interrupted_repair := _facility_by_kind(
+		repair_interruption_restore, WartimeFacilityPlan.KIND_BARRICADE
+	)
+	_check(
+		repair_interruption_started
+			and StringName(interrupted_repair_record.get("phase", &""))
+				== BattleSession.FACILITY_PHASE_INTERRUPTED
+			and not repair_interruption_probe.get_wartime_facility_state().has("barricade_route_id")
+			and repair_interruption_event
+			and repair_interruption_restored
+			and StringName(restored_interrupted_repair.get("phase", &""))
+				== BattleSession.FACILITY_PHASE_INTERRUPTED
+			and int(restored_interrupted_repair.get("construction_squad_id", 0))
+				== repair_interruption_builder,
+		"敌军抵达会中断维修中的拒马；未恢复防护且活动快照保留施工分队与中断态"
+	)
 	var target_hp_before := int(objective.get("protect_target_hp", 0))
 	battle.step_battle_for_test(4)
 	var watched_route: Dictionary = session.get_route_state(deployment_after_route)

@@ -1465,15 +1465,20 @@ func _get_active_barricade_id(route_id: StringName) -> StringName:
 	return &""
 
 
-## Construction is targetable only after invaders have reached this objective
-## route. It supplies no movement delay, damage absorption, sight or fire until
-## its normal construction ticks complete.
+## Construction and repair are targetable only after invaders have reached this
+## objective route. Neither one supplies movement delay, damage absorption,
+## sight, or fire until its saved work ticks complete.  Treating repair as an
+## untargetable phase would let a crew restore a defense underneath an already
+## arrived invader.
 func _get_constructing_facility_id(kind: StringName, route_id: StringName) -> StringName:
 	for record_value in Array(wartime_facility_state.get("facilities", [])):
 		var record: Dictionary = Dictionary(record_value)
 		if (
 			StringName(record.get("kind", &"")) == kind
-			and StringName(record.get("phase", &"")) == FACILITY_PHASE_CONSTRUCTING
+			and StringName(record.get("phase", &"")) in [
+				FACILITY_PHASE_CONSTRUCTING,
+				FACILITY_PHASE_REPAIRING,
+			]
 			and StringName(record.get("route_id", &"")) == route_id
 		):
 			return StringName(record.get("facility_id", &""))
@@ -1552,7 +1557,10 @@ func _apply_wartime_facility_damage(damage_by_id: Dictionary) -> void:
 		var damage := int(damage_by_id[facility_id])
 		if damage <= 0:
 			continue
-		var was_constructing := StringName(record.get("phase", &"")) == FACILITY_PHASE_CONSTRUCTING
+		var was_in_progress := StringName(record.get("phase", &"")) in [
+			FACILITY_PHASE_CONSTRUCTING,
+			FACILITY_PHASE_REPAIRING,
+		]
 		var was_triggered_trap := (
 			StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_SPIKE_TRAP
 			and StringName(record.get("phase", &"")) == FACILITY_PHASE_ACTIVE
@@ -1562,7 +1570,7 @@ func _apply_wartime_facility_damage(damage_by_id: Dictionary) -> void:
 		record.phase = (
 			FACILITY_PHASE_DESTROYED
 			if int(record.durability) == 0
-			else FACILITY_PHASE_INTERRUPTED if was_constructing else FACILITY_PHASE_DAMAGED
+			else FACILITY_PHASE_INTERRUPTED if was_in_progress else FACILITY_PHASE_DAMAGED
 		)
 		facilities[index] = record
 		## The trigger already emitted its player-facing event before this shared
@@ -1572,7 +1580,7 @@ func _apply_wartime_facility_damage(damage_by_id: Dictionary) -> void:
 			continue
 		last_tick_facility_events.append({
 			"kind": record.kind, "route_id": record.route_id,
-			"event": &"CONSTRUCTION_INTERRUPTED" if was_constructing else (
+			"event": &"CONSTRUCTION_INTERRUPTED" if was_in_progress else (
 				&"DESTROYED" if int(record.durability) == 0 else &"DAMAGED"
 			),
 			"damage": damage, "durability": record.durability, "tick": current_tick,

@@ -110,10 +110,11 @@ only after its checkpoint succeeds, adds a short route/damage notice, and
 never restores that transient notification as a new volley after reload.
 
 An unfinished route work is not invulnerable. Once invaders reach that route's
-objective, they target a `CONSTRUCTING` barricade, then tower, then watch
-platform before applying ordinary gate damage. The hit changes the same saved
-facility record to `DAMAGED` or `DESTROYED` and emits a construction-interrupted
-event; it grants none of the unfinished work's normal effects. The established
+objective, they target a `CONSTRUCTING` **or `REPAIRING`** barricade, then tower,
+then watch platform before applying ordinary gate damage. A hit during either
+kind of in-progress work changes the same saved facility record to
+`INTERRUPTED` (or `DESTROYED` at zero durability), emits the same interruption
+event, and grants none of the unfinished work's normal effects. The established
 repair transaction is the only way to return that record to `ACTIVE`, so an
 interrupted work cannot silently resume construction or become effective during
 the attack that stopped it.

@@ -101,6 +101,30 @@ func _run() -> void:
 		and not interruption_projection.has("barricade_route_id"),
 		"可见战斗刻在敌军先于施工完工抵达时中断拒马，未完成设施不提供阻挡投影"
 	)
+	var facility_repair_button := battle.get_node(
+		"UI/RootPanel/WartimeRepairButton"
+	) as Button
+	var facility_repair_was_available := (
+		facility_repair_button.visible and not facility_repair_button.disabled
+	)
+	facility_repair_button.emit_signal("pressed")
+	await _frames(2)
+	battle._refresh_battle_ui()
+	await _frames(1)
+	_capture("wartime-defense-03d-facility-repair-crew-engine-gui.png")
+	var repairing_barricade := _facility_by_kind(
+		session, WartimeFacilityPlan.KIND_BARRICADE
+	)
+	var expected_repair_crew := str(battle.request.committed_force.squads[0].display_name)
+	_check(
+		facility_repair_was_available
+		and StringName(repairing_barricade.get("phase", &""))
+			== BattleSession.FACILITY_PHASE_REPAIRING
+		and int(repairing_barricade.get("construction_squad_id", 0))
+			== int(battle.request.committed_force.squads[0].squad_id)
+		and battle.recent_actions_label.text.contains(expected_repair_crew),
+		"正式维修按钮显示并保存玩家当前选中编队作为维修分队"
+	)
 	## The trap finishes on the next normal tick while that same invader is still
 	## at the endpoint, so this capture proves a real route-arrival trigger
 	## rather than a manually decremented enemy counter.

@@ -14,10 +14,12 @@ func _run() -> void:
 	var victory_save_directory := "%s/txwzs-wartime-defense-victory-%d-%d" % [OS.get_temp_dir(), OS.get_process_id(), Time.get_ticks_usec()]
 	var interruption_save_directory := "%s/txwzs-wartime-defense-interruption-%d-%d" % [OS.get_temp_dir(), OS.get_process_id(), Time.get_ticks_usec()]
 	var crew_loss_save_directory := "%s/txwzs-wartime-defense-crew-loss-%d-%d" % [OS.get_temp_dir(), OS.get_process_id(), Time.get_ticks_usec()]
+	var repair_interruption_save_directory := "%s/txwzs-wartime-defense-repair-interruption-%d-%d" % [OS.get_temp_dir(), OS.get_process_id(), Time.get_ticks_usec()]
 	_require(DirAccess.make_dir_recursive_absolute(repair_save_directory) == OK, "建立维修链隔离守城存档目录")
 	_require(DirAccess.make_dir_recursive_absolute(victory_save_directory) == OK, "建立胜利链隔离守城存档目录")
 	_require(DirAccess.make_dir_recursive_absolute(interruption_save_directory) == OK, "建立施工受阻链隔离守城存档目录")
 	_require(DirAccess.make_dir_recursive_absolute(crew_loss_save_directory) == OK, "建立施工分队损失链隔离守城存档目录")
+	_require(DirAccess.make_dir_recursive_absolute(repair_interruption_save_directory) == OK, "建立维修受阻链隔离守城存档目录")
 	var workers: Array[Dictionary] = []
 	for mode in ["A", "B", "C", "D", "E"]:
 		workers.append(_run_worker(mode, repair_save_directory))
@@ -27,6 +29,8 @@ func _run() -> void:
 		workers.append(_run_worker(mode, interruption_save_directory))
 	for mode in ["J", "K"]:
 		workers.append(_run_worker(mode, crew_loss_save_directory))
+	for mode in ["L", "M"]:
+		workers.append(_run_worker(mode, repair_interruption_save_directory))
 	for worker in workers:
 		print("WARTIME_DEFENSE_DISK_WORKER_%s_OUTPUT\n%s" % [worker.mode, worker.output])
 		_require(bool(worker.passed), "独立进程 %s 退出、完成标记和断言均通过" % worker.mode)
@@ -34,8 +38,9 @@ func _run() -> void:
 	_remove_tree(victory_save_directory)
 	_remove_tree(interruption_save_directory)
 	_remove_tree(crew_loss_save_directory)
+	_remove_tree(repair_interruption_save_directory)
 	if failures.is_empty():
-		print("WARTIME_DEFENSE_PERSISTENCE_SMOKE PASS assertions=14")
+		print("WARTIME_DEFENSE_PERSISTENCE_SMOKE PASS assertions=16")
 		quit(0)
 		return
 	quit(1)

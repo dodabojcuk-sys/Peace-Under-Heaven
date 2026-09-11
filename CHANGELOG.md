@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-12 - Interruptible wartime repairs
+
+- Put `REPAIRING` temporary facilities into the same reached-route target
+  order as construction. An invader can now interrupt an in-progress repair
+  before it restores a barricade, tower, or watch platform; surviving work
+  returns to the persisted `INTERRUPTED` phase, while zero durability is still
+  `DESTROYED`.
+- Kept the lifecycle in `BattleSession`'s existing damage writer and snapshot,
+  so no second repair or route-protection state is introduced. C0 now names
+  the actual committed repair crew in both immediate and tick feedback.
+- Added headless interruption/restore coverage plus a new graphical C0
+  selected-crew repair capture. The capture is Godot GUI-event evidence only.
+
 ## 2026-09-12 - Formal macro-siege victory coverage
 
 - Extended the macro-siege wartime handoff smoke with a separate, fully formal
