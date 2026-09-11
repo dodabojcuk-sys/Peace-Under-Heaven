@@ -22,6 +22,9 @@
   and arrow tower are gone. Observation stops on damage, resumes after the
   existing formal repair completes, and remains a projection of the saved
   facility record rather than an independent fog-of-war cache.
+- Extended the independent defense recovery chain to preserve a route-bound
+  watch platform beside its still-constructing barricade. The restored session
+  is checked against each work's saved duration, route, and non-zero progress.
 
 ## 2026-09-12 - Defense observation projection
 

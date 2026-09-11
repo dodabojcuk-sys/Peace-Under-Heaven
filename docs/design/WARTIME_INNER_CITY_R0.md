@@ -111,6 +111,14 @@ target` action before any repair transaction is submitted. The selected target
 does not alter facility state or spend resources; the existing transaction
 still revalidates and repairs exactly that saved facility ID.
 
+The independent defense recovery chain saves a side-route watch platform and
+barricade while both are constructing. On a separate-process restore, already
+consumed normal battle time may complete only the watch platform according to
+its saved two-tick requirement; the longer barricade retains its non-zero,
+unfinished progress and route identity. This distinguishes normal time
+continuation from rebuilding either facility from scratch or granting its
+effect early.
+
 Before confirming a plan, new works bind to the currently selected squad's
 formal deployment route. C0 displays that route in the plan title, and the
 controller still validates the route in the persisted plan at confirmation.

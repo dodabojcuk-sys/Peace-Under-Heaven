@@ -61,27 +61,28 @@ func _run_a(scene: Node, city: Node) -> void:
 		"A 通过正式守城部署按钮将第一支编队切换到侧翼"
 	)
 	var panel := battle.get_node("UI/RootPanel/WartimePlanPanel") as Panel
+	var watch_button := panel.get_node("WatchButton") as Button
 	var barricade_button := panel.get_node("BarricadeButton") as Button
 	var confirm_button := panel.get_node("ConfirmButton") as Button
+	watch_button.emit_signal("pressed")
 	barricade_button.emit_signal("pressed")
 	await process_frame
 	confirm_button.emit_signal("pressed")
 	await process_frame
 	var committed_facilities: Array = Array(battle.request.wartime_facility_plan.get("facilities", []))
 	_require(
-		committed_facilities.size() == 1
-			and StringName(Dictionary(committed_facilities[0]).get("route_id", &"")) == deployed_route,
-		"A 侧翼部署后的可见工事确认保存同一侧翼路线"
+		committed_facilities.size() == 2
+			and _all_facilities_on_route(committed_facilities, deployed_route),
+		"A 侧翼部署后的可见瞭望台和拒马确认保存同一侧翼路线"
 	)
 	_require(battle.start_battle(), "A 由正式计划启动施工中的守城战斗")
 	battle.tick_timer.stop()
 	battle.step_battle_for_test(1)
 	var facilities: Array = Array(battle.coordinator.active_session.get_wartime_facility_state().get("facilities", []))
 	_require(
-		facilities.size() == 1
-			and StringName(Dictionary(facilities[0]).get("phase", &"")) == BattleSession.FACILITY_PHASE_CONSTRUCTING
-			and int(Dictionary(facilities[0]).get("progress_ticks", -1)) == 1,
-		"A 保存未完工拒马的真实施工刻"
+		facilities.size() == 2
+			and _all_constructing_at_progress(facilities, deployed_route, 1),
+		"A 保存未完工瞭望台和拒马的真实施工刻"
 	)
 	_require(scene.flush_runtime_persistence(&"wartime_defense_a"), "A 发布施工中守城的真实 V5 代次")
 	_require(int(city.get("food")) == food_before, "A 守城施工不创建出征粮食扣费")
@@ -105,13 +106,21 @@ func _run_b(scene: Node, city: Node) -> void:
 		return
 	var session := battle.coordinator.active_session
 	var restored: Array = Array(session.get_wartime_facility_state().get("facilities", []))
+	var restored_watch := _facility_by_kind(session, WartimeFacilityPlan.KIND_WATCH_PLATFORM)
+	var restored_barricade := _barricade(session)
 	_require(
-		restored.size() == 1
-			and StringName(Dictionary(restored[0]).get("phase", &"")) == BattleSession.FACILITY_PHASE_CONSTRUCTING
-			and StringName(Dictionary(restored[0]).get("route_id", &"")) == CommittedForceSnapshot.SIDE_ROUTE
-			and int(Dictionary(restored[0]).get("progress_ticks", -1)) >= 1
-			and int(Dictionary(restored[0]).get("progress_ticks", -1)) < int(Dictionary(restored[0]).get("required_ticks", 0)),
-		"B 独立进程保留侧翼未完工设施的路线、施工阶段和非零进度，不从零重建或提前生效"
+		restored.size() == 2
+			and StringName(restored_watch.get("route_id", &"")) == CommittedForceSnapshot.SIDE_ROUTE
+			and StringName(restored_watch.get("phase", &"")) in [
+				BattleSession.FACILITY_PHASE_CONSTRUCTING,
+				BattleSession.FACILITY_PHASE_ACTIVE,
+			]
+			and int(restored_watch.get("progress_ticks", -1)) >= 1
+			and StringName(restored_barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_CONSTRUCTING
+			and StringName(restored_barricade.get("route_id", &"")) == CommittedForceSnapshot.SIDE_ROUTE
+			and int(restored_barricade.get("progress_ticks", -1)) >= 1
+			and int(restored_barricade.get("progress_ticks", -1)) < int(restored_barricade.get("required_ticks", 0)),
+		"B 独立进程保留侧翼瞭望台和拒马的路线与非零施工事实；已消耗的正常恢复刻只允许瞭望台按原工期完成"
 	)
 	battle.tick_timer.stop()
 	battle.step_battle_for_test(BattleSession.FACILITY_BUILD_TICKS[WartimeFacilityPlan.KIND_BARRICADE] - 1)
@@ -319,6 +328,36 @@ func _barricade(session: BattleSession) -> Dictionary:
 		if StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE:
 			return record
 	return {}
+
+
+func _facility_by_kind(session: BattleSession, kind: StringName) -> Dictionary:
+	for record_value in Array(session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("kind", &"")) == kind:
+			return record
+	return {}
+
+
+func _all_facilities_on_route(records: Array, route_id: StringName) -> bool:
+	for record_value in records:
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("route_id", &"")) != route_id:
+			return false
+	return true
+
+
+func _all_constructing_at_progress(records: Array, route_id: StringName, progress: int) -> bool:
+	for record_value in records:
+		var record: Dictionary = Dictionary(record_value)
+		if (
+			StringName(record.get("phase", &"")) != BattleSession.FACILITY_PHASE_CONSTRUCTING
+			or StringName(record.get("route_id", &"")) != route_id
+			or int(record.get("progress_ticks", -1)) != progress
+		):
+			return false
+	return true
+
+
 
 
 func _argument_value(prefix: String) -> String:
