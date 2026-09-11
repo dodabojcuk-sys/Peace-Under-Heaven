@@ -27,6 +27,9 @@
   prevents C0 from advertising a transient formation-route edit that could not
   be written back to the durable macro handoff; selecting a formation still
   selects the route for a new facility plan.
+- The C0 repair action now targets the damaged facility on the selected
+  squad's route and names both the facility and route in its label. It no
+  longer silently repairs the first damaged record in the session.
 
 ## 2026-09-12 - Formal Blackstone defense deployment
 

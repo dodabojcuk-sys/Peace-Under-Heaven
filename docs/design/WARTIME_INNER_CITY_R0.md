@@ -112,9 +112,11 @@ damage. It does not hide or rewrite casualties, introduce a second combat
 loop, or affect another route.
 
 When a facility is damaged or destroyed, the active C0 panel exposes the next
-eligible facility and its repair cost. Pressing that formal action spends only
-the published repair cost through `ConstructionController`, changes the same
-saved `BattleSession` record to `REPAIRING`, and checkpoints it immediately.
+eligible facility on the currently selected squad's route and its repair cost.
+Pressing that formal action spends only the published repair cost through
+`ConstructionController`, changes the same saved `BattleSession` record to
+`REPAIRING`, and checkpoints it immediately. This prevents a generic repair
+button from silently selecting a damaged facility on another approach.
 If that checkpoint fails, the session and resource spend are both rolled back.
 Repairs take two battle ticks and restore the record's recorded maximum
 durability; a repeated action while repair is underway has no second cost.

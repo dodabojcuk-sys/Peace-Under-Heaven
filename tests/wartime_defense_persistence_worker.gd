@@ -123,8 +123,10 @@ func _run_b(scene: Node, city: Node) -> void:
 	var repair_button := battle.get_node("UI/RootPanel/WartimeRepairButton") as Button
 	_require(
 		StringName(barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_DAMAGED
-			and repair_button.visible and not repair_button.disabled,
-		"B 自然抵达城门后的受损拒马提供正式维修操作"
+			and repair_button.visible
+			and not repair_button.disabled
+			and repair_button.text.contains("东门壕沟"),
+		"B 自然抵达城门后的侧翼受损拒马提供目标明确的正式维修操作"
 	)
 	repair_button.emit_signal("pressed")
 	await process_frame

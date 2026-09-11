@@ -189,8 +189,9 @@ func _run() -> void:
 	battle._refresh_battle_ui()
 	_check(
 		repair_button.visible and not repair_button.disabled
-			and repair_button.text.contains("拒马"),
-		"受损拒马通过正式战时界面显示可用维修入口"
+			and repair_button.text.contains("拒马")
+			and repair_button.text.contains("正门路线"),
+		"受损拒马通过正式战时界面显示当前路线的可用维修入口"
 	)
 	var repair_snapshot_before_failure := session.get_snapshot()
 	city.set_wartime_session_checkpoint_fault_for_test(&"CHECKPOINT_SAVE_FAILED")

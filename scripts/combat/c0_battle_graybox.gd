@@ -1237,16 +1237,18 @@ func _refresh_wartime_repair_ui() -> void:
 	wartime_repair_button.visible = false
 	if request == null or request.phase != BattleRequest.PHASE_ACTIVE or coordinator.active_session == null:
 		return
-	for record_value in Array(coordinator.active_session.get_wartime_facility_state().get("facilities", [])):
-		var record: Dictionary = Dictionary(record_value)
-		if StringName(record.get("phase", &"")) not in [BattleSession.FACILITY_PHASE_DAMAGED, BattleSession.FACILITY_PHASE_DESTROYED]:
-			continue
-		var costs := WartimeFacilityPlan.get_repair_costs(StringName(record.get("kind", &"")))
-		var wood_cost := int(costs.get(&"wood", 0))
-		wartime_repair_button.text = "维修%s · 木材 %d" % [_get_facility_name(StringName(record.get("kind", &""))), wood_cost]
-		wartime_repair_button.visible = true
-		wartime_repair_button.disabled = wood_cost <= 0
+	var record := _selected_repairable_facility()
+	if record.is_empty():
 		return
+	var costs := WartimeFacilityPlan.get_repair_costs(StringName(record.get("kind", &"")))
+	var wood_cost := int(costs.get(&"wood", 0))
+	wartime_repair_button.text = "维修%s（%s）· 木材 %d" % [
+		_get_facility_name(StringName(record.get("kind", &""))),
+		_get_route_name(StringName(record.get("route_id", &""))),
+		wood_cost,
+	]
+	wartime_repair_button.visible = true
+	wartime_repair_button.disabled = wood_cost <= 0
 
 
 func _repair_damaged_wartime_facility() -> void:
@@ -1258,14 +1260,9 @@ func _repair_damaged_wartime_facility() -> void:
 		or not city_controller.has_method("commit_wartime_facility_repair_cost")
 	):
 		return
-	var facility_id: StringName = &""
-	var facility_kind: StringName = &""
-	for record_value in Array(coordinator.active_session.get_wartime_facility_state().get("facilities", [])):
-		var record: Dictionary = Dictionary(record_value)
-		if StringName(record.get("phase", &"")) in [BattleSession.FACILITY_PHASE_DAMAGED, BattleSession.FACILITY_PHASE_DESTROYED]:
-			facility_id = StringName(record.get("facility_id", &""))
-			facility_kind = StringName(record.get("kind", &""))
-			break
+	var target := _selected_repairable_facility()
+	var facility_id := StringName(target.get("facility_id", &""))
+	var facility_kind := StringName(target.get("kind", &""))
 	if facility_id == &"":
 		return
 	var before_session := coordinator.active_session.get_snapshot()
@@ -1292,6 +1289,26 @@ func _repair_damaged_wartime_facility() -> void:
 		return
 	_append_recent_action("%s开始维修" % _get_facility_name(facility_kind))
 	_refresh_battle_ui()
+
+
+## The selected squad is the player's existing route focus during an active
+## C0 battle.  Reuse it for repair targeting so one generic button cannot
+## silently repair the first damaged record on a different route.
+func _selected_repairable_facility() -> Dictionary:
+	if coordinator.active_session == null:
+		return {}
+	var target_route := _selected_deployment_route()
+	for record_value in Array(coordinator.active_session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if (
+			StringName(record.get("route_id", &"")) == target_route
+			and StringName(record.get("phase", &"")) in [
+				BattleSession.FACILITY_PHASE_DAMAGED,
+				BattleSession.FACILITY_PHASE_DESTROYED,
+			]
+		):
+			return record
+	return {}
 
 
 func _can_edit_wartime_facilities() -> bool:
