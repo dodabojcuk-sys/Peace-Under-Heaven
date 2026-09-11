@@ -1302,6 +1302,12 @@ func _get_wartime_facility_status_text(record: Dictionary) -> String:
 				return "%s：受损 %d/%d · 伤害 %.0f%% · 推进 %.0f%%" % [
 					name, durability, max_durability, incoming_percent, advance_percent,
 				]
+			if StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_ARROW_TOWER:
+				var effects := coordinator.active_session.get_wartime_facility_state()
+				var volley_damage := int(effects.get("arrow_tower_damage_per_volley", 0))
+				return "%s：受损 %d/%d · 齐射 %d" % [
+					name, durability, max_durability, volley_damage,
+				]
 			return "%s：受损 %d/%d" % [name, durability, max_durability]
 		BattleSession.FACILITY_PHASE_DESTROYED:
 			return "%s：已摧毁" % name

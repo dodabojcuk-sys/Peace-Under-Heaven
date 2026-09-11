@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-12 - Damageable wartime arrow towers
+
+- Extended the existing temporary-facility lifecycle to the defense arrow
+  tower. A reached invader route now breaks its barricade first, then damages
+  its active tower before ordinary gate damage resumes. Damaged towers retain a
+  durability-proportional volley; destroyed towers make no later volleys; the
+  established repair transaction restores their full saved firepower.
+- Kept enemy HP, facility durability, repair progress, and event ordering in
+  `BattleSession`. C0 only presents the persisted outcome, including a damaged
+  tower's real remaining volley, and does not create a second combat or repair
+  state owner.
+- Extended the formal defense smoke through a restored session: it proves the
+  barricade-to-tower sequence, scaled damaged volley, silent post-destruction
+  interval, and repair back to full firepower.
+
 ## 2026-09-12 - Defense observation projection
 
 - Made the temporary C0 presentation consume the persisted mission definition

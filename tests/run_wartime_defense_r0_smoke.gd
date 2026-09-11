@@ -103,6 +103,7 @@ func _run() -> void:
 		"守城界面隐藏攻城槌，权威提交也拒绝绕过界面的攻城设施且不扣木材"
 	)
 	watch_button.emit_signal("pressed")
+	arrow_button.emit_signal("pressed")
 	barricade_button.emit_signal("pressed")
 	await process_frame
 	_check(
@@ -119,7 +120,7 @@ func _run() -> void:
 	for facility_value in Array(committed_plan.get("facilities", [])):
 		committed_plan_routes.append(StringName(Dictionary(facility_value).get("route_id", &"")))
 	_check(
-		committed_plan_routes.size() == 2
+		committed_plan_routes.size() == 3
 			and committed_plan_routes.all(func(route_id: StringName) -> bool: return route_id == deployment_after_route),
 		"可见工事草稿与确认计划均绑定玩家当前选定的守城部署路线"
 	)
@@ -172,6 +173,9 @@ func _run() -> void:
 	## a barricade's later damage/repair lifecycle after its deliberate delay.
 	session.mission_objective_state.protect_target_hp = 10000
 	session.mission_objective_state.protect_target_max_hp = 10000
+	var lifecycle_route: Dictionary = session.get_route_state(deployment_after_route)
+	lifecycle_route.enemy_total_hp = 2500
+	session.routes[deployment_after_route] = lifecycle_route
 	var target_hp_before_route_contacts := int(
 		session.get_mission_objective_state().get("protect_target_hp", 0)
 	)
@@ -245,6 +249,101 @@ func _run() -> void:
 				and int(record.get("durability", 0)) == int(record.get("max_durability", -1))
 			)
 			break
+	var restored_session := restored_battle.coordinator.active_session
+	var arrow_lifecycle_route: Dictionary = restored_session.get_route_state(deployment_after_route)
+	# The formal setup and cold restore above already built/repaired this route.
+	# Hold its real invaders at the reached objective with enough HP to exercise
+	# the saved barricade -> tower damage chain without forging any facility,
+	# resource, or terminal battle state.
+	arrow_lifecycle_route.enemy_total_hp = 2500
+	arrow_lifecycle_route.enemy_position_fixed = int(arrow_lifecycle_route.get("distance_fixed", 0))
+	restored_session.routes[deployment_after_route] = arrow_lifecycle_route
+	var barricade_destroyed := false
+	for _tick in range(400):
+		restored_battle.step_battle_for_test(1)
+		if StringName(
+			_facility_by_kind(restored_session, WartimeFacilityPlan.KIND_BARRICADE).get("phase", &"")
+		) == BattleSession.FACILITY_PHASE_DESTROYED:
+			barricade_destroyed = true
+			break
+	arrow_lifecycle_route = restored_session.get_route_state(deployment_after_route)
+	# Once the actual barricade has been destroyed, lower only the fixture's
+	# surviving invader HP so the tower is visibly damaged before it is destroyed.
+	arrow_lifecycle_route.enemy_total_hp = 600
+	arrow_lifecycle_route.enemy_position_fixed = int(arrow_lifecycle_route.get("distance_fixed", 0))
+	restored_session.routes[deployment_after_route] = arrow_lifecycle_route
+	var arrow_tower := _facility_by_kind(restored_session, WartimeFacilityPlan.KIND_ARROW_TOWER)
+	var arrow_damaged := false
+	for _tick in range(80):
+		restored_battle.step_battle_for_test(1)
+		arrow_tower = _facility_by_kind(restored_session, WartimeFacilityPlan.KIND_ARROW_TOWER)
+		if StringName(arrow_tower.get("phase", &"")) == BattleSession.FACILITY_PHASE_DAMAGED:
+			arrow_damaged = true
+			break
+	var arrow_damage_before_volley := int(
+		restored_session.get_route_state(deployment_after_route).get("enemy_total_hp", 0)
+	)
+	var expected_damaged_volley := BattleSession.ARROW_TOWER_DAMAGE_PER_VOLLEY
+	if arrow_damaged:
+		expected_damaged_volley = restored_session._positive_integer_divide(
+			BattleSession.ARROW_TOWER_DAMAGE_PER_VOLLEY * int(arrow_tower.get("durability", 0)),
+			int(arrow_tower.get("max_durability", 1))
+		)
+	restored_battle.step_battle_for_test(BattleSession.ARROW_TOWER_ATTACK_INTERVAL_TICKS)
+	var arrow_damage_events := restored_session.get_last_tick_facility_events().filter(
+		func(event: Dictionary) -> bool:
+			return StringName(event.get("kind", &"")) == WartimeFacilityPlan.KIND_ARROW_TOWER
+	)
+	var arrow_route_after_volley: Dictionary = restored_session.get_route_state(deployment_after_route)
+	_check(
+		barricade_destroyed
+			and arrow_damaged
+			and not arrow_damage_events.is_empty()
+			and int(Dictionary(arrow_damage_events[0]).get("damage", 0)) == expected_damaged_volley
+			and int(arrow_route_after_volley.get("enemy_total_hp", 0))
+				== arrow_damage_before_volley - expected_damaged_volley,
+		"抵近敌军会先拆除箭塔；受损箭塔仍按真实耐久比例发出一次可核对的较弱齐射"
+	)
+	for _tick in range(48):
+		restored_battle.step_battle_for_test(1)
+		arrow_tower = _facility_by_kind(restored_session, WartimeFacilityPlan.KIND_ARROW_TOWER)
+		if StringName(arrow_tower.get("phase", &"")) == BattleSession.FACILITY_PHASE_DESTROYED:
+			break
+	var enemy_hp_before_silent_interval := int(
+		restored_session.get_route_state(deployment_after_route).get("enemy_total_hp", 0)
+	)
+	restored_battle.step_battle_for_test(BattleSession.ARROW_TOWER_ATTACK_INTERVAL_TICKS)
+	var arrow_events_after_destroy := restored_session.get_last_tick_facility_events().filter(
+		func(event: Dictionary) -> bool:
+			return StringName(event.get("kind", &"")) == WartimeFacilityPlan.KIND_ARROW_TOWER
+	)
+	_check(
+		StringName(arrow_tower.get("phase", &"")) == BattleSession.FACILITY_PHASE_DESTROYED
+			and arrow_events_after_destroy.is_empty()
+			and int(restored_session.get_route_state(deployment_after_route).get("enemy_total_hp", 0))
+				== enemy_hp_before_silent_interval,
+		"箭塔被拆除后不再攻击，后续战斗刻不会伪造额外齐射或敌军伤害"
+	)
+	var quiet_arrow_route: Dictionary = restored_session.get_route_state(deployment_after_route)
+	quiet_arrow_route.enemy_total_hp = 0
+	restored_session.routes[deployment_after_route] = quiet_arrow_route
+	restored_battle._refresh_battle_ui()
+	var restored_repair_button := restored_battle.get_node("UI/RootPanel/WartimeRepairButton") as Button
+	restored_repair_button.emit_signal("pressed")
+	await process_frame
+	var arrow_repair_started := StringName(
+		_facility_by_kind(restored_session, WartimeFacilityPlan.KIND_ARROW_TOWER).get("phase", &"")
+	) == BattleSession.FACILITY_PHASE_REPAIRING
+	restored_battle.step_battle_for_test(BattleSession.FACILITY_REPAIR_TICKS)
+	var repaired_arrow := _facility_by_kind(restored_session, WartimeFacilityPlan.KIND_ARROW_TOWER)
+	_check(
+		arrow_repair_started
+			and StringName(repaired_arrow.get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE
+			and int(repaired_arrow.get("durability", 0)) == int(repaired_arrow.get("max_durability", -1))
+			and int(restored_session.get_wartime_facility_state().get("arrow_tower_damage_per_volley", 0))
+				== BattleSession.ARROW_TOWER_DAMAGE_PER_VOLLEY,
+		"正式维修入口能恢复被摧毁箭塔的耐久和完整齐射能力"
+	)
 	var retreat_applied := (
 		reactivated
 		and repaired_after_restore
@@ -397,6 +496,14 @@ func _run() -> void:
 	victory_scene.queue_free()
 	await process_frame
 	_finish()
+
+
+func _facility_by_kind(session: BattleSession, kind: StringName) -> Dictionary:
+	for record_value in Array(session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("kind", &"")) == kind:
+			return record
+	return {}
 
 
 func _check(condition: bool, description: String) -> void:

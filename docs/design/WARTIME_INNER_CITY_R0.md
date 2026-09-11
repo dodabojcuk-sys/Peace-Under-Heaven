@@ -78,7 +78,7 @@ route-bound facility.
 | --- | ---: | --- | --- |
 | Watch platform | 6 wood | After 2 battle ticks of construction, reveals the exact incoming enemy count for its deployed defense route; before completion C0 shows that route as a visible but uncounted threat | This battle instance only |
 | Siege ram | 8 wood | After 4 battle ticks of construction, applies 160 real damage to its selected gate | This battle instance only |
-| Arrow tower | 10 wood | After 4 battle ticks of construction, targets the selected defended gate approach every 4 battle ticks (1 second) and contributes 24 damage to the existing enemy-HP intent | This battle instance only |
+| Arrow tower | 10 wood | After 4 battle ticks of construction, targets the selected defended gate approach every 4 battle ticks (1 second) and contributes 24 damage to the existing enemy-HP intent; after a route barricade is gone, invaders dismantle the tower before resuming gate damage, and its volley scales with remaining durability | This battle instance only |
 | Barricade | 5 wood | After 3 battle ticks of construction, reduces the selected route's ordinary incoming enemy damage to 65%; in `WARTIME_DEFENSE` it instead absorbs the remainder of that route's real gate damage into its durability | This battle instance only |
 
 Confirmed works enter `CONSTRUCTING` first. The saved battle session owns their
@@ -92,6 +92,15 @@ battle snapshot as all other route damage, and cannot double-apply casualties
 after a restore. The C0 presentation reads the resulting committed-tick event
 only after its checkpoint succeeds, adds a short route/damage notice, and
 never restores that transient notification as a new volley after reload.
+
+In `WARTIME_DEFENSE`, a reached invader route first spends its ordinary damage
+against a barricade. Once that route has no active barricade, it damages its
+active or damaged arrow tower before it can resume gate damage. A damaged tower
+still fires a durability-proportional volley; a destroyed tower fires nothing.
+The damage intent and facility lifecycle are applied in the same battle tick,
+so the tower may make its final eligible volley on the tick it is destroyed,
+but never on a later tick. The existing repair transaction can restore a
+destroyed tower to its full saved volley after its repair ticks complete.
 
 Before confirming a plan, new works bind to the currently selected squad's
 formal deployment route. C0 displays that route in the plan title, and the

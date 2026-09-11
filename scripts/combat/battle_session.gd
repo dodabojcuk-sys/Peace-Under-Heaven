@@ -237,6 +237,15 @@ func get_wartime_facility_state() -> Dictionary:
 				)
 			)
 			continue
+		if kind == WartimeFacilityPlan.KIND_ARROW_TOWER:
+			if phase not in [FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED]:
+				continue
+			projection["arrow_tower_route_id"] = route_id
+			projection["arrow_tower_damage_per_volley"] = (
+				_get_arrow_tower_volley_damage(record)
+			)
+			projection["arrow_tower_attack_interval_ticks"] = ARROW_TOWER_ATTACK_INTERVAL_TICKS
+			continue
 		if phase != FACILITY_PHASE_ACTIVE:
 			continue
 		if kind == WartimeFacilityPlan.KIND_WATCH_PLATFORM:
@@ -244,10 +253,6 @@ func get_wartime_facility_state() -> Dictionary:
 			projection["watch_route_id"] = route_id
 		elif kind == WartimeFacilityPlan.KIND_SIEGE_RAM:
 			projection["siege_ram_route_id"] = route_id
-		elif kind == WartimeFacilityPlan.KIND_ARROW_TOWER:
-			projection["arrow_tower_route_id"] = route_id
-			projection["arrow_tower_damage_per_volley"] = ARROW_TOWER_DAMAGE_PER_VOLLEY
-			projection["arrow_tower_attack_interval_ticks"] = ARROW_TOWER_ATTACK_INTERVAL_TICKS
 	return projection
 
 
@@ -952,20 +957,22 @@ func _apply_arrow_tower_damage_intents(enemy_damage: Dictionary) -> void:
 	if current_tick % ARROW_TOWER_ATTACK_INTERVAL_TICKS != 0:
 		return
 	var route_id: StringName = &""
+	var volley_damage := 0
 	for record_value in Array(wartime_facility_state.get("facilities", [])):
 		var record: Dictionary = Dictionary(record_value)
 		if (
 			StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_ARROW_TOWER
-			and StringName(record.get("phase", &"")) == FACILITY_PHASE_ACTIVE
+			and StringName(record.get("phase", &"")) in [FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED]
 		):
 			route_id = StringName(record.get("route_id", &""))
+			volley_damage = _get_arrow_tower_volley_damage(record)
 			break
 	if not routes.has(route_id):
 		return
 	var route: Dictionary = routes[route_id]
 	if int(route.get("enemy_total_hp", 0)) <= 0:
 		return
-	var damage := mini(ARROW_TOWER_DAMAGE_PER_VOLLEY, int(route.enemy_total_hp))
+	var damage := mini(volley_damage, int(route.enemy_total_hp))
 	enemy_damage[route_id] = int(enemy_damage.get(route_id, 0)) + damage
 	last_tick_facility_events.append({
 		"kind": WartimeFacilityPlan.KIND_ARROW_TOWER,
@@ -973,6 +980,17 @@ func _apply_arrow_tower_damage_intents(enemy_damage: Dictionary) -> void:
 		"damage": damage,
 		"tick": current_tick,
 	})
+
+
+func _get_arrow_tower_volley_damage(record: Dictionary) -> int:
+	if StringName(record.get("phase", &"")) == FACILITY_PHASE_ACTIVE:
+		return ARROW_TOWER_DAMAGE_PER_VOLLEY
+	var max_durability := maxi(int(record.get("max_durability", 0)), 1)
+	var durability := clampi(int(record.get("durability", 0)), 1, max_durability)
+	return _positive_integer_divide(
+		ARROW_TOWER_DAMAGE_PER_VOLLEY * durability,
+		max_durability
+	)
 
 
 func _get_wartime_facility_incoming_damage_basis_points(route_id: StringName) -> int:
@@ -1039,6 +1057,22 @@ func _get_active_barricade_id(route_id: StringName) -> StringName:
 		var record: Dictionary = Dictionary(record_value)
 		if (
 			StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE
+			and StringName(record.get("phase", &"")) in [FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED]
+			and StringName(record.get("route_id", &"")) == route_id
+		):
+			return StringName(record.get("facility_id", &""))
+	return &""
+
+
+## Once invaders have broken or bypassed a route barricade, they can dismantle
+## the route's tower before they resume gate damage. This is a normal facility
+## damage intent and leaves target selection, durability, repair, and restore
+## under the same BattleSession authority as every other temporary work.
+func _get_active_arrow_tower_id(route_id: StringName) -> StringName:
+	for record_value in Array(wartime_facility_state.get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if (
+			StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_ARROW_TOWER
 			and StringName(record.get("phase", &"")) in [FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED]
 			and StringName(record.get("route_id", &"")) == route_id
 		):
@@ -1290,7 +1324,11 @@ func _apply_mission_objective_damage() -> void:
 				damage += passed_damage
 				facility_damage[barricade_id] = raw_damage - passed_damage
 			else:
-				damage += raw_damage
+				var arrow_tower_id := _get_active_arrow_tower_id(route_id)
+				if arrow_tower_id != &"":
+					facility_damage[arrow_tower_id] = raw_damage
+				else:
+					damage += raw_damage
 	_apply_wartime_facility_damage(facility_damage)
 	mission_objective_state.protect_target_hp = maxi(
 		int(mission_objective_state.protect_target_hp) - damage,
