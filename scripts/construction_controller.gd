@@ -2852,7 +2852,10 @@ func commit_wartime_facility_plan(
 		or StringName(_expedition_attempt.get("phase", &"")) != BATTLE_PHASE_RESERVED
 	):
 		return _expedition_failure(&"BATTLE_PLAN_STATE", "当前出征不能修改战时布防")
-	var plan_validation := WartimeFacilityPlan.validate_snapshot(plan_snapshot)
+	var plan_validation := WartimeFacilityPlan.validate_for_source(
+		plan_snapshot,
+		StringName(_expedition_attempt.get("source_id", &"FIRST_WAR"))
+	)
 	if not bool(plan_validation.get("valid", false)):
 		return _expedition_failure(&"BATTLE_PLAN_INVALID", str(plan_validation.get("error", "战时布防非法")))
 	var normalized_plan: Dictionary = Dictionary(plan_validation.snapshot).duplicate(true)

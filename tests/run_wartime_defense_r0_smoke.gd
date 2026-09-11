@@ -41,8 +41,28 @@ func _run() -> void:
 	var battle := city.get_formal_battle_scene() as C0BattleGraybox
 	var plan_panel := battle.get_node("UI/RootPanel/WartimePlanPanel") as Panel
 	var watch_button := plan_panel.get_node("WatchButton") as Button
+	var ram_button := plan_panel.get_node("RamButton") as Button
+	var arrow_button := plan_panel.get_node("ArrowTowerButton") as Button
+	var barricade_button := plan_panel.get_node("BarricadeButton") as Button
 	var confirm_button := plan_panel.get_node("ConfirmButton") as Button
+	var wood_before_plan := int(city.get("wood"))
+	var invalid_plan := WartimeFacilityPlan.empty_snapshot()
+	invalid_plan.facilities.append(WartimeFacilityPlan.make_facility(
+		WartimeFacilityPlan.KIND_SIEGE_RAM,
+		CommittedForceSnapshot.FRONT_ROUTE
+	))
+	var rejected_ram: Dictionary = city.commit_wartime_facility_plan(
+		StringName(city.get_expedition_attempt().attempt_id), invalid_plan
+	)
+	_check(
+		not ram_button.visible
+			and not bool(rejected_ram.get("success", false))
+			and int(city.get("wood")) == wood_before_plan,
+		"守城界面隐藏攻城槌，权威提交也拒绝绕过界面的攻城设施且不扣木材"
+	)
 	watch_button.emit_signal("pressed")
+	arrow_button.emit_signal("pressed")
+	barricade_button.emit_signal("pressed")
 	await process_frame
 	_check(
 		battle != null and plan_panel.visible and not confirm_button.disabled,
@@ -52,13 +72,50 @@ func _run() -> void:
 	await process_frame
 	_check(battle.start_battle(), "守城工事确认后由同一正式 C0 时钟启动")
 	battle.tick_timer.stop()
-	var objective: Dictionary = battle.coordinator.active_session.get_mission_objective_state()
+	var session := battle.coordinator.active_session
+	var objective: Dictionary = session.get_mission_objective_state()
 	_check(
 		StringName(objective.get("objective_type", &"")) == MissionDefinition.OBJECTIVE_PROTECT
 			and str(objective.get("protect_target_name", "")) == "黑石城门"
 			and int(objective.get("protect_target_hp", 0)) > 0,
 		"守城实例从冻结任务读取真实城门保护目标，而非复用攻城胜利条件"
 	)
+	var target_hp_before := int(objective.get("protect_target_hp", 0))
+	var front_raw_damage := int(
+		session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).enemy_initial_members
+	) * 2
+	var side_raw_damage := int(
+		session.get_route_state(CommittedForceSnapshot.SIDE_ROUTE).enemy_initial_members) * 2
+	battle.step_battle_for_test(4)
+	var after_construction: Dictionary = session.get_wartime_facility_state()
+	var barricade: Dictionary = {}
+	for record_value in Array(after_construction.get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE:
+			barricade = record
+			break
+	var expected_gate_damage := side_raw_damage + (
+		front_raw_damage * BattleSession.BARRICADE_INCOMING_DAMAGE_BASIS_POINTS
+		/ BattleSession.BASIS_POINTS
+	)
+	_check(
+		int(session.get_mission_objective_state().get("protect_target_hp", 0))
+			== target_hp_before - expected_gate_damage
+			and StringName(barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_DAMAGED
+			and int(barricade.get("durability", 0)) < int(barricade.get("max_durability", 0)),
+		"守城拒马完工后分担城门的真实敌军伤害，并进入可维修的受损状态"
+	)
+	var repair_button := battle.get_node("UI/RootPanel/WartimeRepairButton") as Button
+	battle._refresh_battle_ui()
+	repair_button.emit_signal("pressed")
+	await process_frame
+	var repair_started := false
+	for record_value in Array(session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("facility_id", &"")) == StringName(barricade.get("facility_id", &"")):
+			repair_started = StringName(record.get("phase", &"")) == BattleSession.FACILITY_PHASE_REPAIRING
+			break
+	_check(repair_started, "守城受损拒马可通过正式维修按钮进入可保存的维修阶段")
 	var active_snapshot: Dictionary = city.export_v5_campaign_snapshot()
 	battle.abort_formal_entry()
 	await process_frame
@@ -70,18 +127,31 @@ func _run() -> void:
 	_check(
 		bool(restored.get("success", false))
 			and restored_city.enter_wartime_defense_battle(),
-		"守城 RESERVED 状态冷恢复后仍只打开同一冻结防守实例"
+		"守城施工后的 ACTIVE 状态冷恢复后仍只打开同一冻结防守实例"
 	)
 	await process_frame
 	var restored_battle := restored_city.get_formal_battle_scene() as C0BattleGraybox
+	var reactivated := restored_battle != null and restored_battle.start_battle()
+	if restored_battle != null:
+		restored_battle.tick_timer.stop()
+		restored_battle.step_battle_for_test(BattleSession.FACILITY_REPAIR_TICKS)
+	var repaired_after_restore := false
+	for record_value in Array(restored_battle.coordinator.active_session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("facility_id", &"")) == StringName(barricade.get("facility_id", &"")):
+			repaired_after_restore = (
+				StringName(record.get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE
+				and int(record.get("durability", 0)) == int(record.get("max_durability", -1))
+			)
+			break
 	_check(
-		restored_battle != null
-			and restored_battle.start_battle()
+		reactivated
+			and repaired_after_restore
 			and restored_battle.open_exit_confirmation()
 			and restored_battle.confirm_exit_as_retreat()
 			and StringName(restored_city.get_expedition_attempt().phase) == BattleRequest.PHASE_APPLIED
 			and int(restored_city.get("food")) == food_before,
-		"守城撤离通过同一待回写结果事务结算幸存编队，不重复扣粮或改写主线出征"
+		"守城维修跨进程恢复后继续同一实例并通过待回写结果事务撤离，不重复扣粮或改写主线出征"
 	)
 	city_scene.queue_free()
 	restored_scene.queue_free()

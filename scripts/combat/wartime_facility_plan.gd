@@ -80,6 +80,32 @@ static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
 	}}
 
 
+## The plan format is shared by assaults and defense missions, but the
+## available tools are not. Keeping this check beside the plan shape prevents
+## a UI-only restriction from being bypassed through a restored request or a
+## direct controller call.
+static func validate_for_source(snapshot: Dictionary, source_id: StringName) -> Dictionary:
+	var validation := validate_snapshot(snapshot)
+	if not bool(validation.get("valid", false)):
+		return validation
+	if source_id == &"WARTIME_DEFENSE":
+		for facility_value in Array(Dictionary(validation.snapshot).facilities):
+			var facility: Dictionary = Dictionary(facility_value)
+			if StringName(facility.get("kind", &"")) == KIND_SIEGE_RAM:
+				return _failure("守城战不能部署攻城槌")
+	return validation
+
+
+static func is_available_for_source(kind: StringName, source_id: StringName) -> bool:
+	return (
+		FACILITY_COSTS.has(kind)
+		and not (
+			source_id == &"WARTIME_DEFENSE"
+			and kind == KIND_SIEGE_RAM
+		)
+	)
+
+
 static func get_costs(snapshot: Dictionary) -> Dictionary:
 	var result := validate_snapshot(snapshot)
 	if not bool(result.get("valid", false)):

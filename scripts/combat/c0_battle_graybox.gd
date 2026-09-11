@@ -1059,12 +1059,12 @@ func _refresh_wartime_plan_ui() -> void:
 	var has_barricade := WartimeFacilityPlan.has_kind(
 		pending_plan, WartimeFacilityPlan.KIND_BARRICADE
 	)
+	var is_defense := request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE
 	wartime_watch_button.text = (
 		"瞭望台 · 已选" if has_watch else "瞭望台 · 木材 6"
 	)
-	wartime_ram_button.text = (
-		"攻城槌 · 已选" if has_ram else "攻城槌 · 木材 8"
-	)
+	wartime_ram_button.visible = not is_defense
+	wartime_ram_button.text = "攻城槌 · 已选" if has_ram else "攻城槌 · 木材 8"
 	wartime_arrow_tower_button.text = (
 		"箭塔 · 已选" if has_arrow_tower else "箭塔 · 木材 10"
 	)
@@ -1072,7 +1072,7 @@ func _refresh_wartime_plan_ui() -> void:
 		"拒马 · 已选" if has_barricade else "拒马 · 木材 5"
 	)
 	wartime_watch_button.disabled = is_committed
-	wartime_ram_button.disabled = is_committed
+	wartime_ram_button.disabled = is_committed or is_defense
 	wartime_arrow_tower_button.disabled = is_committed
 	wartime_barricade_button.disabled = is_committed
 	wartime_plan_confirm_button.visible = not is_committed
@@ -1080,9 +1080,9 @@ func _refresh_wartime_plan_ui() -> void:
 		Array(pending_plan.get("facilities", [])).is_empty()
 	)
 	if is_committed:
-		wartime_plan_panel.get_node("Title").text = "围城战时工事已确认（仅本次战斗）" if macro_siege_mode else "战时工事已确认（仅本次战斗）"
+		wartime_plan_panel.get_node("Title").text = "围城战时工事已确认（仅本次战斗）" if macro_siege_mode else ("守城布防已确认（仅本次战斗）" if is_defense else "战时工事已确认（仅本次战斗）")
 	else:
-		wartime_plan_panel.get_node("Title").text = "围城战时工事（仅本次战斗）" if macro_siege_mode else "战时工事（仅本次战斗）"
+		wartime_plan_panel.get_node("Title").text = "围城战时工事（仅本次战斗）" if macro_siege_mode else ("守城布防（仅本次战斗）" if is_defense else "战时工事（仅本次战斗）")
 
 
 func _toggle_wartime_facility(kind: StringName) -> void:
@@ -1092,6 +1092,9 @@ func _toggle_wartime_facility(kind: StringName) -> void:
 		or not _can_edit_wartime_facilities()
 		or not Array(request.wartime_facility_plan.get("facilities", [])).is_empty()
 	):
+		return
+	if not WartimeFacilityPlan.is_available_for_source(kind, request.source_id):
+		status_label.text = "该工事不能用于本次战斗"
 		return
 	var facilities: Array = Array(
 		_pending_wartime_facility_plan.get("facilities", [])

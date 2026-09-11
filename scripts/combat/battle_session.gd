@@ -1147,6 +1147,7 @@ func _apply_mission_objective_damage() -> void:
 	):
 		return
 	var damage := 0
+	var facility_damage: Dictionary = {}
 	for route_id in [
 		CommittedForceSnapshot.FRONT_ROUTE,
 		CommittedForceSnapshot.SIDE_ROUTE,
@@ -1156,10 +1157,21 @@ func _apply_mission_objective_damage() -> void:
 			int(route.enemy_total_hp) > 0
 			and not _has_frontline_squad(route_id)
 		):
-			damage += (
+			var raw_damage := (
 				_alive_members(int(route.enemy_total_hp))
 				* mission_definition.protect_damage_per_enemy
 			)
+			var barricade_id := _get_active_barricade_id(route_id)
+			if barricade_id != &"":
+				var passed_damage := _positive_integer_divide(
+					raw_damage * BARRICADE_INCOMING_DAMAGE_BASIS_POINTS,
+					BASIS_POINTS
+				)
+				damage += passed_damage
+				facility_damage[barricade_id] = raw_damage - passed_damage
+			else:
+				damage += raw_damage
+	_apply_wartime_facility_damage(facility_damage)
 	mission_objective_state.protect_target_hp = maxi(
 		int(mission_objective_state.protect_target_hp) - damage,
 		0

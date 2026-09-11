@@ -20,9 +20,11 @@ not be substituted with the noticeboard's transient protection missions.
 
 The first R0 defense objective is a real `PROTECT_AND_ELIMINATE` task: two
 enemy approaches attack the saved Blackstone gate objective whenever they are
-not stopped by a frontline squad. The ordinary C0 facility plan is available
-from this source; construction and repair stay attached to the same frozen
-battle session.
+not stopped by a frontline squad. The C0 facility plan is available from this
+source, but its source-aware authority permits only observation, arrow-tower
+and barricade works; a siege ram is neither displayed nor accepted by the
+controller transaction. Construction and repair stay attached to the same
+frozen battle session.
 
 ## Ownership
 
@@ -50,7 +52,7 @@ immutable.
 | Watch platform | 6 wood | After 2 battle ticks of construction, marks detailed enemy observation as available to the battle presentation | This battle instance only |
 | Siege ram | 8 wood | After 4 battle ticks of construction, applies 160 real damage to its selected gate | This battle instance only |
 | Arrow tower | 10 wood | After 4 battle ticks of construction, targets the selected defended gate approach every 4 battle ticks (1 second) and contributes 24 damage to the existing enemy-HP intent | This battle instance only |
-| Barricade | 5 wood | After 3 battle ticks of construction, reduces the selected route's ordinary incoming enemy damage to 65% | This battle instance only |
+| Barricade | 5 wood | After 3 battle ticks of construction, reduces the selected route's ordinary incoming enemy damage to 65%; in `WARTIME_DEFENSE` it instead absorbs the remainder of that route's real gate damage into its durability | This battle instance only |
 
 Confirmed works enter `CONSTRUCTING` first. The saved battle session owns their
 tick progress; only `ACTIVE` works supply their stated ability. This prevents a
@@ -66,8 +68,11 @@ never restores that transient notification as a new volley after reload.
 
 The barricade uses the same single route-damage intent: after it is actually
 complete, the selected route's enemy hit is multiplied by 6500 basis points
-before the existing squad-HP writer applies it. It does not hide or rewrite
-casualties, introduce a second combat loop, or affect another route.
+before the existing squad-HP writer applies it. In the protection objective,
+that same split is applied to the saved gate target: the barricade absorbs the
+remainder into its own durability and the gate receives only the passed
+damage. It does not hide or rewrite casualties, introduce a second combat
+loop, or affect another route.
 
 When a facility is damaged or destroyed, the active C0 panel exposes the next
 eligible facility and its repair cost. Pressing that formal action spends only

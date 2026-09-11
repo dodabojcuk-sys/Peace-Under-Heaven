@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-12 - Defense-specific wartime facilities
+
+- Restricted the durable Blackstone defense plan to observation, arrow-tower
+  and barricade works. The C0 defense panel hides the siege ram and the
+  authoritative plan transaction rejects it too, so a restored or direct
+  request cannot turn a defense battle into an assault preparation.
+- A completed barricade now absorbs part of the actual protected-gate damage
+  on its route, applies the remainder to the saved gate objective, and takes
+  the absorbed damage as normal facility durability. The existing repair
+  transaction restores that same record after its saved repair ticks.
+- Extended the defense smoke through source-aware UI/authority rejection,
+  real construction, gate protection, damaged barricade repair, ACTIVE V5
+  restore and retreat result application.
+
 ## 2026-09-11 - Durable Blackstone wartime defense source
 
 - Added `WARTIME_DEFENSE`, a V5 schema-10 durable battle source for the
