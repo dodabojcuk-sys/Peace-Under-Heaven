@@ -71,6 +71,37 @@ func _run() -> void:
 	## the repair control without prematurely ending the evidence scene.
 	session.mission_objective_state.protect_target_hp = 10000
 	session.mission_objective_state.protect_target_max_hp = 10000
+	## The visible plan and confirmation above are the normal C0 flow. For this
+	## focused graphical fixture, advance the invader to that route's real
+	## objective immediately before its first attack interval. This exposes the
+	## production construction-interruption transition without asking the
+	## capture to wait through an otherwise uninformative approach march.
+	var selected_route_id := StringName(
+		battle.request.committed_force.squads[0].route_id
+	)
+	var interrupted_route: Dictionary = session.get_route_state(selected_route_id)
+	interrupted_route.enemy_position_fixed = int(interrupted_route.get("distance_fixed", 0))
+	session.routes[selected_route_id] = interrupted_route
+	session.current_tick = BattleSession.ATTACK_INTERVAL_TICKS - 1
+	battle.step_battle_for_test(1)
+	battle._refresh_battle_ui()
+	await _frames(1)
+	_capture("wartime-defense-03b-construction-interrupted-engine-gui.png")
+	var interrupted_barricade := _facility_by_kind(
+		session, WartimeFacilityPlan.KIND_BARRICADE
+	)
+	var interruption_projection: Dictionary = session.get_wartime_facility_state()
+	_check(
+		StringName(interrupted_barricade.get("phase", &""))
+			== BattleSession.FACILITY_PHASE_INTERRUPTED
+		and not interruption_projection.has("barricade_route_id"),
+		"可见战斗刻在敌军先于施工完工抵达时中断拒马，未完成设施不提供阻挡投影"
+	)
+	## Return the invader to the beginning only after recording the interrupted
+	## state, so the following gate-repair evidence remains a readable scene.
+	interrupted_route = session.get_route_state(selected_route_id)
+	interrupted_route.enemy_position_fixed = 0
+	session.routes[selected_route_id] = interrupted_route
 	battle.step_battle_for_test(168)
 	battle._refresh_battle_ui()
 	await _frames(1)
@@ -127,6 +158,14 @@ func _argument_value(prefix: String) -> String:
 		if argument.begins_with(prefix):
 			return argument.trim_prefix(prefix)
 	return ""
+
+
+func _facility_by_kind(session: BattleSession, kind: StringName) -> Dictionary:
+	for record_value in Array(session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("kind", &"")) == kind:
+			return record
+	return {}
 
 
 func _check(condition: bool, description: String) -> void:
