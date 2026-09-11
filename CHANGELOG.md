@@ -16,6 +16,10 @@
   that destination explicit, and the focused GUI smoke checks that confirmed
   facility records retain the same route selected through the visible
   deployment control.
+- The independent defense recovery chain now persists that side-route plan
+  while its barricade is still under construction, restores it in a fresh
+  process, and permits the repaired work to be damaged or destroyed again by
+  the same route's real incoming attack.
 
 ## 2026-09-12 - Formal Blackstone defense deployment
 

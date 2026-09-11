@@ -50,6 +50,16 @@ func _run_a(scene: Node, city: Node) -> void:
 	if battle == null:
 		_require(false, "A 守城实例存在")
 		return
+	var route_button := battle.get_node(
+		"UI/RootPanel/SquadControls/Squad1/RouteButton"
+	) as Button
+	route_button.emit_signal("pressed")
+	await process_frame
+	var deployed_route := StringName(battle.request.committed_force.squads[0].route_id)
+	_require(
+		deployed_route == CommittedForceSnapshot.SIDE_ROUTE,
+		"A 通过正式守城部署按钮将第一支编队切换到侧翼"
+	)
 	var panel := battle.get_node("UI/RootPanel/WartimePlanPanel") as Panel
 	var barricade_button := panel.get_node("BarricadeButton") as Button
 	var confirm_button := panel.get_node("ConfirmButton") as Button
@@ -57,6 +67,12 @@ func _run_a(scene: Node, city: Node) -> void:
 	await process_frame
 	confirm_button.emit_signal("pressed")
 	await process_frame
+	var committed_facilities: Array = Array(battle.request.wartime_facility_plan.get("facilities", []))
+	_require(
+		committed_facilities.size() == 1
+			and StringName(Dictionary(committed_facilities[0]).get("route_id", &"")) == deployed_route,
+		"A 侧翼部署后的可见工事确认保存同一侧翼路线"
+	)
 	_require(battle.start_battle(), "A 由正式计划启动施工中的守城战斗")
 	battle.tick_timer.stop()
 	battle.step_battle_for_test(1)
@@ -92,9 +108,10 @@ func _run_b(scene: Node, city: Node) -> void:
 	_require(
 		restored.size() == 1
 			and StringName(Dictionary(restored[0]).get("phase", &"")) == BattleSession.FACILITY_PHASE_CONSTRUCTING
+			and StringName(Dictionary(restored[0]).get("route_id", &"")) == CommittedForceSnapshot.SIDE_ROUTE
 			and int(Dictionary(restored[0]).get("progress_ticks", -1)) >= 1
 			and int(Dictionary(restored[0]).get("progress_ticks", -1)) < int(Dictionary(restored[0]).get("required_ticks", 0)),
-		"B 独立进程保留未完成施工阶段和非零进度，不从零重建或提前生效"
+		"B 独立进程保留侧翼未完工设施的路线、施工阶段和非零进度，不从零重建或提前生效"
 	)
 	battle.tick_timer.stop()
 	battle.step_battle_for_test(BattleSession.FACILITY_BUILD_TICKS[WartimeFacilityPlan.KIND_BARRICADE] - 1)
@@ -138,13 +155,23 @@ func _run_c(scene: Node, city: Node) -> void:
 	)
 	battle.step_battle_for_test(remaining_repair_ticks)
 	var repaired := _barricade(session)
+	var repair_completed := false
+	for event_value in session.get_last_tick_facility_events():
+		var event: Dictionary = Dictionary(event_value)
+		if (
+			StringName(event.get("event", &"")) == &"REPAIR_COMPLETED"
+			and StringName(event.get("route_id", &"")) == CommittedForceSnapshot.SIDE_ROUTE
+		):
+			repair_completed = true
+			break
 	_require(
-		int(repaired.get("durability", 0)) > int(repairing.get("durability", 0))
+		repair_completed
 			and StringName(repaired.get("phase", &"")) in [
 				BattleSession.FACILITY_PHASE_ACTIVE,
 				BattleSession.FACILITY_PHASE_DAMAGED,
+				BattleSession.FACILITY_PHASE_DESTROYED,
 			],
-		"C 只消费剩余战斗刻完成维修；同刻再次遭到真实敌军攻击后保留新耐久"
+		"C 只消费剩余战斗刻完成侧翼维修；同刻真实攻击可使其再次受损或摧毁"
 	)
 	_require(session.request_forced_retreat(), "C 以正式撤离规则结束已恢复守城")
 	var terminal_result: BattleResult

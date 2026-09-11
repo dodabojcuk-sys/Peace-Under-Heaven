@@ -92,6 +92,10 @@ formal deployment route. C0 displays that route in the plan title, and the
 controller still validates the route in the persisted plan at confirmation.
 Changing a squad from front to side therefore changes the actual target of a
 new watch platform, tower, or barricade; it is not a cosmetic route label.
+The independent recovery chain covers this fact while a side-route barricade
+is still constructing. If invaders destroy it in the same tick that a repair
+finishes, the saved outcome is `DESTROYED`; a repair animation or stale
+positive durability is not retained as a second result.
 
 The barricade uses the same single route-damage intent: after it is actually
 complete, the selected route's enemy hit is multiplied by 6500 basis points
