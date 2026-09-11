@@ -155,7 +155,7 @@ func _check_location_detail_panel() -> void:
 	macro.refresh()
 	# Freeze the authoritative clock before comparing snapshots so these GUI entry
 	# paths prove only a view change. Map clicks are actual press/release pairs;
-	# the location button is activated through the GUI input dispatcher.
+	# the visible location-button action is checked separately below.
 	city.set_city_time_paused(true)
 	var blackstone_position := macro._world_to_screen(Vector2(THEATER.get_point(&"blackstone_city").get("world_position", Vector2.ZERO)))
 	var before_blackstone_inspection: Dictionary = city.export_v5_campaign_snapshot()
