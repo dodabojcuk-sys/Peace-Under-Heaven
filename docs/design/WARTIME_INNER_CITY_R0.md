@@ -68,7 +68,10 @@ authoritative battle tick, routes, squad health, accepted/pending orders and
 objective facts. UI, nodes and animation state are forbidden.
 
 Battle-session snapshot schema 2 also retains per-facility phase and progress.
-Schema-1 session snapshots remain compatible: because their old behavior had
+Schema-3 adds per-facility maximum/current durability plus `DAMAGED`,
+`DESTROYED` and `REPAIRING` phases. Schema-2 snapshots receive their matching
+full durability once on restore, preserving their historic construction/active
+behavior. Schema-1 session snapshots remain compatible: because their old behavior had
 already applied the paid plan at tick zero, they restore those records as
 active and never reapply ram damage. Each nonterminal C0 tick requests the existing runtime V5 checkpoint. A failed
 checkpoint restores the in-memory session to the preceding committed snapshot;

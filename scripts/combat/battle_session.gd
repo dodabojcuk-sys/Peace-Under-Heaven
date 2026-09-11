@@ -29,13 +29,23 @@ const ARROW_TOWER_ATTACK_INTERVAL_TICKS := 4
 const BARRICADE_INCOMING_DAMAGE_BASIS_POINTS := 6500
 const FACILITY_PHASE_CONSTRUCTING := &"CONSTRUCTING"
 const FACILITY_PHASE_ACTIVE := &"ACTIVE"
+const FACILITY_PHASE_DAMAGED := &"DAMAGED"
+const FACILITY_PHASE_DESTROYED := &"DESTROYED"
+const FACILITY_PHASE_REPAIRING := &"REPAIRING"
 const FACILITY_BUILD_TICKS := {
 	WartimeFacilityPlan.KIND_WATCH_PLATFORM: 2,
 	WartimeFacilityPlan.KIND_SIEGE_RAM: 4,
 	WartimeFacilityPlan.KIND_ARROW_TOWER: 4,
 	WartimeFacilityPlan.KIND_BARRICADE: 3,
 }
-const SNAPSHOT_SCHEMA_VERSION := 2
+const FACILITY_MAX_DURABILITY := {
+	WartimeFacilityPlan.KIND_WATCH_PLATFORM: 100,
+	WartimeFacilityPlan.KIND_SIEGE_RAM: 140,
+	WartimeFacilityPlan.KIND_ARROW_TOWER: 120,
+	WartimeFacilityPlan.KIND_BARRICADE: 180,
+}
+const FACILITY_REPAIR_TICKS := 2
+const SNAPSHOT_SCHEMA_VERSION := 3
 const SNAPSHOT_KEYS := [
 	"schema_version", "current_tick", "next_order_id", "squads", "routes",
 	"pending_orders", "accepted_orders", "retreat_was_ordered",
@@ -406,6 +416,13 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		_initialize_wartime_facilities(true)
 	else:
 		wartime_facility_state = Dictionary(snapshot.wartime_facility_state).duplicate(true)
+		if int(snapshot.schema_version) == 2:
+			for index in Array(wartime_facility_state.get("facilities", [])).size():
+				var legacy_record: Dictionary = Dictionary(wartime_facility_state.facilities[index])
+				var maximum := int(FACILITY_MAX_DURABILITY.get(StringName(legacy_record.get("kind", &"")), 0))
+				legacy_record.max_durability = maximum
+				legacy_record.durability = maximum
+				wartime_facility_state.facilities[index] = legacy_record
 	return true
 
 
@@ -479,6 +496,8 @@ func _initialize_wartime_facilities(legacy_active := false) -> void:
 			"phase": FACILITY_PHASE_ACTIVE if legacy_active else FACILITY_PHASE_CONSTRUCTING,
 			"progress_ticks": int(FACILITY_BUILD_TICKS.get(kind, 0)) if legacy_active else 0,
 			"required_ticks": int(FACILITY_BUILD_TICKS.get(kind, 0)),
+			"max_durability": int(FACILITY_MAX_DURABILITY.get(kind, 0)),
+			"durability": int(FACILITY_MAX_DURABILITY.get(kind, 0)),
 		}
 		Array(wartime_facility_state.facilities).append(record)
 
@@ -487,15 +506,24 @@ func _advance_wartime_facilities() -> void:
 	var facilities: Array = Array(wartime_facility_state.get("facilities", [])).duplicate(true)
 	for index in facilities.size():
 		var record: Dictionary = Dictionary(facilities[index])
-		if StringName(record.get("phase", &"")) != FACILITY_PHASE_CONSTRUCTING:
-			continue
-		record.progress_ticks = mini(
-			int(record.get("progress_ticks", 0)) + 1,
-			int(record.get("required_ticks", 0))
-		)
-		if int(record.progress_ticks) >= int(record.required_ticks):
-			record.phase = FACILITY_PHASE_ACTIVE
-			_apply_completed_wartime_facility(record, true)
+		var phase := StringName(record.get("phase", &""))
+		if phase in [FACILITY_PHASE_CONSTRUCTING, FACILITY_PHASE_REPAIRING]:
+			record.progress_ticks = mini(
+				int(record.get("progress_ticks", 0)) + 1,
+				int(record.get("required_ticks", 0))
+			)
+			if int(record.progress_ticks) >= int(record.required_ticks):
+				record.phase = FACILITY_PHASE_ACTIVE
+				if phase == FACILITY_PHASE_REPAIRING:
+					record.required_ticks = int(FACILITY_BUILD_TICKS.get(StringName(record.get("kind", &"")), 0))
+					record.progress_ticks = int(record.required_ticks)
+				record.durability = int(record.get("max_durability", 0))
+				_apply_completed_wartime_facility(record, phase == FACILITY_PHASE_CONSTRUCTING)
+				if phase == FACILITY_PHASE_REPAIRING:
+					last_tick_facility_events.append({
+						"kind": record.kind, "route_id": record.route_id,
+						"event": &"REPAIR_COMPLETED", "tick": current_tick,
+					})
 		facilities[index] = record
 	wartime_facility_state.facilities = facilities
 
@@ -523,6 +551,29 @@ func _apply_completed_wartime_facility(record: Dictionary, emit_event: bool) -> 
 			"event": &"CONSTRUCTION_COMPLETED",
 			"tick": current_tick,
 		})
+
+
+func begin_wartime_facility_repair(facility_id: StringName) -> bool:
+	if completed or facility_id == &"":
+		return false
+	var facilities: Array = Array(wartime_facility_state.get("facilities", [])).duplicate(true)
+	for index in facilities.size():
+		var record: Dictionary = Dictionary(facilities[index])
+		if StringName(record.get("facility_id", &"")) != facility_id:
+			continue
+		if StringName(record.get("phase", &"")) not in [FACILITY_PHASE_DAMAGED, FACILITY_PHASE_DESTROYED]:
+			return false
+		record.phase = FACILITY_PHASE_REPAIRING
+		record.progress_ticks = 0
+		record.required_ticks = FACILITY_REPAIR_TICKS
+		facilities[index] = record
+		wartime_facility_state.facilities = facilities
+		last_tick_facility_events.append({
+			"kind": record.kind, "route_id": record.route_id,
+			"event": &"REPAIR_STARTED", "tick": current_tick,
+		})
+		return true
+	return false
 
 
 func _orders_to_snapshot(orders: Array[BattleOrder]) -> Array[Dictionary]:
@@ -591,7 +642,7 @@ func _has_matching_snapshot_value_types(value: Dictionary, expected: Dictionary)
 
 func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 	var schema_version = snapshot.get("schema_version", null)
-	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, SNAPSHOT_SCHEMA_VERSION]:
+	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, 2, SNAPSHOT_SCHEMA_VERSION]:
 		return false
 	var expected_keys: Array = SNAPSHOT_KEYS.duplicate()
 	if int(schema_version) == 1:
@@ -613,6 +664,10 @@ func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 		and typeof(snapshot.get("mission_objective_state", null)) == TYPE_DICTIONARY
 		and (
 			int(schema_version) == 1
+			or (
+				int(schema_version) == 2
+				and _has_valid_legacy_wartime_facility_state(Dictionary(snapshot.get("wartime_facility_state", {})))
+			)
 			or _has_valid_wartime_facility_state(Dictionary(snapshot.get("wartime_facility_state", {})))
 		)
 	)
@@ -639,7 +694,7 @@ func _has_valid_wartime_facility_state(state: Dictionary) -> bool:
 		if not record_value is Dictionary:
 			return false
 		var record: Dictionary = record_value
-		if record.size() != 6:
+		if record.size() != 8:
 			return false
 		var facility_id := StringName(record.get("facility_id", &""))
 		var planned: Dictionary = Dictionary(expected_by_id.get(facility_id, {}))
@@ -652,18 +707,53 @@ func _has_valid_wartime_facility_state(state: Dictionary) -> bool:
 			or typeof(record.get("phase", null)) != TYPE_STRING_NAME
 			or typeof(record.get("progress_ticks", null)) != TYPE_INT
 			or typeof(record.get("required_ticks", null)) != TYPE_INT
+			or typeof(record.get("max_durability", null)) != TYPE_INT
+			or typeof(record.get("durability", null)) != TYPE_INT
 			or StringName(record.kind) != StringName(planned.kind)
 			or StringName(record.route_id) != StringName(planned.route_id)
-			or StringName(record.phase) not in [FACILITY_PHASE_CONSTRUCTING, FACILITY_PHASE_ACTIVE]
-			or int(record.required_ticks) != int(FACILITY_BUILD_TICKS.get(StringName(record.kind), -1))
+			or StringName(record.phase) not in [FACILITY_PHASE_CONSTRUCTING, FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED, FACILITY_PHASE_DESTROYED, FACILITY_PHASE_REPAIRING]
+			or int(record.max_durability) != int(FACILITY_MAX_DURABILITY.get(StringName(record.kind), -1))
+			or int(record.durability) < 0
+			or int(record.durability) > int(record.max_durability)
+			or (StringName(record.phase) in [FACILITY_PHASE_CONSTRUCTING, FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED, FACILITY_PHASE_DESTROYED] and int(record.required_ticks) != int(FACILITY_BUILD_TICKS.get(StringName(record.kind), -1)))
+			or (StringName(record.phase) == FACILITY_PHASE_REPAIRING and int(record.required_ticks) != FACILITY_REPAIR_TICKS)
 			or int(record.progress_ticks) < 0
 			or int(record.progress_ticks) > int(record.required_ticks)
 			or (StringName(record.phase) == FACILITY_PHASE_CONSTRUCTING and int(record.progress_ticks) >= int(record.required_ticks))
-			or (StringName(record.phase) == FACILITY_PHASE_ACTIVE and int(record.progress_ticks) != int(record.required_ticks))
+			or (StringName(record.phase) == FACILITY_PHASE_ACTIVE and (int(record.progress_ticks) != int(record.required_ticks) or int(record.durability) != int(record.max_durability)))
+			or (StringName(record.phase) == FACILITY_PHASE_DAMAGED and (int(record.progress_ticks) != int(record.required_ticks) or int(record.durability) <= 0 or int(record.durability) >= int(record.max_durability)))
+			or (StringName(record.phase) == FACILITY_PHASE_DESTROYED and (int(record.progress_ticks) != int(record.required_ticks) or int(record.durability) != 0))
+			or (StringName(record.phase) == FACILITY_PHASE_REPAIRING and int(record.progress_ticks) >= int(record.required_ticks))
 		):
 			return false
 		seen_ids[facility_id] = true
 	return seen_ids.size() == expected_by_id.size()
+
+
+func _has_valid_legacy_wartime_facility_state(state: Dictionary) -> bool:
+	if state.size() != 1 or typeof(state.get("facilities", null)) != TYPE_ARRAY:
+		return false
+	for record_value in Array(state.facilities):
+		if not record_value is Dictionary:
+			return false
+		var record: Dictionary = record_value
+		var kind := StringName(record.get("kind", &""))
+		if (
+			record.size() != 6
+			or typeof(record.get("facility_id", null)) != TYPE_STRING_NAME
+			or typeof(record.get("kind", null)) != TYPE_STRING_NAME
+			or typeof(record.get("route_id", null)) != TYPE_STRING_NAME
+			or typeof(record.get("phase", null)) != TYPE_STRING_NAME
+			or typeof(record.get("progress_ticks", null)) != TYPE_INT
+			or typeof(record.get("required_ticks", null)) != TYPE_INT
+			or kind not in FACILITY_BUILD_TICKS
+			or StringName(record.get("phase", &"")) not in [FACILITY_PHASE_CONSTRUCTING, FACILITY_PHASE_ACTIVE]
+			or int(record.get("required_ticks", -1)) != int(FACILITY_BUILD_TICKS[kind])
+			or int(record.get("progress_ticks", -1)) < 0
+			or int(record.get("progress_ticks", 0)) > int(record.get("required_ticks", 0))
+		):
+			return false
+	return true
 
 
 func _apply_orders_for_current_tick() -> void:
@@ -717,11 +807,13 @@ func _build_damage_intents() -> Dictionary:
 		CommittedForceSnapshot.SIDE_ROUTE: 0,
 	}
 	var player_damage: Dictionary = {}
+	var facility_damage: Dictionary = {}
 	if current_tick % ATTACK_INTERVAL_TICKS != 0:
 		return {
 			"gate_damage": gate_damage,
 			"enemy_damage": enemy_damage,
 			"player_damage": player_damage,
+			"facility_damage": facility_damage,
 		}
 	_apply_arrow_tower_damage_intents(enemy_damage)
 
@@ -764,15 +856,20 @@ func _build_damage_intents() -> Dictionary:
 			_alive_members(int(route.enemy_total_hp)),
 			incoming_basis_points
 		)
-		damage = _positive_integer_divide(
-			damage * _get_wartime_facility_incoming_damage_basis_points(route_id),
+		var barricade_basis_points := _get_wartime_facility_incoming_damage_basis_points(route_id)
+		var squad_damage := _positive_integer_divide(
+			damage * barricade_basis_points,
 			BASIS_POINTS
 		)
-		player_damage[int(target.squad_id)] = damage
+		player_damage[int(target.squad_id)] = squad_damage
+		var barricade_id := _get_active_barricade_id(route_id)
+		if barricade_id != &"":
+			facility_damage[barricade_id] = damage - squad_damage
 	return {
 		"gate_damage": gate_damage,
 		"enemy_damage": enemy_damage,
 		"player_damage": player_damage,
+		"facility_damage": facility_damage,
 	}
 
 
@@ -811,11 +908,23 @@ func _get_wartime_facility_incoming_damage_basis_points(route_id: StringName) ->
 		var record: Dictionary = Dictionary(record_value)
 		if (
 			StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE
-			and StringName(record.get("phase", &"")) == FACILITY_PHASE_ACTIVE
+			and StringName(record.get("phase", &"")) in [FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED]
 			and StringName(record.get("route_id", &"")) == route_id
 		):
 			return BARRICADE_INCOMING_DAMAGE_BASIS_POINTS
 	return BASIS_POINTS
+
+
+func _get_active_barricade_id(route_id: StringName) -> StringName:
+	for record_value in Array(wartime_facility_state.get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if (
+			StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE
+			and StringName(record.get("phase", &"")) in [FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED]
+			and StringName(record.get("route_id", &"")) == route_id
+		):
+			return StringName(record.get("facility_id", &""))
+	return &""
 
 
 func _apply_damage_intents(intents: Dictionary) -> void:
@@ -842,7 +951,31 @@ func _apply_damage_intents(intents: Dictionary) -> void:
 				int(squad.total_hp) - int(player_damage[squad_id]),
 				0
 			)
+	_apply_wartime_facility_damage(Dictionary(intents.get("facility_damage", {})))
 	_apply_mission_objective_damage()
+
+
+func _apply_wartime_facility_damage(damage_by_id: Dictionary) -> void:
+	if damage_by_id.is_empty():
+		return
+	var facilities: Array = Array(wartime_facility_state.get("facilities", [])).duplicate(true)
+	for index in facilities.size():
+		var record: Dictionary = Dictionary(facilities[index])
+		var facility_id := StringName(record.get("facility_id", &""))
+		if not damage_by_id.has(facility_id):
+			continue
+		var damage := int(damage_by_id[facility_id])
+		if damage <= 0:
+			continue
+		record.durability = maxi(int(record.get("durability", 0)) - damage, 0)
+		record.phase = FACILITY_PHASE_DESTROYED if int(record.durability) == 0 else FACILITY_PHASE_DAMAGED
+		facilities[index] = record
+		last_tick_facility_events.append({
+			"kind": record.kind, "route_id": record.route_id,
+			"event": &"DESTROYED" if int(record.durability) == 0 else &"DAMAGED",
+			"damage": damage, "durability": record.durability, "tick": current_tick,
+		})
+	wartime_facility_state.facilities = facilities
 
 
 func _check_outcome() -> void:

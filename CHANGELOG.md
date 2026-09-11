@@ -10,6 +10,16 @@
   the completed barricade changes real squad HP loss, and session restore
   preserves the same authoritative facility state.
 
+## 2026-09-11 - Wartime facility damage-state foundation
+
+- Battle-session schema 3 now persists facility durability and construction,
+  active, damaged, destroyed and repairing phases. Enemy contact assigns the
+  barricade's absorbed portion into that same saved durability state.
+- Added deterministic repair-state progression and schema-2 facility snapshot
+  migration. The focused battle smoke covers damaged durability, repair ticks,
+  checkpoint persistence and re-open recovery. Repair resource/UI submission
+  remains the next formal integration step.
+
 ## 2026-09-11 - Macro siege facility planning and pending-result migration
 
 - A reserved macro siege can now use the formal C0 wartime-facility controls.

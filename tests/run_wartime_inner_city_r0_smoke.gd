@@ -143,6 +143,40 @@ func _run() -> void:
 			and StringName(effects.get("barricade_route_id", &"")) == CommittedForceSnapshot.FRONT_ROUTE,
 		"拒马完工后通过同一敌军伤害意图减少该路线真实战损"
 	)
+	var damaged_facilities: Array = Array(session.get_wartime_facility_state().get("facilities", []))
+	var barricade_record: Dictionary = {}
+	for record_value in damaged_facilities:
+		var record: Dictionary = record_value
+		if StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE:
+			barricade_record = record
+			break
+	_check(
+		StringName(barricade_record.get("phase", &"")) == BattleSession.FACILITY_PHASE_DAMAGED
+			and int(barricade_record.get("durability", 0)) < int(barricade_record.get("max_durability", 0)),
+		"敌军同一刻的未抵消伤害写入拒马耐久与受损状态，而非丢失为表现事件"
+	)
+	_check(
+		session.begin_wartime_facility_repair(StringName(barricade_record.get("facility_id", &""))),
+		"受损拒马可进入可保存的维修阶段"
+	)
+	# Keep the hostile contact out of the repair fixture: these two simulation
+	# ticks prove repair completion rather than a deliberately concurrent new
+	# enemy hit on the exact completion tick.
+	session.squads[0].position_fixed = 0
+	for _tick in range(BattleSession.FACILITY_REPAIR_TICKS):
+		_check(session.step_tick(), "维修中的战时实例继续推进同一正式战斗刻")
+	_check(battle._checkpoint_active_battle_session(), "维修完成态通过既有战时检查点保存")
+	var repaired_facilities: Array = Array(session.get_wartime_facility_state().get("facilities", []))
+	for record_value in repaired_facilities:
+		var record: Dictionary = record_value
+		if StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE:
+			barricade_record = record
+			break
+	_check(
+		StringName(barricade_record.get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE
+			and int(barricade_record.get("durability", 0)) == int(barricade_record.get("max_durability", -1)),
+		"维修完成只恢复同一拒马的战时耐久与路线作用"
+	)
 	attempt = city.get_expedition_attempt()
 	var active_session_snapshot: Dictionary = attempt.battle_session_snapshot
 	var restored_request := BattleRequest.from_expedition_attempt(attempt)
