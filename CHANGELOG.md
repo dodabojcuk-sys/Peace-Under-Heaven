@@ -2,6 +2,19 @@
 
 ## 2026-09-11
 
+- Added stationed reinforcement R0 for occupied Silverford. A fresh playable
+  theatre authors four finite local infantry; FieldTacticsState persists the
+  remaining point pool, ArmyRegistry owns stable formation-ID ordered member
+  allocation, and ConstructionController commits both through one V5 rollback
+  boundary. The Silverford detail view requires an explicit actually-stationed
+  army, previews each formation's current/capacity/addition, and replenishes
+  without food, a new macro order, or a duplicate roster. Existing saves restore
+  with no new local recruits. Added Controller occupation/reissue, invalid,
+  rollback, independent-process persistence, and graphical location-detail
+  evidence under `20260911-stationed-reinforcement-r0/`. Marked the finite
+  Silverford supply R0 feature stage closed; its old repair-project durability
+  compatibility fallback remains a documented TODO.
+
 - Closed the remaining Silverford supply R0 correctness boundaries. Repair
   completion is now provisional until timed specialist/patrol contact is
   resolved, preventing a killed engineer from opening a road or moving cargo

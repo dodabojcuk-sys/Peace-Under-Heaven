@@ -123,6 +123,16 @@ func begin_field_supply_transport(source_point_id: StringName) -> Dictionary:
 	return city.begin_field_supply_transport(source_point_id) if city != null else {}
 
 
+func preview_field_stationed_replenishment(point_id: StringName, army_id: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.preview_field_stationed_replenishment(point_id, army_id) if city != null else {}
+
+
+func replenish_field_stationed_army(point_id: StringName, army_id: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.replenish_field_stationed_army(point_id, army_id) if city != null else {}
+
+
 func plan_field_path(source_point_id: StringName, target_point_id: StringName, preferred_world_points: Array = [], required_road_id: StringName = &"") -> Dictionary:
 	var city := _get_city()
 	return city.plan_field_path(source_point_id, target_point_id, preferred_world_points, required_road_id) if city != null else {}

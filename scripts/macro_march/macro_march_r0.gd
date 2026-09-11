@@ -86,6 +86,7 @@ var _formation_list := VBoxContainer.new()
 var _location_garrison_list := VBoxContainer.new()
 var _location_garrison_signature := ""
 var _location_garrison_buttons: Array[Button] = []
+var _selected_reinforcement_army_id: StringName = &""
 var _confirm_button := Button.new()
 var _block_button := Button.new()
 var _recover_button := Button.new()
@@ -101,6 +102,7 @@ var _overview_button := Button.new()
 var _focus_subject_button := Button.new()
 var _location_details_button := Button.new()
 var _supply_transport_button := Button.new()
+var _stationed_reinforcement_button := Button.new()
 var _restore_default_route_button := Button.new()
 var _engineering_undo_button := Button.new()
 var _engineering_clear_button := Button.new()
@@ -418,7 +420,7 @@ func _build_ui() -> void:
 	_formation_scroll.add_child(_formation_list)
 	_formation_scroll.add_child(_location_garrison_list)
 	add_child(_formation_scroll)
-	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _supply_transport_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
+	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
 	_interrupted_project_selector.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -441,6 +443,8 @@ func _build_ui() -> void:
 	_location_details_button.visible = false
 	_supply_transport_button.text = "运回黑石城"
 	_supply_transport_button.visible = false
+	_stationed_reinforcement_button.text = "补充驻军"
+	_stationed_reinforcement_button.visible = false
 	_resume_project_button.visible = false
 	_interrupted_project_selector.visible = false
 	# This leaves the war-map view; it is not a second transport order from an
@@ -468,13 +472,14 @@ func _build_ui() -> void:
 	_engineering_clear_button.pressed.connect(_clear_engineering_draft)
 	_location_details_button.pressed.connect(_open_selected_location_detail)
 	_supply_transport_button.pressed.connect(_begin_selected_supply_transport)
+	_stationed_reinforcement_button.pressed.connect(_begin_selected_stationed_reinforcement)
 
 
 func _layout_ui() -> void:
 	var panel_rect := _side_panel_rect()
 	var action_height := 34.0
 	var action_gap := 4.0
-	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _location_details_button, _supply_transport_button, _return_button]
+	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button]
 	var visible_action_buttons: Array[Button] = []
 	for button in action_buttons:
 		if button.visible:
@@ -501,10 +506,10 @@ func _layout_ui() -> void:
 	_title_label.size = Vector2(size.x - 44, 34)
 	_status_label.position = Vector2(22, 48)
 	_status_label.size = Vector2(size.x - 44, 36)
-	# Silverford's logistics facts add two player-facing lines to the normal
-	# location detail. Reserve vertical space instead of letting the garrison
-	# instruction overwrite remaining stock and route information.
-	var detail_height := 174.0 if _location_detail_mode and _selected_point_id == &"silverford_city" else 132.0
+	# Silverford combines transport facts with a selected-garrison replenishment
+	# preview. Reserve enough room for both so actionable formation capacity never
+	# overlaps the actual-garrison list or the bottom action buttons.
+	var detail_height := 252.0 if _location_detail_mode and _selected_point_id == &"silverford_city" else 132.0
 	_detail_label.position = panel_inner.position
 	_detail_label.size = Vector2(panel_inner.size.x, detail_height)
 	_specialist_status_label.position = panel_inner.position + Vector2(0, detail_height + 4.0)
@@ -629,7 +634,7 @@ func _refresh_location_garrison_controls(model: Dictionary, location: Dictionary
 		return
 	var point_id := StringName(location.get("point_id", _selected_point_id))
 	var stationed := _location_garrison_armies(model, point_id)
-	var signature_parts: Array[String] = [String(point_id)]
+	var signature_parts: Array[String] = [String(point_id), String(_selected_reinforcement_army_id)]
 	for army in stationed:
 		signature_parts.append("%s:%d" % [String(army.get("army_id", &"")), _army_member_count(army)])
 	var signature := "|".join(signature_parts)
@@ -655,10 +660,11 @@ func _refresh_location_garrison_controls(model: Dictionary, location: Dictionary
 	for army in stationed:
 		var army_id := StringName(army.get("army_id", &""))
 		var button := Button.new()
-		button.text = "驻军 · %d 人 · 查看状态" % _army_member_count(army)
-		button.tooltip_text = "定位并查看这支已驻扎军队。"
+		var can_reinforce_here := point_id == &"silverford_city" and StringName(location.get("military_controller_faction_id", &"")) == &"player"
+		button.text = "驻军 · %d 人 · %s" % [_army_member_count(army), "已选补员目标" if army_id == _selected_reinforcement_army_id else ("选择补员目标" if can_reinforce_here else "查看状态")]
+		button.tooltip_text = "选择这支实际驻军作为补员对象。" if can_reinforce_here else "定位并查看这支已驻扎军队。"
 		button.set_meta("army_id", army_id)
-		button.pressed.connect(_inspect_location_garrison.bind(army_id, point_id))
+		button.pressed.connect(_select_location_reinforcement_army.bind(army_id, point_id) if can_reinforce_here else _inspect_location_garrison.bind(army_id, point_id))
 		_location_garrison_list.add_child(button)
 		_location_garrison_buttons.append(button)
 
@@ -700,6 +706,7 @@ func _open_selected_location_detail() -> void:
 		refresh()
 		return
 	_selected_point_id = StringName(location.get("point_id", &""))
+	_selected_reinforcement_army_id = &""
 	_location_detail_mode = true
 	_clear_status_error()
 	_set_context_status("正在查看%s；查看不会下令或扣除资源。" % str(location.get("display_name", "地点")))
@@ -711,9 +718,23 @@ func _select_location_detail(point_id: StringName) -> void:
 	if location.is_empty():
 		return
 	_selected_point_id = point_id
+	_selected_reinforcement_army_id = &""
 	_location_detail_mode = true
 	_clear_status_error()
 	_set_context_status("正在查看%s；查看不会下令或扣除资源。" % str(location.get("display_name", point_id)))
+	refresh()
+
+
+func _select_location_reinforcement_army(army_id: StringName, point_id: StringName) -> void:
+	if not _location_detail_mode or _selected_point_id != point_id:
+		return
+	if not _location_garrison_armies(_model(), point_id).any(func(army: Dictionary) -> bool: return StringName(army.get("army_id", &"")) == army_id):
+		_set_status_error("该军队已不在此驻扎，无法补员。")
+		refresh()
+		return
+	_selected_reinforcement_army_id = army_id
+	_clear_status_error()
+	_set_context_status("已选择驻军；将按编队编号顺序补充当地可用兵员。")
 	refresh()
 
 
@@ -723,6 +744,7 @@ func _inspect_location_garrison(army_id: StringName, point_id: StringName) -> vo
 	_selected_army_id = army_id
 	_location_detail_mode = false
 	_selected_point_id = &""
+	_selected_reinforcement_army_id = &""
 	_selected_specialist_id = &""
 	_selected_scout_id = &""
 	_selected_formation_ids.clear()
@@ -779,10 +801,23 @@ func _begin_selected_supply_transport() -> void:
 	refresh()
 
 
+func _begin_selected_stationed_reinforcement() -> void:
+	if _dispatch_adapter == null or not _location_detail_mode or _selected_point_id != &"silverford_city" or _selected_reinforcement_army_id == &"":
+		return
+	var result: Dictionary = _dispatch_adapter.replenish_field_stationed_army(_selected_point_id, _selected_reinforcement_army_id)
+	if not bool(result.get("success", false)):
+		_set_status_error(str(result.get("error", "驻军补员未提交")))
+	else:
+		_clear_status_error()
+		_set_context_status("已向指定驻军补充 %d 人；未创建新的行军军令。" % int(result.get("amount", 0)))
+	refresh()
+
+
 func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_title_label.text = "%s · 军令与攻城" % THEATER.get_theater_name()
 	_location_details_button.visible = false
 	_supply_transport_button.visible = false
+	_stationed_reinforcement_button.visible = false
 	_refresh_location_garrison_controls(model, {})
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
 	var specialists: Dictionary = field.get("specialists_by_id", {})
@@ -853,6 +888,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			var inspected_stationed := _location_garrison_armies(model, inspected_point_id)
 			var supply_status := _supply_transport_status(field, inspected_point_id)
 			var supply_copy := ""
+			var reinforcement_copy := ""
 			if inspected_point_id == &"silverford_city" and StringName(inspected_location.get("military_controller_faction_id", &"")) == &"player":
 				var active_transport := Dictionary(supply_status.get("active", {}))
 				var completed_transport := Dictionary(supply_status.get("completed", {}))
@@ -874,8 +910,28 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 				else:
 					_supply_transport_button.text = "无法运回黑石城"
 					supply_copy = "\n银渡城余粮：%d 粮\n无法运输：%s" % [available_supply, str(preview.get("error", "没有可通行道路"))]
+				var local_reinforcements := maxi(int(Dictionary(field.get("stationed_reinforcements_by_point_id", {})).get(inspected_point_id, 0)), 0)
+				if _selected_reinforcement_army_id == &"":
+					reinforcement_copy = "\n当地待编兵员：%d 人\n请选择一支实际驻军后补员。" % local_reinforcements
+				elif not inspected_stationed.any(func(stationed_army: Dictionary) -> bool: return StringName(stationed_army.get("army_id", &"")) == _selected_reinforcement_army_id):
+					_selected_reinforcement_army_id = &""
+					reinforcement_copy = "\n当地待编兵员：%d 人\n所选驻军已离开此地。" % local_reinforcements
+				else:
+					var reinforcement_preview: Dictionary = _dispatch_adapter.preview_field_stationed_replenishment(inspected_point_id, _selected_reinforcement_army_id) if _dispatch_adapter != null else {}
+					_stationed_reinforcement_button.visible = true
+					_stationed_reinforcement_button.disabled = not bool(reinforcement_preview.get("valid", false))
+					if bool(reinforcement_preview.get("valid", false)):
+						var formation_lines: Array[String] = []
+						for allocation_value in Array(reinforcement_preview.get("allocation", [])):
+							var allocation: Dictionary = Dictionary(allocation_value)
+							formation_lines.append("%s %d/%d%s" % [str(allocation.get("display_name", "编队")), int(allocation.get("member_count", 0)), int(allocation.get("max_members", 0)), " +%d" % int(allocation.get("added", 0)) if int(allocation.get("added", 0)) > 0 else ""])
+						_stationed_reinforcement_button.text = "补充 %d 人" % int(reinforcement_preview.get("amount", 0))
+						reinforcement_copy = "\n当地待编兵员：%d 人\n补员目标：%s\n%s" % [local_reinforcements, String(_selected_reinforcement_army_id), "；".join(formation_lines)]
+					else:
+						_stationed_reinforcement_button.text = "当前无法补员"
+						reinforcement_copy = "\n当地待编兵员：%d 人\n当前不可补员：%s" % [local_reinforcements, str(reinforcement_preview.get("error", "条件不满足"))]
 			_set_context_status("正在查看%s；查看不会下令或扣除资源。" % str(inspected_location.get("display_name", "地点")))
-			_detail_label.text = "%s\n外观类型：%s\n控制方：%s\n用途：%s\n建设：%s\n实际驻军：%d 支、%d 人%s" % [
+			_detail_label.text = "%s\n外观类型：%s\n控制方：%s\n用途：%s\n建设：%s\n实际驻军：%d 支、%d 人%s%s" % [
 				str(inspected_location.get("display_name", "地点")),
 				_location_kind_label(inspected_location),
 				_location_controller_label(inspected_location),
@@ -884,8 +940,9 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 				inspected_stationed.size(),
 				_location_garrison_member_total(inspected_stationed),
 				supply_copy,
+				reinforcement_copy,
 			]
-			_specialist_status_label.text = "点击驻军可定位查看；长按我方地点仍可直接选择派遣对象。"
+			_specialist_status_label.text = "银渡城先选择一支驻军再补员；长按我方地点仍可直接选择派遣对象。"
 			return
 	var selected_specialist := Dictionary(specialists.get(_selected_specialist_id, {}))
 	# Replanning keeps the last valid draft as a safe fallback until mouse-up,

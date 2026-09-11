@@ -218,6 +218,7 @@ func _check_snapshot_compatibility_and_mid_transit_restore() -> void:
 	legacy_field.erase("supply_inventory_by_point_id")
 	legacy_field.erase("supply_transports_by_id")
 	legacy_field.erase("next_supply_transport_sequence")
+	legacy_field.erase("stationed_reinforcements_by_point_id")
 	legacy.war_loop.field_tactics = legacy_field
 	var legacy_restored: Dictionary = city.restore_v5_campaign_snapshot(legacy)
 	_check(

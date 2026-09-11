@@ -832,6 +832,93 @@ func apply_macro_formation_losses(army_id: StringName, order_id: StringName, los
 	return army.duplicate(true)
 
 
+## Local R0 reinforcements enter only a physically stationary macro army. The
+## Field owns the finite location pool; this registry remains the sole owner of
+## enlisted members and formation totals. Allocation is formation-ID ordered so
+## preview and commit cannot disagree about which unit receives the last recruit.
+func preview_stationed_reinforcement(army_id: StringName, point_id: StringName, available_count: int) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	if army.is_empty():
+		return {"valid": false, "error": "未找到指定驻军"}
+	if StringName(army.get("phase", &"")) != PHASE_STATIONED or StringName(army.get("target_node_id", &"")) != point_id:
+		return {"valid": false, "error": "该军队尚未驻扎在此地点"}
+	if available_count <= 0:
+		return {"valid": false, "error": "当地已无可补充兵源"}
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	var formations: Array = Array(macro.get("formation_snapshots", [])).duplicate(true)
+	if formations.is_empty():
+		return {"valid": false, "error": "该驻军没有可补充编队"}
+	formations.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+		return String(left.get("formation_id", &"")) < String(right.get("formation_id", &""))
+	)
+	var remaining := available_count
+	var allocation: Array[Dictionary] = []
+	for formation_value in formations:
+		var formation: Dictionary = Dictionary(formation_value)
+		var formation_id := StringName(formation.get("formation_id", &""))
+		var definition_id := StringName(formation.get("definition_id", &""))
+		var member_count := int(formation.get("member_count", -1))
+		var max_members := int(formation.get("max_members", -1))
+		if formation_id == &"" or definition_id == &"" or member_count < 0 or max_members < member_count:
+			return {"valid": false, "error": "驻军编队数据无效"}
+		var added := mini(maxi(max_members - member_count, 0), remaining)
+		allocation.append({
+			"formation_id": formation_id,
+			"definition_id": definition_id,
+			"display_name": str(formation.get("display_name", "编队")),
+			"member_count": member_count,
+			"max_members": max_members,
+			"added": added,
+			"after_count": member_count + added,
+		})
+		remaining -= added
+	var amount := available_count - remaining
+	if amount <= 0:
+		return {"valid": false, "error": "该驻军各编队已满编", "allocation": allocation}
+	return {"valid": true, "army_id": army_id, "point_id": point_id, "amount": amount, "allocation": allocation}
+
+
+func replenish_stationed_army(army_id: StringName, point_id: StringName, expected_allocation: Array) -> Dictionary:
+	var requested_amount := 0
+	for allocation_value in expected_allocation:
+		if not allocation_value is Dictionary or typeof(Dictionary(allocation_value).get("added", null)) != TYPE_INT or int(Dictionary(allocation_value).get("added", 0)) < 0:
+			return {}
+		requested_amount += int(Dictionary(allocation_value).get("added", 0))
+	var preview := preview_stationed_reinforcement(army_id, point_id, requested_amount)
+	if not bool(preview.get("valid", false)) or Array(preview.get("allocation", [])).size() != expected_allocation.size():
+		return {}
+	var allocation: Array = Array(preview.get("allocation", [])).duplicate(true)
+	for index in allocation.size():
+		var expected: Dictionary = Dictionary(expected_allocation[index])
+		var actual: Dictionary = Dictionary(allocation[index])
+		if StringName(expected.get("formation_id", &"")) != StringName(actual.get("formation_id", &"")) or int(expected.get("added", -1)) != int(actual.get("added", -2)):
+			return {}
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	var formations: Array = Array(macro.get("formation_snapshots", [])).duplicate(true)
+	var additions_by_id: Dictionary = {}
+	for allocation_value in allocation:
+		var entry: Dictionary = Dictionary(allocation_value)
+		additions_by_id[StringName(entry.get("formation_id", &""))] = int(entry.get("added", 0))
+	var units: Dictionary = Dictionary(army.get("units_by_definition_id", {})).duplicate(true)
+	for index in formations.size():
+		var formation: Dictionary = Dictionary(formations[index]).duplicate(true)
+		var added := int(additions_by_id.get(StringName(formation.get("formation_id", &"")), 0))
+		if added <= 0:
+			continue
+		formation.member_count = int(formation.get("member_count", 0)) + added
+		formations[index] = formation
+		var definition_id := StringName(formation.get("definition_id", &""))
+		units[definition_id] = int(units.get(definition_id, 0)) + added
+	if not _has_valid_macro_formations(formations, units):
+		return {}
+	macro.formation_snapshots = formations
+	army.units_by_definition_id = units
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
 func close_macro_field_lost(army_id: StringName, order_id: StringName, result_id: StringName) -> Dictionary:
 	var army: Dictionary = _armies_by_id.get(army_id, {})
 	var macro: Dictionary = Dictionary(army.get("macro_march", {}))

@@ -39,6 +39,10 @@ var intel_by_subject_id: Dictionary = {}
 # Tactical-location supply is a field fact.  The city controller owns only the
 # final national-resource transaction; a payload is never counted in both.
 var supply_inventory_by_point_id: Dictionary = {}
+# One-time local reinforcements are also a tactical-location fact. They are
+# deliberately separate from city rosters, enemy defenders, and cargo: only a
+# successfully stationed ArmyRegistry army can receive them.
+var stationed_reinforcements_by_point_id: Dictionary = {}
 var supply_transports_by_id: Dictionary = {}
 var point_positions_by_id: Dictionary = {}
 var water_regions: Array[Rect2i] = []
@@ -51,6 +55,7 @@ var next_camp_sequence := 1
 var next_supply_transport_sequence := 1
 var _specialist_path_migration_pending := false
 var _supply_snapshot_restored := false
+var _stationed_reinforcement_snapshot_restored := false
 var _supply_checkpoint_required := false
 var scout_visibility_range := 2
 
@@ -77,6 +82,12 @@ func initialize_from_theater(
 			var initial_supply := maxi(int(point.get("initial_supply_food", 0)), 0)
 			if initial_supply > 0:
 				supply_inventory_by_point_id[StringName(point_id_value)] = initial_supply
+		# Existing saves must never gain newly-authored local recruits merely by
+		# being loaded. A fresh theatre seeds them once from the authored point.
+		if not _stationed_reinforcement_snapshot_restored and not stationed_reinforcements_by_point_id.has(StringName(point_id_value)):
+			var initial_reinforcements := maxi(int(point.get("initial_stationed_reinforcements", 0)), 0)
+			if initial_reinforcements > 0:
+				stationed_reinforcements_by_point_id[StringName(point_id_value)] = initial_reinforcements
 	if _specialist_path_migration_pending:
 		_migrate_restored_specialist_paths()
 		_specialist_path_migration_pending = false
@@ -764,6 +775,19 @@ static func _supply_segment_endpoints(segment: Dictionary, roads: Dictionary) ->
 	}
 
 
+static func _has_valid_stationed_reinforcement_state(inventory: Dictionary) -> bool:
+	for point_id_value in inventory:
+		if not _is_snapshot_id(point_id_value) or not _is_snapshot_int(inventory[point_id_value]) or int(inventory[point_id_value]) < 0:
+			return false
+		# R0 has one authored Silverford pool. Its authored amount remains a
+		# theatre Resource setting, so persistence validates the identity and the
+		# finite non-negative fact without baking this sample's current value (4)
+		# into every compatible save.
+		if StringName(point_id_value) != &"silverford_city":
+			return false
+	return true
+
+
 static func _has_valid_supply_state(inventory: Dictionary, transports: Dictionary, roads: Dictionary, next_sequence: Variant) -> bool:
 	if not _is_snapshot_int(next_sequence) or int(next_sequence) <= 0:
 		return false
@@ -1045,6 +1069,17 @@ func preview_supply_transport(source_point_id: StringName, target_point_id: Stri
 		"route_world_points": Array(plan.get("points", [])).duplicate(true),
 		"duration_milliseconds": int(plan.get("duration_milliseconds", 0)),
 	}
+
+
+func get_stationed_reinforcements(point_id: StringName) -> int:
+	return maxi(int(stationed_reinforcements_by_point_id.get(point_id, 0)), 0)
+
+
+func consume_stationed_reinforcements(point_id: StringName, amount: int) -> bool:
+	if point_id == &"" or amount <= 0 or amount > get_stationed_reinforcements(point_id):
+		return false
+	stationed_reinforcements_by_point_id[point_id] = get_stationed_reinforcements(point_id) - amount
+	return true
 
 
 func begin_supply_transport(source_point_id: StringName, target_point_id: StringName) -> Dictionary:
@@ -2217,6 +2252,7 @@ func get_snapshot() -> Dictionary:
 		"patrols_by_id": patrols_by_id.duplicate(true),
 		"intel_by_subject_id": intel_by_subject_id.duplicate(true),
 		"supply_inventory_by_point_id": supply_inventory_by_point_id.duplicate(true),
+		"stationed_reinforcements_by_point_id": stationed_reinforcements_by_point_id.duplicate(true),
 		"supply_transports_by_id": supply_transports_by_id.duplicate(true),
 		"world_milliseconds": world_milliseconds,
 		"next_specialist_sequence": next_specialist_sequence,
@@ -2228,18 +2264,23 @@ func get_snapshot() -> Dictionary:
 
 func restore_snapshot(snapshot: Dictionary) -> bool:
 	var legacy_required := ["schema_version", "roads_by_id", "camps_by_id", "specialists_by_id", "projects_by_id", "patrols_by_id", "intel_by_subject_id", "world_milliseconds", "next_specialist_sequence", "next_project_sequence", "next_camp_sequence"]
-	var required := legacy_required.duplicate()
-	required.append_array(["supply_inventory_by_point_id", "supply_transports_by_id", "next_supply_transport_sequence"])
+	var supply_required := legacy_required.duplicate()
+	supply_required.append_array(["supply_inventory_by_point_id", "supply_transports_by_id", "next_supply_transport_sequence"])
+	var required := supply_required.duplicate()
+	required.append("stationed_reinforcements_by_point_id")
 	var is_legacy_supply_snapshot := snapshot.size() == legacy_required.size()
-	if (not is_legacy_supply_snapshot and snapshot.size() != required.size()) or typeof(snapshot.get("schema_version")) != TYPE_INT or int(snapshot.get("schema_version")) != SCHEMA_VERSION:
+	var is_legacy_reinforcement_snapshot := snapshot.size() == supply_required.size()
+	if (not is_legacy_supply_snapshot and not is_legacy_reinforcement_snapshot and snapshot.size() != required.size()) or typeof(snapshot.get("schema_version")) != TYPE_INT or int(snapshot.get("schema_version")) != SCHEMA_VERSION:
 		return false
 	for key in legacy_required:
 		if not snapshot.has(key):
 			return false
 	if not is_legacy_supply_snapshot:
-		for key in required.slice(legacy_required.size()):
+		for key in supply_required.slice(legacy_required.size()):
 			if not snapshot.has(key):
 				return false
+	if not is_legacy_supply_snapshot and not is_legacy_reinforcement_snapshot and not snapshot.has("stationed_reinforcements_by_point_id"):
+		return false
 	if (
 		not snapshot.roads_by_id is Dictionary or not snapshot.camps_by_id is Dictionary
 		or not snapshot.specialists_by_id is Dictionary or not snapshot.projects_by_id is Dictionary
@@ -2247,6 +2288,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		or typeof(snapshot.world_milliseconds) != TYPE_INT or int(snapshot.world_milliseconds) < 0 or typeof(snapshot.next_specialist_sequence) != TYPE_INT or int(snapshot.next_specialist_sequence) <= 0
 		or typeof(snapshot.next_project_sequence) != TYPE_INT or int(snapshot.next_project_sequence) <= 0 or typeof(snapshot.next_camp_sequence) != TYPE_INT or int(snapshot.next_camp_sequence) <= 0
 		or (not is_legacy_supply_snapshot and (not snapshot.supply_inventory_by_point_id is Dictionary or not snapshot.supply_transports_by_id is Dictionary or typeof(snapshot.next_supply_transport_sequence) != TYPE_INT or int(snapshot.next_supply_transport_sequence) <= 0))
+		or (not is_legacy_supply_snapshot and not is_legacy_reinforcement_snapshot and not snapshot.stationed_reinforcements_by_point_id is Dictionary)
 	):
 		return false
 	if not _has_valid_references(
@@ -2259,6 +2301,8 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		Dictionary(snapshot.supply_inventory_by_point_id), Dictionary(snapshot.supply_transports_by_id), Dictionary(snapshot.roads_by_id), snapshot.next_supply_transport_sequence
 	):
 		return false
+	if not is_legacy_supply_snapshot and not is_legacy_reinforcement_snapshot and not _has_valid_stationed_reinforcement_state(Dictionary(snapshot.stationed_reinforcements_by_point_id)):
+		return false
 	roads_by_id = Dictionary(snapshot.roads_by_id).duplicate(true)
 	camps_by_id = Dictionary(snapshot.camps_by_id).duplicate(true)
 	specialists_by_id = Dictionary(snapshot.specialists_by_id).duplicate(true)
@@ -2266,6 +2310,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	patrols_by_id = Dictionary(snapshot.patrols_by_id).duplicate(true)
 	intel_by_subject_id = Dictionary(snapshot.intel_by_subject_id).duplicate(true)
 	supply_inventory_by_point_id = Dictionary(snapshot.get("supply_inventory_by_point_id", {})).duplicate(true)
+	stationed_reinforcements_by_point_id = Dictionary(snapshot.get("stationed_reinforcements_by_point_id", {})).duplicate(true)
 	supply_transports_by_id = Dictionary(snapshot.get("supply_transports_by_id", {})).duplicate(true)
 	world_milliseconds = int(snapshot.world_milliseconds)
 	next_specialist_sequence = int(snapshot.next_specialist_sequence)
@@ -2274,6 +2319,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	next_supply_transport_sequence = int(snapshot.get("next_supply_transport_sequence", 1))
 	_specialist_path_migration_pending = true
 	_supply_snapshot_restored = true
+	_stationed_reinforcement_snapshot_restored = true
 	return true
 
 

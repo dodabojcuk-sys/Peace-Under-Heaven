@@ -490,6 +490,7 @@ var _macro_march_traces_for_war_step: Dictionary = {}
 # Test-only fault seam for verifying the atomic boundary after a NationState
 # supply credit. It is never serialized and production code has no caller.
 var _field_supply_fault_for_test: StringName = &""
+var _field_reinforcement_fault_for_test: StringName = &""
 
 
 func _ready() -> void:
@@ -5410,6 +5411,7 @@ func get_field_tactics_read_model() -> Dictionary:
 		"intel_by_subject_id": Dictionary(field_snapshot.intel_by_subject_id).duplicate(true),
 		"visible_patrols_by_id": visible_patrols,
 		"supply_inventory_by_point_id": Dictionary(field_snapshot.get("supply_inventory_by_point_id", {})).duplicate(true),
+		"stationed_reinforcements_by_point_id": Dictionary(field_snapshot.get("stationed_reinforcements_by_point_id", {})).duplicate(true),
 		"supply_transports_by_id": Dictionary(field_snapshot.get("supply_transports_by_id", {})).duplicate(true),
 		"world_milliseconds": int(field_snapshot.world_milliseconds),
 	}
@@ -5444,6 +5446,45 @@ func begin_field_supply_transport(source_point_id: StringName) -> Dictionary:
 		_war_loop_state.restore_snapshot(war_before)
 		return _macro_failure(&"SAVE_FAILED", "粮草运输存档失败，地点库存未扣除")
 	return {"success": true, "transport": transport.duplicate(true), "preview": preview.duplicate(true)}
+
+
+## R0 keeps the finite local pool in FieldTacticsState while ArmyRegistry owns
+## every enlisted member. This Controller entry is the transaction boundary:
+## it rechecks the point controller, station, capacity and pool immediately
+## before mutating either owner, then publishes one normal V5 checkpoint.
+func preview_field_stationed_replenishment(point_id: StringName, army_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	if point_id != &"silverford_city":
+		return {"valid": false, "error": "当前只有银渡城可补充当地兵员"}
+	if StringName(_war_loop_state.get_city(point_id).get("military_controller_faction_id", &"")) != &"player":
+		return {"valid": false, "error": "需要先占领银渡城才能补员"}
+	var available := _war_loop_state.field_tactics.get_stationed_reinforcements(point_id)
+	return _army_registry.preview_stationed_reinforcement(army_id, point_id, available)
+
+
+func replenish_field_stationed_army(point_id: StringName, army_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	var preview := preview_field_stationed_replenishment(point_id, army_id)
+	if not bool(preview.get("valid", false)):
+		return _macro_failure(&"REINFORCEMENT_INVALID", str(preview.get("error", "驻军无法补员")))
+	var amount := int(preview.get("amount", 0))
+	var allocation: Array = Array(preview.get("allocation", [])).duplicate(true)
+	if amount <= 0 or allocation.is_empty():
+		return _macro_failure(&"REINFORCEMENT_EMPTY", "没有可提交的驻军补员")
+	var war_before := _war_loop_state.get_snapshot()
+	var registry_before := _army_registry.get_snapshot()
+	var army := _army_registry.replenish_stationed_army(army_id, point_id, allocation)
+	if army.is_empty() or not _war_loop_state.field_tactics.consume_stationed_reinforcements(point_id, amount):
+		_war_loop_state.restore_snapshot(war_before)
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		return _macro_failure(&"REINFORCEMENT_COMMIT", "补员条件已变化，未写入任何兵员")
+	var checkpoint_success := _field_reinforcement_fault_for_test != &"CHECKPOINT_SAVE_FAILED" and bool(_persist_macro_march_checkpoint().get("success", false))
+	_field_reinforcement_fault_for_test = &"" if _field_reinforcement_fault_for_test == &"CHECKPOINT_SAVE_FAILED" else _field_reinforcement_fault_for_test
+	if not checkpoint_success:
+		_war_loop_state.restore_snapshot(war_before)
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		return _macro_failure(&"SAVE_FAILED", "驻军补员存档失败，地点兵源与编队已回滚")
+	return {"success": true, "army": army.duplicate(true), "preview": preview.duplicate(true), "amount": amount}
 
 
 func dispatch_field_specialist(role: StringName) -> Dictionary:
@@ -6047,6 +6088,10 @@ func advance_war_loop_time_seconds(delta_seconds: float) -> Dictionary:
 
 func set_field_supply_fault_for_test(fault_id: StringName) -> void:
 	_field_supply_fault_for_test = fault_id
+
+
+func set_field_reinforcement_fault_for_test(fault_id: StringName) -> void:
+	_field_reinforcement_fault_for_test = fault_id
 
 
 func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dictionary:

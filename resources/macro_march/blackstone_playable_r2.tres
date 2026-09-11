@@ -78,6 +78,7 @@ points = {
 "display_name": "银渡城",
 "gate_hp": 180,
 "initial_supply_food": 20,
+"initial_stationed_reinforcements": 4,
 "military_controller_faction_id": &"river_lords",
 "point_id": &"silverford_city",
 "point_kind": &"ENEMY_CITY",
