@@ -70,7 +70,7 @@ immutable.
 
 | Facility | Cost | Battle effect | Lifetime |
 | --- | ---: | --- | --- |
-| Watch platform | 6 wood | After 2 battle ticks of construction, marks detailed enemy observation as available to the battle presentation | This battle instance only |
+| Watch platform | 6 wood | After 2 battle ticks of construction, reveals the exact incoming enemy count for its deployed defense route; before completion C0 shows that route as a visible but uncounted threat | This battle instance only |
 | Siege ram | 8 wood | After 4 battle ticks of construction, applies 160 real damage to its selected gate | This battle instance only |
 | Arrow tower | 10 wood | After 4 battle ticks of construction, targets the selected defended gate approach every 4 battle ticks (1 second) and contributes 24 damage to the existing enemy-HP intent | This battle instance only |
 | Barricade | 5 wood | After 3 battle ticks of construction, reduces the selected route's ordinary incoming enemy damage to 65%; in `WARTIME_DEFENSE` it instead absorbs the remainder of that route's real gate damage into its durability | This battle instance only |

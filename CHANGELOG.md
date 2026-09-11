@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-12 - Defense observation projection
+
+- Made the temporary C0 presentation consume the persisted mission definition
+  carried by a prepared defense request, rather than treating a scene-local
+  null configuration as an assault. A Blackstone defense now presents each
+  incoming route as a visible threat without leaking an exact count until the
+  watch platform on that deployed route has actually completed construction.
+  The session remains the sole owner of enemy HP and observation readiness.
+- Extended the formal defense GUI smoke to verify both visible states against
+  the saved session route: the pre-completion count is hidden and the
+  post-completion label exposes the real surviving count on the watch route.
+
 ## 2026-09-12 - Formal Blackstone defense deployment
 
 - Made the Blackstone `WARTIME_DEFENSE` pre-battle route controls actionable

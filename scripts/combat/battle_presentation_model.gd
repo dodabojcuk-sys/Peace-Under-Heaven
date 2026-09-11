@@ -16,11 +16,15 @@ static func build_snapshot(
 ) -> Dictionary:
 	if request == null or request.committed_force == null:
 		return {}
+	# Prepared formal entries persist their mission on the request.  The C0
+	# scene does not own that durable fact, so use it when a transient scene
+	# configuration did not supply a mission explicitly.
+	var effective_mission := mission if mission != null else request.mission_definition
 
 	var routes: Array[Dictionary] = []
 	for route_id in ROUTE_IDS:
 		routes.append(
-			_build_route(request, session, mission, route_id)
+			_build_route(request, session, effective_mission, route_id)
 		)
 
 	var squads: Array[Dictionary] = []
@@ -36,10 +40,10 @@ static func build_snapshot(
 		)
 
 	return {
-		"title": mission.title if mission != null else "北坡防御战",
+		"title": effective_mission.title if effective_mission != null else "北坡防御战",
 		"objective_text": (
-			mission.objective_text
-			if mission != null
+			effective_mission.objective_text
+			if effective_mission != null
 			else "突破两处城门并击溃守军"
 		),
 		"phase_text": _phase_text(request.phase),
@@ -53,7 +57,7 @@ static func build_snapshot(
 		"routes": routes,
 		"squads": squads,
 		"selected_squad_id": selected_squad_id,
-		"objective": _build_objective(request, session, mission, routes),
+		"objective": _build_objective(request, session, effective_mission, routes),
 	}
 
 
@@ -83,6 +87,20 @@ static func _build_route(
 		enemy_hp,
 		request.committed_force.hp_per_member
 	)
+	# Protection routes are visible threats, but their exact strength is a
+	# battle fact revealed by the completed watch platform on that route. The
+	# presentation consumes this projection only; it never changes enemy HP or
+	# gives C0 a second source of intelligence.
+	var enemy_count_known := not (
+		mission != null
+		and mission.objective_type == MissionDefinition.OBJECTIVE_PROTECT
+	)
+	if session != null and not enemy_count_known:
+		var facilities := session.get_wartime_facility_state()
+		enemy_count_known = (
+			bool(facilities.get("enemy_observation_ready", false))
+			and StringName(facilities.get("watch_route_id", &"")) == route_id
+		)
 	var route_name := _route_name(mission, route_id)
 	var engaged_squads: Array[int] = []
 	if session != null:
@@ -108,6 +126,7 @@ static func _build_route(
 		"name": route_name,
 		"distance_fixed": distance_fixed,
 		"enemy_count": enemy_count,
+		"enemy_count_known": enemy_count_known,
 		"enemy_initial_count": int(initial.get("enemy_members", 0)),
 		"enemy_status": enemy_status,
 		"engaged_squad_ids": engaged_squads,
@@ -379,6 +398,9 @@ static func _find_route(
 
 
 static func _remaining_enemy_text(routes: Array[Dictionary]) -> String:
+	for route in routes:
+		if not bool(route.get("enemy_count_known", true)):
+			return "敌情未明（瞭望台完工后显示兵力）"
 	return "剩余敌人 %d" % _remaining_enemy_count(routes)
 
 

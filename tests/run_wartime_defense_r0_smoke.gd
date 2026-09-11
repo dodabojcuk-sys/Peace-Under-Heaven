@@ -76,6 +76,14 @@ func _run() -> void:
 	var arrow_button := plan_panel.get_node("ArrowTowerButton") as Button
 	var barricade_button := plan_panel.get_node("BarricadeButton") as Button
 	var confirm_button := plan_panel.get_node("ConfirmButton") as Button
+	var watched_enemy_count_label := battle.get_node(
+		"UI/RootPanel/FrontLane/EnemyMarker/Count"
+	) as Label
+	_check(
+		watched_enemy_count_label.text.contains("敌情未明")
+			and not watched_enemy_count_label.text.contains("敌军 7"),
+		"守城路线在瞭望台完工前只显示可见威胁，不泄露精确来敌兵力"
+	)
 	var wood_before_plan := int(city.get("wood"))
 	var invalid_plan := WartimeFacilityPlan.empty_snapshot()
 	invalid_plan.facilities.append(WartimeFacilityPlan.make_facility(
@@ -112,6 +120,17 @@ func _run() -> void:
 	)
 	var target_hp_before := int(objective.get("protect_target_hp", 0))
 	battle.step_battle_for_test(4)
+	var watched_route: Dictionary = session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE)
+	var expected_observed_count := ceili(
+		float(int(watched_route.get("enemy_total_hp", 0)))
+		/ float(battle.request.committed_force.hp_per_member)
+	)
+	_check(
+		StringName(session.get_wartime_facility_state().get("watch_route_id", &""))
+			== CommittedForceSnapshot.FRONT_ROUTE
+			and watched_enemy_count_label.text.contains("敌军 %d" % expected_observed_count),
+		"瞭望台完成后只读会话观察事实，向正式部署路线界面揭示精确兵力"
+	)
 	_check(
 		int(session.get_mission_objective_state().get("protect_target_hp", 0)) == target_hp_before
 			and int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("enemy_position_fixed", 0)) > 0

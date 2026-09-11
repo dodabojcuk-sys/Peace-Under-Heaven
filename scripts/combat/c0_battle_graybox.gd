@@ -997,10 +997,15 @@ func _refresh_battle_ui() -> void:
 		status_label.text = "战斗请求创建失败"
 		_refresh_exit_ui()
 		return
+	var presentation_mission := (
+		mission_definition
+		if mission_definition != null
+		else request.mission_definition
+	)
 	var next_snapshot := BattlePresentationModel.build_snapshot(
 		request,
 		coordinator.active_session,
-		mission_definition,
+		presentation_mission,
 		_selected_squad_id
 	)
 	_capture_presentation_changes(_presentation_snapshot, next_snapshot)
@@ -1023,7 +1028,7 @@ func _refresh_battle_ui() -> void:
 		]
 	)
 	var objective_text := str(next_snapshot.objective_text)
-	if mission_definition == null:
+	if presentation_mission == null:
 		objective_text = "突破任一城门并击溃该路线守军"
 	instruction_label.text = "目标：%s｜%s" % [
 		objective_text,
@@ -1316,21 +1321,20 @@ func _refresh_route_ui(
 			objective.get("attacking_routes", [])
 		)
 	)
-	enemy_count_label.text = "敌军 %d\n%s" % [
-		int(route.enemy_count),
-		(
-			"已肃清"
-			if int(route.enemy_count) <= 0
-			else (
-				"攻击粮车"
-				if threatens_wagon
-				else (
-					"接战中"
-					if not Array(route.engaged_squad_ids).is_empty()
-					else "据守"
-				)
-			)
-		),
+	var enemy_count_known := bool(route.get("enemy_count_known", true))
+	var enemy_status := "已肃清"
+	if int(route.enemy_count) > 0:
+		if not enemy_count_known:
+			enemy_status = "瞭望台完工后显示兵力"
+		elif threatens_wagon:
+			enemy_status = "攻击粮车"
+		elif not Array(route.engaged_squad_ids).is_empty():
+			enemy_status = "接战中"
+		else:
+			enemy_status = "据守"
+	enemy_count_label.text = "%s\n%s" % [
+		("敌军 %d" % int(route.enemy_count)) if enemy_count_known else "敌情未明",
+		enemy_status,
 	]
 	enemy_marker.visible = int(route.enemy_count) > 0
 	gate.visible = bool(route.has_obstacle) and int(route.gate_hp) > 0
