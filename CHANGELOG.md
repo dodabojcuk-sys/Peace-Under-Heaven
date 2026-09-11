@@ -17,6 +17,12 @@
 - Extended the formal defense smoke and independent A-to-E process chain with
   a resource debit, repair-in-progress cold restore, remaining-tick completion
   and one-time target-HP recovery check.
+- Added an isolated graphical defense runner and five root-viewport captures
+  for the visible plan, construction, damaged gate, saved repair and completed
+  repair states. The runner waits a render frame after each refresh so the
+  evidence does not accidentally capture stale UI; its GUI signals and
+  accelerated battle ticks are documented as engine evidence, not native mouse
+  or player-feel validation.
 
 ## 2026-09-12 - Damageable wartime arrow towers
 
