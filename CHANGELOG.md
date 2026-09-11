@@ -20,6 +20,9 @@
   while its barricade is still under construction, restores it in a fresh
   process, and permits the repaired work to be damaged or destroyed again by
   the same route's real incoming attack.
+- Draft headings now resolve route names from the same frozen prepared request
+  used by the battle projection, so a formal defense correctly says
+  `东门壕沟` rather than the generic side-route fallback.
 
 ## 2026-09-12 - Formal Blackstone defense deployment
 

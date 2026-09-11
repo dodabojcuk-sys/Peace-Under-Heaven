@@ -106,8 +106,11 @@ func _run() -> void:
 	barricade_button.emit_signal("pressed")
 	await process_frame
 	_check(
-		battle != null and plan_panel.visible and not confirm_button.disabled,
-		"守城实例复用正式工事草稿与确认入口，不调用公告板临时战斗"
+		battle != null
+			and plan_panel.visible
+			and not confirm_button.disabled
+			and str(plan_panel.get_node("Title").text).contains("东门壕沟"),
+		"守城实例复用正式工事草稿、实际路线名称与确认入口，不调用公告板临时战斗"
 	)
 	confirm_button.emit_signal("pressed")
 	await process_frame

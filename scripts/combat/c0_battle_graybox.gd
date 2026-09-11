@@ -1597,11 +1597,16 @@ func _refresh_recent_actions() -> void:
 
 
 func _get_route_name(route_id: StringName) -> String:
-	if mission_definition != null:
+	var effective_mission := (
+		mission_definition
+		if mission_definition != null
+		else (request.mission_definition if request != null else null)
+	)
+	if effective_mission != null:
 		return (
-			mission_definition.front_route_name
+			effective_mission.front_route_name
 			if route_id == CommittedForceSnapshot.FRONT_ROUTE
-			else mission_definition.side_route_name
+			else effective_mission.side_route_name
 		)
 	return (
 		"正门路线"
