@@ -14,6 +14,9 @@
 - Extended the focused C0 smoke to exercise the visible repair button,
   a forced existing-checkpoint failure with complete resource/session rollback,
   one-time payment, duplicate-click idempotence, completion and persistence.
+- Extended the macro-siege handoff smoke with the same real handoff-checkpoint
+  failure: its repair resource transaction and frozen session both restore
+  before a retry may begin.
 
 ## 2026-09-11 - Wartime barricade R0
 

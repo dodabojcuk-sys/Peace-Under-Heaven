@@ -188,6 +188,17 @@ func _run() -> void:
 			and repair_button.visible and not repair_button.disabled,
 		"宏观围城中真实受损拒马显示正式维修入口"
 	)
+	var repair_snapshot_before_failure := session.get_snapshot()
+	city.set_wartime_session_checkpoint_fault_for_test(&"CHECKPOINT_SAVE_FAILED")
+	repair_button.emit_signal("pressed")
+	await process_frame
+	_check(
+		int(city.get("wood")) == wood_before_repair
+			and session.get_snapshot() == repair_snapshot_before_failure
+			and repair_button.visible
+			and battle.status_label.text.contains("已回滚"),
+		"宏观围城维修保存失败同样回滚资源和冻结接管会话，不留下半成品维修态"
+	)
 	repair_button.emit_signal("pressed")
 	await process_frame
 	var repair_cost := int(WartimeFacilityPlan.get_repair_costs(WartimeFacilityPlan.KIND_BARRICADE).get(&"wood", 0))
