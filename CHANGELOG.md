@@ -2,6 +2,23 @@
 
 ## 2026-09-11
 
+- Integrated Blackstone First Campaign R0 without adding a second campaign
+  owner. Macro March now renders a read-only two-city objective/result card
+  from the existing WarLoop control facts and keeps the northern direct attack
+  plus optional scouting, engineering, tower, Silverford reinforcement and
+  finite-food transport routes. The full formal Route B regression creates a
+  runtime camp and bridge, replans a watchtower from valid A through rejected
+  water B back to A, restores an in-progress V5 snapshot, reinforces the real
+  Silverford garrison, sends its single finite transport, continues to
+  Redcliff, and proves the two-city result without duplicate credit. A nearby
+  camp picker overlap no longer prevents a deliberately hovered unit from
+  locking onto the adjacent map destination. Added graphical GUI-event/Movie
+  Maker evidence and the authored campaign brief under
+  `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-blackstone-campaign-r0/`.
+  The focused watchtower fixture now initializes the playable first-map state
+  before replacing in-memory Field authority, keeping its project/engineer
+  prerequisites isolated from startup persistence.
+
 - Closed Field Watchtower R0 correctness: timed specialist contact now revokes
   a just-created tower when contact precedes the final construction instant,
   while later contact preserves it. Field restore now explicitly supports the

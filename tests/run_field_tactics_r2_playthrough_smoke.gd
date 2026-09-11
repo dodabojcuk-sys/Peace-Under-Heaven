@@ -31,6 +31,7 @@ func _run() -> void:
 	await _capture_route_seed_snapshot()
 	await _run_main_road_route()
 	await _run_engineering_route()
+	await _run_campaign_r0_engineering_route()
 	_finish()
 
 
@@ -87,6 +88,7 @@ func _run_main_road_route() -> void:
 	var elapsed := int(city._war_loop_state.field_tactics.world_milliseconds) - route_start_world
 	var food_spent: int = initial_food - int(city.food)
 	var casualties: int = 20 - city._macro_army_member_count(final_army)
+	macro_screen.refresh()
 	_check(
 		initial_food == 80 and bool(issue.get("success", false))
 			and army_id in Array(patrol.get("resolved_army_ids", []))
@@ -97,8 +99,217 @@ func _run_main_road_route() -> void:
 			and StringName(final_army.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED,
 		"主路正式路线从默认资源出征，经历有限巡逻伤亡后连续占领两座必占城"
 	)
+	_check(
+		macro_screen._campaign_label.text.contains("战役胜利")
+			and macro_screen._campaign_label.text.contains("赤崖城")
+			and macro_screen._campaign_label.text.contains("银渡城")
+			and macro_screen._return_button.text == "战役完成，返回内城",
+		"双城结算后战役摘要和返回入口只读取既有控制权与清关事实"
+	)
 	print("R2_PLAYTHROUGH_ROUTE_A elapsed_ms=%d food_remaining=%d food_spent=%d army_casualties=%d specialist_losses=0" % [elapsed, city.food, food_spent, casualties])
 	await _drop(context.scene)
+
+
+## Campaign R0 intentionally composes the existing optional preparation
+## systems instead of adding a second campaign state.  Route A above remains
+## the direct alternative; this route demonstrates that the authored central
+## works can be used end-to-end in their normal authority order.
+func _run_campaign_r0_engineering_route() -> void:
+	var context := await _new_city()
+	var city: Node = context.city
+	var scene: Node = context.scene
+	var macro_screen: MacroMarchR0 = scene.get_node("UI/MacroMarchR0")
+	scene.open_macro_march_r0()
+	var initial_food := int(city.food)
+	# The formal scout action gives the player initial field information before
+	# committing engineering. It is optional for victory, but uses the real UI
+	# action and the same specialist order as normal play.
+	macro_screen._scout_button.pressed.emit()
+	var scout_id := macro_screen._selected_scout_id
+	_ui_click_world(macro_screen, Vector2(THEATER.get_point(&"ridge_watch").world_position))
+	_advance_until_specialist_phase(city, scout_id, FieldTacticsState.SPECIALIST_IDLE, 30000)
+	var scout_intel := Dictionary(city._war_loop_state.field_tactics.observe_subject(&"patrol.ridge.001"))
+	macro_screen._engineer_button.pressed.emit()
+	var engineer_id := _active_engineer_id(city)
+	var camp_points: Array = [Vector2i(135, 650), Vector2i(310, 640), Vector2i(500, 620)]
+	var camp_ui := _ui_confirm_engineering(
+		macro_screen, engineer_id, &"blackstone_city", &"", camp_points
+	)
+	var camp_project := Dictionary(camp_ui.get("project", {}))
+	var camp_project_id := StringName(camp_project.get("project_id", &""))
+	_advance_until_project_phase(city, camp_project_id, &"COMPLETE", 40000)
+	var completed_camp_project := Dictionary(city._war_loop_state.field_tactics.projects_by_id.get(camp_project_id, {}))
+	var camp_point_id := StringName(completed_camp_project.get("target_point_id", &""))
+	var camp_id := StringName(completed_camp_project.get("camp_id", &""))
+	var camp := Dictionary(city._war_loop_state.field_tactics.camps_by_id.get(camp_id, {}))
+	print("BLACKSTONE_CAMPAIGN_R0_TRACE camp project=%s camp=%s point=%s" % [
+		String(camp_project_id), String(camp_id), String(camp_point_id),
+	])
+	var link_points: Array = [
+		Vector2i(camp.get("world_position", Vector2i.ZERO)), Vector2i(560, 620),
+		Vector2i(660, 610), Vector2i(THEATER.get_point(&"forest_garrison").world_position),
+	]
+	var link_ui := _ui_confirm_engineering(
+		macro_screen, engineer_id, camp_point_id, &"forest_garrison", link_points
+	)
+	var link_project := Dictionary(link_ui.get("project", {}))
+	var link_project_id := StringName(link_project.get("project_id", &""))
+	_advance_until_project_phase(city, link_project_id, &"COMPLETE", 40000)
+	var completed_link_project := Dictionary(city._war_loop_state.field_tactics.projects_by_id.get(link_project_id, {}))
+	print("BLACKSTONE_CAMPAIGN_R0_TRACE link project=%s segments=%d bridge=%s" % [
+		String(link_project_id), Array(completed_link_project.get("segment_plans", [])).size(), str(bool(link_ui.get("draft", {}).get("contains_bridge", false))),
+	])
+	# The placement sequence proves that a rejected position cannot leave the old
+	# valid plan actionable: valid A -> invalid B -> valid A again.
+	macro_screen._selected_specialist_id = engineer_id
+	macro_screen.refresh()
+	macro_screen._watchtower_button.pressed.emit()
+	_ui_click_world(macro_screen, Vector2(camp.get("world_position", Vector2.ZERO)))
+	var tower_a := Vector2i(435, 620)
+	_ui_click_world(macro_screen, Vector2(tower_a))
+	var valid_a := macro_screen._watchtower_draft.duplicate(true)
+	_ui_click_world(macro_screen, Vector2(620, 620))
+	var invalid_b_clears_a := macro_screen._watchtower_draft.is_empty() \
+		and macro_screen._confirm_button.disabled \
+		and macro_screen._watchtower_preview_position == Vector2(620, 620)
+	_ui_click_world(macro_screen, Vector2(tower_a))
+	var tower_replanned := macro_screen._watchtower_draft.duplicate(true)
+	var tower_confirm_visible := macro_screen._confirm_button.visible and not macro_screen._confirm_button.disabled
+	macro_screen._confirm_button.pressed.emit()
+	var tower_project_id := StringName(Dictionary(tower_replanned).get("project_id", &""))
+	if tower_project_id == &"":
+		var tower_projects: Dictionary = city._war_loop_state.field_tactics.projects_by_id
+		for project_id_value in tower_projects:
+			var project := Dictionary(tower_projects[project_id_value])
+			if StringName(project.get("project_kind", &"")) == &"WATCHTOWER":
+				tower_project_id = StringName(project_id_value)
+				break
+	_advance_until_project_phase(city, tower_project_id, &"COMPLETE", 40000)
+	var towers: Dictionary = city._war_loop_state.field_tactics.watchtowers_by_id
+	# Let the authored patrol enter the completed observer range through normal
+	# Controller frames. The scout's earlier report remains distinct from this
+	# live tower observer fact.
+	for _step in range(720):
+		if not Dictionary(city.get_field_tactics_read_model().get("visible_patrols_by_id", {})).is_empty():
+			break
+		city._process(0.1)
+	var tower_visible_patrols := Dictionary(city.get_field_tactics_read_model().get("visible_patrols_by_id", {}))
+	var roster: Array = city.get_formation_roster()
+	var formation_ids: Array[StringName] = []
+	for formation_value in roster:
+		formation_ids.append(StringName(Dictionary(formation_value).get("formation_id", &"")))
+	var camp_plan: Dictionary = city.plan_field_path(&"blackstone_city", camp_point_id, Array(completed_camp_project.get("route_world_points", [])))
+	var camp_issue := _ui_confirm_march_from_city(macro_screen, formation_ids, Array(camp_plan.get("points", [])))
+	var army_id := StringName(Dictionary(camp_issue.get("army", {})).get("army_id", &""))
+	_advance_until_phase(city, army_id, ArmyRegistry.PHASE_STATIONED, 40000)
+	var forest_issue := await _ui_confirm_march_from_station(macro_screen, army_id, Array(completed_link_project.get("route_world_points", [])))
+	_advance_until_phase(city, army_id, ArmyRegistry.PHASE_STATIONED, 40000)
+	var silver_route: Dictionary = THEATER.get_route(&"road.forest.silverford.approach")
+	var silver_issue := await _ui_confirm_march_from_station(macro_screen, army_id, Array(silver_route.get("points", [])))
+	_advance_until_city_owned(city, &"silverford_city", 40000)
+	print("BLACKSTONE_CAMPAIGN_R0_TRACE before_restore army=%s phase=%s silverford=%s route=%s" % [
+		String(army_id), String(Dictionary(city._army_registry.get_army(army_id)).get("phase", &"")),
+		String(Dictionary(city._war_loop_state.get_city(&"silverford_city")).get("military_controller_faction_id", &"")),
+		String(Dictionary(city._army_registry.get_army(army_id)).get("route_id", &"")),
+	])
+	# A new scene consumes the persisted V5 snapshot at the critical point where
+	# one occupied city, a completed tower, and the original army coexist.
+	var middle_snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	await _drop(scene)
+	var restored_scene := CITY_SCENE.instantiate()
+	root.add_child(restored_scene)
+	await process_frame
+	await process_frame
+	city = restored_scene.get_node("ConstructionController")
+	var restore_result: Dictionary = city.restore_v5_campaign_snapshot(middle_snapshot)
+	city.set_process(false)
+	scene = restored_scene
+	macro_screen = scene.get_node("UI/MacroMarchR0")
+	scene.open_macro_march_r0()
+	await process_frame
+	macro_screen.refresh()
+	# Location inspection is normal map GUI input. Buttons are explicitly
+	# observed in-tree and their connected action signals are the established
+	# engine-GUI evidence boundary for this SceneTree runner.
+	_ui_click_world(macro_screen, Vector2(THEATER.get_point(&"silverford_city").world_position))
+	if macro_screen._location_details_button.visible:
+		macro_screen._location_details_button.pressed.emit()
+	await process_frame
+	macro_screen.refresh()
+	var garrison_button_ready := not macro_screen._location_garrison_buttons.is_empty()
+	if garrison_button_ready:
+		macro_screen._location_garrison_buttons.front().pressed.emit()
+	await process_frame
+	macro_screen.refresh()
+	var members_before := _army_members(city._army_registry.get_army(army_id))
+	var reinforcement_ready := macro_screen._stationed_reinforcement_button.visible and not macro_screen._stationed_reinforcement_button.disabled
+	if reinforcement_ready:
+		macro_screen._stationed_reinforcement_button.pressed.emit()
+	await process_frame
+	macro_screen.refresh()
+	var members_after := _army_members(city._army_registry.get_army(army_id))
+	var supply_ready := macro_screen._supply_transport_button.visible and not macro_screen._supply_transport_button.disabled
+	if supply_ready:
+		macro_screen._supply_transport_button.pressed.emit()
+	await process_frame
+	macro_screen.refresh()
+	var transports_after_departure: Dictionary = Dictionary(city.get_field_tactics_read_model().get("supply_transports_by_id", {}))
+	print("BLACKSTONE_CAMPAIGN_R0_TRACE restore=%s silverford_garrisons=%d reinforcements=%d->%d supply_ready=%s transports=%d" % [
+		str(bool(restore_result.get("success", false))), macro_screen._location_garrison_buttons.size(),
+		members_before, members_after, str(supply_ready), transports_after_departure.size(),
+	])
+	var red_points := Array(THEATER.get_route(&"road.redcliff.silverford").get("points", [])).duplicate(true)
+	red_points.reverse()
+	var red_issue := await _ui_confirm_march_from_station(macro_screen, army_id, red_points)
+	_advance_until_city_owned(city, &"redcliff_city", 50000)
+	for _step in range(500):
+		var transport_done := _first_deposited_transport(Dictionary(city.get_field_tactics_read_model().get("supply_transports_by_id", {})))
+		if not transport_done.is_empty():
+			break
+		city._process(0.1)
+	var completed_transport := _first_deposited_transport(Dictionary(city.get_field_tactics_read_model().get("supply_transports_by_id", {})))
+	var food_after_deposit := int(city.food)
+	_advance_world_milliseconds(city, 5000)
+	var food_after_extra_time := int(city.food)
+	var final_snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	await _drop(scene)
+	var final_scene := CITY_SCENE.instantiate()
+	root.add_child(final_scene)
+	await process_frame
+	await process_frame
+	var final_city: Node = final_scene.get_node("ConstructionController")
+	var final_restore: Dictionary = final_city.restore_v5_campaign_snapshot(final_snapshot)
+	final_city.set_process(false)
+	var final_model: Dictionary = final_city.get_macro_march_read_model()
+	var final_transports: Dictionary = Dictionary(final_city.get_field_tactics_read_model().get("supply_transports_by_id", {}))
+	_check(
+		bool(scout_intel.get("fog_state", &"") != FieldTacticsState.FOG_UNOBSERVED)
+			and not completed_camp_project.is_empty() and camp_id != &""
+			and StringName(completed_link_project.get("phase", &"")) == &"COMPLETE"
+			and not valid_a.is_empty() and invalid_b_clears_a and not tower_replanned.is_empty()
+			and tower_confirm_visible and towers.size() == 1 and not tower_visible_patrols.is_empty(),
+		"工程路线通过正式工程计划建成新驻点、桥接林间道路，并以合法—无效—合法选址完成瞭望塔与真实敌情"
+	)
+	_check(
+		bool(camp_issue.get("success", false)) and bool(forest_issue.get("success", false))
+			and bool(forest_issue.get("target_over_picker", false))
+			and bool(silver_issue.get("success", false)) and bool(restore_result.get("success", false))
+			and garrison_button_ready and reinforcement_ready and members_after == members_before + 4
+			and supply_ready and transports_after_departure.size() == 1,
+		"占领银渡城后可在真实驻军上补员，并由地点详情一次安排有限粮草运输"
+	)
+	_check(
+		bool(red_issue.get("success", false)) and bool(final_model.get("level_cleared", false))
+			and not completed_transport.is_empty() and int(completed_transport.get("amount", 0)) == 20
+			and food_after_deposit == food_after_extra_time and bool(final_restore.get("success", false))
+			and _first_deposited_transport(final_transports).get("transport_id", &"") == completed_transport.get("transport_id", &""),
+		"工程路线中途 V5 恢复后同一军队续令赤崖城；运粮只入库一次且双城结算保持"
+	)
+	print("BLACKSTONE_CAMPAIGN_R0_ROUTE_B food=%d->%d camp=%s tower_count=%d reinforcements=%d transport=%s" % [
+		initial_food, food_after_deposit, String(camp_point_id), towers.size(), members_after - members_before,
+		String(completed_transport.get("transport_id", &"")),
+	])
+	await _drop(final_scene)
 
 
 func _run_engineering_route() -> void:
@@ -239,9 +450,12 @@ func _ui_confirm_engineering(
 	_ui_draw_world_route(macro_screen, points)
 	var draft := macro_screen._engineering_draft.duplicate(true)
 	var requested_target := StringName(draft.get("requested_target_point_id", &""))
-	if requested_target != target_point_id or StringName(draft.get("source_point_id", &"")) != source_point_id:
+	var expected_target_matches := requested_target == target_point_id if target_point_id != &"" else bool(draft.get("build_camp", false))
+	if not expected_target_matches or StringName(draft.get("source_point_id", &"")) != source_point_id:
 		return {"draft": draft, "project": {}}
-	macro_screen._confirm_draft()
+	if not macro_screen._confirm_button.visible or macro_screen._confirm_button.disabled:
+		return {"draft": draft, "project": {}}
+	macro_screen._confirm_button.pressed.emit()
 	var field: Dictionary = macro_screen._dispatch_adapter.get_field_tactics_read_model()
 	var specialist := Dictionary(Dictionary(field.get("specialists_by_id", {})).get(engineer_id, {}))
 	var project := Dictionary(Dictionary(field.get("projects_by_id", {})).get(StringName(specialist.get("project_id", &"")), {}))
@@ -335,7 +549,12 @@ func _ui_confirm_march_from_station(macro_screen: MacroMarchR0, army_id: StringN
 	print("R2_STATION_CONTINUATION_TRACE stage=issued %s success=%s expected_food_spent=%d" % [
 		_station_command_trace(after_issue, macro_screen), str(success), expected_food_spent,
 	])
-	return {"success": success, "army": Dictionary(after_issue.get("army", {})), "rejected_without_side_effect": rejected_without_side_effect}
+	return {
+		"success": success,
+		"army": Dictionary(after_issue.get("army", {})),
+		"rejected_without_side_effect": rejected_without_side_effect,
+		"target_over_picker": bool(issued.get("target_over_picker", false)),
+	}
 
 
 func _ui_direct_station_dispatch(
@@ -378,6 +597,7 @@ func _ui_direct_station_dispatch(
 	# or stale projection from quietly certifying a different city as correct.
 	var expected_target_id := _theater_point_id_at_world(target_world)
 	var locked_expected_army := StringName(macro_screen._direct_dispatch_locked.get("army_id", &"")) == army_id
+	var target_over_picker := macro_screen._direct_dispatch_picker_bounds().has_point(target_screen)
 	var release := InputEventMouseButton.new()
 	release.button_index = MOUSE_BUTTON_LEFT
 	release.pressed = false
@@ -394,6 +614,7 @@ func _ui_direct_station_dispatch(
 		"army": army,
 		"food_cost": preview_food_cost,
 		"error": macro_screen._status_label.text,
+		"target_over_picker": target_over_picker,
 	}
 
 
@@ -550,6 +771,23 @@ func _active_engineer_id(city: Node) -> StringName:
 		if bool(specialist.get("alive", false)) and StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER and StringName(specialist.get("project_id", &"")) == &"":
 			return StringName(specialist_id_value)
 	return &""
+
+
+func _army_members(army: Dictionary) -> int:
+	var total := 0
+	for formation_value in Array(Dictionary(army.get("macro_march", {})).get("formation_snapshots", [])):
+		total += int(Dictionary(formation_value).get("member_count", 0))
+	return total
+
+
+func _first_deposited_transport(transports: Dictionary) -> Dictionary:
+	var transport_ids: Array = transports.keys()
+	transport_ids.sort()
+	for transport_id_value in transport_ids:
+		var transport := Dictionary(transports[transport_id_value])
+		if bool(transport.get("deposited", false)):
+			return transport.duplicate(true)
+	return {}
 
 
 func _new_city() -> Dictionary:

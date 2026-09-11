@@ -33,6 +33,10 @@ func _new_city() -> Dictionary:
 	await process_frame
 	var city: Node = scene.get_node("ConstructionController")
 	city.set_process(false)
+	# A focused watchtower fixture must not inherit the startup shell's resource
+	# state. Resetting the test scene before replacing Field authority gives every
+	# branch the same playable roster and food transaction preconditions.
+	city.restart_first_map()
 	# This focused test owns no player save. Reset only its in-memory war loop so
 	# two independent assertions cannot inherit a prior checkpoint.
 	city._war_loop_state = WarLoopState.new()

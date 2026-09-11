@@ -1,0 +1,12 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+Metal 3.2 - Forward+ - Using Device #0: Apple - Apple M4 (Apple9)
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+BLACKSTONE_CAMPAIGN_R0_GUI_TRACE camp engineer=engineer.000001 valid=true confirm=true/false status=工程草稿待确认；右键取消不会扣除资源。
+BLACKSTONE_CAMPAIGN_R0_GUI_TRACE bridge camp=camp.000001 valid=true confirm=true/false status=工程草稿待确认；右键取消不会扣除资源。
+BLACKSTONE_CAMPAIGN_R0_GUI_TRACE tower first=true invalid=true replanned=true project=true
+PASS: 正式 GUI 工程计划创建新驻点，并在 Controller 世界帧中经历施工至完工
+PASS: 正式 GUI 跨河工程清楚显示桥段计划、施工中和已开放状态
+PASS: 瞭望塔选址按合法 A、无效 B、重新合法 A 的顺序更新可见草稿与实际工程
+BLACKSTONE_CAMPAIGN_R0_ENGINE_GUI_EVIDENCE pointer_input=true button_action_signal=true controller_frame_ms=100 camps=1 towers=1
+BLACKSTONE_CAMPAIGN_R0_GRAPHICAL_SMOKE PASS assertions=3

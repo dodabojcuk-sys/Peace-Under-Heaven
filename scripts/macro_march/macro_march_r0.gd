@@ -79,6 +79,7 @@ var _is_panning := false
 var _last_pan_position := Vector2.ZERO
 
 var _title_label := Label.new()
+var _campaign_label := Label.new()
 var _map_canvas := MAP_CANVAS.new()
 var _low_poly_presentation := LOW_POLY_PRESENTATION.new()
 var _low_poly_enabled := true
@@ -421,12 +422,16 @@ func _build_ui() -> void:
 	_map_canvas.z_index = 1
 	_map_canvas.renderer = _draw_map_canvas
 	add_child(_map_canvas)
-	for label in [_title_label, _status_label, _detail_label, _specialist_status_label]:
+	for label in [_title_label, _campaign_label, _status_label, _detail_label, _specialist_status_label]:
 		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		add_child(label)
 	_title_label.add_theme_font_size_override("font_size", 24)
 	_title_label.add_theme_color_override("font_color", Color("f6e5ba"))
+	_campaign_label.add_theme_font_size_override("font_size", 13)
+	_campaign_label.add_theme_color_override("font_color", Color("fff1c9"))
+	_campaign_label.add_theme_color_override("font_outline_color", Color("13262b", 0.92))
+	_campaign_label.add_theme_constant_override("outline_size", 4)
 	_status_label.add_theme_font_size_override("font_size", 15)
 	_status_label.add_theme_color_override("font_color", Color("f4f0df"))
 	_detail_label.add_theme_font_size_override("font_size", 14)
@@ -533,7 +538,9 @@ func _layout_ui() -> void:
 	_legend_label.position = Vector2(map_rect.position.x, map_rect.end.y + 2.0)
 	_legend_label.size = Vector2(map_rect.size.x, 20.0)
 	_title_label.position = Vector2(22, 12)
-	_title_label.size = Vector2(size.x - 44, 34)
+	_title_label.size = Vector2(size.x - 44, 30)
+	_campaign_label.position = _map_rect().position + Vector2(14, 12)
+	_campaign_label.size = Vector2(maxf(_minimap_rect().position.x - _campaign_label.position.x - 20.0, 220.0), 44.0)
 	_status_label.position = Vector2(22, 48)
 	_status_label.size = Vector2(size.x - 44, 36)
 	# Silverford combines transport facts with a selected-garrison replenishment
@@ -858,8 +865,46 @@ func _begin_selected_stationed_reinforcement() -> void:
 	refresh()
 
 
+## This is deliberately a read-only campaign card.  Required objectives live
+## in the authored theatre and their control facts live in WarLoopState; keeping
+## the copy here avoids a second campaign-progress owner just for presentation.
+func _campaign_progress_copy(model: Dictionary) -> String:
+	var war: Dictionary = Dictionary(model.get("war_loop", {}))
+	var cities: Dictionary = Dictionary(war.get("cities_by_id", {}))
+	var required_point_ids: Array[StringName] = []
+	for point_id_value in THEATER.get_points().keys():
+		var point_id := StringName(point_id_value)
+		if bool(THEATER.get_point(point_id).get("required_for_victory", false)):
+			required_point_ids.append(point_id)
+	required_point_ids.sort_custom(func(left: StringName, right: StringName) -> bool:
+		return String(THEATER.get_point(left).get("display_name", left)) < String(THEATER.get_point(right).get("display_name", right))
+	)
+	var owned_names: Array[String] = []
+	var pending_names: Array[String] = []
+	for point_id in required_point_ids:
+		var city := Dictionary(cities.get(point_id, {}))
+		var display_name := str(THEATER.get_point(point_id).get("display_name", point_id))
+		if StringName(city.get("military_controller_faction_id", &"enemy")) == &"player":
+			owned_names.append(display_name)
+		else:
+			pending_names.append(display_name)
+	var objective_count := required_point_ids.size()
+	if objective_count == 0:
+		return "战役目标：当前战区没有已配置的占领目标。"
+	if bool(model.get("level_cleared", false)):
+		return "战役胜利 · 已夺取 %s（%d/%d）· 可返回内城。" % ["、".join(owned_names), owned_names.size(), objective_count]
+	var objective_copy := "目标 %d/%d：%s" % [owned_names.size(), objective_count, "、".join(pending_names)]
+	if owned_names.is_empty():
+		return "%s · 可直接北进，或侦察、工程设驻点后再进攻。" % objective_copy
+	return "%s · 已控制：%s；银渡城可选补员或运粮。" % [objective_copy, "、".join(owned_names)]
+
+
 func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_title_label.text = "%s · 军令与攻城" % THEATER.get_theater_name()
+	_campaign_label.text = _campaign_progress_copy(model)
+	var campaign_complete := bool(model.get("level_cleared", false))
+	_return_button.text = "战役完成，返回内城" if campaign_complete else "退出战区"
+	_return_button.tooltip_text = "双城目标已完成；返回黑石城。" if campaign_complete else "保留战区当前真实进度并返回黑石城。"
 	_location_details_button.visible = false
 	_supply_transport_button.visible = false
 	_stationed_reinforcement_button.visible = false
@@ -1926,23 +1971,34 @@ func _update_direct_dispatch_gesture(delta: float) -> void:
 func _update_direct_dispatch_motion(screen_position: Vector2) -> void:
 	_direct_dispatch_cursor_screen = screen_position
 	if _direct_dispatch_locked.is_empty():
-		var hovered_index := -1
-		for index in range(_direct_dispatch_options.size()):
-			if _direct_dispatch_option_rect(index).has_point(screen_position):
-				hovered_index = index
-				break
-		if hovered_index >= 0:
-			# Passing through a row is only hover feedback. This keeps the object
-			# under the pointer adjustable while the strip is crossed diagonally.
-			_direct_dispatch_hover_index = hovered_index
-			_status_label.text = "%s；拖出选择条后锁定。" % str(Dictionary(_direct_dispatch_options[hovered_index]).get("label", "对象"))
-		elif not _direct_dispatch_picker_bounds().has_point(screen_position) and _direct_dispatch_hover_index >= 0:
+		# A nearby map destination can sit beneath the compact picker. Once the
+		# pointer has deliberately hovered an option, entering another legal map
+		# point is an exit toward that destination even if the visual rectangles
+		# overlap. Without this, a camp cannot dispatch to its closest neighbour.
+		var pointed_map_target := _point_id_at_screen(screen_position)
+		if _direct_dispatch_hover_index >= 0 \
+			and pointed_map_target != &"" \
+			and pointed_map_target != _direct_dispatch_source_point_id:
 			_direct_dispatch_locked = Dictionary(_direct_dispatch_options[_direct_dispatch_hover_index]).duplicate(true)
 			_status_label.text = "%s 已锁定；拖向城池、驻点或受损道路。" % str(_direct_dispatch_locked.get("label", "对象"))
 		else:
-			queue_redraw()
-			_map_canvas.queue_redraw()
-			return
+			var hovered_index := -1
+			for index in range(_direct_dispatch_options.size()):
+				if _direct_dispatch_option_rect(index).has_point(screen_position):
+					hovered_index = index
+					break
+			if hovered_index >= 0:
+				# Passing through a row is only hover feedback. This keeps the object
+				# under the pointer adjustable while the strip is crossed diagonally.
+				_direct_dispatch_hover_index = hovered_index
+				_status_label.text = "%s；拖出选择条后锁定。" % str(Dictionary(_direct_dispatch_options[hovered_index]).get("label", "对象"))
+			elif not _direct_dispatch_picker_bounds().has_point(screen_position) and _direct_dispatch_hover_index >= 0:
+				_direct_dispatch_locked = Dictionary(_direct_dispatch_options[_direct_dispatch_hover_index]).duplicate(true)
+				_status_label.text = "%s 已锁定；拖向城池、驻点或受损道路。" % str(_direct_dispatch_locked.get("label", "对象"))
+			else:
+				queue_redraw()
+				_map_canvas.queue_redraw()
+				return
 	if not _direct_dispatch_locked.is_empty():
 		if _direct_dispatch_is_march():
 			_update_direct_route_constraint(screen_position)
@@ -2041,7 +2097,14 @@ func _finish_direct_dispatch(screen_position: Vector2) -> void:
 	if not _map_rect().has_point(screen_position):
 		_cancel_direct_dispatch("目标位于地图外，未下达军令。", true)
 		return
-	if _direct_dispatch_picker_bounds().has_point(screen_position):
+	# A nearby destination may lie underneath the picker. A release inside the
+	# strip remains a cancellation unless a previously locked object is visibly
+	# over a different map point; that combination is an unambiguous dispatch.
+	var released_map_target := _point_id_at_screen(screen_position)
+	if _direct_dispatch_picker_bounds().has_point(screen_position) \
+		and (_direct_dispatch_locked.is_empty() \
+			or released_map_target == &"" \
+			or released_map_target == _direct_dispatch_source_point_id):
 		_cancel_direct_dispatch("已取消派遣；请拖出选择条后再选择地图目标。")
 		return
 	if _direct_dispatch_locked.is_empty():
