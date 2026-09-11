@@ -12,7 +12,7 @@ func _initialize() -> void:
 func _run() -> void:
 	var mode := _argument_value("--mode=")
 	var save_directory := _argument_value("--txwzs-v5-save-dir=")
-	_require(mode in ["A", "B", "C", "D", "E", "F", "G", "H", "I"], "worker mode 必须有效")
+	_require(mode in ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K"], "worker mode 必须有效")
 	_require(not save_directory.is_empty(), "worker 必须使用隔离存档目录")
 	if not failures.is_empty():
 		_finish(mode, save_directory)
@@ -33,6 +33,8 @@ func _run() -> void:
 		"G": await _run_g(scene, city)
 		"H": await _run_h(scene, city)
 		"I": await _run_i(scene, city)
+		"J": await _run_j(scene, city)
+		"K": await _run_k(scene, city)
 	scene.queue_free()
 	await process_frame
 	_finish(mode, save_directory)
@@ -255,6 +257,82 @@ func _run_i(scene: Node, city: Node) -> void:
 		StringName(restored_barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE
 			and session.get_wartime_facility_state().has("barricade_route_id"),
 		"I 正式维修完成后才恢复同一拒马的防护投影"
+	)
+
+
+## J/K prove a different interruption cause from H/I: the actual committed
+## construction detachment exits, so the saved facility cannot keep advancing
+## without a replacement squad after a cold restart.
+func _run_j(scene: Node, city: Node) -> void:
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var formation_id := StringName(roster[0].get("formation_id", &"")) if not roster.is_empty() else &""
+	var started: Dictionary = city.begin_wartime_defense_attempt([formation_id])
+	_require(bool(started.get("success", false)), "J 从正式守城入口创建施工分队损失夹具")
+	if failures.size() > 0 or not city.enter_wartime_defense_battle():
+		_require(false, "J 打开正式 C0 守城实例")
+		return
+	await process_frame
+	var battle := city.get_formal_battle_scene() as C0BattleGraybox
+	if battle == null:
+		_require(false, "J 守城实例存在")
+		return
+	var route_button := battle.get_node("UI/RootPanel/SquadControls/Squad1/RouteButton") as Button
+	route_button.emit_signal("pressed")
+	await process_frame
+	var panel := battle.get_node("UI/RootPanel/WartimePlanPanel") as Panel
+	var barricade_button := panel.get_node("BarricadeButton") as Button
+	var confirm_button := panel.get_node("ConfirmButton") as Button
+	barricade_button.emit_signal("pressed")
+	await process_frame
+	confirm_button.emit_signal("pressed")
+	await process_frame
+	_require(battle.start_battle(), "J 正式确认拒马后开始施工")
+	battle.tick_timer.stop()
+	var session := battle.coordinator.active_session
+	var barricade := _barricade(session)
+	var construction_squad_id := int(barricade.get("construction_squad_id", 0))
+	for squad_index in session.squads.size():
+		var squad: Dictionary = Dictionary(session.squads[squad_index])
+		if int(squad.get("squad_id", 0)) == construction_squad_id:
+			squad.exited = true
+			session.squads[squad_index] = squad
+			break
+	battle.step_battle_for_test(1)
+	barricade = _barricade(session)
+	_require(
+		construction_squad_id > 0
+			and StringName(barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_INTERRUPTED
+			and not session.get_wartime_facility_state().has("barricade_route_id"),
+		"J 真实施工分队退出后中断未完工拒马且不投影防护"
+	)
+	_require(scene.flush_runtime_persistence(&"wartime_defense_j"), "J 发布施工分队损失后的真实 V5 代次")
+
+
+func _run_k(scene: Node, city: Node) -> void:
+	var attempt: Dictionary = city.get_expedition_attempt()
+	_require(
+		StringName(attempt.get("source_id", &"")) == BattleRequest.SOURCE_WARTIME_DEFENSE
+			and StringName(attempt.get("phase", &"")) == BattleRequest.PHASE_ACTIVE,
+		"K 冷启动读取施工分队损失后的活动守城尝试"
+	)
+	if failures.size() > 0:
+		return
+	var opened: bool = city.get_formal_battle_scene() != null or city.enter_wartime_defense_battle()
+	if not opened:
+		_require(false, "K 重开同一施工分队损失守城实例")
+		return
+	await process_frame
+	var battle := city.get_formal_battle_scene() as C0BattleGraybox
+	if battle == null:
+		_require(false, "K 恢复 C0 守城实例")
+		return
+	var session := battle.coordinator.active_session
+	var barricade := _barricade(session)
+	_require(
+		StringName(barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_INTERRUPTED
+			and int(barricade.get("construction_squad_id", 0)) > 0
+			and not session.get_wartime_facility_state().has("barricade_route_id"),
+		"K 冷启动保留原施工分队身份和无防护中断态，不凭空继续施工"
 	)
 
 

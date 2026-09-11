@@ -312,6 +312,49 @@ func _run() -> void:
 				== BattleSession.FACILITY_PHASE_ACTIVE,
 		"敌军抵达时会中断未完工拒马；未生效前不提供防护，维修后才恢复作用"
 	)
+	## A construction detachment is an actual committed squad, not a new hidden
+	## specialist. Its withdrawal must halt only its unfinished facility and be
+	## carried by the normal battle snapshot without fabricating a replacement.
+	var crew_loss_probe := BattleSession.new(battle.request)
+	var crew_loss_barricade := _facility_by_kind(
+		crew_loss_probe, WartimeFacilityPlan.KIND_BARRICADE
+	)
+	var construction_squad_id := int(crew_loss_barricade.get("construction_squad_id", 0))
+	for squad_index in crew_loss_probe.squads.size():
+		var construction_squad: Dictionary = Dictionary(crew_loss_probe.squads[squad_index])
+		if int(construction_squad.get("squad_id", 0)) == construction_squad_id:
+			construction_squad.exited = true
+			crew_loss_probe.squads[squad_index] = construction_squad
+			break
+	crew_loss_probe.step_tick()
+	var crew_loss_record := _facility_by_kind(
+		crew_loss_probe, WartimeFacilityPlan.KIND_BARRICADE
+	)
+	var crew_loss_event := crew_loss_probe.get_last_tick_facility_events().any(
+		func(event: Dictionary) -> bool:
+			return (
+				StringName(event.get("event", &"")) == &"CONSTRUCTION_CREW_LOST"
+				and int(event.get("squad_id", 0)) == construction_squad_id
+			)
+	)
+	var crew_loss_snapshot := crew_loss_probe.get_snapshot()
+	var crew_loss_restore_probe := BattleSession.new(battle.request)
+	var crew_loss_restore_success := crew_loss_restore_probe.restore_snapshot(crew_loss_snapshot)
+	var restored_crew_loss_record := _facility_by_kind(
+		crew_loss_restore_probe, WartimeFacilityPlan.KIND_BARRICADE
+	)
+	_check(
+		construction_squad_id > 0
+			and StringName(crew_loss_record.get("phase", &""))
+				== BattleSession.FACILITY_PHASE_INTERRUPTED
+			and crew_loss_event
+			and crew_loss_restore_success
+			and int(restored_crew_loss_record.get("construction_squad_id", 0))
+				== construction_squad_id
+			and StringName(restored_crew_loss_record.get("phase", &""))
+				== BattleSession.FACILITY_PHASE_INTERRUPTED,
+		"施工分队退出会中断未完工设施，并在活动战时快照恢复后保留真实分队身份"
+	)
 	var target_hp_before := int(objective.get("protect_target_hp", 0))
 	battle.step_battle_for_test(4)
 	var watched_route: Dictionary = session.get_route_state(deployment_after_route)
@@ -368,6 +411,15 @@ func _run() -> void:
 		var legacy_route: Dictionary = Dictionary(legacy_session_snapshot.routes[route_id])
 		legacy_route.erase("enemy_position_fixed")
 		legacy_session_snapshot.routes[route_id] = legacy_route
+	## Schema 3 predates the explicit construction-detachment identity. Keep the
+	## fixture structurally historical so production migration, rather than a
+	## mismatched schema tag, assigns the surviving committed squad.
+	for facility_index in Array(legacy_session_snapshot.wartime_facility_state.get("facilities", [])).size():
+		var legacy_facility: Dictionary = Dictionary(
+			legacy_session_snapshot.wartime_facility_state.facilities[facility_index]
+		)
+		legacy_facility.erase("construction_squad_id")
+		legacy_session_snapshot.wartime_facility_state.facilities[facility_index] = legacy_facility
 	var legacy_session := BattleSession.new(battle.request)
 	_check(
 		legacy_session.restore_snapshot(legacy_session_snapshot)

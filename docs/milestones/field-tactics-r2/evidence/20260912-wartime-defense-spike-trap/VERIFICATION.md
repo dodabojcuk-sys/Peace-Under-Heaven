@@ -54,3 +54,23 @@ separate R0 smoke proves source eligibility, exact one-time damage, and
 snapshot recovery without retriggering. This is not native macOS mouse input,
 realtime player-feel validation, or proof of a complete defensive campaign.
 Player acceptance remains **OPEN**.
+
+## Construction-detachment regression (same candidate)
+
+```text
+Godot --headless --path . --script tests/run_wartime_defense_r0_smoke.gd
+PASS: 施工分队退出会中断未完工设施，并在活动战时快照恢复后保留真实分队身份
+WARTIME_DEFENSE_R0_SMOKE PASS
+
+Godot --headless --path . --script tests/run_wartime_defense_persistence_smoke.gd \
+  -- --txwzs-v5-save-dir="$isolated_save_dir"
+WARTIME_DEFENSE_PERSISTENCE_SMOKE PASS assertions=14
+```
+
+The construction detachment is a real committed battle squad, saved by
+`BattleSession` as `construction_squad_id`; it is not a new specialist or
+hidden roster. The focused smoke removes that squad from active work, observes
+the saved `INTERRUPTED` record and `CONSTRUCTION_CREW_LOST` event, then restores
+the same record. The graphical capture above still covers the established
+enemy-arrival interruption; it does not claim native-mouse proof for the new
+crew-loss message.

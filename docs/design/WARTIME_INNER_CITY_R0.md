@@ -204,10 +204,11 @@ also reports its currently passed damage and enemy-movement percentages from
 that same durable projection, so its repair priority is not inferred from a
 misleading intact-state label.
 
-The current C0 scene is an assault, not a city-defence simulation. These
-facilities therefore are siege preparation, not an assertion that the game now
-has defensive wall repair, defenders, traps or a permanent wartime build mode.
-Those remain follow-up work and must use this same battle-instance ownership.
+The C0 scene now has bounded assault and Blackstone gate-defence sources, but
+it is not yet a complete city-defence campaign mode. Facilities stay local to
+one battle instance; construction, repair and the actual facility lifecycle
+must keep using the same battle-instance ownership rather than becoming
+permanent city buildings.
 
 ## Persistence
 
@@ -244,6 +245,15 @@ Schema 6 adds `INTERRUPTED` for a route work damaged before construction
 finished. It retains its actual build progress and remaining durability without
 projecting a facility effect. Schema 1-5 records retain their recorded
 lifecycle phase and are never guessed to have been interrupted.
+
+Schema 7 adds `construction_squad_id` to every facility record. It references
+one existing committed battle squad that is doing the facility work; it does
+not create a second specialist or troop owner. If that squad exits or is lost,
+unfinished construction/repair enters `INTERRUPTED` without granting its
+effect. A formal repair binds a currently living committed squad before it can
+resume. Schema 1-6 records migrate once using their recorded living squad with
+the lowest stable ID; a new schema-7 record with an unknown identity is
+rejected rather than silently inventing a worker.
 
 ## Verification
 

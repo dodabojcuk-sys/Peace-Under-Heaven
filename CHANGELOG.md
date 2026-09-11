@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-12 - Wartime construction detachments
+
+- Bound each temporary wartime facility to a real, existing committed combat
+  squad instead of creating a shadow engineer roster. A lost or withdrawn
+  assigned squad now interrupts only its unfinished construction/repair; a
+  later formal repair selects a living committed replacement before progress
+  can resume.
+- Extended battle-session schema 7 with the saved construction-squad identity.
+  Schema 1-6 records migrate once to the deterministic lowest-id living
+  committed squad, while new records strictly reject unknown squad identities.
+  This preserves historical facility progress without inventing missing staff.
+- Added C0 feedback naming the lost construction squad and a focused regression
+  for interruption plus active-snapshot restoration. Existing independent
+  defense A-I recovery chain remains a real isolated-process regression gate.
+
 ## 2026-09-12 - Route-triggered wartime spike traps
 
 - Added the defense-only spike trap to the formal C0 plan: 4 wood, two battle

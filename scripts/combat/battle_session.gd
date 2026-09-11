@@ -63,7 +63,10 @@ const PROTECT_TARGET_REPAIR_TICKS := 2
 const PROTECT_TARGET_REPAIR_HP := 120
 const PROTECT_TARGET_REPAIR_IDLE := &"IDLE"
 const PROTECT_TARGET_REPAIRING := &"REPAIRING"
-const SNAPSHOT_SCHEMA_VERSION := 6
+## Schema 7 records the immutable squad that physically carries out each
+## battle-local facility task. This is an existing committed squad, never a
+## shadow engineer or a second unit owner.
+const SNAPSHOT_SCHEMA_VERSION := 7
 const SNAPSHOT_KEYS := [
 	"schema_version", "current_tick", "next_order_id", "squads", "routes",
 	"pending_orders", "accepted_orders", "retreat_was_ordered",
@@ -407,8 +410,23 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		normalized_snapshot.mission_objective_state["protect_target_repair_required_ticks"] = 0
 		normalized_snapshot.mission_objective_state["protect_target_repair_amount"] = 0
 	if source_schema_version < SNAPSHOT_SCHEMA_VERSION:
-		## Schema 6 adds only the possible interrupted facility phase. Earlier
-		## snapshots have no such record and retain their recorded lifecycle facts.
+		## Schema 7 records the committed combat squad that is doing each facility
+		## job. Historical records did not distinguish a construction detachment;
+		## bind the stable lowest-id living committed squad once during
+		## migration instead of inventing a second personnel owner.
+		if source_schema_version != 1:
+			var legacy_facility_state: Dictionary = Dictionary(
+				normalized_snapshot.get("wartime_facility_state", {})
+			).duplicate(true)
+			var legacy_facilities: Array = Array(legacy_facility_state.get("facilities", [])).duplicate(true)
+			for index in legacy_facilities.size():
+				var legacy_record: Dictionary = Dictionary(legacy_facilities[index])
+				legacy_record["construction_squad_id"] = _get_available_snapshot_construction_squad_id(
+					Array(normalized_snapshot.get("squads", []))
+				)
+				legacy_facilities[index] = legacy_record
+			legacy_facility_state["facilities"] = legacy_facilities
+			normalized_snapshot["wartime_facility_state"] = legacy_facility_state
 		normalized_snapshot.schema_version = SNAPSHOT_SCHEMA_VERSION
 	var restored_squads: Array[Dictionary] = []
 	var expected_squads: Dictionary = {}
@@ -580,6 +598,7 @@ func _initialize_wartime_facilities(legacy_active := false) -> void:
 			"facility_id": StringName(facility.get("facility_id", &"")),
 			"kind": kind,
 			"route_id": route_id,
+			"construction_squad_id": _get_available_construction_squad_id(),
 			"phase": FACILITY_PHASE_ACTIVE if legacy_active else FACILITY_PHASE_CONSTRUCTING,
 			"progress_ticks": int(FACILITY_BUILD_TICKS.get(kind, 0)) if legacy_active else 0,
 			"required_ticks": int(FACILITY_BUILD_TICKS.get(kind, 0)),
@@ -589,12 +608,85 @@ func _initialize_wartime_facilities(legacy_active := false) -> void:
 		Array(wartime_facility_state.facilities).append(record)
 
 
+## Facilities do not own a parallel worker roster. A committed combat squad is
+## explicitly assigned as the construction detachment; it may work another
+## defended approach after moving within the same wartime city.
+func _get_available_construction_squad_id() -> int:
+	var selected_squad_id := 0
+	for squad_value in squads:
+		if not squad_value is Dictionary:
+			continue
+		var squad: Dictionary = squad_value
+		if (
+			typeof(squad.get("squad_id", null)) != TYPE_INT
+			or typeof(squad.get("total_hp", null)) != TYPE_INT
+			or int(squad.get("total_hp", 0)) <= 0
+			or typeof(squad.get("exited", null)) != TYPE_BOOL
+			or bool(squad.get("exited", false))
+		):
+			continue
+		var squad_id := int(squad.squad_id)
+		if selected_squad_id == 0 or squad_id < selected_squad_id:
+			selected_squad_id = squad_id
+	return selected_squad_id
+
+
+func _get_available_snapshot_construction_squad_id(snapshot_squads: Array) -> int:
+	var selected_squad_id := 0
+	for squad_value in snapshot_squads:
+		if not squad_value is Dictionary:
+			continue
+		var squad: Dictionary = squad_value
+		if (
+			typeof(squad.get("squad_id", null)) != TYPE_INT
+			or typeof(squad.get("total_hp", null)) != TYPE_INT
+			or int(squad.get("total_hp", 0)) <= 0
+			or typeof(squad.get("exited", null)) != TYPE_BOOL
+			or bool(squad.get("exited", false))
+		):
+			continue
+		var squad_id := int(squad.squad_id)
+		if selected_squad_id == 0 or squad_id < selected_squad_id:
+			selected_squad_id = squad_id
+	return selected_squad_id
+
+
+func _is_construction_squad_available(record: Dictionary) -> bool:
+	if typeof(record.get("construction_squad_id", null)) != TYPE_INT:
+		return false
+	var assigned_squad_id := int(record.get("construction_squad_id", 0))
+	if assigned_squad_id <= 0:
+		return false
+	for squad_value in squads:
+		if not squad_value is Dictionary:
+			continue
+		var squad: Dictionary = squad_value
+		if int(squad.get("squad_id", 0)) != assigned_squad_id:
+			continue
+		return (
+			int(squad.get("total_hp", 0)) > 0
+			and not bool(squad.get("exited", false))
+		)
+	return false
+
+
 func _advance_wartime_facilities() -> void:
 	var facilities: Array = Array(wartime_facility_state.get("facilities", [])).duplicate(true)
 	for index in facilities.size():
 		var record: Dictionary = Dictionary(facilities[index])
 		var phase := StringName(record.get("phase", &""))
 		if phase in [FACILITY_PHASE_CONSTRUCTING, FACILITY_PHASE_REPAIRING]:
+			if not _is_construction_squad_available(record):
+				record.phase = FACILITY_PHASE_INTERRUPTED
+				facilities[index] = record
+				last_tick_facility_events.append({
+					"kind": record.kind,
+					"route_id": record.route_id,
+					"event": &"CONSTRUCTION_CREW_LOST",
+					"squad_id": int(record.construction_squad_id),
+					"tick": current_tick,
+				})
+				continue
 			record.progress_ticks = mini(
 				int(record.get("progress_ticks", 0)) + 1,
 				int(record.get("required_ticks", 0))
@@ -654,6 +746,10 @@ func begin_wartime_facility_repair(facility_id: StringName) -> bool:
 			FACILITY_PHASE_INTERRUPTED,
 		]:
 			return false
+		var replacement_squad_id := _get_available_construction_squad_id()
+		if replacement_squad_id <= 0:
+			return false
+		record.construction_squad_id = replacement_squad_id
 		record.phase = FACILITY_PHASE_REPAIRING
 		record.progress_ticks = 0
 		record.required_ticks = FACILITY_REPAIR_TICKS
@@ -767,7 +863,7 @@ func _has_matching_snapshot_value_types(value: Dictionary, expected: Dictionary)
 
 func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 	var schema_version = snapshot.get("schema_version", null)
-	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, 2, 3, 4, 5, SNAPSHOT_SCHEMA_VERSION]:
+	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, 2, 3, 4, 5, 6, SNAPSHOT_SCHEMA_VERSION]:
 		return false
 	var expected_keys: Array = SNAPSHOT_KEYS.duplicate()
 	if int(schema_version) == 1:
@@ -811,7 +907,18 @@ func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 				int(schema_version) == 2
 				and _has_valid_legacy_wartime_facility_state(Dictionary(snapshot.get("wartime_facility_state", {})))
 			)
-			or _has_valid_wartime_facility_state(Dictionary(snapshot.get("wartime_facility_state", {})))
+			or (
+				int(schema_version) < SNAPSHOT_SCHEMA_VERSION
+				and _has_valid_schema6_wartime_facility_state(
+					Dictionary(snapshot.get("wartime_facility_state", {}))
+				)
+			)
+			or (
+				int(schema_version) == SNAPSHOT_SCHEMA_VERSION
+				and _has_valid_wartime_facility_state(
+					Dictionary(snapshot.get("wartime_facility_state", {}))
+				)
+			)
 		)
 	)
 
@@ -904,7 +1011,7 @@ func _has_exact_snapshot_keys(snapshot: Dictionary, expected_keys: Array = SNAPS
 	return true
 
 
-func _has_valid_wartime_facility_state(state: Dictionary) -> bool:
+func _has_valid_schema6_wartime_facility_state(state: Dictionary) -> bool:
 	if state.size() != 1 or typeof(state.get("facilities", null)) != TYPE_ARRAY:
 		return false
 	var expected_by_id: Dictionary = {}
@@ -946,13 +1053,51 @@ func _has_valid_wartime_facility_state(state: Dictionary) -> bool:
 			or (StringName(record.phase) == FACILITY_PHASE_CONSTRUCTING and int(record.progress_ticks) >= int(record.required_ticks))
 			or (StringName(record.phase) == FACILITY_PHASE_ACTIVE and (int(record.progress_ticks) != int(record.required_ticks) or int(record.durability) != int(record.max_durability)))
 			or (StringName(record.phase) == FACILITY_PHASE_DAMAGED and (int(record.progress_ticks) != int(record.required_ticks) or int(record.durability) <= 0 or int(record.durability) >= int(record.max_durability)))
-			or (StringName(record.phase) == FACILITY_PHASE_INTERRUPTED and (int(record.progress_ticks) >= int(record.required_ticks) or int(record.durability) <= 0 or int(record.durability) >= int(record.max_durability)))
+			## Enemy contact can interrupt with damage, while a lost construction
+			## detachment interrupts cleanly. Both retain unfinished progress and
+			## must be repairable after a real replacement squad is available.
+			or (StringName(record.phase) == FACILITY_PHASE_INTERRUPTED and (int(record.progress_ticks) >= int(record.required_ticks) or int(record.durability) <= 0 or int(record.durability) > int(record.max_durability)))
 			or (StringName(record.phase) == FACILITY_PHASE_DESTROYED and int(record.durability) != 0)
 			or (StringName(record.phase) == FACILITY_PHASE_REPAIRING and int(record.progress_ticks) >= int(record.required_ticks))
 		):
 			return false
 		seen_ids[facility_id] = true
 	return seen_ids.size() == expected_by_id.size()
+
+
+func _has_valid_wartime_facility_state(state: Dictionary) -> bool:
+	if state.size() != 1 or typeof(state.get("facilities", null)) != TYPE_ARRAY:
+		return false
+	var normalized_legacy_state := {"facilities": []}
+	for record_value in Array(state.facilities):
+		if not record_value is Dictionary:
+			return false
+		var record: Dictionary = record_value
+		if (
+			record.size() != 9
+			or typeof(record.get("construction_squad_id", null)) != TYPE_INT
+			or not _has_known_squad(int(record.get("construction_squad_id", 0)))
+		):
+			return false
+		var legacy_record := record.duplicate(true)
+		legacy_record.erase("construction_squad_id")
+		Array(normalized_legacy_state.facilities).append(legacy_record)
+	return _has_valid_schema6_wartime_facility_state(normalized_legacy_state)
+
+
+func _has_known_squad(squad_id: int) -> bool:
+	if squad_id <= 0:
+		return false
+	for squad_value in squads:
+		if not squad_value is Dictionary:
+			continue
+		var squad: Dictionary = squad_value
+		if (
+			typeof(squad.get("squad_id", null)) == TYPE_INT
+			and int(squad.get("squad_id", 0)) == squad_id
+		):
+			return true
+	return false
 
 
 func _has_valid_legacy_wartime_facility_state(state: Dictionary) -> bool:

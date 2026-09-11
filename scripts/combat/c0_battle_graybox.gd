@@ -884,6 +884,14 @@ func _append_wartime_facility_feedback(events: Array[Dictionary]) -> void:
 			_append_recent_action("%s在%s受损，防御效果下降" % [_get_facility_name(kind), route_name])
 		elif StringName(event.get("event", &"")) == &"CONSTRUCTION_INTERRUPTED":
 			_append_recent_action("%s在%s施工受阻，需维修后才能投入战斗" % [_get_facility_name(kind), route_name])
+		elif StringName(event.get("event", &"")) == &"CONSTRUCTION_CREW_LOST":
+			_append_recent_action(
+				"%s在%s失去施工分队（%s），请由可用部队维修后继续" % [
+					_get_facility_name(kind),
+					route_name,
+					BattlePresentationModel.squad_name(int(event.get("squad_id", 0))),
+				]
+			)
 		elif StringName(event.get("event", &"")) == &"DESTROYED":
 			_append_recent_action("%s在%s被摧毁，已停止作用" % [_get_facility_name(kind), route_name])
 		elif StringName(event.get("event", &"")) == &"TRAP_TRIGGERED":
