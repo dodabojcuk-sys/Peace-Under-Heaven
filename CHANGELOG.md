@@ -15,6 +15,17 @@
   food/force commit, world-time ownership, V5 publication, reopen recovery,
   and retreat writeback to the original macro army.
 
+## 2026-09-11 - Macro siege pending-result recovery
+
+- Upgraded the handoff relation to schema 5. Terminal authority now persists
+  with the same siege takeover before macro writeback, so a restart restores a
+  pending result instead of replaying the completed combat tick.
+- Added strict terminal-result hydration to `BattleSession` and C0 recovery;
+  the restored result must match the original transaction, session, level and
+  force/enemy digests before it can be confirmed.
+- Added an isolated four-process A/B/C/D V5 chain for active takeover,
+  terminal pending result, one-time writeback and post-writeback recovery.
+
 ## 2026-09-11 - Wartime arrow tower R0
 
 - Added a battle-only arrow-tower choice to the formal C0 prebattle plan.

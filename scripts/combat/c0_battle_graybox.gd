@@ -838,9 +838,32 @@ func _append_wartime_facility_feedback(events: Array[Dictionary]) -> void:
 func _resume_active_battle_if_available() -> void:
 	if (
 		request == null
-		or request.phase != BattleRequest.PHASE_ACTIVE
+		or request.phase not in [
+			BattleRequest.PHASE_ACTIVE,
+			BattleRequest.PHASE_RESULT_PENDING,
+		]
 		or coordinator.active_session != null
 	):
+		return
+	if (
+		macro_siege_mode
+		and request.phase == BattleRequest.PHASE_RESULT_PENDING
+		and city_controller != null
+		and city_controller.has_method("get_macro_siege_battle_result_authority_snapshot")
+	):
+		var pending_session_snapshot: Dictionary = city_controller.get_macro_siege_battle_session_snapshot(
+			macro_siege_city_id, request.transaction_id
+		)
+		var pending_authority_snapshot: Dictionary = city_controller.get_macro_siege_battle_result_authority_snapshot(
+			macro_siege_city_id, request.transaction_id
+		)
+		if not coordinator.resume_macro_siege_result_pending(
+			pending_session_snapshot, pending_authority_snapshot
+		):
+			push_error("C0 failed to reconstruct pending macro battle result")
+			return
+		_show_pending_result(coordinator.active_session.result)
+		_append_recent_action("已恢复待确认的战果；尚未回写战区")
 		return
 	if coordinator.create_session() == null:
 		push_error("C0 failed to reconstruct active battle session")

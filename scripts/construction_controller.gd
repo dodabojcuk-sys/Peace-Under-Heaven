@@ -3010,6 +3010,16 @@ func get_macro_siege_battle_session_snapshot(
 	return Dictionary(handoff.get("battle_session_snapshot", {})).duplicate(true)
 
 
+func get_macro_siege_battle_result_authority_snapshot(
+	city_id: StringName,
+	transaction_id: StringName
+) -> Dictionary:
+	var handoff := _war_loop_state.get_wartime_handoff(city_id)
+	if StringName(handoff.get("transaction_id", &"")) != transaction_id:
+		return {}
+	return Dictionary(handoff.get("result_authority_snapshot", {})).duplicate(true)
+
+
 func _on_macro_siege_wartime_returned(_summary: Dictionary) -> void:
 	_formal_battle_scene = null
 	_refresh_city_ui()
@@ -7510,6 +7520,7 @@ func authorize_macro_siege_battle_result_pending(
 	army_id: StringName,
 	city_id: StringName,
 	transaction_id: StringName,
+	result_authority_snapshot: Dictionary,
 	coordinator: CombatTransactionCoordinator
 ) -> bool:
 	if not is_combat_transaction_coordinator_bound(coordinator):
@@ -7521,11 +7532,19 @@ func authorize_macro_siege_battle_result_pending(
 		or StringName(siege.get("army_id", &"")) != army_id
 		or StringName(handoff.get("transaction_id", &"")) != transaction_id
 		or StringName(handoff.get("phase", &"")) != WarLoopState.WARTIME_HANDOFF_ACTIVE
+		or result_authority_snapshot.is_empty()
+	):
+		return false
+	var result := BattleResult.from_authority_snapshot(result_authority_snapshot)
+	if (
+		not result.is_consistent()
+		or result.transaction_id != transaction_id
+		or result.session_id != StringName("%s-session" % transaction_id)
 	):
 		return false
 	var war_before := _war_loop_state.get_snapshot()
-	if _war_loop_state.set_wartime_handoff_phase(
-		city_id, transaction_id, WarLoopState.WARTIME_HANDOFF_RESULT_PENDING
+	if _war_loop_state.mark_wartime_handoff_result_pending(
+		city_id, transaction_id, result_authority_snapshot
 	).is_empty():
 		return false
 	if bool(_persist_macro_march_checkpoint().get("success", false)):

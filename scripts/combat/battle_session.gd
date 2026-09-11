@@ -719,6 +719,35 @@ func get_terminal_result_snapshot() -> Dictionary:
 	return result_snapshot.duplicate(true)
 
 
+## Restores only a terminal authority record that was durably published before
+## macro writeback.  The live simulation snapshot remains separate: no tick is
+## replayed, so a restart cannot recalculate casualties or mint another result.
+func restore_terminal_result(authority_snapshot: Dictionary) -> bool:
+	if request == null or completed or authority_snapshot.is_empty():
+		return false
+	var restored := BattleResult.from_authority_snapshot(authority_snapshot)
+	if (
+		not restored.is_consistent()
+		or restored.transaction_id != request.transaction_id
+		or restored.session_id != session_id
+		or restored.level_id != request.level_id
+		or restored.player_snapshot_digest != request.committed_force.get_digest()
+		or restored.enemy_snapshot_digest != request.enemy_force.get_digest()
+	):
+		return false
+	completed = true
+	result = restored
+	_terminal_authority_record = {
+		"result": authority_snapshot.duplicate(true),
+		"completion": {
+			"session_id": session_id,
+			"state_digest": "restored-terminal",
+			"route_ids": routes.keys().duplicate(),
+		},
+	}
+	return true
+
+
 func _initialize_mission_objective_state() -> void:
 	if mission_definition == null:
 		return

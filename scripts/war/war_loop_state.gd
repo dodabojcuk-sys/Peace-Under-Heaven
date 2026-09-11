@@ -2,7 +2,7 @@ class_name WarLoopState
 extends RefCounted
 
 
-const SCHEMA_VERSION := 4
+const SCHEMA_VERSION := 5
 const PHASE_IDLE := &"IDLE"
 const PHASE_SIEGING := &"SIEGING"
 const PHASE_OCCUPIED := &"OCCUPIED"
@@ -307,6 +307,7 @@ func begin_wartime_handoff(city_id: StringName, transaction_id: StringName) -> D
 		"phase": WARTIME_HANDOFF_RESERVED,
 		"result_id": &"",
 		"battle_session_snapshot": {},
+		"result_authority_snapshot": {},
 	}
 	_write_siege(city_id, siege)
 	return siege.duplicate(true)
@@ -334,6 +335,31 @@ func set_wartime_handoff_phase(
 	):
 		return {}
 	handoff.phase = phase
+	siege.wartime_handoff = handoff
+	_write_siege(city_id, siege)
+	return siege.duplicate(true)
+
+
+## The terminal authority is kept beside the takeover link, not in a second
+## combat ledger.  A process may die after terminal simulation but before the
+## one permitted macro writeback; retaining this record makes that state
+## resumable and prevents replaying the battle to manufacture a new result.
+func mark_wartime_handoff_result_pending(
+	city_id: StringName,
+	transaction_id: StringName,
+	result_authority_snapshot: Dictionary
+) -> Dictionary:
+	var siege := get_siege(city_id)
+	var handoff: Dictionary = Dictionary(siege.get("wartime_handoff", {}))
+	if (
+		siege.is_empty()
+		or result_authority_snapshot.is_empty()
+		or StringName(handoff.get("transaction_id", &"")) != transaction_id
+		or StringName(handoff.get("phase", &"")) != WARTIME_HANDOFF_ACTIVE
+	):
+		return {}
+	handoff.phase = WARTIME_HANDOFF_RESULT_PENDING
+	handoff.result_authority_snapshot = result_authority_snapshot.duplicate(true)
 	siege.wartime_handoff = handoff
 	_write_siege(city_id, siege)
 	return siege.duplicate(true)
@@ -529,7 +555,7 @@ func get_snapshot() -> Dictionary:
 
 func restore_snapshot(snapshot: Dictionary) -> bool:
 	var normalized := snapshot.duplicate(true)
-	if int(normalized.get("schema_version", 0)) == 3:
+	if int(normalized.get("schema_version", 0)) in [3, 4]:
 		if not _has_exact_keys(normalized, [
 			"schema_version", "cities_by_id", "required_city_ids", "active_siege",
 			"completed_resolution_ids", "next_siege_sequence", "field_tactics", "parallel_sieges_by_city",
@@ -697,8 +723,17 @@ static func _has_valid_active_siege(siege: Dictionary, cities: Dictionary) -> bo
 
 
 static func _normalize_wartime_handoff_migration(siege: Dictionary) -> void:
-	if not siege.is_empty() and not siege.has("wartime_handoff"):
+	if siege.is_empty():
+		return
+	if not siege.has("wartime_handoff"):
 		siege.wartime_handoff = {}
+		return
+	var handoff_value = siege.get("wartime_handoff", {})
+	if handoff_value is Dictionary and not Dictionary(handoff_value).is_empty():
+		var handoff: Dictionary = Dictionary(handoff_value)
+		if not handoff.has("result_authority_snapshot"):
+			handoff.result_authority_snapshot = {}
+		siege.wartime_handoff = handoff
 
 
 static func _has_valid_wartime_handoff(handoff: Dictionary) -> bool:
@@ -706,6 +741,7 @@ static func _has_valid_wartime_handoff(handoff: Dictionary) -> bool:
 		return true
 	if not _has_exact_keys(handoff, [
 		"transaction_id", "phase", "result_id", "battle_session_snapshot",
+		"result_authority_snapshot",
 	]):
 		return false
 	return (
@@ -719,6 +755,7 @@ static func _has_valid_wartime_handoff(handoff: Dictionary) -> bool:
 		]
 		and typeof(handoff.get("result_id", null)) == TYPE_STRING_NAME
 		and typeof(handoff.get("battle_session_snapshot", null)) == TYPE_DICTIONARY
+		and typeof(handoff.get("result_authority_snapshot", null)) == TYPE_DICTIONARY
 	)
 
 

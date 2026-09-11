@@ -510,7 +510,11 @@ func mark_result_pending() -> bool:
 		return false
 	if _macro_siege_mode:
 		if not _city_controller.authorize_macro_siege_battle_result_pending(
-			_army_id, _macro_siege_city_id, active_request.transaction_id, self
+			_army_id,
+			_macro_siege_city_id,
+			active_request.transaction_id,
+			authority_snapshot,
+			self
 		):
 			return false
 	elif _army_mode:
@@ -526,6 +530,39 @@ func mark_result_pending() -> bool:
 	):
 		return false
 	active_request.phase = BattleRequest.PHASE_RESULT_PENDING
+	return true
+
+
+## Rehydrates a macro result that reached terminal simulation before the
+## durable writeback.  It deliberately adopts the stored result rather than
+## stepping the recreated session, preserving the exactly-once boundary.
+func resume_macro_siege_result_pending(
+	session_snapshot: Dictionary,
+	result_authority_snapshot: Dictionary
+) -> bool:
+	if (
+		not _macro_siege_mode
+		or active_request == null
+		or active_request.phase != BattleRequest.PHASE_RESULT_PENDING
+		or active_session != null
+		or session_snapshot.is_empty()
+		or result_authority_snapshot.is_empty()
+	):
+		return false
+	active_request.phase = BattleRequest.PHASE_ACTIVE
+	if create_session() == null:
+		active_request.phase = BattleRequest.PHASE_RESULT_PENDING
+		return false
+	if (
+		not active_session.restore_snapshot(session_snapshot)
+		or not active_session.restore_terminal_result(result_authority_snapshot)
+	):
+		active_session = null
+		_bound_session = null
+		active_request.phase = BattleRequest.PHASE_RESULT_PENDING
+		return false
+	active_request.phase = BattleRequest.PHASE_RESULT_PENDING
+	_pending_result_authority = result_authority_snapshot.duplicate(true)
 	return true
 
 

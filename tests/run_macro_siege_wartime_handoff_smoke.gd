@@ -103,10 +103,46 @@ func _run() -> void:
 		and battle.coordinator.active_session.get_state_digest() == active_digest,
 		"重开战时界面从持久围城关联恢复同一活动实例"
 	)
-	var retreated := battle.open_exit_confirmation() and battle.confirm_exit_as_retreat()
-	if not retreated:
+	var pending_result: BattleResult
+	var forced_retreat := battle.coordinator.active_session.request_forced_retreat()
+	battle.coordinator.advance_battle_tick()
+	for squad in battle.coordinator.active_session.squads:
+		if int(squad.get("total_hp", 0)) > 0 and not bool(squad.get("exited", false)):
+			battle.coordinator.issue_order(int(squad.get("squad_id", 0)), BattleOrder.Command.RETREAT)
+	for _tick in range(BattleSession.MAX_BATTLE_TICKS + 2):
+		pending_result = battle.coordinator.advance_battle_tick()
+		if pending_result != null:
+			break
+	_check(
+		forced_retreat and pending_result != null,
+		"终局结果先持久化为待回写事实，而不立即改写宏观围城"
+	)
+	var pending: Dictionary = city.get_macro_march_read_model().war_loop.active_siege
+	_check(
+		StringName(Dictionary(pending.get("wartime_handoff", {})).get("phase", &""))
+			== WarLoopState.WARTIME_HANDOFF_RESULT_PENDING
+		and not Dictionary(pending.get("wartime_handoff", {})).get("result_authority_snapshot", {}).is_empty(),
+		"待回写结果与围城接管关联一同保存，重开无需重打"
+	)
+	battle.queue_free()
+	await process_frame
+	_check(city.enter_macro_siege_wartime(army_id, &"redcliff_city"), "待回写结果可从同一围城再次打开")
+	await process_frame
+	await process_frame
+	battle = city.get_formal_battle_scene() as C0BattleGraybox
+	_check(
+		battle != null
+		and battle.request != null
+		and battle.request.phase == BattleRequest.PHASE_RESULT_PENDING
+		and battle.coordinator.active_session != null
+		and battle.coordinator.active_session.completed
+		and battle.result_panel.visible,
+		"重开战时界面恢复待确认战果，不重复推进或重复播放战斗"
+	)
+	var retreated: Dictionary = battle.confirm_pending_result()
+	if retreated.is_empty():
 		print("MACRO_WARTIME_DEBUG_RETREAT phase=%s handoff=%s error=%s status=%s" % [battle.request.phase, city.get_macro_march_read_model().war_loop.active_siege.get("wartime_handoff", {}), battle.coordinator.last_result_error_id, battle.status_label.text])
-	_check(retreated, "战时实例可将撤退结果提交回原宏观围城")
+	_check(not retreated.is_empty(), "战时实例可将撤退结果提交回原宏观围城")
 	await process_frame
 	var retreating: Dictionary = city.get_army_state(army_id)
 	_check(
