@@ -100,6 +100,7 @@ var _presentation_toggle_button := Button.new()
 var _overview_button := Button.new()
 var _focus_subject_button := Button.new()
 var _location_details_button := Button.new()
+var _supply_transport_button := Button.new()
 var _restore_default_route_button := Button.new()
 var _engineering_undo_button := Button.new()
 var _engineering_clear_button := Button.new()
@@ -417,7 +418,7 @@ func _build_ui() -> void:
 	_formation_scroll.add_child(_formation_list)
 	_formation_scroll.add_child(_location_garrison_list)
 	add_child(_formation_scroll)
-	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
+	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _supply_transport_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
 	_interrupted_project_selector.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -438,9 +439,13 @@ func _build_ui() -> void:
 	_engineering_clear_button.visible = false
 	_location_details_button.text = "查看当前地点详情"
 	_location_details_button.visible = false
+	_supply_transport_button.text = "运回黑石城"
+	_supply_transport_button.visible = false
 	_resume_project_button.visible = false
 	_interrupted_project_selector.visible = false
-	_return_button.text = "返回黑石城"
+	# This leaves the war-map view; it is not a second transport order from an
+	# occupied city. Keep its label distinct from the one-click supply action.
+	_return_button.text = "退出战区"
 	_presentation_toggle_button.text = "切换为二维战区"
 	_overview_button.text = "全图复位"
 	_focus_subject_button.text = "聚焦选中"
@@ -462,13 +467,14 @@ func _build_ui() -> void:
 	_engineering_undo_button.pressed.connect(_undo_engineering_draft)
 	_engineering_clear_button.pressed.connect(_clear_engineering_draft)
 	_location_details_button.pressed.connect(_open_selected_location_detail)
+	_supply_transport_button.pressed.connect(_begin_selected_supply_transport)
 
 
 func _layout_ui() -> void:
 	var panel_rect := _side_panel_rect()
 	var action_height := 34.0
 	var action_gap := 4.0
-	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _location_details_button, _return_button]
+	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _location_details_button, _supply_transport_button, _return_button]
 	var visible_action_buttons: Array[Button] = []
 	for button in action_buttons:
 		if button.visible:
@@ -495,11 +501,15 @@ func _layout_ui() -> void:
 	_title_label.size = Vector2(size.x - 44, 34)
 	_status_label.position = Vector2(22, 48)
 	_status_label.size = Vector2(size.x - 44, 36)
+	# Silverford's logistics facts add two player-facing lines to the normal
+	# location detail. Reserve vertical space instead of letting the garrison
+	# instruction overwrite remaining stock and route information.
+	var detail_height := 174.0 if _location_detail_mode and _selected_point_id == &"silverford_city" else 132.0
 	_detail_label.position = panel_inner.position
-	_detail_label.size = Vector2(panel_inner.size.x, 132)
-	_specialist_status_label.position = panel_inner.position + Vector2(0, 136)
+	_detail_label.size = Vector2(panel_inner.size.x, detail_height)
+	_specialist_status_label.position = panel_inner.position + Vector2(0, detail_height + 4.0)
 	_specialist_status_label.size = Vector2(panel_inner.size.x, 38)
-	_formation_scroll.position = panel_inner.position + Vector2(0, 178)
+	_formation_scroll.position = panel_inner.position + Vector2(0, detail_height + 46.0)
 	_formation_scroll.size = Vector2(panel_inner.size.x, maxf(68.0, action_top - _formation_scroll.position.y - 42.0))
 	_interrupted_project_selector.position = Vector2(panel_inner.position.x, action_top - 36.0)
 	_interrupted_project_selector.size = Vector2(panel_inner.size.x, 30.0)
@@ -726,9 +736,48 @@ func _inspect_location_garrison(army_id: StringName, point_id: StringName) -> vo
 	refresh()
 
 
+func _supply_transport_status(field: Dictionary, point_id: StringName) -> Dictionary:
+	var inventory := maxi(int(Dictionary(field.get("supply_inventory_by_point_id", {})).get(point_id, 0)), 0)
+	var active: Dictionary = {}
+	for transport_value in Dictionary(field.get("supply_transports_by_id", {})).values():
+		var transport: Dictionary = Dictionary(transport_value)
+		if StringName(transport.get("source_point_id", &"")) == point_id and not bool(transport.get("deposited", false)):
+			active = transport.duplicate(true)
+			break
+	return {"inventory": inventory, "active": active}
+
+
+func _supply_phase_label(transport: Dictionary) -> String:
+	match StringName(transport.get("phase", &"")):
+		FieldTacticsState.SUPPLY_WAITING_ROUTE:
+			return "运输受阻，等待道路恢复"
+		FieldTacticsState.SUPPLY_WAITING_CAPACITY:
+			return "已到黑石城，仓储已满，等待卸货"
+		FieldTacticsState.SUPPLY_MOVING:
+			return "粮草运输中"
+		FieldTacticsState.SUPPLY_COMPLETED:
+			return "本批粮草已入库"
+		_:
+			return "运输状态未记录"
+
+
+func _begin_selected_supply_transport() -> void:
+	if _dispatch_adapter == null or not _location_detail_mode or _selected_point_id != &"silverford_city":
+		return
+	var result := _dispatch_adapter.begin_field_supply_transport(_selected_point_id)
+	if not bool(result.get("success", false)):
+		_set_status_error(str(result.get("error", "粮草运输无法安排")))
+	else:
+		var transport := Dictionary(result.get("transport", {}))
+		_clear_status_error()
+		_set_context_status("已从银渡城运回 %d 粮；运输正在沿已确认道路前往黑石城。" % int(transport.get("amount", 0)))
+	refresh()
+
+
 func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_title_label.text = "%s · 军令与攻城" % THEATER.get_theater_name()
 	_location_details_button.visible = false
+	_supply_transport_button.visible = false
 	_refresh_location_garrison_controls(model, {})
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
 	var specialists: Dictionary = field.get("specialists_by_id", {})
@@ -797,8 +846,25 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			_interrupted_project_selector.visible = false
 			var inspected_point_id := StringName(inspected_location.get("point_id", &""))
 			var inspected_stationed := _location_garrison_armies(model, inspected_point_id)
+			var supply_status := _supply_transport_status(field, inspected_point_id)
+			var supply_copy := ""
+			if inspected_point_id == &"silverford_city" and StringName(inspected_location.get("military_controller_faction_id", &"")) == &"player":
+				var active_transport := Dictionary(supply_status.get("active", {}))
+				var available_supply := int(supply_status.get("inventory", 0))
+				var preview := _dispatch_adapter.preview_field_supply_transport(inspected_point_id) if _dispatch_adapter != null else {}
+				_supply_transport_button.visible = true
+				_supply_transport_button.disabled = available_supply <= 0 or not active_transport.is_empty() or not bool(preview.get("valid", false))
+				if not active_transport.is_empty():
+					_supply_transport_button.text = _supply_phase_label(active_transport)
+					supply_copy = "\n银渡城余粮：%d 粮\n%s" % [available_supply, _supply_phase_label(active_transport)]
+				elif bool(preview.get("valid", false)):
+					_supply_transport_button.text = "运回黑石城（%d 粮）" % available_supply
+					supply_copy = "\n银渡城余粮：%d 粮\n运回黑石城：沿 %d 段道路，约 %.1f 秒" % [available_supply, Array(preview.get("route_segments", [])).size(), float(preview.get("duration_milliseconds", 0)) / 1000.0]
+				else:
+					_supply_transport_button.text = "无法运回黑石城"
+					supply_copy = "\n银渡城余粮：%d 粮\n无法运输：%s" % [available_supply, str(preview.get("error", "没有可通行道路"))]
 			_set_context_status("正在查看%s；查看不会下令或扣除资源。" % str(inspected_location.get("display_name", "地点")))
-			_detail_label.text = "%s\n外观类型：%s\n控制方：%s\n用途：%s\n建设：%s\n实际驻军：%d 支、%d 人" % [
+			_detail_label.text = "%s\n外观类型：%s\n控制方：%s\n用途：%s\n建设：%s\n实际驻军：%d 支、%d 人%s" % [
 				str(inspected_location.get("display_name", "地点")),
 				_location_kind_label(inspected_location),
 				_location_controller_label(inspected_location),
@@ -806,6 +872,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 				"可用" if bool(inspected_location.get("allows_inner_city_actions", false)) else "本阶段未开放",
 				inspected_stationed.size(),
 				_location_garrison_member_total(inspected_stationed),
+				supply_copy,
 			]
 			_specialist_status_label.text = "点击驻军可定位查看；长按我方地点仍可直接选择派遣对象。"
 			return
@@ -2925,6 +2992,7 @@ func _draw_map_canvas(canvas: Control) -> void:
 		_draw_road_choice_points(canvas, Dictionary(field.get("roads_by_id", {})))
 	_draw_engineering_draft_overlay(canvas, rect)
 	_draw_project_construction_overlays(canvas, Dictionary(field.get("projects_by_id", {})))
+	_draw_supply_transport_markers(canvas, Dictionary(field.get("supply_transports_by_id", {})))
 	_draw_march_draft_or_live_preview(canvas)
 	for army_value in Array(_model().get("armies", [])):
 		_draw_army_marker(canvas, Dictionary(army_value))
@@ -2994,6 +3062,7 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 	_draw_march_draft_or_live_preview(canvas)
 	_draw_engineering_draft_overlay(canvas, rect)
 	_draw_project_construction_overlays(canvas, Dictionary(field.get("projects_by_id", {})))
+	_draw_supply_transport_markers(canvas, Dictionary(field.get("supply_transports_by_id", {})))
 	if not _engineering_mode and (_has_explicit_command_subject(_model(), _selected_army(_model())) or (_direct_dispatch_pending and _direct_dispatch_is_march())):
 		_draw_road_choice_points(canvas, Dictionary(field.get("roads_by_id", {})))
 	for army_value in Array(_model().get("armies", [])):
@@ -3041,6 +3110,21 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 	_draw_minimap(canvas)
 	_draw_draw_hold_feedback(canvas)
 	_draw_direct_dispatch_picker(canvas)
+
+
+func _draw_supply_transport_markers(canvas: Control, transports: Dictionary) -> void:
+	for transport_value in transports.values():
+		var transport: Dictionary = Dictionary(transport_value)
+		if bool(transport.get("deposited", false)):
+			continue
+		var screen := _world_to_screen(Vector2(transport.get("world_position", Vector2.ZERO)))
+		var phase := StringName(transport.get("phase", &""))
+		var color := Color("e8c36d") if phase == FieldTacticsState.SUPPLY_MOVING else Color("d58a55")
+		canvas.draw_circle(screen, 11.0, Color("26322c", 0.92))
+		canvas.draw_rect(Rect2(screen - Vector2(6, 5), Vector2(12, 10)), color, true)
+		canvas.draw_rect(Rect2(screen - Vector2(6, 5), Vector2(12, 10)), Color("473522"), false, 1.5)
+		var label := "粮草·运输中" if phase == FieldTacticsState.SUPPLY_MOVING else ("粮草·道路受阻" if phase == FieldTacticsState.SUPPLY_WAITING_ROUTE else "粮草·待卸货")
+		canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-45, 28), label, HORIZONTAL_ALIGNMENT_CENTER, 90, 12, Color("fff0c5"))
 
 
 func _draw_encounter_feedback(canvas: Control, rect: Rect2) -> void:

@@ -5406,8 +5406,41 @@ func get_field_tactics_read_model() -> Dictionary:
 		"projects_by_id": Dictionary(field_snapshot.projects_by_id).duplicate(true),
 		"intel_by_subject_id": Dictionary(field_snapshot.intel_by_subject_id).duplicate(true),
 		"visible_patrols_by_id": visible_patrols,
+		"supply_inventory_by_point_id": Dictionary(field_snapshot.get("supply_inventory_by_point_id", {})).duplicate(true),
+		"supply_transports_by_id": Dictionary(field_snapshot.get("supply_transports_by_id", {})).duplicate(true),
 		"world_milliseconds": int(field_snapshot.world_milliseconds),
 	}
+
+
+func preview_field_supply_transport(source_point_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	if source_point_id != &"silverford_city":
+		return {"valid": false, "error": "当前只有银渡城可安排粮草运回"}
+	if StringName(_war_loop_state.get_city(source_point_id).get("military_controller_faction_id", &"")) != &"player":
+		return {"valid": false, "error": "需要先占领银渡城才能安排运输"}
+	var preview := _war_loop_state.field_tactics.preview_supply_transport(source_point_id, &"blackstone_city")
+	if not bool(preview.get("valid", false)):
+		return preview
+	preview.destination_food_capacity = get_resource_capacity(&"food")
+	preview.destination_food_available = food
+	preview.destination_free_capacity = maxi(int(preview.destination_food_capacity) - food, 0)
+	preview.unload_immediately_possible = int(preview.destination_free_capacity) >= int(preview.amount)
+	return preview
+
+
+func begin_field_supply_transport(source_point_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	var preview := preview_field_supply_transport(source_point_id)
+	if not bool(preview.get("valid", false)):
+		return _macro_failure(&"SUPPLY_INVALID", str(preview.get("error", "粮草运输无法安排")))
+	var war_before := _war_loop_state.get_snapshot()
+	var transport := _war_loop_state.field_tactics.begin_supply_transport(source_point_id, &"blackstone_city")
+	if transport.is_empty():
+		return _macro_failure(&"SUPPLY_CREATE_FAILED", "粮草运输未能创建")
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		return _macro_failure(&"SAVE_FAILED", "粮草运输存档失败，地点库存未扣除")
+	return {"success": true, "transport": transport.duplicate(true), "preview": preview.duplicate(true)}
 
 
 func dispatch_field_specialist(role: StringName) -> Dictionary:
@@ -6032,6 +6065,15 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		return encounter_result
 	if not Array(encounter_result.get("encounters", [])).is_empty():
 		field_advance.patrol_encounters = Array(encounter_result.encounters).duplicate(true)
+	var supply_settlement := _settle_arrived_supply_transports(
+		Array(field_advance.get("ready_supply_transport_ids", []))
+	)
+	if not bool(supply_settlement.get("success", false)):
+		_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
+		_war_loop_state.restore_snapshot(war_before)
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		return _macro_failure(&"SUPPLY_SETTLEMENT_FAILED", str(supply_settlement.get("error", "粮草入库未能提交")))
+	var supply_checkpoint_required := _war_loop_state.field_tactics.consume_supply_checkpoint_required()
 	var resumed_armies := _resume_macro_marches_on_repaired_roads()
 	var field_checkpoint_required := (
 		Array(field_advance.get("completed_project_ids", [])).size() > 0
@@ -6039,6 +6081,8 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		or Array(field_advance.get("engagements", [])).size() > 0
 		or Array(field_advance.get("patrol_encounters", [])).size() > 0
 		or not resumed_armies.is_empty()
+		or bool(supply_settlement.get("changed", false))
+		or supply_checkpoint_required
 	)
 	var result: Dictionary = {}
 	for siege_value in _war_loop_state.get_active_sieges():
@@ -6075,6 +6119,7 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		_refresh_city_ui()
 		city_state_changed.emit()
 		if not bool(_persist_macro_march_checkpoint().get("success", false)):
+			_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
 			_war_loop_state.restore_snapshot(war_before)
 			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 			return _macro_failure(&"SAVE_FAILED", "战区关键状态存档失败，事务已回滚")
@@ -6086,6 +6131,48 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		if not Array(field_advance.get("engagements", [])).is_empty():
 			result.field_engagements = Array(field_advance.engagements).duplicate(true)
 	return result.duplicate(true) if not result.is_empty() else field_advance
+
+
+func _settle_arrived_supply_transports(transport_ids: Array) -> Dictionary:
+	var field: FieldTacticsState = _war_loop_state.field_tactics
+	var committed_amounts: Array[Dictionary] = []
+	var changed := false
+	for transport_id_value in transport_ids:
+		var transport_id := StringName(transport_id_value)
+		var transport := field.get_supply_transport(transport_id)
+		if transport.is_empty() or bool(transport.get("deposited", false)):
+			continue
+		var amount := int(transport.get("amount", 0))
+		if amount <= 0:
+			return {"success": false, "error": "运输货物数量无效", "committed_amounts": committed_amounts}
+		if maxi(get_resource_capacity(&"food") - food, 0) < amount:
+			changed = field.mark_supply_transport_waiting_capacity(transport_id) or changed
+			continue
+		var transaction := _nation_state.commit_resource_transaction(
+			NationState.BLACKSTONE_CITY_ID,
+			[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": amount}],
+			&"field_supply_transport_delivery",
+			func() -> Dictionary:
+				return {"success": field.complete_supply_transport(transport_id)}
+		)
+		if not bool(transaction.get("success", false)):
+			return {"success": false, "error": str(transaction.get("error", "粮草入库事务失败")), "committed_amounts": committed_amounts}
+		committed_amounts.append({"transport_id": transport_id, "amount": amount})
+		changed = true
+	return {"success": true, "changed": changed, "committed_amounts": committed_amounts}
+
+
+func _rollback_supply_delivery_transactions(committed_amounts: Array) -> void:
+	for committed_value in committed_amounts:
+		var committed: Dictionary = Dictionary(committed_value)
+		var amount := int(committed.get("amount", 0))
+		if amount <= 0:
+			continue
+		_nation_state.commit_resource_transaction(
+			NationState.BLACKSTONE_CITY_ID,
+			[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": amount}],
+			&"field_supply_transport_delivery_rollback"
+		)
 
 
 func _resolve_field_patrol_encounters(field_advance: Dictionary) -> Dictionary:

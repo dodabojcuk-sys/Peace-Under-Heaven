@@ -23,6 +23,10 @@ const SPECIALIST_LOST := &"LOST"
 const FOG_UNOBSERVED := &"UNOBSERVED"
 const FOG_OBSERVED := &"OBSERVED"
 const FOG_VISIBLE := &"VISIBLE"
+const SUPPLY_MOVING := &"MOVING"
+const SUPPLY_WAITING_ROUTE := &"WAITING_ROUTE"
+const SUPPLY_WAITING_CAPACITY := &"WAITING_CAPACITY"
+const SUPPLY_COMPLETED := &"COMPLETED"
 const PATH_PREFIX := "path."
 const INVALID_WORLD_POSITION := Vector2i(-999999, -999999)
 
@@ -32,6 +36,10 @@ var specialists_by_id: Dictionary = {}
 var projects_by_id: Dictionary = {}
 var patrols_by_id: Dictionary = {}
 var intel_by_subject_id: Dictionary = {}
+# Tactical-location supply is a field fact.  The city controller owns only the
+# final national-resource transaction; a payload is never counted in both.
+var supply_inventory_by_point_id: Dictionary = {}
+var supply_transports_by_id: Dictionary = {}
 var point_positions_by_id: Dictionary = {}
 var water_regions: Array[Rect2i] = []
 var terrain_regions: Array[Dictionary] = []
@@ -40,7 +48,10 @@ var world_milliseconds := 0
 var next_specialist_sequence := 1
 var next_project_sequence := 1
 var next_camp_sequence := 1
+var next_supply_transport_sequence := 1
 var _specialist_path_migration_pending := false
+var _supply_snapshot_restored := false
+var _supply_checkpoint_required := false
 var scout_visibility_range := 2
 
 
@@ -60,6 +71,12 @@ func initialize_from_theater(
 	for point_id_value in points:
 		var point: Dictionary = Dictionary(points[point_id_value])
 		point_positions_by_id[StringName(point_id_value)] = Vector2i(point.get("world_position", Vector2i.ZERO))
+		# Seed only a brand-new theatre. A restored older snapshot deliberately
+		# defaults to no stock, so upgrading a save cannot mint free supplies.
+		if not _supply_snapshot_restored and not supply_inventory_by_point_id.has(StringName(point_id_value)):
+			var initial_supply := maxi(int(point.get("initial_supply_food", 0)), 0)
+			if initial_supply > 0:
+				supply_inventory_by_point_id[StringName(point_id_value)] = initial_supply
 	if _specialist_path_migration_pending:
 		_migrate_restored_specialist_paths()
 		_specialist_path_migration_pending = false
@@ -707,6 +724,40 @@ static func _has_valid_references(roads: Dictionary, camps: Dictionary, speciali
 	return true
 
 
+static func _has_valid_supply_state(inventory: Dictionary, transports: Dictionary, roads: Dictionary) -> bool:
+	for point_id_value in inventory:
+		if StringName(point_id_value) == &"" or typeof(inventory[point_id_value]) != TYPE_INT or int(inventory[point_id_value]) < 0:
+			return false
+	for transport_id_value in transports:
+		var transport: Dictionary = Dictionary(transports[transport_id_value])
+		var transport_id := StringName(transport_id_value)
+		if (
+			transport_id == &"" or StringName(transport.get("transport_id", &"")) != transport_id
+			or StringName(transport.get("source_point_id", &"")) == &""
+			or StringName(transport.get("target_point_id", &"")) == &""
+			or int(transport.get("amount", 0)) <= 0
+			or int(transport.get("total_milliseconds", 0)) <= 0
+			or int(transport.get("elapsed_milliseconds", -1)) < 0
+			or int(transport.get("elapsed_milliseconds", 0)) > int(transport.get("total_milliseconds", 0))
+			or StringName(transport.get("phase", &"")) not in [SUPPLY_MOVING, SUPPLY_WAITING_ROUTE, SUPPLY_WAITING_CAPACITY, SUPPLY_COMPLETED]
+			or not transport.get("route_segments", null) is Array
+			or not transport.get("route_world_points", null) is Array
+		):
+			return false
+		if bool(transport.get("deposited", false)) != (StringName(transport.get("phase", &"")) == SUPPLY_COMPLETED):
+			return false
+		var route_segments: Array = Array(transport.get("route_segments", []))
+		if route_segments.is_empty() or Array(transport.get("route_world_points", [])).size() < 2:
+			return false
+		for segment_value in route_segments:
+			if not segment_value is Dictionary:
+				return false
+			var road_id := StringName(Dictionary(segment_value).get("road_id", &""))
+			if road_id == &"" or not roads.has(road_id) or not Dictionary(segment_value).has("forward"):
+				return false
+	return true
+
+
 func is_route_open(route_id: StringName) -> bool:
 	if String(route_id).begins_with(PATH_PREFIX):
 		for segment in _path_segments(route_id):
@@ -874,6 +925,134 @@ func plan_runtime_path(source_point_id: StringName, target_point_id: StringName,
 			best_cost_by_point[next_point] = next_cost
 			frontier.append({"point_id": next_point, "segments": next_segments, "cost": next_cost})
 	return {"valid": false, "error": "没有连通的已完工道路路径"}
+
+
+func preview_supply_transport(source_point_id: StringName, target_point_id: StringName) -> Dictionary:
+	var amount := maxi(int(supply_inventory_by_point_id.get(source_point_id, 0)), 0)
+	if amount <= 0:
+		return {"valid": false, "error": "该地点没有可运回的粮草"}
+	var plan := plan_runtime_path(source_point_id, target_point_id)
+	if not bool(plan.get("valid", false)):
+		return {"valid": false, "error": str(plan.get("error", "没有可通行的运输道路"))}
+	return {
+		"valid": true,
+		"source_point_id": source_point_id,
+		"target_point_id": target_point_id,
+		"amount": amount,
+		"route_id": StringName(plan.get("route_id", &"")),
+		"route_segments": Array(plan.get("segments", [])).duplicate(true),
+		"route_world_points": Array(plan.get("points", [])).duplicate(true),
+		"duration_milliseconds": int(plan.get("duration_milliseconds", 0)),
+	}
+
+
+func begin_supply_transport(source_point_id: StringName, target_point_id: StringName) -> Dictionary:
+	var preview := preview_supply_transport(source_point_id, target_point_id)
+	if not bool(preview.get("valid", false)):
+		return {}
+	var amount := int(preview.get("amount", 0))
+	if amount <= 0:
+		return {}
+	var transport_id := StringName("supply.%06d" % next_supply_transport_sequence)
+	next_supply_transport_sequence += 1
+	supply_inventory_by_point_id[source_point_id] = maxi(int(supply_inventory_by_point_id.get(source_point_id, 0)) - amount, 0)
+	var points: Array = Array(preview.get("route_world_points", [])).duplicate(true)
+	supply_transports_by_id[transport_id] = {
+		"transport_id": transport_id,
+		"source_point_id": source_point_id,
+		"target_point_id": target_point_id,
+		"amount": amount,
+		"route_id": StringName(preview.get("route_id", &"")),
+		"route_segments": Array(preview.get("route_segments", [])).duplicate(true),
+		"route_world_points": points,
+		"total_milliseconds": maxi(int(preview.get("duration_milliseconds", 0)), 1),
+		"elapsed_milliseconds": 0,
+		"phase": SUPPLY_MOVING,
+		"world_position": Vector2i(points.front()),
+		"blocked_road_id": &"",
+		"deposited": false,
+		"last_checkpoint_elapsed_milliseconds": 0,
+	}
+	return Dictionary(supply_transports_by_id[transport_id]).duplicate(true)
+
+
+func get_supply_transport(transport_id: StringName) -> Dictionary:
+	return Dictionary(supply_transports_by_id.get(transport_id, {})).duplicate(true)
+
+
+func complete_supply_transport(transport_id: StringName) -> bool:
+	var transport := Dictionary(supply_transports_by_id.get(transport_id, {}))
+	if transport.is_empty() or StringName(transport.get("phase", &"")) not in [SUPPLY_WAITING_CAPACITY, SUPPLY_MOVING] or int(transport.get("elapsed_milliseconds", 0)) < int(transport.get("total_milliseconds", 0)) or bool(transport.get("deposited", false)):
+		return false
+	transport.phase = SUPPLY_COMPLETED
+	transport.deposited = true
+	transport.blocked_road_id = &""
+	transport.world_position = _point_position(StringName(transport.get("target_point_id", &"")))
+	supply_transports_by_id[transport_id] = transport
+	_supply_checkpoint_required = true
+	return true
+
+
+func mark_supply_transport_waiting_capacity(transport_id: StringName) -> bool:
+	var transport := Dictionary(supply_transports_by_id.get(transport_id, {}))
+	if transport.is_empty() or StringName(transport.get("phase", &"")) == SUPPLY_COMPLETED:
+		return false
+	transport.phase = SUPPLY_WAITING_CAPACITY
+	transport.blocked_road_id = &""
+	supply_transports_by_id[transport_id] = transport
+	_supply_checkpoint_required = true
+	return true
+
+
+func consume_supply_checkpoint_required() -> bool:
+	var required := _supply_checkpoint_required
+	_supply_checkpoint_required = false
+	return required
+
+
+func _advance_supply_transports(delta_milliseconds: int) -> Array[StringName]:
+	var ready_to_unload: Array[StringName] = []
+	var transport_ids: Array = supply_transports_by_id.keys()
+	transport_ids.sort()
+	for transport_id_value in transport_ids:
+		var transport_id := StringName(transport_id_value)
+		var transport := Dictionary(supply_transports_by_id[transport_id])
+		var phase := StringName(transport.get("phase", &""))
+		if phase == SUPPLY_COMPLETED:
+			continue
+		var route_segments: Array = Array(transport.get("route_segments", []))
+		var route_points: Array = Array(transport.get("route_world_points", []))
+		var total := maxi(int(transport.get("total_milliseconds", 0)), 1)
+		var elapsed := clampi(int(transport.get("elapsed_milliseconds", 0)), 0, total)
+		if elapsed < total:
+			var unavailable := first_unavailable_route_segment(
+				StringName(transport.get("route_id", &"")), route_segments, route_points, elapsed, total
+			)
+			if unavailable >= 0:
+				if StringName(transport.get("phase", &"")) != SUPPLY_WAITING_ROUTE:
+					_supply_checkpoint_required = true
+				transport.phase = SUPPLY_WAITING_ROUTE
+				transport.blocked_road_id = StringName(Dictionary(route_segments[unavailable]).get("road_id", &""))
+				supply_transports_by_id[transport_id] = transport
+				continue
+			transport.phase = SUPPLY_MOVING
+			transport.blocked_road_id = &""
+			elapsed = mini(elapsed + delta_milliseconds, total)
+			transport.elapsed_milliseconds = elapsed
+			transport.world_position = Vector2i(_position_along_points(route_points, float(elapsed) / float(total)))
+			if elapsed >= int(transport.get("last_checkpoint_elapsed_milliseconds", 0)) + 1000 or elapsed >= total:
+				transport.last_checkpoint_elapsed_milliseconds = elapsed
+				_supply_checkpoint_required = true
+		if elapsed >= total:
+			transport.world_position = _point_position(StringName(transport.get("target_point_id", &"")))
+			# This phase means the physical convoy arrived but its shared-stock
+			# transaction has not committed. The controller may retry after capacity
+			# becomes available without duplicating the payload.
+			if StringName(transport.get("phase", &"")) != SUPPLY_WAITING_CAPACITY:
+				transport.phase = SUPPLY_MOVING
+			ready_to_unload.append(transport_id)
+		supply_transports_by_id[transport_id] = transport
+	return ready_to_unload
 
 
 ## Plans from a marching army's exact position without inventing a permanent
@@ -1292,6 +1471,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 	var specialist_movements: Dictionary = {}
 	var specialist_project_ids: Dictionary = {}
 	var project_step_facts: Dictionary = {}
+	var supply_ready_to_unload: Array[StringName] = []
 	# A repair may begin in the middle of this world step. Keep the unused part
 	# of the step for its work progress so one long advance and split advances
 	# produce identical durable state.
@@ -1423,6 +1603,10 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 				)
 			completed.append(project_id)
 		projects_by_id[project_id] = project
+	# Construction and repairs update before convoys evaluate their remaining
+	# road segments, so a bridge completed in this same world step is usable for
+	# the unused portion of that step without creating a second clock.
+	supply_ready_to_unload = _advance_supply_transports(delta_milliseconds)
 	for patrol_id_value in patrols_by_id.keys():
 		var patrol_id := StringName(patrol_id_value)
 		var patrol := Dictionary(patrols_by_id[patrol_id])
@@ -1551,7 +1735,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 					specialists_by_id[specialist_id] = specialist
 				engagements.append({"patrol_id": patrol_id, "specialist_id": specialist_id, "guard_army_ids": guard_army_ids, "point_id": patrol.current_point_id, "world_position": Vector2i(_timed_trace_position_at(patrol_traces, contact_milliseconds)), "contact_milliseconds": contact_milliseconds})
 	_refresh_intel()
-	return {"success": true, "completed_project_ids": completed, "opened_road_ids": opened_road_ids, "engagements": engagements, "patrol_movements": patrol_movements, "world_milliseconds": world_milliseconds, "delta_milliseconds": delta_milliseconds}
+	return {"success": true, "completed_project_ids": completed, "opened_road_ids": opened_road_ids, "engagements": engagements, "patrol_movements": patrol_movements, "ready_supply_transport_ids": supply_ready_to_unload, "world_milliseconds": world_milliseconds, "delta_milliseconds": delta_milliseconds}
 
 
 func _open_completed_construction_segments(project_id: StringName, project: Dictionary) -> Array[StringName]:
@@ -1885,26 +2069,37 @@ func get_snapshot() -> Dictionary:
 		"projects_by_id": projects_by_id.duplicate(true),
 		"patrols_by_id": patrols_by_id.duplicate(true),
 		"intel_by_subject_id": intel_by_subject_id.duplicate(true),
+		"supply_inventory_by_point_id": supply_inventory_by_point_id.duplicate(true),
+		"supply_transports_by_id": supply_transports_by_id.duplicate(true),
 		"world_milliseconds": world_milliseconds,
 		"next_specialist_sequence": next_specialist_sequence,
 		"next_project_sequence": next_project_sequence,
 		"next_camp_sequence": next_camp_sequence,
+		"next_supply_transport_sequence": next_supply_transport_sequence,
 	}
 
 
 func restore_snapshot(snapshot: Dictionary) -> bool:
-	var required := ["schema_version", "roads_by_id", "camps_by_id", "specialists_by_id", "projects_by_id", "patrols_by_id", "intel_by_subject_id", "world_milliseconds", "next_specialist_sequence", "next_project_sequence", "next_camp_sequence"]
-	if snapshot.size() != required.size() or int(snapshot.get("schema_version", 0)) != SCHEMA_VERSION:
+	var legacy_required := ["schema_version", "roads_by_id", "camps_by_id", "specialists_by_id", "projects_by_id", "patrols_by_id", "intel_by_subject_id", "world_milliseconds", "next_specialist_sequence", "next_project_sequence", "next_camp_sequence"]
+	var required := legacy_required.duplicate()
+	required.append_array(["supply_inventory_by_point_id", "supply_transports_by_id", "next_supply_transport_sequence"])
+	var is_legacy_supply_snapshot := snapshot.size() == legacy_required.size()
+	if (not is_legacy_supply_snapshot and snapshot.size() != required.size()) or int(snapshot.get("schema_version", 0)) != SCHEMA_VERSION:
 		return false
-	for key in required:
+	for key in legacy_required:
 		if not snapshot.has(key):
 			return false
+	if not is_legacy_supply_snapshot:
+		for key in required.slice(legacy_required.size()):
+			if not snapshot.has(key):
+				return false
 	if (
 		not snapshot.roads_by_id is Dictionary or not snapshot.camps_by_id is Dictionary
 		or not snapshot.specialists_by_id is Dictionary or not snapshot.projects_by_id is Dictionary
 		or not snapshot.patrols_by_id is Dictionary or not snapshot.intel_by_subject_id is Dictionary
 		or int(snapshot.world_milliseconds) < 0 or int(snapshot.next_specialist_sequence) <= 0
 		or int(snapshot.next_project_sequence) <= 0 or int(snapshot.next_camp_sequence) <= 0
+		or (not is_legacy_supply_snapshot and (not snapshot.supply_inventory_by_point_id is Dictionary or not snapshot.supply_transports_by_id is Dictionary or int(snapshot.next_supply_transport_sequence) <= 0))
 	):
 		return false
 	if not _has_valid_references(
@@ -1913,17 +2108,25 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		Dictionary(snapshot.patrols_by_id), Dictionary(snapshot.intel_by_subject_id)
 	):
 		return false
+	if not is_legacy_supply_snapshot and not _has_valid_supply_state(
+		Dictionary(snapshot.supply_inventory_by_point_id), Dictionary(snapshot.supply_transports_by_id), Dictionary(snapshot.roads_by_id)
+	):
+		return false
 	roads_by_id = Dictionary(snapshot.roads_by_id).duplicate(true)
 	camps_by_id = Dictionary(snapshot.camps_by_id).duplicate(true)
 	specialists_by_id = Dictionary(snapshot.specialists_by_id).duplicate(true)
 	projects_by_id = Dictionary(snapshot.projects_by_id).duplicate(true)
 	patrols_by_id = Dictionary(snapshot.patrols_by_id).duplicate(true)
 	intel_by_subject_id = Dictionary(snapshot.intel_by_subject_id).duplicate(true)
+	supply_inventory_by_point_id = Dictionary(snapshot.get("supply_inventory_by_point_id", {})).duplicate(true)
+	supply_transports_by_id = Dictionary(snapshot.get("supply_transports_by_id", {})).duplicate(true)
 	world_milliseconds = int(snapshot.world_milliseconds)
 	next_specialist_sequence = int(snapshot.next_specialist_sequence)
 	next_project_sequence = int(snapshot.next_project_sequence)
 	next_camp_sequence = int(snapshot.next_camp_sequence)
+	next_supply_transport_sequence = int(snapshot.get("next_supply_transport_sequence", 1))
 	_specialist_path_migration_pending = true
+	_supply_snapshot_restored = true
 	return true
 
 

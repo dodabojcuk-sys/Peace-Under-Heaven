@@ -36,6 +36,27 @@ location is never rendered as its garrison. Opening or clicking a row changes
 only presentation selection and camera focus; it cannot issue an order, spend
 food, change ownership, reveal fog or write a save.
 
+## Silverford supply R0 contract
+
+The playable theatre declares a finite `initial_supply_food` value of 20 for
+Silverford only. `FieldTacticsState` owns the remaining location inventory and
+every physical supply transport; the `ConstructionController` remains the sole
+writer of Blackstone's national food through `NationState`. Creating a convoy
+subtracts its payload from Silverford once and persists the route, directed
+road segments, elapsed travel and world position. It is not a soldier or a
+garrison member.
+
+After Silverford is under player military control, its location panel shows the
+remaining stock, shortest currently open road route and travel estimate. The
+single `运回黑石城` action creates no resource transaction at departure. A
+damaged forward road puts the convoy into `WAITING_ROUTE`; repair resumes the
+same stored route. Arrival waits at Blackstone if its existing food capacity
+cannot accept the full payload. Only a successful one-time `NationState` add
+marks that exact transport completed, so location stock, in-transit cargo and
+shared food cannot double count. Restored legacy field snapshots default to no
+new location stock, preventing an upgrade or reload from minting the authored
+20 food.
+
 ## Projection contract
 
 The low-poly ground is horizontal in XZ. Its two horizontal basis vectors are

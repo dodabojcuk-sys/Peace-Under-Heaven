@@ -2,6 +2,21 @@
 
 ## 2026-09-11
 
+- Added Silverford supply R0 to the playable theatre: one authored, finite 20
+  food inventory becomes a persisted FieldTacticsState transport only after
+  Silverford is player-controlled. Departure removes location inventory once;
+  arrival uses the existing NationState food transaction exactly once, waits
+  when Blackstone storage is full, and remains at its real route position when
+  a required road is damaged. The Silverford detail panel now exposes the
+  shortest authoritative route, estimate and one-click transport action.
+  Legacy Field snapshots restore with no new stock, while new snapshots
+  validate every stored directed road segment. Added in-memory and independent
+  A/B/C process verification for no-route atomicity, damage/resume, capacity,
+  strict restore and completed-transport idempotence. Evidence:
+  `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-silverford-supply-r0/`.
+- Relabelled the view-navigation control from `返回黑石城` to `退出战区` so
+  it cannot be mistaken for the separate Silverford supply action.
+
 - Completed the location-detail entry and view-switching follow-up. A short
   tap on an unoccupied friendly point now opens its read-only detail instead of
   being swallowed by the direct-dispatch hold affordance. Selected stationary
