@@ -87,6 +87,12 @@ after a restore. The C0 presentation reads the resulting committed-tick event
 only after its checkpoint succeeds, adds a short route/damage notice, and
 never restores that transient notification as a new volley after reload.
 
+Before confirming a plan, new works bind to the currently selected squad's
+formal deployment route. C0 displays that route in the plan title, and the
+controller still validates the route in the persisted plan at confirmation.
+Changing a squad from front to side therefore changes the actual target of a
+new watch platform, tower, or barricade; it is not a cosmetic route label.
+
 The barricade uses the same single route-damage intent: after it is actually
 complete, the selected route's enemy hit is multiplied by 6500 basis points
 before the existing squad-HP writer applies it. In the protection objective,

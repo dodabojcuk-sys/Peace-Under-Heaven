@@ -1138,7 +1138,16 @@ func _refresh_wartime_plan_ui() -> void:
 	if is_committed:
 		wartime_plan_panel.get_node("Title").text = "围城战时工事已确认（仅本次战斗）" if macro_siege_mode else ("守城布防已确认（仅本次战斗）" if is_defense else "战时工事已确认（仅本次战斗）")
 	else:
-		wartime_plan_panel.get_node("Title").text = "围城战时工事（仅本次战斗）" if macro_siege_mode else ("守城布防（仅本次战斗）" if is_defense else "战时工事（仅本次战斗）")
+		var target_route_name := _get_route_name(_selected_deployment_route())
+		wartime_plan_panel.get_node("Title").text = (
+			"围城战时工事（部署至%s）" % target_route_name
+			if macro_siege_mode
+			else (
+				"守城布防（部署至%s）" % target_route_name
+				if is_defense
+				else "战时工事（部署至%s）" % target_route_name
+			)
+		)
 
 
 func _toggle_wartime_facility(kind: StringName) -> void:
@@ -1165,13 +1174,30 @@ func _toggle_wartime_facility(kind: StringName) -> void:
 		remaining.append(facility)
 	if not removed:
 		remaining.append(WartimeFacilityPlan.make_facility(
-			kind, CommittedForceSnapshot.FRONT_ROUTE
+			kind, _selected_deployment_route()
 		))
 	_pending_wartime_facility_plan = {
 		"schema_version": WartimeFacilityPlan.SCHEMA_VERSION,
 		"facilities": remaining,
 	}
 	_refresh_battle_ui()
+
+
+## A facility protects or observes one actual battle route.  Bind a new plan
+## to the selected squad's frozen deployment instead of silently pinning every
+## plan to the front route.  The request remains the source of truth and is
+## revalidated by the controller when the plan is confirmed.
+func _selected_deployment_route() -> StringName:
+	if request != null:
+		for squad in request.committed_force.squads:
+			if int(squad.squad_id) == _selected_squad_id:
+				var route_id := StringName(squad.route_id)
+				if route_id in [
+					CommittedForceSnapshot.FRONT_ROUTE,
+					CommittedForceSnapshot.SIDE_ROUTE,
+				]:
+					return route_id
+	return CommittedForceSnapshot.FRONT_ROUTE
 
 
 func _confirm_wartime_facility_plan() -> void:

@@ -11,6 +11,11 @@
 - Extended the formal defense GUI smoke to verify both visible states against
   the saved session route: the pre-completion count is hidden and the
   post-completion label exposes the real surviving count on the watch route.
+- New facilities now bind to the currently selected squad's persisted defense
+  route, instead of silently targeting the front route. The draft title makes
+  that destination explicit, and the focused GUI smoke checks that confirmed
+  facility records retain the same route selected through the visible
+  deployment control.
 
 ## 2026-09-12 - Formal Blackstone defense deployment
 

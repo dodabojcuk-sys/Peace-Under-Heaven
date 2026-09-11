@@ -77,7 +77,7 @@ func _run() -> void:
 	var barricade_button := plan_panel.get_node("BarricadeButton") as Button
 	var confirm_button := plan_panel.get_node("ConfirmButton") as Button
 	var watched_enemy_count_label := battle.get_node(
-		"UI/RootPanel/FrontLane/EnemyMarker/Count"
+		"UI/RootPanel/SideLane/EnemyMarker/Count"
 	) as Label
 	_check(
 		watched_enemy_count_label.text.contains("敌情未明")
@@ -108,6 +108,15 @@ func _run() -> void:
 	)
 	confirm_button.emit_signal("pressed")
 	await process_frame
+	var committed_plan: Dictionary = battle.request.wartime_facility_plan
+	var committed_plan_routes: Array[StringName] = []
+	for facility_value in Array(committed_plan.get("facilities", [])):
+		committed_plan_routes.append(StringName(Dictionary(facility_value).get("route_id", &"")))
+	_check(
+		committed_plan_routes.size() == 2
+			and committed_plan_routes.all(func(route_id: StringName) -> bool: return route_id == deployment_after_route),
+		"可见工事草稿与确认计划均绑定玩家当前选定的守城部署路线"
+	)
 	_check(battle.start_battle(), "守城工事确认后由同一正式 C0 时钟启动")
 	battle.tick_timer.stop()
 	var session := battle.coordinator.active_session
@@ -120,16 +129,16 @@ func _run() -> void:
 	)
 	var target_hp_before := int(objective.get("protect_target_hp", 0))
 	battle.step_battle_for_test(4)
-	var watched_route: Dictionary = session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE)
+	var watched_route: Dictionary = session.get_route_state(deployment_after_route)
 	var expected_observed_count := ceili(
 		float(int(watched_route.get("enemy_total_hp", 0)))
 		/ float(battle.request.committed_force.hp_per_member)
 	)
 	_check(
 		StringName(session.get_wartime_facility_state().get("watch_route_id", &""))
-			== CommittedForceSnapshot.FRONT_ROUTE
+			== deployment_after_route
 			and watched_enemy_count_label.text.contains("敌军 %d" % expected_observed_count),
-		"瞭望台完成后只读会话观察事实，向正式部署路线界面揭示精确兵力"
+		"瞭望台完成后只读会话观察事实，向玩家选择的正式部署路线界面揭示精确兵力"
 	)
 	_check(
 		int(session.get_mission_objective_state().get("protect_target_hp", 0)) == target_hp_before
