@@ -33,7 +33,7 @@ built in the battle scene.
 | R2 field operations | R2 Field/Macro March smoke, Route A/B, supply/reinforcement/tower persistence | Macro March from city | Preserve completed loop while adding cross-layer hooks | Route A/B plus interrupted/recovered operations |
 | Field construction catalogue | Roads, bridges, camps and watchtowers are authoritative | Engineer map planning | Arrow towers, forts, traps and obstacle rules are not yet an external facility framework | Facility type definition -> project -> real effect -> restore |
 | Regular/occupied/resource-city capability separation | Theatre point capability/read model and location detail | Map location details | Persistent city type policy needs to be centralised for later city/world work | Occupy -> garrison/reinforce/supply/continue without city-build leakage |
-| Wartime inner city | C0 has a distinct battle scene, two routes, gates, deployment, deterministic battle and atomic settlement | `enter_first_war_battle()` / formal C0 scene | Battle-only watch platform, siege ram and route-bound arrow tower planning now have real C0 effects and active-instance restore; defensive layout, repair and field-siege entry remain incomplete | Prebattle plan -> battle effects -> settlement -> independent restore |
+| Wartime inner city | C0 has a distinct battle scene, two routes, gates, deployment, deterministic battle and atomic settlement | Formal C0 scene; `enter_macro_siege_wartime()` for an existing macro siege; `enter_wartime_defense_battle()` for Blackstone gate defense | A frozen macro request now keeps the original army/order/formation HP through takeover, active play, result-pending recovery and one result writeback. Watch platforms, arrow towers, barricades and defense-only spike traps have source-aware planning, construction, damage, interruption and repair. A complete defensive campaign with broader facility families and a macro-origin full-wipe route remains unverified. | Formal siege handoff -> build -> battle -> independent restore -> victory/retreat/defeat writeback; separate defense construction/interruption/repair chains |
 | Generals, civilian abilities, equipment, technologies and trade | General/tech snapshots affect current C0 force; building/tech definitions exist | City selection/research UI | Civilian/energy, equipment and trade require source-rule inventory before implementation | Each confirmed ability changes one real transaction or battle/field result |
 
 ## First implementation sequence
@@ -41,13 +41,15 @@ built in the battle scene.
 1. Keep the regular city and R2 field theatre separate; add integration tests
    that demonstrate their current resource/personnel hand-off rather than
    cloning either state.
-2. Make the C0 battle scene a recoverable wartime-inner-city instance with a
-   compact, data-driven facility plan. Start with a watch platform and a route
-   barricade because C0 already owns observation-facing presentation and two
-   gate routes.
-3. Pass only battle result facts through the existing coordinator, then connect
-   the same battle-instance entry to a field siege. Do not promote temporary
-   structures into the regular city layout.
+2. C0 is now a recoverable wartime-inner-city instance with a compact,
+   data-driven facility plan. Watch platforms, arrow towers, barricades and
+   defense-only spike traps are battle-only records; they do not become
+   permanent city placements.
+3. Formal macro sieges now hand one frozen original force to that same battle
+   instance, and only the authorised result path returns formation losses,
+   control, siege closure and post-battle disposition. Continue proving the
+   remaining full-wipe route and defensive-campaign outcomes rather than
+   treating the connected entry as a new city expedition.
 4. Add further facility types and wider progression only after their confirmed
    source rules are inventoried. The absence of a prior population, disease or
    trade writer is recorded as a real gap, not silently filled by UI counters.
