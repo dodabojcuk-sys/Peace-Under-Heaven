@@ -2,6 +2,17 @@
 
 ## 2026-09-11
 
+- Closed Field Watchtower R0 correctness: timed specialist contact now revokes
+  a just-created tower when contact precedes the final construction instant,
+  while later contact preserves it. Field restore now explicitly supports the
+  prior 11-, 14-, and 15-field snapshots through the formal V5 path, validates
+  tower/project/camp identity and sequence high-water marks, and rejects live
+  overlapping tower reservations. Invalid re-placement clears the old draft
+  before rendering the new rejected position. Completion checkpoint failure
+  uses the normal Controller rollback and safely retries. Evidence, including a
+  continuous Godot GUI movie, is under
+  `docs/milestones/field-tactics-r2/evidence/20260911-field-watchtower-r0-correctness/`.
+
 - Added Field Watchtower R0: a completed, connected engineering camp can host
   one nearby land tower through the existing engineer-project, NationState
   food-transaction, Controller world-clock and V5 rollback paths. The theatre

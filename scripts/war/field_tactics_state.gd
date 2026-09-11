@@ -461,6 +461,17 @@ func preview_watchtower_project(engineer_id: StringName, camp_id: StringName, wo
 	for tower_value in watchtowers_by_id.values():
 		if Vector2(Dictionary(tower_value).get("world_position", Vector2.ZERO)).distance_to(Vector2(world_position)) < 28.0:
 			return {"valid": false, "error": "瞭望塔位置被已有设施占用"}
+	# A non-complete tower project has already reserved its physical footprint.
+	# It must block another camp from placing an overlapping project even though
+	# no completed observer exists yet.
+	for project_value in projects_by_id.values():
+		var existing_project: Dictionary = Dictionary(project_value)
+		if (
+			StringName(existing_project.get("project_kind", &"")) == &"WATCHTOWER"
+			and StringName(existing_project.get("phase", &"")) != &"COMPLETE"
+			and Vector2(existing_project.get("work_world_position", INVALID_WORLD_POSITION)).distance_to(Vector2(world_position)) < 28.0
+		):
+			return {"valid": false, "error": "瞭望塔位置被正在建设的设施占用"}
 	var start_position := Vector2(engineer.get("world_position", _point_position(StringName(engineer.get("current_point_id", &"")))))
 	var movement_plan := _plan_specialist_land_path(start_position, Vector2(world_position))
 	if movement_plan.is_empty():
@@ -842,7 +853,7 @@ func _reachable_repair_endpoint(engineer: Dictionary, road: Dictionary) -> Dicti
 	return best
 
 
-static func _has_valid_references(roads: Dictionary, camps: Dictionary, watchtowers: Dictionary, specialists: Dictionary, projects: Dictionary, patrols: Dictionary, intel: Dictionary) -> bool:
+static func _has_valid_references(roads: Dictionary, camps: Dictionary, watchtowers: Dictionary, specialists: Dictionary, projects: Dictionary, patrols: Dictionary, intel: Dictionary, next_watchtower_sequence_value: int = 1) -> bool:
 	for road_id_value in roads:
 		var road: Dictionary = Dictionary(roads[road_id_value])
 		if StringName(road_id_value) == &"" or StringName(road.get("road_id", &"")) != StringName(road_id_value) or StringName(road.get("state", &"")) not in [ROAD_OPEN, ROAD_DAMAGED]:
@@ -854,27 +865,38 @@ static func _has_valid_references(roads: Dictionary, camps: Dictionary, watchtow
 		var project_id := StringName(specialist.get("project_id", &""))
 		if project_id != &"" and not projects.has(project_id):
 			return false
+	var claimed_tower_projects: Dictionary = {}
+	var highest_watchtower_sequence := 0
 	for project_id_value in projects:
 		var project: Dictionary = Dictionary(projects[project_id_value])
 		if StringName(project_id_value) == &"" or StringName(project.get("project_id", &"")) != StringName(project_id_value) or not specialists.has(StringName(project.get("engineer_id", &""))) or StringName(project.get("road_id", &"")) == &"":
 			return false
-		if StringName(project.get("project_kind", &"")) == &"WATCHTOWER" and (
-			not camps.has(StringName(project.get("camp_id", &"")))
-			or not _is_snapshot_id(project.get("tower_id", null))
-			or not project.get("work_world_position", null) is Vector2i
-			or not _is_snapshot_int(project.get("visibility_range", null))
-			or int(project.get("visibility_range", 0)) <= 0
-		):
-			return false
+		if StringName(project.get("project_kind", &"")) == &"WATCHTOWER":
+			var project_tower_id := StringName(project.get("tower_id", &""))
+			var project_tower_sequence := _watchtower_sequence_from_id(project_tower_id)
+			if (
+				not camps.has(StringName(project.get("camp_id", &"")))
+				or project_tower_sequence <= 0
+				or not project.get("work_world_position", null) is Vector2i
+				or not _is_snapshot_int(project.get("visibility_range", null))
+				or int(project.get("visibility_range", 0)) <= 0
+				or claimed_tower_projects.has(project_tower_id)
+			):
+				return false
+			claimed_tower_projects[project_tower_id] = project.duplicate(true)
+			highest_watchtower_sequence = maxi(highest_watchtower_sequence, project_tower_sequence)
 	for camp_id_value in camps:
 		var camp: Dictionary = Dictionary(camps[camp_id_value])
 		if StringName(camp_id_value) == &"" or StringName(camp.get("camp_id", &"")) != StringName(camp_id_value) or not roads.has(StringName(camp.get("road_id", &""))):
 			return false
+	var tower_camps: Dictionary = {}
 	for tower_id_value in watchtowers:
 		var tower: Dictionary = Dictionary(watchtowers[tower_id_value])
+		var tower_id := StringName(tower_id_value)
+		var tower_sequence := _watchtower_sequence_from_id(tower_id)
 		if (
-			StringName(tower_id_value) == &""
-			or StringName(tower.get("watchtower_id", &"")) != StringName(tower_id_value)
+			tower_sequence <= 0
+			or StringName(tower.get("watchtower_id", &"")) != tower_id
 			or not camps.has(StringName(tower.get("camp_id", &"")))
 			or not tower.get("world_position", null) is Vector2i
 			or not _is_snapshot_int(tower.get("visibility_range", null))
@@ -883,6 +905,25 @@ static func _has_valid_references(roads: Dictionary, camps: Dictionary, watchtow
 			or not bool(tower.get("complete", false))
 		):
 			return false
+		# A complete project may retain its historical reservation for its own
+		# completed tower. Any live reservation sharing a completed ID is a
+		# collision and would otherwise make a later completion disappear. The
+		# completed record must agree with that project's camp, anchor and range.
+		var tower_camp_id := StringName(tower.get("camp_id", &""))
+		if tower_camps.has(tower_camp_id) or not claimed_tower_projects.has(tower_id):
+			return false
+		tower_camps[tower_camp_id] = true
+		var tower_project: Dictionary = Dictionary(claimed_tower_projects[tower_id])
+		if (
+			StringName(tower_project.get("phase", &"")) != &"COMPLETE"
+			or StringName(tower_project.get("camp_id", &"")) != tower_camp_id
+			or Vector2i(tower_project.get("work_world_position", INVALID_WORLD_POSITION)) != Vector2i(tower.get("world_position", INVALID_WORLD_POSITION))
+			or int(tower_project.get("visibility_range", 0)) != int(tower.get("visibility_range", 0))
+		):
+			return false
+		highest_watchtower_sequence = maxi(highest_watchtower_sequence, tower_sequence)
+	if next_watchtower_sequence_value <= highest_watchtower_sequence:
+		return false
 	for patrol_id_value in patrols:
 		if StringName(patrol_id_value) == &"" or not patrols[patrol_id_value] is Dictionary:
 			return false
@@ -898,6 +939,16 @@ static func _is_snapshot_id(value: Variant) -> bool:
 
 static func _is_snapshot_int(value: Variant) -> bool:
 	return typeof(value) == TYPE_INT
+
+
+static func _watchtower_sequence_from_id(value: StringName) -> int:
+	var text := String(value)
+	if not text.begins_with("watchtower."):
+		return 0
+	var sequence_text := text.trim_prefix("watchtower.")
+	if not sequence_text.is_valid_int() or sequence_text != "%06d" % int(sequence_text):
+		return 0
+	return int(sequence_text)
 
 
 static func _supply_segment_endpoints(segment: Dictionary, roads: Dictionary) -> Dictionary:
@@ -2075,11 +2126,18 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 										))
 										roads_by_id[repaired_road_id] = reverted_road
 									repaired_road_open_offsets.erase(repaired_road_id)
+								elif StringName(interrupted_project.get("project_kind", &"")) == &"WATCHTOWER":
+									# Project completion is provisional until this step's timed
+									# contacts resolve. A patrol that reaches the engineer before
+									# the final work millisecond must not leave a completed tower,
+									# observer, or completion checkpoint behind.
+									watchtowers_by_id.erase(StringName(interrupted_project.get("tower_id", &"")))
 								completed.erase(project_id)
 						if StringName(interrupted_project.get("phase", &"")) in [&"TRAVELING", &"BUILDING", &"COMPLETE"] and int(interrupted_project.get("progress_milliseconds", 0)) < int(interrupted_project.get("required_milliseconds", 0)):
 							interrupted_project.phase = &"INTERRUPTED"
 							interrupted_project.interruption_reason = &"ENGINEER_LOST"
 							projects_by_id[project_id] = interrupted_project
+							specialist.project_id = project_id
 					specialists_by_id[specialist_id] = specialist
 				engagements.append({"patrol_id": patrol_id, "specialist_id": specialist_id, "guard_army_ids": guard_army_ids, "point_id": patrol.current_point_id, "world_position": Vector2i(_timed_trace_position_at(patrol_traces, contact_milliseconds)), "contact_milliseconds": contact_milliseconds})
 	# Repair completion is provisional until the time-aware specialist contacts
@@ -2442,44 +2500,53 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	required.append("stationed_reinforcements_by_point_id")
 	var watchtower_required := required.duplicate()
 	watchtower_required.append_array(["watchtowers_by_id", "next_watchtower_sequence"])
-	var is_legacy_supply_snapshot := snapshot.size() == legacy_required.size()
-	var is_legacy_reinforcement_snapshot := snapshot.size() == supply_required.size()
-	var is_legacy_watchtower_snapshot := snapshot.size() == required.size()
-	if (not is_legacy_supply_snapshot and not is_legacy_reinforcement_snapshot and not is_legacy_watchtower_snapshot and snapshot.size() != watchtower_required.size()) or typeof(snapshot.get("schema_version")) != TYPE_INT or int(snapshot.get("schema_version")) != SCHEMA_VERSION:
+	# Field R2 introduced supply (14 fields), stationed reinforcements (15),
+	# then watchtowers (17). Identify those historical layouts by their actual
+	# field sets rather than one latest-legacy size branch, so formal V5 restore
+	# keeps accepting every previously supported representation.
+	var has_supply_state := snapshot.has("supply_inventory_by_point_id") or snapshot.has("supply_transports_by_id") or snapshot.has("next_supply_transport_sequence")
+	var has_complete_supply_state := snapshot.has("supply_inventory_by_point_id") and snapshot.has("supply_transports_by_id") and snapshot.has("next_supply_transport_sequence")
+	var has_reinforcement_state := snapshot.has("stationed_reinforcements_by_point_id")
+	var has_watchtower_state := snapshot.has("watchtowers_by_id") or snapshot.has("next_watchtower_sequence")
+	var has_complete_watchtower_state := snapshot.has("watchtowers_by_id") and snapshot.has("next_watchtower_sequence")
+	if has_supply_state != has_complete_supply_state or (has_reinforcement_state and not has_complete_supply_state) or has_watchtower_state != has_complete_watchtower_state or (has_complete_watchtower_state and not has_reinforcement_state):
 		return false
-	for key in legacy_required:
+	var is_legacy_supply_snapshot := not has_complete_supply_state
+	var is_legacy_reinforcement_snapshot := has_complete_supply_state and not has_reinforcement_state
+	var expected_keys: Array = legacy_required.duplicate()
+	if has_complete_supply_state:
+		expected_keys.append_array(supply_required.slice(legacy_required.size()))
+	if has_reinforcement_state:
+		expected_keys.append("stationed_reinforcements_by_point_id")
+	if has_complete_watchtower_state:
+		expected_keys.append_array(["watchtowers_by_id", "next_watchtower_sequence"])
+	if snapshot.size() != expected_keys.size() or typeof(snapshot.get("schema_version")) != TYPE_INT or int(snapshot.get("schema_version")) != SCHEMA_VERSION:
+		return false
+	for key in expected_keys:
 		if not snapshot.has(key):
 			return false
-	if not is_legacy_supply_snapshot:
-		for key in supply_required.slice(legacy_required.size()):
-			if not snapshot.has(key):
-				return false
-	if not is_legacy_supply_snapshot and not is_legacy_reinforcement_snapshot and not snapshot.has("stationed_reinforcements_by_point_id"):
-		return false
-	if not is_legacy_watchtower_snapshot and (not snapshot.has("watchtowers_by_id") or not snapshot.has("next_watchtower_sequence")):
-		return false
 	if (
-		not snapshot.roads_by_id is Dictionary or not snapshot.camps_by_id is Dictionary
-		or not snapshot.specialists_by_id is Dictionary or not snapshot.projects_by_id is Dictionary
-		or not snapshot.patrols_by_id is Dictionary or not snapshot.intel_by_subject_id is Dictionary
-		or typeof(snapshot.world_milliseconds) != TYPE_INT or int(snapshot.world_milliseconds) < 0 or typeof(snapshot.next_specialist_sequence) != TYPE_INT or int(snapshot.next_specialist_sequence) <= 0
-		or typeof(snapshot.next_project_sequence) != TYPE_INT or int(snapshot.next_project_sequence) <= 0 or typeof(snapshot.next_camp_sequence) != TYPE_INT or int(snapshot.next_camp_sequence) <= 0
-		or (not is_legacy_supply_snapshot and (not snapshot.supply_inventory_by_point_id is Dictionary or not snapshot.supply_transports_by_id is Dictionary or typeof(snapshot.next_supply_transport_sequence) != TYPE_INT or int(snapshot.next_supply_transport_sequence) <= 0))
-		or (not is_legacy_supply_snapshot and not is_legacy_reinforcement_snapshot and not snapshot.stationed_reinforcements_by_point_id is Dictionary)
-		or (not is_legacy_watchtower_snapshot and (not snapshot.watchtowers_by_id is Dictionary or not _is_snapshot_int(snapshot.next_watchtower_sequence) or int(snapshot.next_watchtower_sequence) <= 0))
+		not snapshot.get("roads_by_id", null) is Dictionary or not snapshot.get("camps_by_id", null) is Dictionary
+		or not snapshot.get("specialists_by_id", null) is Dictionary or not snapshot.get("projects_by_id", null) is Dictionary
+		or not snapshot.get("patrols_by_id", null) is Dictionary or not snapshot.get("intel_by_subject_id", null) is Dictionary
+		or typeof(snapshot.get("world_milliseconds", null)) != TYPE_INT or int(snapshot.get("world_milliseconds", 0)) < 0 or typeof(snapshot.get("next_specialist_sequence", null)) != TYPE_INT or int(snapshot.get("next_specialist_sequence", 0)) <= 0
+		or typeof(snapshot.get("next_project_sequence", null)) != TYPE_INT or int(snapshot.get("next_project_sequence", 0)) <= 0 or typeof(snapshot.get("next_camp_sequence", null)) != TYPE_INT or int(snapshot.get("next_camp_sequence", 0)) <= 0
+		or (not is_legacy_supply_snapshot and (not snapshot.get("supply_inventory_by_point_id", null) is Dictionary or not snapshot.get("supply_transports_by_id", null) is Dictionary or typeof(snapshot.get("next_supply_transport_sequence", null)) != TYPE_INT or int(snapshot.get("next_supply_transport_sequence", 0)) <= 0))
+		or (not is_legacy_supply_snapshot and not is_legacy_reinforcement_snapshot and not snapshot.get("stationed_reinforcements_by_point_id", null) is Dictionary)
+		or (has_complete_watchtower_state and (not snapshot.get("watchtowers_by_id", null) is Dictionary or not _is_snapshot_int(snapshot.get("next_watchtower_sequence", null)) or int(snapshot.get("next_watchtower_sequence", 0)) <= 0))
 	):
 		return false
 	if not _has_valid_references(
-		Dictionary(snapshot.roads_by_id), Dictionary(snapshot.camps_by_id), Dictionary(snapshot.get("watchtowers_by_id", {})),
-		Dictionary(snapshot.specialists_by_id), Dictionary(snapshot.projects_by_id),
-		Dictionary(snapshot.patrols_by_id), Dictionary(snapshot.intel_by_subject_id)
+		Dictionary(snapshot.get("roads_by_id", {})), Dictionary(snapshot.get("camps_by_id", {})), Dictionary(snapshot.get("watchtowers_by_id", {})),
+		Dictionary(snapshot.get("specialists_by_id", {})), Dictionary(snapshot.get("projects_by_id", {})),
+		Dictionary(snapshot.get("patrols_by_id", {})), Dictionary(snapshot.get("intel_by_subject_id", {})), int(snapshot.get("next_watchtower_sequence", 1))
 	):
 		return false
 	if not is_legacy_supply_snapshot and not _has_valid_supply_state(
-		Dictionary(snapshot.supply_inventory_by_point_id), Dictionary(snapshot.supply_transports_by_id), Dictionary(snapshot.roads_by_id), snapshot.next_supply_transport_sequence
+		Dictionary(snapshot.get("supply_inventory_by_point_id", {})), Dictionary(snapshot.get("supply_transports_by_id", {})), Dictionary(snapshot.get("roads_by_id", {})), snapshot.get("next_supply_transport_sequence", 1)
 	):
 		return false
-	if not is_legacy_supply_snapshot and not is_legacy_reinforcement_snapshot and not _has_valid_stationed_reinforcement_state(Dictionary(snapshot.stationed_reinforcements_by_point_id)):
+	if not is_legacy_supply_snapshot and not is_legacy_reinforcement_snapshot and not _has_valid_stationed_reinforcement_state(Dictionary(snapshot.get("stationed_reinforcements_by_point_id", {}))):
 		return false
 	roads_by_id = Dictionary(snapshot.roads_by_id).duplicate(true)
 	camps_by_id = Dictionary(snapshot.camps_by_id).duplicate(true)

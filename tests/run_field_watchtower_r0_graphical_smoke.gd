@@ -63,6 +63,7 @@ func _run() -> void:
 		and macro._watchtower_button.visible \
 		and not macro._watchtower_button.disabled
 	_capture("watchtower-01-engineer-selected-engine-gui.png")
+	await _hold_visual_frames(18)
 	# Map press/release above is GUI pointer evidence. The visible Button is
 	# asserted, then its connected action is exercised separately because this
 	# SceneTree runner cannot synthesize a native Control click.
@@ -71,6 +72,16 @@ func _run() -> void:
 	macro.refresh()
 	var camp_screen := macro._world_to_screen(Vector2(360, 610))
 	_click_map(macro, camp_screen)
+	var invalid_target := Vector2i(550, 400)
+	_click_map(macro, macro._world_to_screen(Vector2(invalid_target)))
+	await process_frame
+	macro.refresh()
+	var invalid_replan_clears_old_draft := macro._watchtower_draft.is_empty() \
+		and macro._watchtower_preview_position == Vector2(invalid_target) \
+		and macro._confirm_button.is_inside_tree() and macro._confirm_button.disabled \
+		and macro._status_label.text.contains("瞭望塔")
+	_capture("watchtower-02-invalid-placement-engine-gui.png")
+	await _hold_visual_frames(18)
 	var target_world := Vector2i(440, 620)
 	_click_map(macro, macro._world_to_screen(Vector2(target_world)))
 	await process_frame
@@ -84,7 +95,8 @@ func _run() -> void:
 		and not macro._confirm_button.disabled \
 		and int(city.food) == food_before \
 		and macro._detail_label.text.contains("瞭望塔施工计划")
-	_capture("watchtower-02-plan-preview-engine-gui.png")
+	_capture("watchtower-03-replanned-preview-engine-gui.png")
+	await _hold_visual_frames(18)
 	macro._confirm_button.pressed.emit()
 	await process_frame
 	macro.refresh()
@@ -94,7 +106,8 @@ func _run() -> void:
 		and StringName(project.get("project_kind", &"")) == &"WATCHTOWER" \
 		and int(city.food) == food_before - int(draft.get("food_cost", 0)) \
 		and macro._watchtower_draft.is_empty()
-	_capture("watchtower-03-engineer-travel-engine-gui.png")
+	_capture("watchtower-04-engineer-travel-engine-gui.png")
+	await _hold_visual_frames(18)
 	city.set_city_time_paused(false)
 	city.advance_war_loop_time(int(project.get("travel_milliseconds", 0)) + int(project.get("required_milliseconds", 0)))
 	city.set_city_time_paused(true)
@@ -106,8 +119,10 @@ func _run() -> void:
 	var completed_visible: bool = towers.size() == 1 \
 		and StringName(Dictionary(intel.get(&"patrol.watchtower.graphical", {})).get("fog_state", &"")) == FieldTacticsState.FOG_VISIBLE \
 		and displayed_tower != null
-	_capture("watchtower-04-complete-and-vision-engine-gui.png")
+	_capture("watchtower-05-complete-and-vision-engine-gui.png")
+	await _hold_visual_frames(18)
 	_check(engineer_selected, "地图 GUI 点击选中工程师后，右栏显示可用的建瞭望塔操作")
+	_check(invalid_replan_clears_old_draft, "无效选址即时显示红色新位置并禁用开工，不会保留旧位置草稿")
 	_check(preview_visible, "工程驻点与合法陆地的 GUI 点击保留瞭望塔计划，确认前不扣粮")
 	_check(started_once, "可见开工按钮的连接动作只创建一项瞭望塔工程并扣除一次预览费用")
 	_check(completed_visible, "工程师按 Controller 世界时间到场完工后，地图塔、低模节点与由塔获得的真实敌情同时出现")
@@ -148,6 +163,14 @@ func _capture(filename: String) -> void:
 	DirAccess.make_dir_recursive_absolute(evidence_directory)
 	var image := root.get_texture().get_image()
 	image.save_png(evidence_directory.path_join(filename))
+
+
+func _hold_visual_frames(frame_count: int) -> void:
+	# A movie-writer run records the actual GUI-event sequence rather than a
+	# succession of unrelated stills. Normal smoke mode also uses these waits,
+	# which makes the evidence states observable without changing simulation.
+	for _frame in range(maxi(frame_count, 0)):
+		await process_frame
 
 
 func _argument_value(prefix: String) -> String:

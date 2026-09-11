@@ -1580,7 +1580,16 @@ func _on_gui_input(event: InputEvent) -> void:
 			var tower_position := Vector2i(_screen_to_world(event.position))
 			var tower_preview := _dispatch_adapter.preview_field_watchtower_project(_watchtower_engineer_id, _watchtower_camp_id, tower_position) if _dispatch_adapter != null else {}
 			if not bool(tower_preview.get("valid", false)):
+				# A placement attempt is an atomic replacement of the visible plan.
+				# Leaving the old valid draft here let "开工" silently build at A after
+				# the player had just rejected B. Keep B as the red preview and require
+				# a new legal selection before the action becomes available again.
+				_watchtower_draft = {}
+				_watchtower_preview_position = Vector2(tower_position)
 				_set_status_error(str(tower_preview.get("error", "该位置无法建设瞭望塔")))
+				refresh()
+				queue_redraw()
+				accept_event()
 				return
 			_watchtower_draft = tower_preview.duplicate(true)
 			_watchtower_preview_position = Vector2(tower_position)

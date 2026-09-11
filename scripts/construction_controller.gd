@@ -6190,6 +6190,12 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		or bool(supply_settlement.get("changed", false))
 		or supply_checkpoint_required
 	)
+	var completed_watchtower_checkpoint := false
+	for completed_project_id_value in Array(field_advance.get("completed_project_ids", [])):
+		var completed_project := Dictionary(_war_loop_state.field_tactics.projects_by_id.get(StringName(completed_project_id_value), {}))
+		if StringName(completed_project.get("project_kind", &"")) == &"WATCHTOWER":
+			completed_watchtower_checkpoint = true
+			break
 	var result: Dictionary = {}
 	for siege_value in _war_loop_state.get_active_sieges():
 		var siege: Dictionary = siege_value
@@ -6234,8 +6240,12 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 	if not result.is_empty() or field_checkpoint_required:
 		_refresh_city_ui()
 		city_state_changed.emit()
-		var checkpoint_success := _field_supply_fault_for_test != &"CHECKPOINT_SAVE_FAILED" and bool(_persist_macro_march_checkpoint().get("success", false))
+		var checkpoint_faulted := _field_supply_fault_for_test == &"CHECKPOINT_SAVE_FAILED" or (
+			completed_watchtower_checkpoint and _field_watchtower_fault_for_test == &"COMPLETION_CHECKPOINT_SAVE_FAILED"
+		)
+		var checkpoint_success := not checkpoint_faulted and bool(_persist_macro_march_checkpoint().get("success", false))
 		_field_supply_fault_for_test = &"" if _field_supply_fault_for_test == &"CHECKPOINT_SAVE_FAILED" else _field_supply_fault_for_test
+		_field_watchtower_fault_for_test = &"" if completed_watchtower_checkpoint and _field_watchtower_fault_for_test == &"COMPLETION_CHECKPOINT_SAVE_FAILED" else _field_watchtower_fault_for_test
 		if not checkpoint_success:
 			_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
 			_war_loop_state.restore_snapshot(war_before)
