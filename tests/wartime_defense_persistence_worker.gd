@@ -12,7 +12,7 @@ func _initialize() -> void:
 func _run() -> void:
 	var mode := _argument_value("--mode=")
 	var save_directory := _argument_value("--txwzs-v5-save-dir=")
-	_require(mode in ["A", "B", "C", "D", "E", "F", "G"], "worker mode 必须有效")
+	_require(mode in ["A", "B", "C", "D", "E", "F", "G", "H", "I"], "worker mode 必须有效")
 	_require(not save_directory.is_empty(), "worker 必须使用隔离存档目录")
 	if not failures.is_empty():
 		_finish(mode, save_directory)
@@ -31,6 +31,8 @@ func _run() -> void:
 		"E": _run_e(city)
 		"F": await _run_f(scene, city)
 		"G": await _run_g(scene, city)
+		"H": await _run_h(scene, city)
+		"I": await _run_i(scene, city)
 	scene.queue_free()
 	await process_frame
 	_finish(mode, save_directory)
@@ -171,6 +173,89 @@ func _run_b(scene: Node, city: Node) -> void:
 		"B 正式城门维修在独立进程保存前只扣一次资源并保留未完成工期"
 	)
 	_require(scene.flush_runtime_persistence(&"wartime_defense_b"), "B 发布维修中守城的真实 V5 代次")
+
+
+func _run_h(scene: Node, city: Node) -> void:
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var formation_id := StringName(roster[0].get("formation_id", &"")) if not roster.is_empty() else &""
+	var started: Dictionary = city.begin_wartime_defense_attempt([formation_id])
+	_require(bool(started.get("success", false)), "H 从正式守城入口创建施工受阻夹具")
+	if failures.size() > 0 or not city.enter_wartime_defense_battle():
+		_require(false, "H 打开正式 C0 守城实例")
+		return
+	await process_frame
+	var battle := city.get_formal_battle_scene() as C0BattleGraybox
+	if battle == null:
+		_require(false, "H 守城实例存在")
+		return
+	var route_button := battle.get_node("UI/RootPanel/SquadControls/Squad1/RouteButton") as Button
+	route_button.emit_signal("pressed")
+	await process_frame
+	var panel := battle.get_node("UI/RootPanel/WartimePlanPanel") as Panel
+	var barricade_button := panel.get_node("BarricadeButton") as Button
+	var confirm_button := panel.get_node("ConfirmButton") as Button
+	barricade_button.emit_signal("pressed")
+	await process_frame
+	confirm_button.emit_signal("pressed")
+	await process_frame
+	_require(battle.start_battle(), "H 正式确认拒马后开始真实施工")
+	battle.tick_timer.stop()
+	var session := battle.coordinator.active_session
+	var route_id := StringName(battle.request.committed_force.squads[0].route_id)
+	var route: Dictionary = session.get_route_state(route_id)
+	route.enemy_position_fixed = int(route.get("distance_fixed", 0))
+	session.routes[route_id] = route
+	session.current_tick = BattleSession.ATTACK_INTERVAL_TICKS - 1
+	battle.step_battle_for_test(1)
+	var barricade := _barricade(session)
+	route = session.get_route_state(route_id)
+	route.enemy_position_fixed = 0
+	session.routes[route_id] = route
+	_require(
+		StringName(barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_INTERRUPTED
+			and not session.get_wartime_facility_state().has("barricade_route_id"),
+		"H 真实战斗刻将未完工拒马保存为无防护的施工受阻状态"
+	)
+	_require(scene.flush_runtime_persistence(&"wartime_defense_h"), "H 发布施工受阻守城的真实 V5 代次")
+
+
+func _run_i(scene: Node, city: Node) -> void:
+	var attempt: Dictionary = city.get_expedition_attempt()
+	_require(
+		StringName(attempt.get("source_id", &"")) == BattleRequest.SOURCE_WARTIME_DEFENSE
+			and StringName(attempt.get("phase", &"")) == BattleRequest.PHASE_ACTIVE,
+		"I 冷启动读取施工受阻的活动守城尝试"
+	)
+	if failures.size() > 0:
+		return
+	var opened: bool = city.get_formal_battle_scene() != null or city.enter_wartime_defense_battle()
+	_require(opened, "I 重开同一施工受阻守城实例")
+	await process_frame
+	var battle := city.get_formal_battle_scene() as C0BattleGraybox
+	if battle == null:
+		_require(false, "I 恢复 C0 守城实例")
+		return
+	battle.tick_timer.stop()
+	var session := battle.coordinator.active_session
+	var interrupted := _barricade(session)
+	battle._refresh_battle_ui()
+	var repair_button := battle.get_node("UI/RootPanel/WartimeRepairButton") as Button
+	_require(
+		StringName(interrupted.get("phase", &"")) == BattleSession.FACILITY_PHASE_INTERRUPTED
+			and not session.get_wartime_facility_state().has("barricade_route_id")
+			and repair_button.visible
+			and not repair_button.disabled,
+		"I 冷启动保留无防护施工受阻记录，并显示正式维修入口"
+	)
+	repair_button.emit_signal("pressed")
+	await process_frame
+	battle.step_battle_for_test(BattleSession.FACILITY_REPAIR_TICKS)
+	var restored_barricade := _barricade(session)
+	_require(
+		StringName(restored_barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE
+			and session.get_wartime_facility_state().has("barricade_route_id"),
+		"I 正式维修完成后才恢复同一拒马的防护投影"
+	)
 
 
 func _run_c(scene: Node, city: Node) -> void:

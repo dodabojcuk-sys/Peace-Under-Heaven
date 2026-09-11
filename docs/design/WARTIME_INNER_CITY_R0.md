@@ -258,4 +258,7 @@ C cold-restores them and consumes only the remaining ticks. F/G separately start
 advance commands to reach a defense victory, saves its `RESULT_PENDING` fact,
 and lets a fresh process confirm exactly that result. Defense victory is not a
 first-war victory: V5 validation preserves the unrelated mainline cleared
-state instead of requiring it to match this mission outcome.
+state instead of requiring it to match this mission outcome. H/I separately
+saves a real route-arrival interruption while a barricade is still under
+construction, then cold-restores its non-protective `INTERRUPTED` state and
+uses the visible repair action to restore the same facility.
