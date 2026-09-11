@@ -325,6 +325,7 @@ func _run() -> void:
 	await process_frame
 	await _run_formal_macro_victory_chain()
 	await _run_formal_macro_defeat_chain()
+	await _run_formal_macro_full_wipe_chain()
 	_finish()
 
 
@@ -509,6 +510,122 @@ func _run_formal_macro_defeat_chain() -> void:
 	)
 	defeat_battle.queue_free()
 	defeat_scene.queue_free()
+	await process_frame
+
+
+## A deliberately stronger **regression-theatre** Redcliff force gives the
+## formal macro source a reproducible full-wipe outcome.  This changes only the
+## isolated fixture before the city is created; it does not manufacture a
+## result, edit an army, or alter the playable Resource.  The normal C0 UI
+## selection, advance command, ticks and result confirmation remain the path
+## under test.
+func _run_formal_macro_full_wipe_chain() -> void:
+	var regression_definition = THEATER._regression_definition
+	var original_redcliff: Dictionary = Dictionary(
+		regression_definition.points[&"redcliff_city"]
+	).duplicate(true)
+	var overwhelming_redcliff := original_redcliff.duplicate(true)
+	overwhelming_redcliff.gate_hp = 0
+	overwhelming_redcliff.defender_count = 20
+	overwhelming_redcliff.defender_attack_per_member = 12
+	regression_definition.points[&"redcliff_city"] = overwhelming_redcliff
+	var wipe_scene := CITY_SCENE.instantiate() as Node2D
+	root.add_child(wipe_scene)
+	await process_frame
+	await process_frame
+	var wipe_city: Node = wipe_scene.get_node("ConstructionController")
+	wipe_city.set_process(false)
+	wipe_city.food = 120
+	var wipe_roster: Array[Dictionary] = wipe_city.get_formation_roster()
+	var first_leg: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
+	var station_order: Dictionary = wipe_city.commit_macro_march_from_city(
+		[StringName(wipe_roster[0].formation_id)],
+		&"northwatch_garrison", StringName(first_leg.route_id), Array(first_leg.points)
+	)
+	var station_army: Dictionary = Dictionary(station_order.get("army", {}))
+	var station_macro: Dictionary = Dictionary(station_army.get("macro_march", {}))
+	wipe_city.advance_macro_march_time(
+		StringName(station_army.get("army_id", &"")), StringName(station_macro.get("order_id", &"")),
+		0, int(station_macro.get("total_millis", 0))
+	)
+	var attack_route: Dictionary = THEATER.get_route(&"road.northwatch.redcliff")
+	var siege_order: Dictionary = wipe_city.commit_macro_march_from_station(
+		StringName(station_army.get("army_id", &"")), &"redcliff_city",
+		StringName(attack_route.route_id), Array(attack_route.points)
+	)
+	var siege_army: Dictionary = Dictionary(siege_order.get("army", {}))
+	var siege_macro: Dictionary = Dictionary(siege_army.get("macro_march", {}))
+	wipe_city.advance_macro_march_time(
+		StringName(siege_army.get("army_id", &"")), StringName(siege_macro.get("order_id", &"")),
+		0, int(siege_macro.get("total_millis", 0))
+	)
+	var army_id := StringName(siege_army.get("army_id", &""))
+	var food_before_handoff := int(wipe_city.get("food"))
+	var entered: bool = wipe_city.enter_macro_siege_wartime(army_id, &"redcliff_city")
+	await process_frame
+	await process_frame
+	var wipe_battle := wipe_city.get_formal_battle_scene() as C0BattleGraybox
+	if wipe_battle == null or not wipe_battle.start_battle():
+		_check(false, "全灭链正式 C0 实例可以激活")
+		regression_definition.points[&"redcliff_city"] = original_redcliff
+		wipe_scene.queue_free()
+		await process_frame
+		return
+	wipe_battle.tick_timer.stop()
+	var select_button := wipe_battle.get_node_or_null(
+		"UI/RootPanel/SquadControls/Squad1/SelectButton"
+	) as Button
+	var issued_advance := select_button != null and not select_button.disabled
+	if issued_advance:
+		select_button.emit_signal("pressed")
+		await process_frame
+		issued_advance = not wipe_battle.selected_advance_button.disabled
+		if issued_advance:
+			wipe_battle.selected_advance_button.emit_signal("pressed")
+			await process_frame
+	var pending_result: BattleResult
+	for _tick in range(BattleSession.MAX_BATTLE_TICKS + 2):
+		(wipe_battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+		await process_frame
+		if wipe_battle.coordinator.active_session != null:
+			pending_result = wipe_battle.coordinator.active_session.result
+		if pending_result != null:
+			break
+	var committed_result: Dictionary = wipe_battle.confirm_pending_result()
+	var repeated_result: Dictionary = wipe_battle.confirm_pending_result()
+	await process_frame
+	var closed_army: Dictionary = wipe_city.get_army_state(army_id)
+	var closed_macro: Dictionary = Dictionary(closed_army.get("macro_march", {}))
+	var remaining_formation_count := -1
+	for formation_value in Array(closed_macro.get("formation_snapshots", [])):
+		var formation: Dictionary = Dictionary(formation_value)
+		if StringName(formation.get("formation_id", &"")) == StringName(wipe_roster[0].formation_id):
+			remaining_formation_count = int(formation.get("member_count", -1))
+			break
+	var redcliff_state: Dictionary = wipe_city.get_macro_march_read_model().war_loop.cities_by_id.get(
+		&"redcliff_city", {}
+	)
+	_check(
+		entered
+			and issued_advance
+			and pending_result != null
+			and pending_result.outcome == BattleOutcome.Value.DEFEAT
+			and pending_result.survivor_count == 0
+			and not committed_result.is_empty()
+			and repeated_result == committed_result
+			and StringName(committed_result.get("army_id", &"")) == army_id
+			and StringName(closed_army.get("phase", &"")) == ArmyRegistry.PHASE_CLOSED
+			and StringName(closed_macro.get("phase", &"")) == ArmyRegistry.PHASE_CLOSED
+			and Dictionary(closed_army.get("units_by_definition_id", {})).is_empty()
+			and remaining_formation_count == 0
+			and StringName(redcliff_state.get("military_controller_faction_id", &"")) != &"player"
+			and wipe_city.get_macro_march_read_model().war_loop.active_siege.is_empty()
+			and int(wipe_city.get("food")) == food_before_handoff,
+		"宏观来源全灭关闭原军队和围城，不占城、不留空壳且不重复扣粮或回写"
+	)
+	regression_definition.points[&"redcliff_city"] = original_redcliff
+	wipe_battle.queue_free()
+	wipe_scene.queue_free()
 	await process_frame
 
 
