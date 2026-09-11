@@ -134,7 +134,10 @@ Repair controls are scoped to the selected squad's route. If that route has
 more than one damaged or destroyed facility, C0 exposes a local `switch repair
 target` action before any repair transaction is submitted. The selected target
 does not alter facility state or spend resources; the existing transaction
-still revalidates and repairs exactly that saved facility ID.
+still revalidates and repairs exactly that saved facility ID. The same selected
+living committed squad is bound as the repair crew, so the feedback and saved
+repair state identify who is working; an unavailable selected squad rejects
+the attempt before its repair cost can become durable.
 
 The independent defense recovery chain saves a side-route watch platform and
 barricade while both are constructing. On a separate-process restore, already

@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-12 - Explicit wartime repair crews
+
+- Made the selected C0 formation the explicit repair crew for a damaged,
+  destroyed, or interrupted wartime facility. The battle session now validates
+  that this committed squad is still living before `ConstructionController`
+  spends the repair transaction; a foreign or unavailable ID cannot silently
+  fall back to another squad.
+- Persisted the selected repair crew in the same facility record and included
+  it in the repair-start event and player feedback. This keeps repair staffing,
+  interrupted construction, and recovery in the existing battle snapshot
+  instead of creating a second engineering roster.
+- Added a focused lifecycle regression that rejects an unknown repair crew
+  without changing the facility, then verifies the explicit valid crew and
+  saved repair event. The broader formal defense, macro-handoff, and C0
+  regressions remain the integration gates.
+
 ## 2026-09-12 - Wartime construction detachments
 
 - Bound each temporary wartime facility to a real, existing committed combat

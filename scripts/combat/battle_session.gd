@@ -658,7 +658,13 @@ func _get_available_snapshot_construction_squad_id(snapshot_squads: Array) -> in
 func _is_construction_squad_available(record: Dictionary) -> bool:
 	if typeof(record.get("construction_squad_id", null)) != TYPE_INT:
 		return false
-	var assigned_squad_id := int(record.get("construction_squad_id", 0))
+	return _is_committed_squad_available(int(record.get("construction_squad_id", 0)))
+
+
+## A construction or repair crew is still one of this battle's committed
+## formations.  Keep this check separate from the facility record so the C0
+## selection can be validated before a repair spends its resource transaction.
+func _is_committed_squad_available(assigned_squad_id: int) -> bool:
 	if assigned_squad_id <= 0:
 		return false
 	for squad_value in squads:
@@ -736,12 +742,14 @@ func _apply_completed_wartime_facility(record: Dictionary, emit_event: bool) -> 
 		})
 
 
-func begin_wartime_facility_repair(facility_id: StringName) -> bool:
+func can_begin_wartime_facility_repair(
+	facility_id: StringName,
+	repair_squad_id: int = 0
+) -> bool:
 	if completed or facility_id == &"":
 		return false
-	var facilities: Array = Array(wartime_facility_state.get("facilities", [])).duplicate(true)
-	for index in facilities.size():
-		var record: Dictionary = Dictionary(facilities[index])
+	for record_value in Array(wartime_facility_state.get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
 		if StringName(record.get("facility_id", &"")) != facility_id:
 			continue
 		if StringName(record.get("phase", &"")) not in [
@@ -750,9 +758,34 @@ func begin_wartime_facility_repair(facility_id: StringName) -> bool:
 			FACILITY_PHASE_INTERRUPTED,
 		]:
 			return false
-		var replacement_squad_id := _get_available_construction_squad_id()
-		if replacement_squad_id <= 0:
-			return false
+		var selected_repair_squad_id := (
+			repair_squad_id
+			if repair_squad_id > 0
+			else _get_available_construction_squad_id()
+		)
+		return _is_committed_squad_available(selected_repair_squad_id)
+	return false
+
+
+func begin_wartime_facility_repair(
+	facility_id: StringName,
+	repair_squad_id: int = 0
+) -> bool:
+	if not can_begin_wartime_facility_repair(facility_id, repair_squad_id):
+		return false
+	var facilities: Array = Array(wartime_facility_state.get("facilities", [])).duplicate(true)
+	for index in facilities.size():
+		var record: Dictionary = Dictionary(facilities[index])
+		if StringName(record.get("facility_id", &"")) != facility_id:
+			continue
+		## A formal C0 repair must use its selected committed formation.  The
+		## zero default is retained only for restoring or exercising legacy
+		## saved-session records that predate the explicit repair selection.
+		var replacement_squad_id := (
+			repair_squad_id
+			if repair_squad_id > 0
+			else _get_available_construction_squad_id()
+		)
 		record.construction_squad_id = replacement_squad_id
 		record.phase = FACILITY_PHASE_REPAIRING
 		record.progress_ticks = 0
@@ -761,7 +794,8 @@ func begin_wartime_facility_repair(facility_id: StringName) -> bool:
 		wartime_facility_state.facilities = facilities
 		last_tick_facility_events.append({
 			"kind": record.kind, "route_id": record.route_id,
-			"event": &"REPAIR_STARTED", "tick": current_tick,
+			"event": &"REPAIR_STARTED", "squad_id": replacement_squad_id,
+			"tick": current_tick,
 		})
 		return true
 	return false

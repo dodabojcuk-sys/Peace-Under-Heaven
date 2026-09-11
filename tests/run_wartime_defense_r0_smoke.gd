@@ -416,6 +416,62 @@ func _run() -> void:
 				== BattleSession.FACILITY_PHASE_INTERRUPTED,
 		"施工分队退出会中断未完工设施，并在活动战时快照恢复后保留真实分队身份"
 	)
+	## Repair must bind the player-selected, living committed formation before
+	## its resource transaction.  A foreign id is not allowed to fall back to
+	## the lowest-numbered squad, while an explicit valid selection persists in
+	## the same facility record and repair-start event.
+	var repair_selection_probe := BattleSession.new(battle.request)
+	var repair_selection_record := _facility_by_kind(
+		repair_selection_probe, WartimeFacilityPlan.KIND_BARRICADE
+	)
+	var repair_selection_id := StringName(repair_selection_record.get("facility_id", &""))
+	var repair_selection_builder := int(repair_selection_record.get("construction_squad_id", 0))
+	var repair_selection_state: Dictionary = repair_selection_probe.get_wartime_facility_state()
+	var repair_selection_facilities: Array = Array(
+		repair_selection_state.get("facilities", [])
+	).duplicate(true)
+	for repair_index in repair_selection_facilities.size():
+		var repair_record: Dictionary = Dictionary(repair_selection_facilities[repair_index])
+		if StringName(repair_record.get("facility_id", &"")) != repair_selection_id:
+			continue
+		repair_record.phase = BattleSession.FACILITY_PHASE_DAMAGED
+		repair_record.durability = maxi(int(repair_record.get("max_durability", 1)) - 1, 1)
+		repair_selection_facilities[repair_index] = repair_record
+		break
+	repair_selection_probe.wartime_facility_state.facilities = repair_selection_facilities
+	var foreign_repair_rejected := (
+		not repair_selection_probe.can_begin_wartime_facility_repair(repair_selection_id, 999)
+		and not repair_selection_probe.begin_wartime_facility_repair(repair_selection_id, 999)
+	)
+	var untouched_repair_record := _facility_by_kind(
+		repair_selection_probe, WartimeFacilityPlan.KIND_BARRICADE
+	)
+	var selected_repair_started := repair_selection_probe.begin_wartime_facility_repair(
+		repair_selection_id, repair_selection_builder
+	)
+	var selected_repair_record := _facility_by_kind(
+		repair_selection_probe, WartimeFacilityPlan.KIND_BARRICADE
+	)
+	var selected_repair_event := repair_selection_probe.get_last_tick_facility_events().any(
+		func(event: Dictionary) -> bool:
+			return (
+				StringName(event.get("event", &"")) == &"REPAIR_STARTED"
+				and int(event.get("squad_id", 0)) == repair_selection_builder
+			)
+	)
+	_check(
+		repair_selection_builder > 0
+			and foreign_repair_rejected
+			and StringName(untouched_repair_record.get("phase", &""))
+				== BattleSession.FACILITY_PHASE_DAMAGED
+			and selected_repair_started
+			and StringName(selected_repair_record.get("phase", &""))
+				== BattleSession.FACILITY_PHASE_REPAIRING
+			and int(selected_repair_record.get("construction_squad_id", 0))
+				== repair_selection_builder
+			and selected_repair_event,
+		"维修只接受玩家选定的真实存活编队；无效编队不会暗中回退或改变工事"
+	)
 	var target_hp_before := int(objective.get("protect_target_hp", 0))
 	battle.step_battle_for_test(4)
 	var watched_route: Dictionary = session.get_route_state(deployment_after_route)

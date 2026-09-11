@@ -1468,6 +1468,14 @@ func _repair_damaged_wartime_facility() -> void:
 	var facility_kind := StringName(target.get("kind", &""))
 	if facility_id == &"":
 		return
+	if not coordinator.active_session.can_begin_wartime_facility_repair(
+		facility_id, _selected_squad_id
+	):
+		var crew_error := "所选编队无法维修该工事"
+		_append_recent_action(crew_error)
+		_refresh_battle_ui()
+		status_label.text = crew_error
+		return
 	var before_session := coordinator.active_session.get_snapshot()
 	var cost_result: Dictionary = city_controller.commit_wartime_facility_repair_cost(
 		request.transaction_id, facility_kind
@@ -1479,7 +1487,9 @@ func _repair_damaged_wartime_facility() -> void:
 		status_label.text = cost_error
 		return
 	if (
-		not coordinator.active_session.begin_wartime_facility_repair(facility_id)
+		not coordinator.active_session.begin_wartime_facility_repair(
+			facility_id, _selected_squad_id
+		)
 		or not _checkpoint_active_battle_session()
 	):
 		coordinator.active_session.restore_snapshot(before_session)
@@ -1490,7 +1500,11 @@ func _repair_damaged_wartime_facility() -> void:
 		_refresh_battle_ui()
 		status_label.text = rollback_error
 		return
-	_append_recent_action("%s开始维修" % _get_facility_name(facility_kind))
+	_append_recent_action(
+		"%s由%s开始维修" % [
+			_get_facility_name(facility_kind), _get_committed_squad_name(_selected_squad_id),
+		]
+	)
 	_refresh_battle_ui()
 
 

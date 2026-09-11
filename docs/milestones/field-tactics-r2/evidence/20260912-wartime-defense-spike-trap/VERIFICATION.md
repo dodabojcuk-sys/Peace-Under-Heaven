@@ -82,3 +82,19 @@ wood, the saved plan, or the battle request.
 The same regression upgrades a schema-1 plan without a construction identity
 to schema 2, then verifies first active-session construction binds the legacy
 facility to a real committed squad exactly once.
+
+## Explicit repair-crew regression (same candidate)
+
+```text
+Godot --headless --path . --script tests/run_wartime_defense_r0_smoke.gd
+PASS: 维修只接受玩家选定的真实存活编队；无效编队不会暗中回退或改变工事
+WARTIME_DEFENSE_R0_SMOKE PASS
+```
+
+The C0 repair action now asks the active session whether its currently selected
+committed squad can perform the repair **before** submitting a wood transaction.
+The focused lifecycle check rejects foreign squad `999` without changing the
+damaged facility, then begins the repair with the explicit living squad and
+checks both the saved `construction_squad_id` and `REPAIR_STARTED.squad_id`.
+This is a headless authority/lifecycle check; the existing GUI captures show
+the repair control but do not yet isolate a distinct selected-repair-crew frame.
