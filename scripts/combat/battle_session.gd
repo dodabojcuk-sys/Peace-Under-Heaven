@@ -24,12 +24,16 @@ const SIEGE_RAM_GATE_DAMAGE := 160
 ## counter or a second casualty authority.
 const ARROW_TOWER_DAMAGE_PER_VOLLEY := 24
 const ARROW_TOWER_ATTACK_INTERVAL_TICKS := 4
+## Barricades reduce the ordinary route damage intent before the shared squad
+## HP writer applies it; they never introduce a parallel casualty system.
+const BARRICADE_INCOMING_DAMAGE_BASIS_POINTS := 6500
 const FACILITY_PHASE_CONSTRUCTING := &"CONSTRUCTING"
 const FACILITY_PHASE_ACTIVE := &"ACTIVE"
 const FACILITY_BUILD_TICKS := {
 	WartimeFacilityPlan.KIND_WATCH_PLATFORM: 2,
 	WartimeFacilityPlan.KIND_SIEGE_RAM: 4,
 	WartimeFacilityPlan.KIND_ARROW_TOWER: 4,
+	WartimeFacilityPlan.KIND_BARRICADE: 3,
 }
 const SNAPSHOT_SCHEMA_VERSION := 2
 const SNAPSHOT_KEYS := [
@@ -208,6 +212,9 @@ func get_wartime_facility_state() -> Dictionary:
 			projection["arrow_tower_route_id"] = route_id
 			projection["arrow_tower_damage_per_volley"] = ARROW_TOWER_DAMAGE_PER_VOLLEY
 			projection["arrow_tower_attack_interval_ticks"] = ARROW_TOWER_ATTACK_INTERVAL_TICKS
+		elif kind == WartimeFacilityPlan.KIND_BARRICADE:
+			projection["barricade_route_id"] = route_id
+			projection["barricade_incoming_damage_basis_points"] = BARRICADE_INCOMING_DAMAGE_BASIS_POINTS
 	return projection
 
 
@@ -757,6 +764,10 @@ func _build_damage_intents() -> Dictionary:
 			_alive_members(int(route.enemy_total_hp)),
 			incoming_basis_points
 		)
+		damage = _positive_integer_divide(
+			damage * _get_wartime_facility_incoming_damage_basis_points(route_id),
+			BASIS_POINTS
+		)
 		player_damage[int(target.squad_id)] = damage
 	return {
 		"gate_damage": gate_damage,
@@ -793,6 +804,18 @@ func _apply_arrow_tower_damage_intents(enemy_damage: Dictionary) -> void:
 		"damage": damage,
 		"tick": current_tick,
 	})
+
+
+func _get_wartime_facility_incoming_damage_basis_points(route_id: StringName) -> int:
+	for record_value in Array(wartime_facility_state.get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if (
+			StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE
+			and StringName(record.get("phase", &"")) == FACILITY_PHASE_ACTIVE
+			and StringName(record.get("route_id", &"")) == route_id
+		):
+			return BARRICADE_INCOMING_DAMAGE_BASIS_POINTS
+	return BASIS_POINTS
 
 
 func _apply_damage_intents(intents: Dictionary) -> void:

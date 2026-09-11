@@ -41,6 +41,7 @@ func _run() -> void:
 	var watch_button := plan_panel.get_node("WatchButton") as Button
 	var ram_button := plan_panel.get_node("RamButton") as Button
 	var arrow_tower_button := plan_panel.get_node("ArrowTowerButton") as Button
+	var barricade_button := plan_panel.get_node("BarricadeButton") as Button
 	var confirm_button := plan_panel.get_node("ConfirmButton") as Button
 	_check(
 		plan_panel.visible and confirm_button.disabled,
@@ -49,13 +50,15 @@ func _run() -> void:
 	watch_button.emit_signal("pressed")
 	ram_button.emit_signal("pressed")
 	arrow_tower_button.emit_signal("pressed")
+	barricade_button.emit_signal("pressed")
 	await process_frame
 	_check(
 		watch_button.text.contains("已选")
 			and ram_button.text.contains("已选")
 			and arrow_tower_button.text.contains("已选")
+			and barricade_button.text.contains("已选")
 			and not confirm_button.disabled,
-		"瞭望台、攻城槌和箭塔在确认前仅修改战前草稿"
+		"瞭望台、攻城槌、箭塔和拒马在确认前仅修改战前草稿"
 	)
 	var before_confirm: Dictionary = city.export_v5_campaign_snapshot()
 	confirm_button.emit_signal("pressed")
@@ -63,8 +66,8 @@ func _run() -> void:
 	var attempt: Dictionary = city.get_expedition_attempt()
 	var plan: Dictionary = attempt.wartime_facility_plan
 	_check(
-		Array(plan.facilities).size() == 3
-			and city.wood == wood_before - 24
+		Array(plan.facilities).size() == 4
+			and city.wood == wood_before - 29
 			and city.get_building_count() == building_count_before,
 		"确认工事只扣一次木材并写入出征尝试，不污染常态内城 placement"
 	)
@@ -74,7 +77,7 @@ func _run() -> void:
 	_check(
 		not bool(duplicate.get("success", false))
 			and city.export_v5_campaign_snapshot() != before_confirm
-		and city.wood == wood_before - 24,
+		and city.wood == wood_before - 29,
 		"重复确认被拒绝，资源不重复扣除"
 	)
 	var snapshot: Dictionary = city.export_v5_campaign_snapshot()
@@ -126,6 +129,19 @@ func _run() -> void:
 			and StringName(tower_events[0].get("kind", &"")) == WartimeFacilityPlan.KIND_ARROW_TOWER
 			and int(tower_events[0].get("damage", 0)) == BattleSession.ARROW_TOWER_DAMAGE_PER_VOLLEY,
 		"箭塔表现只消费已提交战斗刻的真实齐射事实，不独立计算伤亡"
+	)
+	var session := battle.coordinator.active_session
+	var front_distance := int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).distance_fixed)
+	session.squads[0].position_fixed = front_distance
+	var hp_before_barricade := int(session.squads[0].total_hp)
+	var enemy_members := int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).enemy_initial_members)
+	var raw_enemy_damage := session._calculate_enemy_damage(enemy_members, BattleSession.BASIS_POINTS)
+	battle.step_battle_for_test(4)
+	_check(
+		int(session.squads[0].total_hp)
+			== hp_before_barricade - (raw_enemy_damage * BattleSession.BARRICADE_INCOMING_DAMAGE_BASIS_POINTS / BattleSession.BASIS_POINTS)
+			and StringName(effects.get("barricade_route_id", &"")) == CommittedForceSnapshot.FRONT_ROUTE,
+		"拒马完工后通过同一敌军伤害意图减少该路线真实战损"
 	)
 	attempt = city.get_expedition_attempt()
 	var active_session_snapshot: Dictionary = attempt.battle_session_snapshot

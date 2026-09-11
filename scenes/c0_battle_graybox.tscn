@@ -392,6 +392,13 @@ offset_right = 414.0
 offset_bottom = 78.0
 text = "箭塔 · 木材 10"
 
+[node name="BarricadeButton" type="Button" parent="UI/RootPanel/WartimePlanPanel"]
+offset_left = 14.0
+offset_top = 82.0
+offset_right = 146.0
+offset_bottom = 122.0
+text = "拒马 · 木材 5"
+
 [node name="ConfirmButton" type="Button" parent="UI/RootPanel/WartimePlanPanel"]
 offset_left = 294.0
 offset_top = 82.0

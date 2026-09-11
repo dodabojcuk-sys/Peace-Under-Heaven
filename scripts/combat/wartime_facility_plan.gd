@@ -8,6 +8,7 @@ const SCHEMA_VERSION := 1
 const KIND_WATCH_PLATFORM := &"WATCH_PLATFORM"
 const KIND_SIEGE_RAM := &"SIEGE_RAM"
 const KIND_ARROW_TOWER := &"ARROW_TOWER"
+const KIND_BARRICADE := &"BARRICADE"
 const FACILITY_KEYS := ["facility_id", "kind", "route_id"]
 const SNAPSHOT_KEYS := ["schema_version", "facilities"]
 
@@ -15,6 +16,7 @@ const FACILITY_COSTS := {
 	KIND_WATCH_PLATFORM: {&"wood": 6},
 	KIND_SIEGE_RAM: {&"wood": 8},
 	KIND_ARROW_TOWER: {&"wood": 10},
+	KIND_BARRICADE: {&"wood": 5},
 }
 
 

@@ -59,6 +59,9 @@ const DEBUG_PLAYER_COUNT := 50
 @onready var wartime_arrow_tower_button: Button = (
 	$UI/RootPanel/WartimePlanPanel/ArrowTowerButton
 )
+@onready var wartime_barricade_button: Button = (
+	$UI/RootPanel/WartimePlanPanel/BarricadeButton
+)
 @onready var wartime_plan_confirm_button: Button = (
 	$UI/RootPanel/WartimePlanPanel/ConfirmButton
 )
@@ -165,6 +168,9 @@ func _ready() -> void:
 	)
 	wartime_arrow_tower_button.pressed.connect(
 		_toggle_wartime_facility.bind(WartimeFacilityPlan.KIND_ARROW_TOWER)
+	)
+	wartime_barricade_button.pressed.connect(
+		_toggle_wartime_facility.bind(WartimeFacilityPlan.KIND_BARRICADE)
 	)
 	wartime_plan_confirm_button.pressed.connect(_confirm_wartime_facility_plan)
 	exit_button.pressed.connect(request_exit_or_return)
@@ -845,6 +851,8 @@ func _get_facility_name(kind: StringName) -> String:
 			return "攻城槌"
 		WartimeFacilityPlan.KIND_ARROW_TOWER:
 			return "箭塔"
+		WartimeFacilityPlan.KIND_BARRICADE:
+			return "拒马"
 	return "战时工事"
 
 
@@ -1037,6 +1045,9 @@ func _refresh_wartime_plan_ui() -> void:
 	var has_arrow_tower := WartimeFacilityPlan.has_kind(
 		pending_plan, WartimeFacilityPlan.KIND_ARROW_TOWER
 	)
+	var has_barricade := WartimeFacilityPlan.has_kind(
+		pending_plan, WartimeFacilityPlan.KIND_BARRICADE
+	)
 	wartime_watch_button.text = (
 		"瞭望台 · 已选" if has_watch else "瞭望台 · 木材 6"
 	)
@@ -1046,9 +1057,13 @@ func _refresh_wartime_plan_ui() -> void:
 	wartime_arrow_tower_button.text = (
 		"箭塔 · 已选" if has_arrow_tower else "箭塔 · 木材 10"
 	)
+	wartime_barricade_button.text = (
+		"拒马 · 已选" if has_barricade else "拒马 · 木材 5"
+	)
 	wartime_watch_button.disabled = is_committed
 	wartime_ram_button.disabled = is_committed
 	wartime_arrow_tower_button.disabled = is_committed
+	wartime_barricade_button.disabled = is_committed
 	wartime_plan_confirm_button.visible = not is_committed
 	wartime_plan_confirm_button.disabled = (
 		Array(pending_plan.get("facilities", [])).is_empty()

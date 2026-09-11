@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-11 - Wartime barricade R0
+
+- Added a visible C0 barricade plan for 5 wood. It spends once with the
+  existing battle plan transaction, constructs for three battle ticks, then
+  reduces only its selected gate approach's existing enemy damage intent to
+  65%; it does not create a second casualty or persistence owner.
+- Extended the formal C0 smoke to prove the plan remains pre-confirm only,
+  the completed barricade changes real squad HP loss, and session restore
+  preserves the same authoritative facility state.
+
 ## 2026-09-11 - Macro siege facility planning and pending-result migration
 
 - A reserved macro siege can now use the formal C0 wartime-facility controls.

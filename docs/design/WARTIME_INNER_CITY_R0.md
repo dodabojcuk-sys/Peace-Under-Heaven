@@ -34,6 +34,7 @@ immutable.
 | Watch platform | 6 wood | After 2 battle ticks of construction, marks detailed enemy observation as available to the battle presentation | This battle instance only |
 | Siege ram | 8 wood | After 4 battle ticks of construction, applies 160 real damage to its selected gate | This battle instance only |
 | Arrow tower | 10 wood | After 4 battle ticks of construction, targets the selected defended gate approach every 4 battle ticks (1 second) and contributes 24 damage to the existing enemy-HP intent | This battle instance only |
+| Barricade | 5 wood | After 3 battle ticks of construction, reduces the selected route's ordinary incoming enemy damage to 65% | This battle instance only |
 
 Confirmed works enter `CONSTRUCTING` first. The saved battle session owns their
 tick progress; only `ACTIVE` works supply their stated ability. This prevents a
@@ -46,6 +47,11 @@ battle snapshot as all other route damage, and cannot double-apply casualties
 after a restore. The C0 presentation reads the resulting committed-tick event
 only after its checkpoint succeeds, adds a short route/damage notice, and
 never restores that transient notification as a new volley after reload.
+
+The barricade uses the same single route-damage intent: after it is actually
+complete, the selected route's enemy hit is multiplied by 6500 basis points
+before the existing squad-HP writer applies it. It does not hide or rewrite
+casualties, introduce a second combat loop, or affect another route.
 
 The current C0 scene is an assault, not a city-defence simulation. These
 facilities therefore are siege preparation, not an assertion that the game now
