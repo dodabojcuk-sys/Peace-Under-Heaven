@@ -13,6 +13,10 @@
 - Updated formal macro handoff and independent A-to-E disk recovery coverage
   to construct the ram and tower, prove their real gate/enemy effects, and
   preserve in-progress and completed work across process boundaries.
+- Added an isolated non-headless macro-siege graphical runner and four
+  final-candidate screenshots. It checks the source-specific panel and action
+  rail at the three supported viewport sizes through GUI events; it is not
+  native-mouse acceptance evidence.
 
 ## 2026-09-12 - Readable wartime defense action rail
 

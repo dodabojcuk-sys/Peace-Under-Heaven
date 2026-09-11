@@ -30,6 +30,12 @@ WARTIME_INNER_CITY_R0_SMOKE PASS
 
 Godot --headless --path . --script tests/run_wartime_defense_r0_smoke.gd
 WARTIME_DEFENSE_R0_SMOKE PASS
+
+Godot --path . --rendering-driver opengl3 \
+  --script tests/run_macro_siege_wartime_graphical_smoke.gd \
+  -- --txwzs-v5-save-dir=<isolated-dir> \
+     --txwzs-macro-siege-evidence-dir=<this-directory>
+MACRO_SIEGE_WARTIME_GRAPHICAL_SMOKE PASS assertions=6
 ```
 
 The macro smoke enters C0 through the real macro siege controller path and
@@ -40,9 +46,13 @@ processes against one isolated V5 directory: they save construction, restore
 it, complete the ram, restore the active battle, publish a result, and apply
 it once.
 
+The four `macro-siege-*.png` files are screenshots from the final non-headless
+candidate: initial source-specific plan, selected ram/tower plan,
+construction, and completed work. The graphical runner also checks the action
+rail against the actual battlefield control rectangle at 1152x648, 1280x720,
+and 1920x1080.
+
 ## Evidence boundary
 
 These are engine GUI/button and controller integration checks, not native
-macOS mouse-play evidence. The non-headless defense graphical smoke remains a
-separate rendering check; this macro checkpoint does not claim a new visual
-capture or player acceptance.
+macOS mouse-play evidence. Player acceptance remains open.
