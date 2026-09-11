@@ -2936,6 +2936,14 @@ func commit_wartime_facility_plan(
 	)
 	if not bool(plan_validation.get("valid", false)):
 		return _expedition_failure(&"BATTLE_PLAN_INVALID", str(plan_validation.get("error", "战时布防非法")))
+	plan_validation = WartimeFacilityPlan.validate_for_committed_squads(
+		Dictionary(plan_validation.get("snapshot", {})),
+		Array(
+			Dictionary(_expedition_attempt.get("committed_force_snapshot", {})).get("squads", [])
+		)
+	)
+	if not bool(plan_validation.get("valid", false)):
+		return _expedition_failure(&"BATTLE_PLAN_CREW", str(plan_validation.get("error", "施工分队非法")))
 	var normalized_plan: Dictionary = Dictionary(plan_validation.snapshot).duplicate(true)
 	if Array(normalized_plan.facilities).is_empty():
 		return _expedition_failure(&"BATTLE_PLAN_EMPTY", "请至少选择一项战时工事")
@@ -7749,9 +7757,21 @@ func commit_macro_siege_wartime_facility_plan(
 		or StringName(handoff.get("phase", &"")) != WarLoopState.WARTIME_HANDOFF_RESERVED
 	):
 		return _macro_failure(&"WARTIME_PLAN_STATE", "当前围城不能修改战时工事")
-	var plan_validation := WartimeFacilityPlan.validate_snapshot(plan_snapshot)
+	var plan_validation := WartimeFacilityPlan.validate_for_source(
+		plan_snapshot, BattleRequest.SOURCE_MACRO_SIEGE
+	)
 	if not bool(plan_validation.get("valid", false)):
 		return _macro_failure(&"WARTIME_PLAN_INVALID", str(plan_validation.get("error", "战时工事非法")))
+	var construction_request := _build_macro_siege_battle_request_from_snapshot(
+		transaction_id, Dictionary(handoff.get("battle_request_snapshot", {}))
+	)
+	if construction_request == null:
+		return _macro_failure(&"WARTIME_PLAN_REQUEST", "围城战时请求缺失，无法核对施工分队")
+	plan_validation = WartimeFacilityPlan.validate_for_committed_squads(
+		Dictionary(plan_validation.get("snapshot", {})), construction_request.committed_force.squads
+	)
+	if not bool(plan_validation.get("valid", false)):
+		return _macro_failure(&"WARTIME_PLAN_CREW", str(plan_validation.get("error", "施工分队非法")))
 	var normalized_plan: Dictionary = Dictionary(plan_validation.snapshot).duplicate(true)
 	if Array(normalized_plan.get("facilities", [])).is_empty():
 		return _macro_failure(&"WARTIME_PLAN_EMPTY", "请至少选择一项战时工事")

@@ -212,6 +212,14 @@ permanent city buildings.
 
 ## Persistence
 
+Plan schema 2 adds `construction_squad_id` to each newly confirmed facility:
+the visible selected C0 squad becomes the immutable construction detachment.
+The Controller rechecks that identity against the frozen committed roster
+before spending construction resources, so a forged or stale squad ID cannot
+create a plan. Plan schema 1 remains readable for historical requests; its
+missing identity is bound once when the active session is constructed rather
+than retroactively spending or replacing a participant.
+
 Schema 9 adds `wartime_facility_plan` and `battle_session_snapshot` to an
 expedition attempt. Schema 7 migrates to an empty plan; schema 8 migrates to an
 empty session snapshot. Schema 11 adds `terminal_result_snapshot` for the

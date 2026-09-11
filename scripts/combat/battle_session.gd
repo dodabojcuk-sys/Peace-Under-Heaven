@@ -598,7 +598,11 @@ func _initialize_wartime_facilities(legacy_active := false) -> void:
 			"facility_id": StringName(facility.get("facility_id", &"")),
 			"kind": kind,
 			"route_id": route_id,
-			"construction_squad_id": _get_available_construction_squad_id(),
+			"construction_squad_id": (
+				int(facility.get("construction_squad_id", 0))
+				if int(facility.get("construction_squad_id", 0)) > 0
+				else _get_available_construction_squad_id()
+			),
 			"phase": FACILITY_PHASE_ACTIVE if legacy_active else FACILITY_PHASE_CONSTRUCTING,
 			"progress_ticks": int(FACILITY_BUILD_TICKS.get(kind, 0)) if legacy_active else 0,
 			"required_ticks": int(FACILITY_BUILD_TICKS.get(kind, 0)),

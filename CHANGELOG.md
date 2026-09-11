@@ -14,6 +14,10 @@
 - Added C0 feedback naming the lost construction squad and a focused regression
   for interruption plus active-snapshot restoration. Existing independent
   defense A-I recovery chain remains a real isolated-process regression gate.
+- Follow-up: new formal facility plans now freeze the visibly selected C0 squad
+  as their construction detachment (plan schema 2); both regular and macro
+  Controller submissions reject IDs outside the frozen committed roster before
+  any resource debit. Historical plan schema 1 remains compatible.
 
 ## 2026-09-12 - Route-triggered wartime spike traps
 

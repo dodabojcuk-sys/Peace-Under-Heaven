@@ -111,6 +111,25 @@ func _run() -> void:
 			and int(city.get("wood")) == wood_before_plan,
 		"守城界面隐藏攻城槌，权威提交也拒绝绕过界面的攻城设施且不扣木材"
 	)
+	var foreign_crew_plan := WartimeFacilityPlan.empty_snapshot()
+	foreign_crew_plan.facilities.append(WartimeFacilityPlan.make_facility(
+		WartimeFacilityPlan.KIND_BARRICADE,
+		CommittedForceSnapshot.SIDE_ROUTE,
+		999
+	))
+	var rejected_foreign_crew: Dictionary = city.commit_wartime_facility_plan(
+		StringName(city.get_expedition_attempt().attempt_id), foreign_crew_plan
+	)
+	_check(
+		not bool(rejected_foreign_crew.get("success", false))
+			and int(city.get("wood")) == wood_before_plan
+			and Array(
+				Dictionary(city.get_expedition_attempt().get("wartime_facility_plan", {})).get(
+					"facilities", []
+				)
+			).is_empty(),
+		"权威工事提交拒绝不属于本战斗的施工分队且不扣资源或写入计划"
+	)
 	watch_button.emit_signal("pressed")
 	arrow_button.emit_signal("pressed")
 	barricade_button.emit_signal("pressed")
@@ -126,12 +145,21 @@ func _run() -> void:
 	await process_frame
 	var committed_plan: Dictionary = battle.request.wartime_facility_plan
 	var committed_plan_routes: Array[StringName] = []
+	var committed_plan_construction_squad_ids: Array[int] = []
 	for facility_value in Array(committed_plan.get("facilities", [])):
-		committed_plan_routes.append(StringName(Dictionary(facility_value).get("route_id", &"")))
+		var committed_facility: Dictionary = Dictionary(facility_value)
+		committed_plan_routes.append(StringName(committed_facility.get("route_id", &"")))
+		committed_plan_construction_squad_ids.append(
+			int(committed_facility.get("construction_squad_id", 0))
+		)
+	var committed_plan_uses_selected_squad := committed_plan_construction_squad_ids.all(
+		func(squad_id: int) -> bool: return squad_id == 1
+	)
 	_check(
 		committed_plan_routes.size() == 3
-			and committed_plan_routes.all(func(route_id: StringName) -> bool: return route_id == deployment_after_route),
-		"可见工事草稿与确认计划均绑定玩家当前选定的守城部署路线"
+			and committed_plan_routes.all(func(route_id: StringName) -> bool: return route_id == deployment_after_route)
+			and committed_plan_uses_selected_squad,
+		"可见工事草稿与确认计划均绑定玩家当前选定的守城部署路线和施工分队"
 	)
 	## A work is owned by its real approach, not globally by its display kind.
 	## This isolated session uses the same frozen request facts and battle clock

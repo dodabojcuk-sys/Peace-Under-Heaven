@@ -74,3 +74,8 @@ the saved `INTERRUPTED` record and `CONSTRUCTION_CREW_LOST` event, then restores
 the same record. The graphical capture above still covers the established
 enemy-arrival interruption; it does not claim native-mouse proof for the new
 crew-loss message.
+
+The same formal C0 plan regression asserts all three visibly selected defense
+works preserve squad `1` as their construction detachment. A direct submission
+using uncommitted squad `999` is rejected by the Controller before it changes
+wood, the saved plan, or the battle request.

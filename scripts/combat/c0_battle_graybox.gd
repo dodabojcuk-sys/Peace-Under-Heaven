@@ -1222,7 +1222,7 @@ func _toggle_wartime_facility(kind: StringName) -> void:
 		remaining.append(facility)
 	if not removed:
 		remaining.append(WartimeFacilityPlan.make_facility(
-			kind, _selected_deployment_route()
+			kind, _selected_deployment_route(), _selected_squad_id
 		))
 	_pending_wartime_facility_plan = {
 		"schema_version": WartimeFacilityPlan.SCHEMA_VERSION,
