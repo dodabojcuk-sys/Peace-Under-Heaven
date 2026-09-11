@@ -191,6 +191,73 @@ func get_last_tick_facility_events() -> Array[Dictionary]:
 	return last_tick_facility_events.duplicate(true)
 
 
+## A macro siege may arrive with partial HP even though its formation roster is
+## still expressed in whole members. Distribute that already-authoritative HP
+## over the stable squad order before the first C0 tick; later restores use the
+## ordinary live-session snapshot and therefore do not recalculate it.
+func apply_macro_siege_start_state(start_state: Dictionary) -> bool:
+	if request == null or completed:
+		return false
+	if (
+		typeof(start_state.get("attacker_total_hp", null)) != TYPE_INT
+		or typeof(start_state.get("defender_total_hp", null)) != TYPE_INT
+		or typeof(start_state.get("gate_hp", null)) != TYPE_INT
+		or int(start_state.attacker_total_hp) < 0
+		or int(start_state.defender_total_hp) < 0
+		or int(start_state.gate_hp) < 0
+	):
+		return false
+	var remaining_attacker := int(start_state.attacker_total_hp)
+	for index in squads.size():
+		var squad: Dictionary = squads[index]
+		var capacity := int(squad.initial_members) * request.committed_force.hp_per_member
+		var assigned := mini(capacity, remaining_attacker)
+		squad.total_hp = assigned
+		squads[index] = squad
+		remaining_attacker -= assigned
+	if remaining_attacker != 0:
+		return false
+	var front: Dictionary = Dictionary(routes.get(CommittedForceSnapshot.FRONT_ROUTE, {}))
+	if front.is_empty() or int(start_state.gate_hp) > int(front.gate_initial_hp):
+		return false
+	front.enemy_total_hp = int(start_state.defender_total_hp)
+	front.gate_hp = int(start_state.gate_hp)
+	routes[CommittedForceSnapshot.FRONT_ROUTE] = front
+	return true
+
+
+## The terminal macro state is separate from rounded member casualties.  It is
+## committed beside the terminal result so a retreat preserves partial squad,
+## defender and gate damage instead of reconstructing them from head counts.
+func get_macro_siege_terminal_state() -> Dictionary:
+	if request == null:
+		return {}
+	var attacker_total_hp := 0
+	for squad_value in squads:
+		if not squad_value is Dictionary:
+			return {}
+		var squad: Dictionary = squad_value
+		var total_hp = squad.get("total_hp", null)
+		if typeof(total_hp) != TYPE_INT or int(total_hp) < 0:
+			return {}
+		attacker_total_hp += int(total_hp)
+	var front: Dictionary = Dictionary(routes.get(CommittedForceSnapshot.FRONT_ROUTE, {}))
+	if front.is_empty():
+		return {}
+	var defender_total_hp = front.get("enemy_total_hp", null)
+	var gate_hp = front.get("gate_hp", null)
+	if (
+		typeof(defender_total_hp) != TYPE_INT or int(defender_total_hp) < 0
+		or typeof(gate_hp) != TYPE_INT or int(gate_hp) < 0
+	):
+		return {}
+	return {
+		"attacker_total_hp": attacker_total_hp,
+		"defender_total_hp": int(defender_total_hp),
+		"gate_hp": int(gate_hp),
+	}
+
+
 ## Only authoritative simulation facts are persisted.  The request itself is
 ## stored by the city attempt; this snapshot never contains scene nodes,
 ## animation state or UI selection.

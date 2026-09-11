@@ -2,7 +2,7 @@ class_name WarLoopState
 extends RefCounted
 
 
-const SCHEMA_VERSION := 5
+const SCHEMA_VERSION := 6
 const PHASE_IDLE := &"IDLE"
 const PHASE_SIEGING := &"SIEGING"
 const PHASE_OCCUPIED := &"OCCUPIED"
@@ -293,11 +293,16 @@ func _write_siege(city_id: StringName, siege: Dictionary) -> void:
 		parallel_sieges_by_city[city_id] = siege.duplicate(true)
 
 
-func begin_wartime_handoff(city_id: StringName, transaction_id: StringName) -> Dictionary:
+func begin_wartime_handoff(
+	city_id: StringName,
+	transaction_id: StringName,
+	battle_request_snapshot: Dictionary
+) -> Dictionary:
 	var siege := get_siege(city_id)
 	if (
 		siege.is_empty()
 		or transaction_id == &""
+		or battle_request_snapshot.is_empty()
 		or StringName(siege.get("phase", &"")) != PHASE_SIEGING
 		or not Dictionary(siege.get("wartime_handoff", {})).is_empty()
 	):
@@ -308,6 +313,8 @@ func begin_wartime_handoff(city_id: StringName, transaction_id: StringName) -> D
 		"result_id": &"",
 		"battle_session_snapshot": {},
 		"result_authority_snapshot": {},
+		"battle_request_snapshot": battle_request_snapshot.duplicate(true),
+		"terminal_combat_state": {},
 	}
 	_write_siege(city_id, siege)
 	return siege.duplicate(true)
@@ -347,19 +354,45 @@ func set_wartime_handoff_phase(
 func mark_wartime_handoff_result_pending(
 	city_id: StringName,
 	transaction_id: StringName,
-	result_authority_snapshot: Dictionary
+	result_authority_snapshot: Dictionary,
+	terminal_combat_state: Dictionary
 ) -> Dictionary:
 	var siege := get_siege(city_id)
 	var handoff: Dictionary = Dictionary(siege.get("wartime_handoff", {}))
 	if (
 		siege.is_empty()
 		or result_authority_snapshot.is_empty()
+		or terminal_combat_state.is_empty()
 		or StringName(handoff.get("transaction_id", &"")) != transaction_id
 		or StringName(handoff.get("phase", &"")) != WARTIME_HANDOFF_ACTIVE
 	):
 		return {}
 	handoff.phase = WARTIME_HANDOFF_RESULT_PENDING
 	handoff.result_authority_snapshot = result_authority_snapshot.duplicate(true)
+	handoff.terminal_combat_state = terminal_combat_state.duplicate(true)
+	siege.wartime_handoff = handoff
+	_write_siege(city_id, siege)
+	return siege.duplicate(true)
+
+
+## Schema-five handoffs were created before their immutable request had a
+## dedicated persisted home.  Existing active sessions may materialize that
+## missing fact once during migration; all newly-created handoffs start with it.
+func materialize_legacy_wartime_request(
+	city_id: StringName,
+	transaction_id: StringName,
+	battle_request_snapshot: Dictionary
+) -> Dictionary:
+	var siege := get_siege(city_id)
+	var handoff: Dictionary = Dictionary(siege.get("wartime_handoff", {}))
+	if (
+		siege.is_empty()
+		or battle_request_snapshot.is_empty()
+		or StringName(handoff.get("transaction_id", &"")) != transaction_id
+		or not Dictionary(handoff.get("battle_request_snapshot", {})).is_empty()
+	):
+		return {}
+	handoff.battle_request_snapshot = battle_request_snapshot.duplicate(true)
 	siege.wartime_handoff = handoff
 	_write_siege(city_id, siege)
 	return siege.duplicate(true)
@@ -555,7 +588,7 @@ func get_snapshot() -> Dictionary:
 
 func restore_snapshot(snapshot: Dictionary) -> bool:
 	var normalized := snapshot.duplicate(true)
-	if int(normalized.get("schema_version", 0)) in [3, 4]:
+	if int(normalized.get("schema_version", 0)) in [3, 4, 5]:
 		if not _has_exact_keys(normalized, [
 			"schema_version", "cities_by_id", "required_city_ids", "active_siege",
 			"completed_resolution_ids", "next_siege_sequence", "field_tactics", "parallel_sieges_by_city",
@@ -733,6 +766,10 @@ static func _normalize_wartime_handoff_migration(siege: Dictionary) -> void:
 		var handoff: Dictionary = Dictionary(handoff_value)
 		if not handoff.has("result_authority_snapshot"):
 			handoff.result_authority_snapshot = {}
+		if not handoff.has("battle_request_snapshot"):
+			handoff.battle_request_snapshot = {}
+		if not handoff.has("terminal_combat_state"):
+			handoff.terminal_combat_state = {}
 		siege.wartime_handoff = handoff
 
 
@@ -741,7 +778,7 @@ static func _has_valid_wartime_handoff(handoff: Dictionary) -> bool:
 		return true
 	if not _has_exact_keys(handoff, [
 		"transaction_id", "phase", "result_id", "battle_session_snapshot",
-		"result_authority_snapshot",
+		"result_authority_snapshot", "battle_request_snapshot", "terminal_combat_state",
 	]):
 		return false
 	var phase := StringName(handoff.get("phase", &""))
@@ -757,18 +794,77 @@ static func _has_valid_wartime_handoff(handoff: Dictionary) -> bool:
 		and typeof(handoff.get("result_id", null)) == TYPE_STRING_NAME
 		and typeof(handoff.get("battle_session_snapshot", null)) == TYPE_DICTIONARY
 		and typeof(handoff.get("result_authority_snapshot", null)) == TYPE_DICTIONARY
+		and typeof(handoff.get("battle_request_snapshot", null)) == TYPE_DICTIONARY
+		and typeof(handoff.get("terminal_combat_state", null)) == TYPE_DICTIONARY
 	):
 		return false
 	var result_snapshot: Dictionary = Dictionary(handoff.result_authority_snapshot)
+	var terminal_state: Dictionary = Dictionary(handoff.terminal_combat_state)
+	if not _has_valid_wartime_request_snapshot(
+		Dictionary(handoff.battle_request_snapshot), StringName(handoff.transaction_id)
+	):
+		return false
 	if phase != WARTIME_HANDOFF_RESULT_PENDING:
-		return result_snapshot.is_empty()
+		return result_snapshot.is_empty() and terminal_state.is_empty()
 	if result_snapshot.is_empty():
+		return false
+	if not _has_valid_wartime_terminal_state(terminal_state):
 		return false
 	var result := BattleResult.from_authority_snapshot(result_snapshot)
 	return (
 		result.is_consistent()
 		and result.transaction_id == StringName(handoff.transaction_id)
 		and result.session_id == StringName("%s-session" % handoff.transaction_id)
+	)
+
+
+static func _has_valid_wartime_terminal_state(state: Dictionary) -> bool:
+	return (
+		_has_exact_keys(state, ["attacker_total_hp", "defender_total_hp", "gate_hp"])
+		and _is_non_negative_int(state.get("attacker_total_hp", null))
+		and _is_non_negative_int(state.get("defender_total_hp", null))
+		and _is_non_negative_int(state.get("gate_hp", null))
+	)
+
+
+## An empty request snapshot is accepted only for a migrated schema-five
+## handoff. ConstructionController materializes it once and persists it before
+## reopening C0. Any non-empty value is checked here so malformed saves never
+## reach the scene bridge as apparently-valid combat facts.
+static func _has_valid_wartime_request_snapshot(
+	snapshot: Dictionary,
+	transaction_id: StringName
+) -> bool:
+	if snapshot.is_empty():
+		return true
+	if not _has_exact_keys(snapshot, [
+		"level_id", "created_day", "committed_force_snapshot", "enemy_force_snapshot",
+		"city_defense_snapshot", "first_clear_key", "wartime_facility_plan", "macro_siege_start_state",
+	]):
+		return false
+	if (
+		typeof(snapshot.get("level_id", null)) != TYPE_STRING_NAME
+		or StringName(snapshot.get("level_id", &"")) == &""
+		or not _is_positive_int(snapshot.get("created_day", null))
+		or typeof(snapshot.get("committed_force_snapshot", null)) != TYPE_DICTIONARY
+		or typeof(snapshot.get("enemy_force_snapshot", null)) != TYPE_DICTIONARY
+		or not _is_non_negative_int(snapshot.get("city_defense_snapshot", null))
+		or typeof(snapshot.get("first_clear_key", null)) != TYPE_STRING_NAME
+		or StringName(snapshot.get("first_clear_key", &"")) == &""
+		or typeof(snapshot.get("wartime_facility_plan", null)) != TYPE_DICTIONARY
+		or not _has_valid_wartime_terminal_state(Dictionary(snapshot.get("macro_siege_start_state", {})))
+	):
+		return false
+	var committed := CommittedForceSnapshot.from_dictionary(
+		Dictionary(snapshot.committed_force_snapshot)
+	)
+	var enemy := EnemyForceSnapshot.from_dictionary(Dictionary(snapshot.enemy_force_snapshot))
+	return (
+		committed != null
+		and enemy != null
+		and committed.transaction_id == transaction_id
+		and enemy.transaction_id == transaction_id
+		and bool(WartimeFacilityPlan.validate_snapshot(Dictionary(snapshot.wartime_facility_plan)).valid)
 	)
 
 

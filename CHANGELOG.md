@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-11 - Macro siege request and HP continuity
+
+- Upgraded `WarLoopState` handoffs to schema 6. A new macro takeover now
+  persists its immutable battle request alongside the siege, so reopening after
+  a date, general, technology or supply change uses the original force/enemy
+  parameters rather than the live city state.
+- C0 now applies the macro siege's actual attacker, defender and gate HP on
+  first session construction, and records exact terminal HP/gate facts beside
+  the pending result. Retreat and defeat writeback therefore no longer infer
+  state from rounded head counts or a pre-battle gate value.
+- Schema-five handoffs remain recoverable through one conservative request
+  materialization on their first reopen; malformed new request/terminal data is
+  rejected before it reaches battle presentation.
+- Extended formal handoff coverage with real pre-handoff damage, cross-day
+  request reconstruction, changed city selection and terminal-state assertions.
+
 ## 2026-09-11 - Macro siege wartime handoff checkpoint
 
 - Added a strict, schema-4 `WarLoopState` handoff relation for a real macro

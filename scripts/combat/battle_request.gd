@@ -24,6 +24,9 @@ var reward_wood: int
 var reward_food: int
 var mission_definition: MissionDefinition
 var wartime_facility_plan: Dictionary
+## Runtime-only bridge facts for a macro siege. They are serialized by the
+## owning WarLoop handoff, never by a second request ledger.
+var macro_siege_start_state: Dictionary = {}
 
 
 func _init(

@@ -365,6 +365,8 @@ func create_session() -> BattleSession:
 	var session := BattleSession.new(active_request)
 	if session.request == null:
 		return null
+	if _macro_siege_mode and not session.apply_macro_siege_start_state(active_request.macro_siege_start_state):
+		return null
 	active_session = session
 	_bound_session = session
 	return active_session
@@ -509,11 +511,15 @@ func mark_result_pending() -> bool:
 	elif _pending_result_authority != authority_snapshot:
 		return false
 	if _macro_siege_mode:
+		var terminal_combat_state := active_session.get_macro_siege_terminal_state()
+		if terminal_combat_state.is_empty():
+			return false
 		if not _city_controller.authorize_macro_siege_battle_result_pending(
 			_army_id,
 			_macro_siege_city_id,
 			active_request.transaction_id,
 			authority_snapshot,
+			terminal_combat_state,
 			self
 		):
 			return false

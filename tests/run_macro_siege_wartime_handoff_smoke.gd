@@ -45,6 +45,9 @@ func _run() -> void:
 		0, int(siege_macro.get("total_millis", 0))
 	)
 	var army_id := StringName(siege_army.get("army_id", &""))
+	# Let the ordinary macro simulation inflict real, partial pre-handoff damage.
+	# The C0 request must inherit these values rather than rebuild full squads.
+	city.advance_war_loop_time(250)
 	var before: Dictionary = city.get_macro_march_read_model().war_loop.active_siege
 	var food_before_entry := int(city.get("food"))
 	_check(StringName(city.get_army_state(army_id).get("phase", &"")) == ArmyRegistry.PHASE_SIEGING, "正式行军抵达后保留原军队并建立围城")
@@ -70,6 +73,42 @@ func _run() -> void:
 		and StringName(handoff.get("transaction_id", &"")) == battle.request.transaction_id,
 		"围城持久关联先于战时界面开放并保留原军令身份"
 	)
+	var frozen_request: Dictionary = Dictionary(handoff.get("battle_request_snapshot", {}))
+	_check(
+		not frozen_request.is_empty()
+		and Dictionary(frozen_request.get("macro_siege_start_state", {})).get("attacker_total_hp", -1) == before.get("attacker_total_hp", -2)
+		and Dictionary(frozen_request.get("macro_siege_start_state", {})).get("defender_total_hp", -1) == before.get("defender_total_hp", -2),
+		"首次接管冻结宏观已发生的双方 HP，而非以人数重建满血队伍"
+	)
+	var frozen_day := battle.request.created_day
+	var frozen_force_digest := battle.request.committed_force.get_digest()
+	var frozen_enemy_digest := battle.request.enemy_force.get_digest()
+	var live_day_before_mutation: int = int(city.current_day)
+	city.current_day += 3
+	city.selected_general_id = &"general.vanguard"
+	city.researched_tech_ids.clear()
+	city.researched_tech_ids.append(&"tech.formation_drill")
+	city.supply_shortage = not city.supply_shortage
+	battle.queue_free()
+	await process_frame
+	_check(city.enter_macro_siege_wartime(army_id, &"redcliff_city"), "跨日或改变城市选择后仍可打开同一冻结围城请求")
+	await process_frame
+	await process_frame
+	battle = city.get_formal_battle_scene() as C0BattleGraybox
+	_check(
+		battle != null
+		and battle.request != null
+		and battle.request.created_day == frozen_day
+		and battle.request.committed_force.get_digest() == frozen_force_digest
+		and battle.request.enemy_force.get_digest() == frozen_enemy_digest,
+		"恢复不重新读取当前日期、将领、科技或补给来构造参战参数"
+	)
+	# The following V5 checkpoint verifies the handoff itself, not unrelated
+	# city-day mutation APIs. Restore those live choices after proving rebuild.
+	city.current_day = live_day_before_mutation
+	city.selected_general_id = &""
+	city.researched_tech_ids.clear()
+	city.supply_shortage = false
 	city.advance_war_loop_time(1000)
 	var skipped: Dictionary = city.get_macro_march_read_model().war_loop.active_siege
 	_check(
@@ -118,11 +157,16 @@ func _run() -> void:
 		"终局结果先持久化为待回写事实，而不立即改写宏观围城"
 	)
 	var pending: Dictionary = city.get_macro_march_read_model().war_loop.active_siege
+	var terminal_state := battle.coordinator.active_session.get_macro_siege_terminal_state()
 	_check(
 		StringName(Dictionary(pending.get("wartime_handoff", {})).get("phase", &""))
 			== WarLoopState.WARTIME_HANDOFF_RESULT_PENDING
 		and not Dictionary(pending.get("wartime_handoff", {})).get("result_authority_snapshot", {}).is_empty(),
 		"待回写结果与围城接管关联一同保存，重开无需重打"
+	)
+	_check(
+		Dictionary(Dictionary(pending.get("wartime_handoff", {})).get("terminal_combat_state", {})) == terminal_state,
+		"终局回写保存实际残余 HP 与城门耐久，而非由伤亡人数反推"
 	)
 	battle.queue_free()
 	await process_frame
