@@ -134,6 +134,67 @@ func _run() -> void:
 			and int(objective.get("protect_target_hp", 0)) > 0,
 		"守城实例从冻结任务读取真实城门保护目标，而非复用攻城胜利条件"
 	)
+	## This focused session fixture puts an invader at the real route objective
+	## before the first construction can finish. The normal UI route then uses
+	## the same BattleSession lifecycle; only enemy arrival is accelerated here.
+	var construction_probe := BattleSession.new(battle.request)
+	var probe_route: Dictionary = construction_probe.get_route_state(deployment_after_route)
+	probe_route.enemy_position_fixed = int(probe_route.get("distance_fixed", 0))
+	construction_probe.routes[deployment_after_route] = probe_route
+	construction_probe.current_tick = BattleSession.ATTACK_INTERVAL_TICKS - 1
+	var probe_gate_before := int(
+		construction_probe.get_mission_objective_state().get("protect_target_hp", 0)
+	)
+	construction_probe.step_tick()
+	var interrupted_barricade := _facility_by_kind(
+		construction_probe,
+		WartimeFacilityPlan.KIND_BARRICADE
+	)
+	var construction_interrupted := construction_probe.get_last_tick_facility_events().any(
+		func(event: Dictionary) -> bool:
+			return (
+				StringName(event.get("event", &"")) == &"CONSTRUCTION_INTERRUPTED"
+				and StringName(event.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE
+			)
+	)
+	var interrupted_projection: Dictionary = construction_probe.get_wartime_facility_state()
+	var interrupted_snapshot: Dictionary = construction_probe.get_snapshot()
+	var interrupted_restore_probe := BattleSession.new(battle.request)
+	var interrupted_restore_success := interrupted_restore_probe.restore_snapshot(interrupted_snapshot)
+	var restored_interrupted_barricade := _facility_by_kind(
+		interrupted_restore_probe,
+		WartimeFacilityPlan.KIND_BARRICADE
+	)
+	probe_route = construction_probe.get_route_state(deployment_after_route)
+	probe_route.enemy_position_fixed = 0
+	construction_probe.routes[deployment_after_route] = probe_route
+	var interrupted_repair_started := construction_probe.begin_wartime_facility_repair(
+		StringName(interrupted_barricade.get("facility_id", &""))
+	)
+	construction_probe.step_tick()
+	construction_probe.step_tick()
+	var repaired_interrupted_barricade := _facility_by_kind(
+		construction_probe,
+		WartimeFacilityPlan.KIND_BARRICADE
+	)
+	_check(
+		StringName(interrupted_barricade.get("phase", &""))
+			== BattleSession.FACILITY_PHASE_INTERRUPTED
+			and int(interrupted_barricade.get("progress_ticks", 0)) > 0
+			and int(interrupted_barricade.get("progress_ticks", 0))
+				< int(interrupted_barricade.get("required_ticks", 0))
+			and int(construction_probe.get_mission_objective_state().get("protect_target_hp", 0))
+				== probe_gate_before
+			and not interrupted_projection.has("barricade_route_id")
+			and construction_interrupted
+			and interrupted_restore_success
+			and StringName(restored_interrupted_barricade.get("phase", &""))
+				== BattleSession.FACILITY_PHASE_INTERRUPTED
+			and interrupted_repair_started
+			and StringName(repaired_interrupted_barricade.get("phase", &""))
+				== BattleSession.FACILITY_PHASE_ACTIVE,
+		"敌军抵达时会中断未完工拒马；未生效前不提供防护，维修后才恢复作用"
+	)
 	var target_hp_before := int(objective.get("protect_target_hp", 0))
 	battle.step_battle_for_test(4)
 	var watched_route: Dictionary = session.get_route_state(deployment_after_route)

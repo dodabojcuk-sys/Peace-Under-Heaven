@@ -876,6 +876,8 @@ func _append_wartime_facility_feedback(events: Array[Dictionary]) -> void:
 			_append_recent_action("%s已在%s维修完成并恢复作用" % [_get_facility_name(kind), route_name])
 		elif StringName(event.get("event", &"")) == &"DAMAGED":
 			_append_recent_action("%s在%s受损，防御效果下降" % [_get_facility_name(kind), route_name])
+		elif StringName(event.get("event", &"")) == &"CONSTRUCTION_INTERRUPTED":
+			_append_recent_action("%s在%s施工受阻，需维修后才能投入战斗" % [_get_facility_name(kind), route_name])
 		elif StringName(event.get("event", &"")) == &"DESTROYED":
 			_append_recent_action("%s在%s被摧毁，已停止作用" % [_get_facility_name(kind), route_name])
 		elif StringName(event.get("event", &"")) == &"GATE_DAMAGED":
@@ -1379,6 +1381,10 @@ func _get_wartime_facility_status_text(record: Dictionary) -> String:
 					name, durability, max_durability, volley_damage,
 				]
 			return "%s：受损 %d/%d" % [name, durability, max_durability]
+		BattleSession.FACILITY_PHASE_INTERRUPTED:
+			return "%s：施工受阻 %d/%d · 耐久 %d/%d" % [
+				name, progress, required, durability, max_durability,
+			]
 		BattleSession.FACILITY_PHASE_DESTROYED:
 			return "%s：已摧毁" % name
 		BattleSession.FACILITY_PHASE_ACTIVE:
@@ -1488,6 +1494,7 @@ func _repairable_facilities_on_selected_route() -> Array[Dictionary]:
 			and StringName(record.get("phase", &"")) in [
 				BattleSession.FACILITY_PHASE_DAMAGED,
 				BattleSession.FACILITY_PHASE_DESTROYED,
+				BattleSession.FACILITY_PHASE_INTERRUPTED,
 			]
 		):
 			records.append(record)

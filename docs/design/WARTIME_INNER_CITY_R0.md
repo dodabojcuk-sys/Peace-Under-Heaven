@@ -93,6 +93,15 @@ after a restore. The C0 presentation reads the resulting committed-tick event
 only after its checkpoint succeeds, adds a short route/damage notice, and
 never restores that transient notification as a new volley after reload.
 
+An unfinished route work is not invulnerable. Once invaders reach that route's
+objective, they target a `CONSTRUCTING` barricade, then tower, then watch
+platform before applying ordinary gate damage. The hit changes the same saved
+facility record to `DAMAGED` or `DESTROYED` and emits a construction-interrupted
+event; it grants none of the unfinished work's normal effects. The established
+repair transaction is the only way to return that record to `ACTIVE`, so an
+interrupted work cannot silently resume construction or become effective during
+the attack that stopped it.
+
 In `WARTIME_DEFENSE`, a reached invader route first spends its ordinary damage
 against a barricade. Once that route has no active barricade, it damages its
 active or damaged arrow tower; after the tower is gone, it damages the route's
@@ -214,6 +223,11 @@ progress, required ticks and capped restore amount). Older schemas retain
 their recorded target HP and are normalized to `IDLE`; no historical repair is
 invented. New malformed target/repair records are rejected before they can
 alter a live session.
+
+Schema 6 adds `INTERRUPTED` for a route work damaged before construction
+finished. It retains its actual build progress and remaining durability without
+projecting a facility effect. Schema 1-5 records retain their recorded
+lifecycle phase and are never guessed to have been interrupted.
 
 ## Verification
 

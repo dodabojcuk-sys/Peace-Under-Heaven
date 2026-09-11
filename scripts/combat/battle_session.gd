@@ -35,6 +35,7 @@ const FACILITY_PHASE_ACTIVE := &"ACTIVE"
 const FACILITY_PHASE_DAMAGED := &"DAMAGED"
 const FACILITY_PHASE_DESTROYED := &"DESTROYED"
 const FACILITY_PHASE_REPAIRING := &"REPAIRING"
+const FACILITY_PHASE_INTERRUPTED := &"INTERRUPTED"
 const FACILITY_BUILD_TICKS := {
 	WartimeFacilityPlan.KIND_WATCH_PLATFORM: 2,
 	WartimeFacilityPlan.KIND_SIEGE_RAM: 4,
@@ -56,7 +57,7 @@ const PROTECT_TARGET_REPAIR_TICKS := 2
 const PROTECT_TARGET_REPAIR_HP := 120
 const PROTECT_TARGET_REPAIR_IDLE := &"IDLE"
 const PROTECT_TARGET_REPAIRING := &"REPAIRING"
-const SNAPSHOT_SCHEMA_VERSION := 5
+const SNAPSHOT_SCHEMA_VERSION := 6
 const SNAPSHOT_KEYS := [
 	"schema_version", "current_tick", "next_order_id", "squads", "routes",
 	"pending_orders", "accepted_orders", "retreat_was_ordered",
@@ -374,14 +375,17 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 			legacy_route.enemy_position_fixed = 0
 			normalized_snapshot.routes[route_id] = legacy_route
 		normalized_snapshot.schema_version = SNAPSHOT_SCHEMA_VERSION
-	if source_schema_version < SNAPSHOT_SCHEMA_VERSION:
-		## Pre-v5 sessions predate a repair-in-progress state.  Preserve their
+	if source_schema_version <= 4:
+		## Pre-v5 sessions predate a repair-in-progress state. Preserve their
 		## recorded target HP exactly and upgrade them to the only truthful
 		## compatible state: no repair was pending at the moment of the save.
 		normalized_snapshot.mission_objective_state["protect_target_repair_phase"] = PROTECT_TARGET_REPAIR_IDLE
 		normalized_snapshot.mission_objective_state["protect_target_repair_progress_ticks"] = 0
 		normalized_snapshot.mission_objective_state["protect_target_repair_required_ticks"] = 0
 		normalized_snapshot.mission_objective_state["protect_target_repair_amount"] = 0
+	if source_schema_version < SNAPSHOT_SCHEMA_VERSION:
+		## Schema 6 adds only the possible interrupted facility phase. Earlier
+		## snapshots have no such record and retain their recorded lifecycle facts.
 		normalized_snapshot.schema_version = SNAPSHOT_SCHEMA_VERSION
 	var restored_squads: Array[Dictionary] = []
 	var expected_squads: Dictionary = {}
@@ -621,7 +625,11 @@ func begin_wartime_facility_repair(facility_id: StringName) -> bool:
 		var record: Dictionary = Dictionary(facilities[index])
 		if StringName(record.get("facility_id", &"")) != facility_id:
 			continue
-		if StringName(record.get("phase", &"")) not in [FACILITY_PHASE_DAMAGED, FACILITY_PHASE_DESTROYED]:
+		if StringName(record.get("phase", &"")) not in [
+			FACILITY_PHASE_DAMAGED,
+			FACILITY_PHASE_DESTROYED,
+			FACILITY_PHASE_INTERRUPTED,
+		]:
 			return false
 		record.phase = FACILITY_PHASE_REPAIRING
 		record.progress_ticks = 0
@@ -736,7 +744,7 @@ func _has_matching_snapshot_value_types(value: Dictionary, expected: Dictionary)
 
 func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 	var schema_version = snapshot.get("schema_version", null)
-	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, 2, 3, 4, SNAPSHOT_SCHEMA_VERSION]:
+	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, 2, 3, 4, 5, SNAPSHOT_SCHEMA_VERSION]:
 		return false
 	var expected_keys: Array = SNAPSHOT_KEYS.duplicate()
 	if int(schema_version) == 1:
@@ -904,7 +912,7 @@ func _has_valid_wartime_facility_state(state: Dictionary) -> bool:
 			or typeof(record.get("durability", null)) != TYPE_INT
 			or StringName(record.kind) != StringName(planned.kind)
 			or StringName(record.route_id) != StringName(planned.route_id)
-			or StringName(record.phase) not in [FACILITY_PHASE_CONSTRUCTING, FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED, FACILITY_PHASE_DESTROYED, FACILITY_PHASE_REPAIRING]
+			or StringName(record.phase) not in [FACILITY_PHASE_CONSTRUCTING, FACILITY_PHASE_ACTIVE, FACILITY_PHASE_DAMAGED, FACILITY_PHASE_DESTROYED, FACILITY_PHASE_REPAIRING, FACILITY_PHASE_INTERRUPTED]
 			or int(record.max_durability) != int(FACILITY_MAX_DURABILITY.get(StringName(record.kind), -1))
 			or int(record.durability) < 0
 			or int(record.durability) > int(record.max_durability)
@@ -915,7 +923,8 @@ func _has_valid_wartime_facility_state(state: Dictionary) -> bool:
 			or (StringName(record.phase) == FACILITY_PHASE_CONSTRUCTING and int(record.progress_ticks) >= int(record.required_ticks))
 			or (StringName(record.phase) == FACILITY_PHASE_ACTIVE and (int(record.progress_ticks) != int(record.required_ticks) or int(record.durability) != int(record.max_durability)))
 			or (StringName(record.phase) == FACILITY_PHASE_DAMAGED and (int(record.progress_ticks) != int(record.required_ticks) or int(record.durability) <= 0 or int(record.durability) >= int(record.max_durability)))
-			or (StringName(record.phase) == FACILITY_PHASE_DESTROYED and (int(record.progress_ticks) != int(record.required_ticks) or int(record.durability) != 0))
+			or (StringName(record.phase) == FACILITY_PHASE_INTERRUPTED and (int(record.progress_ticks) >= int(record.required_ticks) or int(record.durability) <= 0 or int(record.durability) >= int(record.max_durability)))
+			or (StringName(record.phase) == FACILITY_PHASE_DESTROYED and int(record.durability) != 0)
 			or (StringName(record.phase) == FACILITY_PHASE_REPAIRING and int(record.progress_ticks) >= int(record.required_ticks))
 		):
 			return false
@@ -1215,6 +1224,21 @@ func _get_active_barricade_id(route_id: StringName) -> StringName:
 	return &""
 
 
+## Construction is targetable only after invaders have reached this objective
+## route. It supplies no movement delay, damage absorption, sight or fire until
+## its normal construction ticks complete.
+func _get_constructing_facility_id(kind: StringName, route_id: StringName) -> StringName:
+	for record_value in Array(wartime_facility_state.get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if (
+			StringName(record.get("kind", &"")) == kind
+			and StringName(record.get("phase", &"")) == FACILITY_PHASE_CONSTRUCTING
+			and StringName(record.get("route_id", &"")) == route_id
+		):
+			return StringName(record.get("facility_id", &""))
+	return &""
+
+
 ## Once invaders have broken or bypassed a route barricade, they can dismantle
 ## the route's tower before they resume gate damage. This is a normal facility
 ## damage intent and leaves target selection, durability, repair, and restore
@@ -1287,12 +1311,19 @@ func _apply_wartime_facility_damage(damage_by_id: Dictionary) -> void:
 		var damage := int(damage_by_id[facility_id])
 		if damage <= 0:
 			continue
+		var was_constructing := StringName(record.get("phase", &"")) == FACILITY_PHASE_CONSTRUCTING
 		record.durability = maxi(int(record.get("durability", 0)) - damage, 0)
-		record.phase = FACILITY_PHASE_DESTROYED if int(record.durability) == 0 else FACILITY_PHASE_DAMAGED
+		record.phase = (
+			FACILITY_PHASE_DESTROYED
+			if int(record.durability) == 0
+			else FACILITY_PHASE_INTERRUPTED if was_constructing else FACILITY_PHASE_DAMAGED
+		)
 		facilities[index] = record
 		last_tick_facility_events.append({
 			"kind": record.kind, "route_id": record.route_id,
-			"event": &"DESTROYED" if int(record.durability) == 0 else &"DAMAGED",
+			"event": &"CONSTRUCTION_INTERRUPTED" if was_constructing else (
+				&"DESTROYED" if int(record.durability) == 0 else &"DAMAGED"
+			),
 			"damage": damage, "durability": record.durability, "tick": current_tick,
 		})
 	wartime_facility_state.facilities = facilities
@@ -1517,15 +1548,40 @@ func _apply_mission_objective_damage() -> void:
 				damage += passed_damage
 				facility_damage[barricade_id] = raw_damage - passed_damage
 			else:
+				## A work that is still being erected cannot protect the route, but
+				## a reached invader can interrupt that real construction instead of
+				## walking through an invulnerable unfinished model. Repairing the
+				## damaged record later restores its normal, active capability.
+				var constructing_barricade_id := _get_constructing_facility_id(
+					WartimeFacilityPlan.KIND_BARRICADE,
+					route_id
+				)
+				if constructing_barricade_id != &"":
+					facility_damage[constructing_barricade_id] = raw_damage
+					continue
 				var arrow_tower_id := _get_active_arrow_tower_id(route_id)
 				if arrow_tower_id != &"":
 					facility_damage[arrow_tower_id] = raw_damage
 				else:
+					var constructing_arrow_tower_id := _get_constructing_facility_id(
+						WartimeFacilityPlan.KIND_ARROW_TOWER,
+						route_id
+					)
+					if constructing_arrow_tower_id != &"":
+						facility_damage[constructing_arrow_tower_id] = raw_damage
+						continue
 					var watch_platform_id := _get_active_watch_platform_id(route_id)
 					if watch_platform_id != &"":
 						facility_damage[watch_platform_id] = raw_damage
 					else:
-						damage += raw_damage
+						var constructing_watch_platform_id := _get_constructing_facility_id(
+							WartimeFacilityPlan.KIND_WATCH_PLATFORM,
+							route_id
+						)
+						if constructing_watch_platform_id != &"":
+							facility_damage[constructing_watch_platform_id] = raw_damage
+						else:
+							damage += raw_damage
 	_apply_wartime_facility_damage(facility_damage)
 	mission_objective_state.protect_target_hp = maxi(
 		int(mission_objective_state.protect_target_hp) - damage,

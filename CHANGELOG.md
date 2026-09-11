@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-12 - Interruptible wartime construction
+
+- Made unfinished defense works part of the real route attack order. Once an
+  invader reaches its objective, it interrupts an unfinished barricade, then
+  tower, then watch platform before any ordinary gate damage. Interrupted work
+  has no defensive effect and cannot advance itself to completion.
+- Added the saved `INTERRUPTED` facility phase in battle-session schema 6.
+  Schema 1-5 snapshots retain their existing lifecycle records; new snapshots
+  strictly distinguish interrupted construction from an active damaged work.
+- Reused the existing facility-repair transaction to recover an interrupted
+  work. C0 now reports the interruption and displays its stalled build progress
+  until repair is complete.
+- Extended the defense smoke with a deterministic reached-route fixture, strict
+  same-session snapshot restore and repair completion check. The fixture
+  accelerates only enemy arrival; ordinary battle ticks still own damage,
+  facility state and target HP.
+
 ## 2026-09-12 - Recoverable Blackstone gate repair
 
 - Added the missing formal repair path for the actual `PROTECT_AND_ELIMINATE`
