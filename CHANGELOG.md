@@ -2,6 +2,19 @@
 
 ## 2026-09-11
 
+- Closed the stationed-reinforcement R0 guard and feedback follow-up. The
+  authoritative preview used by commit now rejects a non-player army even when
+  it is stationary inside player-controlled Silverford, with no Field,
+  ArmyRegistry, order, or resource side effect. The location roster now uses
+  formation name, actual count, and a stable garrison ordinal rather than a
+  player-visible army ID; successful reinforcement copy survives ordinary UI
+  refresh until the target or active operation changes, while an empty pool is
+  presented as the normal `当地兵源已用尽` state. The focused smoke and
+  graphical GUI contract cover the ownership rejection, equal-strength target
+  selection, one-target allocation, non-overlapping action control, and
+  persistent feedback. Evidence:
+  `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-stationed-reinforcement-r0/`.
+
 - Added stationed reinforcement R0 for occupied Silverford. A fresh playable
   theatre authors four finite local infantry; FieldTacticsState persists the
   remaining point pool, ArmyRegistry owns stable formation-ID ordered member

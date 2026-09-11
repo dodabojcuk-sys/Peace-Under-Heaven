@@ -73,6 +73,37 @@ func _army_members(army: Dictionary) -> int:
 	return total
 
 
+func _create_stationed_test_army(city: Node, owner_faction_id: StringName, display_name: String, members: int) -> Dictionary:
+	var formation := {
+		"formation_id": StringName("formation.%s.%d" % [owner_faction_id, city.get_macro_march_armies().size() + 1]),
+		"definition_id": &"infantry",
+		"display_name": display_name,
+		"member_count": members,
+		"max_members": 20,
+	}
+	var army: Dictionary = city._army_registry.create_macro_march(
+		owner_faction_id,
+		&"silverford_city",
+		&"blackstone_city",
+		&"silverford_city",
+		StringName("path.test.%s" % owner_faction_id),
+		[Vector2i.ZERO, Vector2i(10, 0)],
+		{&"infantry": members},
+		[formation],
+		1,
+		1,
+		[]
+	)
+	if army.is_empty():
+		return {}
+	return city._army_registry.advance_macro_march(
+		StringName(army.get("army_id", &"")),
+		StringName(Dictionary(army.get("macro_march", {})).get("order_id", &"")),
+		0,
+		1
+	)
+
+
 func _check_real_stationed_replenishment_and_reissue() -> void:
 	var fixture := await _new_city()
 	var scene: Node = fixture.scene
@@ -135,15 +166,22 @@ func _check_invalid_and_checkpoint_rollback() -> void:
 	var enemy_controlled: Dictionary = city.preview_field_stationed_replenishment(&"silverford_city", &"army.player.999999")
 	var stationed := _occupy_and_station_silverford(city)
 	var army_id := StringName(stationed.get("army_id", &""))
+	var enemy_stationed := _create_stationed_test_army(city, &"river_lords", "河主卫队", 7)
+	var enemy_army_id := StringName(enemy_stationed.get("army_id", &""))
+	var enemy_before: Dictionary = city.export_v5_campaign_snapshot()
+	var enemy_preview: Dictionary = city.preview_field_stationed_replenishment(&"silverford_city", enemy_army_id)
+	var enemy_commit: Dictionary = city.replenish_field_stationed_army(&"silverford_city", enemy_army_id)
+	var enemy_after: Dictionary = city.export_v5_campaign_snapshot()
 	var before: Dictionary = city.export_v5_campaign_snapshot()
 	var wrong_army: Dictionary = city.preview_field_stationed_replenishment(&"silverford_city", &"army.player.999999")
 	city.set_field_reinforcement_fault_for_test(&"CHECKPOINT_SAVE_FAILED")
 	var save_failure: Dictionary = city.replenish_field_stationed_army(&"silverford_city", army_id)
 	var after_failure: Dictionary = city.export_v5_campaign_snapshot()
 	_check(
-		not bool(enemy_controlled.get("valid", false)) and not bool(wrong_army.get("valid", false)) and not bool(save_failure.get("success", false))
+		not bool(enemy_controlled.get("valid", false)) and not bool(enemy_preview.get("valid", false)) and not bool(enemy_commit.get("success", false))
+			and enemy_before == enemy_after and not bool(wrong_army.get("valid", false)) and not bool(save_failure.get("success", false))
 			and before == after_failure,
-		"未占领地点、错误驻军和关键保存失败都不扣地点兵源、不增加编队且完整回滚"
+		"未占领地点、非我方驻军、错误驻军和关键保存失败都不扣地点兵源、不增加编队且完整回滚"
 	)
 	scene.queue_free()
 	await process_frame

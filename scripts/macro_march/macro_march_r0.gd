@@ -108,6 +108,9 @@ var _engineering_undo_button := Button.new()
 var _engineering_clear_button := Button.new()
 var _interrupted_project_selector_signature := ""
 var _status_error_text := ""
+var _reinforcement_feedback_text := ""
+var _reinforcement_feedback_point_id: StringName = &""
+var _reinforcement_feedback_army_id: StringName = &""
 # A map-origin command is deliberately separate from the explicit formation
 # panel.  The latter continues to support multi-formation, reviewable drafts;
 # this state owns the one-subject, release-to-issue gesture only.
@@ -182,6 +185,7 @@ func _process(delta: float) -> void:
 
 
 func _set_status_error(message: String) -> void:
+	_clear_reinforcement_feedback()
 	_status_error_text = message
 	_status_label.text = message
 
@@ -194,7 +198,24 @@ func _set_context_status(message: String) -> void:
 	if not _status_error_text.is_empty():
 		_status_label.text = _status_error_text
 		return
+	if not _reinforcement_feedback_text.is_empty():
+		_status_label.text = _reinforcement_feedback_text
+		return
 	_status_label.text = message
+
+
+func _set_reinforcement_feedback(point_id: StringName, army_id: StringName, message: String) -> void:
+	_status_error_text = ""
+	_reinforcement_feedback_point_id = point_id
+	_reinforcement_feedback_army_id = army_id
+	_reinforcement_feedback_text = message
+	_status_label.text = message
+
+
+func _clear_reinforcement_feedback() -> void:
+	_reinforcement_feedback_text = ""
+	_reinforcement_feedback_point_id = &""
+	_reinforcement_feedback_army_id = &""
 
 
 func _notification(what: int) -> void:
@@ -657,11 +678,12 @@ func _refresh_location_garrison_controls(model: Dictionary, location: Dictionary
 		empty.add_theme_color_override("font_color", Color("64594a"))
 		_location_garrison_list.add_child(empty)
 		return
-	for army in stationed:
+	for index in stationed.size():
+		var army: Dictionary = Dictionary(stationed[index])
 		var army_id := StringName(army.get("army_id", &""))
 		var button := Button.new()
 		var can_reinforce_here := point_id == &"silverford_city" and StringName(location.get("military_controller_faction_id", &"")) == &"player"
-		button.text = "驻军 · %d 人 · %s" % [_army_member_count(army), "已选补员目标" if army_id == _selected_reinforcement_army_id else ("选择补员目标" if can_reinforce_here else "查看状态")]
+		button.text = "%s · 驻军 %d · %s" % [_army_garrison_display_name(army), index + 1, "已选补员目标" if army_id == _selected_reinforcement_army_id else ("选择补员目标" if can_reinforce_here else "查看状态")]
 		button.tooltip_text = "选择这支实际驻军作为补员对象。" if can_reinforce_here else "定位并查看这支已驻扎军队。"
 		button.set_meta("army_id", army_id)
 		button.pressed.connect(_select_location_reinforcement_army.bind(army_id, point_id) if can_reinforce_here else _inspect_location_garrison.bind(army_id, point_id))
@@ -707,6 +729,7 @@ func _open_selected_location_detail() -> void:
 		return
 	_selected_point_id = StringName(location.get("point_id", &""))
 	_selected_reinforcement_army_id = &""
+	_clear_reinforcement_feedback()
 	_location_detail_mode = true
 	_clear_status_error()
 	_set_context_status("正在查看%s；查看不会下令或扣除资源。" % str(location.get("display_name", "地点")))
@@ -719,6 +742,7 @@ func _select_location_detail(point_id: StringName) -> void:
 		return
 	_selected_point_id = point_id
 	_selected_reinforcement_army_id = &""
+	_clear_reinforcement_feedback()
 	_location_detail_mode = true
 	_clear_status_error()
 	_set_context_status("正在查看%s；查看不会下令或扣除资源。" % str(location.get("display_name", point_id)))
@@ -733,6 +757,7 @@ func _select_location_reinforcement_army(army_id: StringName, point_id: StringNa
 		refresh()
 		return
 	_selected_reinforcement_army_id = army_id
+	_clear_reinforcement_feedback()
 	_clear_status_error()
 	_set_context_status("已选择驻军；将按编队编号顺序补充当地可用兵员。")
 	refresh()
@@ -745,6 +770,7 @@ func _inspect_location_garrison(army_id: StringName, point_id: StringName) -> vo
 	_location_detail_mode = false
 	_selected_point_id = &""
 	_selected_reinforcement_army_id = &""
+	_clear_reinforcement_feedback()
 	_selected_specialist_id = &""
 	_selected_scout_id = &""
 	_selected_formation_ids.clear()
@@ -808,8 +834,18 @@ func _begin_selected_stationed_reinforcement() -> void:
 	if not bool(result.get("success", false)):
 		_set_status_error(str(result.get("error", "驻军补员未提交")))
 	else:
-		_clear_status_error()
-		_set_context_status("已向指定驻军补充 %d 人；未创建新的行军军令。" % int(result.get("amount", 0)))
+		var army: Dictionary = Dictionary(result.get("army", {}))
+		_set_reinforcement_feedback(
+			_selected_point_id,
+			_selected_reinforcement_army_id,
+			"%s已补充 %d 人，现有 %d/%d 人；当地兵源剩余 %d。" % [
+				_army_garrison_name(army),
+				int(result.get("amount", 0)),
+				_army_member_count(army),
+				_army_member_capacity(army),
+				maxi(int(_dispatch_adapter.get_field_tactics_read_model().get("stationed_reinforcements_by_point_id", {}).get(_selected_point_id, 0)), 0),
+			]
+		)
 	refresh()
 
 
@@ -820,6 +856,11 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_stationed_reinforcement_button.visible = false
 	_refresh_location_garrison_controls(model, {})
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+	if not _reinforcement_feedback_text.is_empty() and (
+		_selected_point_id != _reinforcement_feedback_point_id
+		or _selected_reinforcement_army_id != _reinforcement_feedback_army_id
+	):
+		_clear_reinforcement_feedback()
 	var specialists: Dictionary = field.get("specialists_by_id", {})
 	var projects: Dictionary = field.get("projects_by_id", {})
 	var visible_patrols: Dictionary = field.get("visible_patrols_by_id", {})
@@ -917,6 +958,12 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 					_selected_reinforcement_army_id = &""
 					reinforcement_copy = "\n当地待编兵员：%d 人\n所选驻军已离开此地。" % local_reinforcements
 				else:
+					var selected_reinforcement_army: Dictionary = {}
+					for stationed_army_value in inspected_stationed:
+						var stationed_army: Dictionary = Dictionary(stationed_army_value)
+						if StringName(stationed_army.get("army_id", &"")) == _selected_reinforcement_army_id:
+							selected_reinforcement_army = stationed_army
+							break
 					var reinforcement_preview: Dictionary = _dispatch_adapter.preview_field_stationed_replenishment(inspected_point_id, _selected_reinforcement_army_id) if _dispatch_adapter != null else {}
 					_stationed_reinforcement_button.visible = true
 					_stationed_reinforcement_button.disabled = not bool(reinforcement_preview.get("valid", false))
@@ -926,10 +973,10 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 							var allocation: Dictionary = Dictionary(allocation_value)
 							formation_lines.append("%s %d/%d%s" % [str(allocation.get("display_name", "编队")), int(allocation.get("member_count", 0)), int(allocation.get("max_members", 0)), " +%d" % int(allocation.get("added", 0)) if int(allocation.get("added", 0)) > 0 else ""])
 						_stationed_reinforcement_button.text = "补充 %d 人" % int(reinforcement_preview.get("amount", 0))
-						reinforcement_copy = "\n当地待编兵员：%d 人\n补员目标：%s\n%s" % [local_reinforcements, String(_selected_reinforcement_army_id), "；".join(formation_lines)]
+						reinforcement_copy = "\n当地待编兵员：%d 人\n补员目标：%s\n%s" % [local_reinforcements, _army_garrison_display_name(selected_reinforcement_army), "；".join(formation_lines)]
 					else:
 						_stationed_reinforcement_button.text = "当前无法补员"
-						reinforcement_copy = "\n当地待编兵员：%d 人\n当前不可补员：%s" % [local_reinforcements, str(reinforcement_preview.get("error", "条件不满足"))]
+						reinforcement_copy = "\n当地待编兵员：%d 人\n%s" % [local_reinforcements, "当地兵源已用尽。" if local_reinforcements <= 0 else "当前不可补员：%s" % str(reinforcement_preview.get("error", "条件不满足"))]
 			_set_context_status("正在查看%s；查看不会下令或扣除资源。" % str(inspected_location.get("display_name", "地点")))
 			_detail_label.text = "%s\n外观类型：%s\n控制方：%s\n用途：%s\n建设：%s\n实际驻军：%d 支、%d 人%s%s" % [
 				str(inspected_location.get("display_name", "地点")),
@@ -1177,6 +1224,7 @@ func _toggle_formation(formation_id: StringName) -> void:
 	# actionable state in the persistent status line.
 	_cancel_direct_dispatch("")
 	_clear_status_error()
+	_clear_reinforcement_feedback()
 	_location_detail_mode = false
 	_selected_point_id = &""
 	if formation_id in _selected_formation_ids:
@@ -1207,6 +1255,26 @@ func _army_member_count(army: Dictionary) -> int:
 	for formation_value in Array(Dictionary(army.get("macro_march", {})).get("formation_snapshots", [])):
 		total += int(Dictionary(formation_value).get("member_count", 0))
 	return total
+
+
+func _army_member_capacity(army: Dictionary) -> int:
+	var total := 0
+	for formation_value in Array(Dictionary(army.get("macro_march", {})).get("formation_snapshots", [])):
+		total += int(Dictionary(formation_value).get("max_members", 0))
+	return total
+
+
+func _army_garrison_display_name(army: Dictionary) -> String:
+	return "%s · %d 人" % [_army_garrison_name(army), _army_member_count(army)]
+
+
+func _army_garrison_name(army: Dictionary) -> String:
+	var formations: Array = Array(Dictionary(army.get("macro_march", {})).get("formation_snapshots", []))
+	if formations.is_empty():
+		return "未命名驻军"
+	var first: Dictionary = Dictionary(formations.front())
+	var first_name := str(first.get("display_name", "驻军"))
+	return first_name if formations.size() == 1 else "%s等%d队" % [first_name, formations.size()]
 
 
 func _latest_encounter_copy(field: Dictionary, army_id: StringName) -> Dictionary:
@@ -1520,6 +1588,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			_selected_army_id = &""
 			_location_detail_mode = false
 			_selected_point_id = &""
+			_clear_reinforcement_feedback()
 			_selected_specialist_id = specialist_id
 			_selected_formation_ids.clear()
 			if StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT:
@@ -1559,6 +1628,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			_selected_army_id = selected_id
 			_location_detail_mode = false
 			_selected_point_id = &""
+			_clear_reinforcement_feedback()
 			_selected_specialist_id = &""
 			_selected_formation_ids.clear()
 			_status_label.text = "已选中该军队；续令、撤逃与路线草稿只作用于它。"
@@ -1617,6 +1687,7 @@ func _append_draw_point(screen_position: Vector2) -> void:
 func _begin_draw_interaction(screen_position: Vector2, source_point_id: StringName) -> void:
 	_cancel_draw_interaction("")
 	_clear_status_error()
+	_clear_reinforcement_feedback()
 	_draw_hold_pending = true
 	_draw_hold_elapsed = 0.0
 	_draw_hold_start_screen = screen_position
@@ -1729,6 +1800,7 @@ func _direct_dispatch_options_for_source(source_point_id: StringName) -> Array[D
 func _begin_direct_dispatch(screen_position: Vector2, source_point_id: StringName) -> void:
 	_cancel_direct_dispatch("")
 	_clear_status_error()
+	_clear_reinforcement_feedback()
 	_direct_dispatch_pending = true
 	_direct_dispatch_source_point_id = source_point_id
 	_direct_dispatch_anchor_screen = screen_position

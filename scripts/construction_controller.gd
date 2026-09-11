@@ -5458,6 +5458,11 @@ func preview_field_stationed_replenishment(point_id: StringName, army_id: String
 		return {"valid": false, "error": "当前只有银渡城可补充当地兵员"}
 	if StringName(_war_loop_state.get_city(point_id).get("military_controller_faction_id", &"")) != &"player":
 		return {"valid": false, "error": "需要先占领银渡城才能补员"}
+	var army := _army_registry.get_army(army_id)
+	if army.is_empty():
+		return {"valid": false, "error": "未找到指定驻军"}
+	if StringName(army.get("owner_faction_id", &"")) != &"player":
+		return {"valid": false, "error": "只有我方驻军可接收当地补员"}
 	var available := _war_loop_state.field_tactics.get_stationed_reinforcements(point_id)
 	return _army_registry.preview_stationed_reinforcement(army_id, point_id, available)
 

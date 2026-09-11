@@ -38,6 +38,8 @@ func _run() -> void:
 	silverford.military_controller_faction_id = &"player"
 	city._war_loop_state.cities_by_id[&"silverford_city"] = silverford
 	var stationed := _station_silverford(city)
+	var second_stationed := _station_silverford(city)
+	print("REINFORCEMENT_GUI_STATIONED first=%s/%s second=%s/%s active=%d" % [stationed.get("army_id", &""), stationed.get("phase", &""), second_stationed.get("army_id", &""), second_stationed.get("phase", &""), city.get_macro_march_armies().size()])
 	scene.open_macro_march_r0()
 	await process_frame
 	var macro: MacroMarchR0 = scene.get_node("UI/MacroMarchR0")
@@ -56,34 +58,46 @@ func _run() -> void:
 	macro.refresh()
 	var initial_detail := macro._location_detail_mode and macro._selected_point_id == &"silverford_city" \
 		and map_selected_stationed and macro._detail_label.text.contains("当地待编兵员：4") and not macro._stationed_reinforcement_button.visible \
-		and macro._location_garrison_buttons.size() == 1
+		and macro._location_garrison_buttons.size() == 2 \
+		and macro._location_garrison_buttons[0].text.contains("北门先锋") \
+		and macro._location_garrison_buttons[0].text.contains("驻军 1") \
+		and macro._location_garrison_buttons[1].text.contains("山道卫队") \
+		and macro._location_garrison_buttons[1].text.contains("驻军 2")
 	_capture("field-reinforcement-01-location-detail-engine-gui.png")
 	# The map inspection above is an actual GUI press/release. SceneTree cannot
 	# dispatch synthetic OS clicks to native Buttons, so we assert the in-tree
 	# controls and exercise their already-connected action signal separately.
-	macro._location_garrison_buttons.front().pressed.emit()
+	var has_second_garrison := macro._location_garrison_buttons.size() > 1
+	if has_second_garrison:
+		macro._location_garrison_buttons[1].pressed.emit()
 	await process_frame
 	macro.refresh()
-	var army_id := StringName(stationed.get("army_id", &""))
-	var preview_detail := macro._selected_reinforcement_army_id == army_id \
+	var army_id := StringName(second_stationed.get("army_id", &""))
+	var preview_detail := has_second_garrison and macro._selected_reinforcement_army_id == army_id \
 		and macro._stationed_reinforcement_button.is_inside_tree() and macro._stationed_reinforcement_button.visible \
 		and not macro._stationed_reinforcement_button.disabled and macro._stationed_reinforcement_button.text == "补充 4 人" \
-		and macro._detail_label.text.contains("北门先锋 7/20 +4")
+		and macro._detail_label.text.contains("山道卫队 7/20 +4") \
+		and not macro._location_garrison_buttons[1].get_global_rect().intersects(macro._stationed_reinforcement_button.get_global_rect())
 	_capture("field-reinforcement-02-selected-army-engine-gui.png")
 	var members_before := _members(city._army_registry.get_army(army_id))
+	var other_members_before := _members(city._army_registry.get_army(StringName(stationed.get("army_id", &""))))
 	macro._stationed_reinforcement_button.pressed.emit()
+	await process_frame
+	macro.refresh()
 	await process_frame
 	macro.refresh()
 	var after: Dictionary = city._army_registry.get_army(army_id)
 	var committed := _members(after) == members_before + 4 \
+		and _members(city._army_registry.get_army(StringName(stationed.get("army_id", &"")))) == other_members_before \
 		and int(Dictionary(city.get_field_tactics_read_model().get("stationed_reinforcements_by_point_id", {})).get(&"silverford_city", -1)) == 0 \
 		and macro._stationed_reinforcement_button.visible and macro._stationed_reinforcement_button.disabled \
-		and macro._detail_label.text.contains("当地已无可补充兵源")
+		and macro._detail_label.text.contains("当地兵源已用尽。") \
+		and macro._status_label.text.contains("山道卫队已补充 4 人，现有 11/20 人；当地兵源剩余 0。")
 	print("REINFORCEMENT_GUI_COMMIT members=%d->%d stock=%d status=%s" % [members_before, _members(after), int(Dictionary(city.get_field_tactics_read_model().get("stationed_reinforcements_by_point_id", {})).get(&"silverford_city", -1)), macro._status_label.text])
-	_capture("field-reinforcement-03-completed-engine-gui.png")
+	_capture("field-reinforcement-04-persistent-feedback-engine-gui.png")
 	_check(initial_detail, "地图 GUI 点击已占领银渡城后显示当地兵源，并要求玩家明确选择实际驻军")
-	_check(preview_detail, "选定驻军后地点详情显示编队现有人数、上限、稳定分配和可用补员按钮")
-	_check(committed, "可见补员按钮的连接动作只增加所选驻军一次并耗尽权威地点兵源")
+	_check(preview_detail, "两支同人数驻军以可见序号区分，选定目标后不会遮挡补员按钮")
+	_check(committed, "可见补员按钮只增加所选驻军一次，耗尽兵源后保留成功反馈")
 	print("FIELD_STATIONED_REINFORCEMENT_R0_GUI_EVIDENCE map_pointer_input=true button_action_signal=true")
 	scene.queue_free()
 	await process_frame
@@ -101,7 +115,15 @@ func _station_silverford(city: Node) -> Dictionary:
 	var route: Dictionary = city.plan_field_path(&"blackstone_city", &"silverford_city")
 	if roster.is_empty() or not bool(route.get("valid", false)):
 		return {}
-	var issued: Dictionary = city.commit_macro_march_from_city([StringName(Dictionary(roster.front()).get("formation_id", &""))], &"silverford_city", StringName(route.get("route_id", &"")), Array(route.get("points", [])))
+	var formation_id: StringName = &""
+	for formation_value in roster:
+		var formation := Dictionary(formation_value)
+		if int(formation.get("member_count", 0)) > 0:
+			formation_id = StringName(formation.get("formation_id", &""))
+			break
+	if formation_id == &"":
+		return {}
+	var issued: Dictionary = city.commit_macro_march_from_city([formation_id], &"silverford_city", StringName(route.get("route_id", &"")), Array(route.get("points", [])))
 	var army: Dictionary = Dictionary(issued.get("army", {}))
 	if army.is_empty():
 		return {}

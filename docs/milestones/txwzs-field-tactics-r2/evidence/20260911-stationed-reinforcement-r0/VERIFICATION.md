@@ -19,9 +19,9 @@ All commands use Godot `4.5.1.stable.official.f62fdbde1` at:
 
 | Command | Result | Evidence scope |
 | --- | --- | --- |
-| `--headless --path . --script res://tests/run_field_stationed_reinforcement_r0_smoke.gd` | PASS, 5 assertions | Normal Controller occupation, replenish, duplicate rejection, reissue, stable multi-formation allocation, rollback, legacy/strict Field restore. |
+| `--headless --path . --script res://tests/run_field_stationed_reinforcement_r0_smoke.gd` | PASS, 5 assertions | Normal Controller occupation, replenish, duplicate rejection, reissue, stable multi-formation allocation, player-owner enforcement for a non-player army inside player Silverford, rollback, legacy/strict Field restore. |
 | `--headless --path . --script res://tests/run_field_stationed_reinforcement_r0_persistence_smoke.gd` | PASS | Independent A/B/C processes: replenished stationary army, restored reissue, then restored moving order; stock remains zero and membership remains eleven. |
-| `--path . --script res://tests/run_field_stationed_reinforcement_r0_graphical_smoke.gd -- --txwzs-v5-save-dir=<isolated-dir> --txwzs-field-reinforcement-evidence-dir=<this-directory>` | PASS, 3 assertions | Engine GUI map click, visible enabled detail controls, selected roster preview, connected action signal and completed authoritative state. |
+| `--path . --script res://tests/run_field_stationed_reinforcement_r0_graphical_smoke.gd -- --txwzs-v5-save-dir=<isolated-dir> --txwzs-field-reinforcement-evidence-dir=<this-directory>` | PASS, 3 assertions | Engine GUI map click, two equal-strength actual garrisons with visible distinct target rows, non-overlapping enabled action control, connected action signal, only-target allocation and feedback that survives ordinary refresh. |
 | `--headless --path . --script res://tests/run_field_supply_r0_smoke.gd` | PASS, 11 assertions | Supply regression including correctly shaped legacy Field fixture. |
 | `--headless --path . --script res://tests/run_field_supply_r0_persistence_smoke.gd` | PASS | Existing A/B/C/D independent-process supply recovery regression. |
 | `--headless --path . --script res://tests/run_macro_march_r0_smoke.gd` | PASS, 35 assertions | Macro March regression. |
@@ -37,6 +37,13 @@ mouse-input proof. Each screenshot is named by its actual state:
 - `field-reinforcement-01-location-detail-engine-gui.png`
 - `field-reinforcement-02-selected-army-engine-gui.png`
 - `field-reinforcement-03-completed-engine-gui.png`
+- `field-reinforcement-04-persistent-feedback-engine-gui.png`
+
+The captures are isolated graphical GUI-event evidence. The map press/release
+opens the location detail; native side-panel button selection and commit are
+then exercised through their visible, enabled connected action signals because
+`SceneTree` cannot inject a macOS click into native controls. This is not
+normal system-mouse proof.
 
 ## Boundaries retained
 
