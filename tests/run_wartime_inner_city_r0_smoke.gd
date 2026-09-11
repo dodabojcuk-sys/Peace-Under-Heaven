@@ -113,6 +113,13 @@ func _run() -> void:
 			== enemy_hp_before_arrow_tower - BattleSession.ARROW_TOWER_DAMAGE_PER_VOLLEY,
 		"箭塔按既有战斗间隔向所选路线的真实敌军生命值提交一次伤害"
 	)
+	var tower_events := battle.coordinator.active_session.get_last_tick_facility_events()
+	_check(
+		tower_events.size() == 1
+			and StringName(tower_events[0].get("kind", &"")) == WartimeFacilityPlan.KIND_ARROW_TOWER
+			and int(tower_events[0].get("damage", 0)) == BattleSession.ARROW_TOWER_DAMAGE_PER_VOLLEY,
+		"箭塔表现只消费已提交战斗刻的真实齐射事实，不独立计算伤亡"
+	)
 	attempt = city.get_expedition_attempt()
 	var active_session_snapshot: Dictionary = attempt.battle_session_snapshot
 	var restored_request := BattleRequest.from_expedition_attempt(attempt)

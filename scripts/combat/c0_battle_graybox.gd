@@ -787,11 +787,25 @@ func _advance_one_tick() -> BattleResult:
 			return null
 	if battle_result != null and city_controller != null and city_controller.has_method("clear_active_battle_session_checkpoint"):
 		city_controller.clear_active_battle_session_checkpoint(request.transaction_id)
+	if battle_result == null and coordinator.active_session != null:
+		_append_wartime_facility_feedback(
+			coordinator.active_session.get_last_tick_facility_events()
+		)
 	_refresh_battle_ui()
 	if battle_result != null:
 		tick_timer.stop()
 		_show_pending_result(battle_result)
 	return battle_result
+
+
+func _append_wartime_facility_feedback(events: Array[Dictionary]) -> void:
+	for event in events:
+		if StringName(event.get("kind", &"")) != WartimeFacilityPlan.KIND_ARROW_TOWER:
+			continue
+		_append_recent_action("箭塔齐射%s：敌军受创 %d" % [
+			_get_route_name(StringName(event.get("route_id", &""))),
+			int(event.get("damage", 0)),
+		])
 
 
 func _resume_active_battle_if_available() -> void:

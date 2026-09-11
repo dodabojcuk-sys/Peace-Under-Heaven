@@ -35,7 +35,9 @@ existing battle model's gate approach and every volley is added to
 `BattleSession`'s regular enemy-damage intent before the shared damage writer
 applies route HP. It consequently survives/replays through the same active
 battle snapshot as all other route damage, and cannot double-apply casualties
-after a restore.
+after a restore. The C0 presentation reads the resulting committed-tick event
+only after its checkpoint succeeds, adds a short route/damage notice, and
+never restores that transient notification as a new volley after reload.
 
 The current C0 scene is an assault, not a city-defence simulation. These
 facilities therefore are siege preparation, not an assertion that the game now

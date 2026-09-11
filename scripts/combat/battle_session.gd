@@ -47,6 +47,10 @@ var _terminal_authority_record: Dictionary = {}
 var mission_definition: MissionDefinition
 var mission_objective_state: Dictionary = {}
 var wartime_facility_state: Dictionary = {}
+## Presentation-only facts for the most recently committed simulation tick.
+## They are intentionally not saved: route HP is the durable authority, and a
+## restored battle must not replay a historical volley as a fresh event.
+var last_tick_facility_events: Array[Dictionary] = []
 
 
 func _init(request_value: BattleRequest = null) -> void:
@@ -77,6 +81,7 @@ func initialize(request_value: BattleRequest) -> bool:
 	mission_definition = request.mission_definition
 	mission_objective_state = {}
 	wartime_facility_state = {}
+	last_tick_facility_events.clear()
 	for squad_snapshot in request.committed_force.squads:
 		var initial_members := int(squad_snapshot.initial_members)
 		squads.append({
@@ -144,6 +149,7 @@ func issue_order(
 func step_tick() -> bool:
 	if completed or request == null:
 		return false
+	last_tick_facility_events.clear()
 	current_tick += 1
 	_apply_orders_for_current_tick()
 	_update_positions()
@@ -179,6 +185,10 @@ func get_mission_objective_state() -> Dictionary:
 
 func get_wartime_facility_state() -> Dictionary:
 	return wartime_facility_state.duplicate(true)
+
+
+func get_last_tick_facility_events() -> Array[Dictionary]:
+	return last_tick_facility_events.duplicate(true)
 
 
 ## Only authoritative simulation facts are persisted.  The request itself is
@@ -552,7 +562,14 @@ func _apply_arrow_tower_damage_intents(enemy_damage: Dictionary) -> void:
 	var route: Dictionary = routes[route_id]
 	if int(route.get("enemy_total_hp", 0)) <= 0:
 		return
-	enemy_damage[route_id] = int(enemy_damage.get(route_id, 0)) + ARROW_TOWER_DAMAGE_PER_VOLLEY
+	var damage := mini(ARROW_TOWER_DAMAGE_PER_VOLLEY, int(route.enemy_total_hp))
+	enemy_damage[route_id] = int(enemy_damage.get(route_id, 0)) + damage
+	last_tick_facility_events.append({
+		"kind": WartimeFacilityPlan.KIND_ARROW_TOWER,
+		"route_id": route_id,
+		"damage": damage,
+		"tick": current_tick,
+	})
 
 
 func _apply_damage_intents(intents: Dictionary) -> void:

@@ -6,6 +6,8 @@
 - The tower pays 10 wood once through the existing expedition transaction and
   contributes 24 real enemy HP damage to its selected gate approach every four
   battle ticks; it does not create a second battle or casualty owner.
+- C0 reports a volley only from the committed BattleSession tick event, so a
+  restored session does not replay historical fire as a new hit.
 - Extended the formal C0 smoke to verify plan cost, real route damage and
   active-session restoration with the facility selected.
 
