@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-12 - Effectful macro-siege facility planning
+
+- Restricted new macro-siege facility submissions to the two works that the
+  active assault simulation actually consumes: siege ram gate damage and arrow
+  tower defender damage. The C0 panel now hides defense-only watch-platform
+  and barricade controls for this source, and the controller rejects a direct
+  bypass before it can spend wood.
+- Kept restore validation structurally compatible with legacy saved macro
+  plans. Existing historical requests remain readable; only new paid plans
+  are held to the effectful-source boundary.
+- Updated formal macro handoff and independent A-to-E disk recovery coverage
+  to construct the ram and tower, prove their real gate/enemy effects, and
+  preserve in-progress and completed work across process boundaries.
+
 ## 2026-09-12 - Readable wartime defense action rail
 
 - Moved the temporary-facility plan, focused facility status, and repair

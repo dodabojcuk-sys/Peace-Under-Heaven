@@ -142,15 +142,39 @@ static func validate_for_source(snapshot: Dictionary, source_id: StringName) -> 
 	return validation
 
 
+## Saved plans remain structurally compatible with the source that created
+## them.  New submissions have the stricter gameplay boundary below: this
+## lets a pre-bound legacy request restore, without allowing a player to pay
+## for a facility whose effect does not participate in this mission type.
+static func validate_for_new_submission(snapshot: Dictionary, source_id: StringName) -> Dictionary:
+	var validation := validate_for_source(snapshot, source_id)
+	if not bool(validation.get("valid", false)):
+		return validation
+	for facility_value in Array(Dictionary(validation.get("snapshot", {})).get("facilities", [])):
+		var facility: Dictionary = Dictionary(facility_value)
+		if not is_available_for_source(StringName(facility.get("kind", &"")), source_id):
+			return _failure("该工事不能在本次战斗中发挥作用")
+	return validation
+
+
 static func is_available_for_source(kind: StringName, source_id: StringName) -> bool:
 	if not FACILITY_COSTS.has(kind):
 		return false
-	if kind == KIND_SPIKE_TRAP:
-		return source_id == &"WARTIME_DEFENSE"
-	return not (
-		source_id == &"WARTIME_DEFENSE"
-		and kind == KIND_SIEGE_RAM
-	)
+	if source_id == &"WARTIME_DEFENSE":
+		return kind in [
+			KIND_WATCH_PLATFORM,
+			KIND_ARROW_TOWER,
+			KIND_BARRICADE,
+			KIND_SPIKE_TRAP,
+		]
+	# A macro siege already has a fully known target. Only a siege ram changes
+	# its frozen gate and an arrow tower contributes to its shared enemy-HP
+	# intents; watch platforms and barricades are defense-only there. Keep the
+	# older FIRST_WAR plan set intact: that authored encounter still provides
+	# those facility interactions through its own mission rules.
+	if source_id == &"MACRO_SIEGE":
+		return kind in [KIND_SIEGE_RAM, KIND_ARROW_TOWER]
+	return kind != KIND_SPIKE_TRAP
 
 
 static func get_costs(snapshot: Dictionary) -> Dictionary:

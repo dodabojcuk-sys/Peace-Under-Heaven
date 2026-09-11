@@ -72,6 +72,15 @@ an edit that would exist only in a transient scene. The player may still
 select one of those existing formations to choose the route for a new
 route-bound facility.
 
+New facility availability is mission-aware. `WARTIME_DEFENSE` offers the
+watch platform, arrow tower, barricade and spike trap; macro siege offers only
+the siege ram and arrow tower, because they respectively change the frozen
+gate and shared defender HP. The macro UI and new-submit controller path both
+enforce this restriction. Structural validation used by restore deliberately
+remains compatible with an older saved macro plan containing a watch platform
+or barricade, so an upgrade does not reject that historical request; it merely
+does not admit another resource-spending submission of a non-effective work.
+
 ## Facilities
 
 | Facility | Cost | Battle effect | Lifetime |

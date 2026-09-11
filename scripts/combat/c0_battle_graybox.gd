@@ -1161,26 +1161,44 @@ func _refresh_wartime_plan_ui() -> void:
 		pending_plan, WartimeFacilityPlan.KIND_SPIKE_TRAP, selected_route
 	)
 	var is_defense := request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE
+	var can_watch := WartimeFacilityPlan.is_available_for_source(
+		WartimeFacilityPlan.KIND_WATCH_PLATFORM, request.source_id
+	)
+	var can_ram := WartimeFacilityPlan.is_available_for_source(
+		WartimeFacilityPlan.KIND_SIEGE_RAM, request.source_id
+	)
+	var can_arrow_tower := WartimeFacilityPlan.is_available_for_source(
+		WartimeFacilityPlan.KIND_ARROW_TOWER, request.source_id
+	)
+	var can_barricade := WartimeFacilityPlan.is_available_for_source(
+		WartimeFacilityPlan.KIND_BARRICADE, request.source_id
+	)
+	var can_spike_trap := WartimeFacilityPlan.is_available_for_source(
+		WartimeFacilityPlan.KIND_SPIKE_TRAP, request.source_id
+	)
+	wartime_watch_button.visible = can_watch
 	wartime_watch_button.text = (
 		"瞭望台 · 已选" if has_watch else "瞭望台 · 木材 6"
 	)
-	wartime_ram_button.visible = not is_defense
+	wartime_ram_button.visible = can_ram
 	wartime_ram_button.text = "攻城槌 · 已选" if has_ram else "攻城槌 · 木材 8"
 	wartime_arrow_tower_button.text = (
 		"箭塔 · 已选" if has_arrow_tower else "箭塔 · 木材 10"
 	)
+	wartime_arrow_tower_button.visible = can_arrow_tower
 	wartime_barricade_button.text = (
 		"拒马 · 已选" if has_barricade else "拒马 · 木材 5"
 	)
-	wartime_spike_trap_button.visible = is_defense
+	wartime_barricade_button.visible = can_barricade
+	wartime_spike_trap_button.visible = can_spike_trap
 	wartime_spike_trap_button.text = (
 		"刺钉陷阱 · 已选" if has_spike_trap else "刺钉陷阱 · 木材 4"
 	)
-	wartime_watch_button.disabled = is_committed
-	wartime_ram_button.disabled = is_committed or is_defense
-	wartime_arrow_tower_button.disabled = is_committed
-	wartime_barricade_button.disabled = is_committed
-	wartime_spike_trap_button.disabled = is_committed or not is_defense
+	wartime_watch_button.disabled = is_committed or not can_watch
+	wartime_ram_button.disabled = is_committed or not can_ram
+	wartime_arrow_tower_button.disabled = is_committed or not can_arrow_tower
+	wartime_barricade_button.disabled = is_committed or not can_barricade
+	wartime_spike_trap_button.disabled = is_committed or not can_spike_trap
 	wartime_plan_confirm_button.visible = not is_committed
 	wartime_plan_confirm_button.disabled = (
 		Array(pending_plan.get("facilities", [])).is_empty()

@@ -2930,7 +2930,7 @@ func commit_wartime_facility_plan(
 		or StringName(_expedition_attempt.get("phase", &"")) != BATTLE_PHASE_RESERVED
 	):
 		return _expedition_failure(&"BATTLE_PLAN_STATE", "当前出征不能修改战时布防")
-	var plan_validation := WartimeFacilityPlan.validate_for_source(
+	var plan_validation := WartimeFacilityPlan.validate_for_new_submission(
 		plan_snapshot,
 		StringName(_expedition_attempt.get("source_id", &"FIRST_WAR"))
 	)
@@ -7757,7 +7757,7 @@ func commit_macro_siege_wartime_facility_plan(
 		or StringName(handoff.get("phase", &"")) != WarLoopState.WARTIME_HANDOFF_RESERVED
 	):
 		return _macro_failure(&"WARTIME_PLAN_STATE", "当前围城不能修改战时工事")
-	var plan_validation := WartimeFacilityPlan.validate_for_source(
+	var plan_validation := WartimeFacilityPlan.validate_for_new_submission(
 		plan_snapshot, BattleRequest.SOURCE_MACRO_SIEGE
 	)
 	if not bool(plan_validation.get("valid", false)):
