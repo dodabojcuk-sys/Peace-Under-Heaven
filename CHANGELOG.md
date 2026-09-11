@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-12 - Formal Blackstone defense deployment
+
+- Made the Blackstone `WARTIME_DEFENSE` pre-battle route controls actionable
+  from the formal C0 scene while the durable request is still `RESERVED`.
+  Changing a squad's route now updates the same frozen formation and committed
+  force snapshots, persists the attempt, and leaves roster identity, battle
+  transaction ID, and departure food unchanged.
+- Other prepared expeditions remain locked after their normal confirmation;
+  deployment cannot change after activation. The focused defense GUI smoke
+  exercises the visible route button and validates the strict V5 snapshot.
+
 ## 2026-09-12 - Durable pending-result recovery for wartime defense
 
 - Upgraded V5 campaign snapshots to schema 11. A durable city battle now

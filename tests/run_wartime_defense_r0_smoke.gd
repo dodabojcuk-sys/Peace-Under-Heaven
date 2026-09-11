@@ -44,6 +44,32 @@ func _run() -> void:
 		battle != null,
 		"黑石城门的已连接正式守城按钮打开独立 C0 战时实例"
 	)
+	var route_button := battle.get_node(
+		"UI/RootPanel/SquadControls/Squad1/RouteButton"
+	) as Button
+	var deployment_before: Dictionary = city.get_expedition_attempt()
+	var deployment_before_route := StringName(
+		Dictionary(deployment_before.committed_force_snapshot).squads[0].route_id
+	)
+	route_button.emit_signal("pressed")
+	await process_frame
+	var deployment_after: Dictionary = city.get_expedition_attempt()
+	var deployment_after_route := StringName(
+		Dictionary(deployment_after.committed_force_snapshot).squads[0].route_id
+	)
+	var deployment_snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	_check(
+		route_button.visible
+			and not route_button.disabled
+			and deployment_after_route != deployment_before_route
+			and StringName(battle.request.committed_force.squads[0].route_id)
+				== deployment_after_route
+			and StringName(deployment_after.attempt_id) == StringName(deployment_before.attempt_id)
+			and int(city.get("food")) == food_before
+			and not deployment_snapshot.is_empty()
+			and bool(city.validate_v5_campaign_snapshot(deployment_snapshot).get("valid", false)),
+		"守城 RESERVED 阶段的路线按钮经正式 GUI 入口更新冻结部署并保存，不重建出征或扣粮"
+	)
 	var plan_panel := battle.get_node("UI/RootPanel/WartimePlanPanel") as Panel
 	var watch_button := plan_panel.get_node("WatchButton") as Button
 	var ram_button := plan_panel.get_node("RamButton") as Button

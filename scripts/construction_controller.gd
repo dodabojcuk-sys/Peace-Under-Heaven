@@ -2820,6 +2820,82 @@ func enter_wartime_defense_battle(formation_ids: Array = []) -> bool:
 	return _launch_active_expedition_battle()
 
 
+## Defense deployment is part of the same frozen battle request, but it is
+## intentionally editable only before this source is activated.  The update
+## changes no roster or resource fact and is durably published before C0 can
+## continue, so a resumed battle cannot silently use a different route.
+func update_wartime_defense_deployment(
+	attempt_id: StringName,
+	squad_id: int,
+	route_id: StringName
+) -> Dictionary:
+	if _expedition_commit_in_progress or _expedition_commit_blocked:
+		return _expedition_failure(&"DEFENSE_DEPLOYMENT_BUSY", "战时守城部署正在处理")
+	if (
+		attempt_id == &""
+		or squad_id <= 0
+		or route_id not in [
+			CommittedForceSnapshot.FRONT_ROUTE,
+			CommittedForceSnapshot.SIDE_ROUTE,
+		]
+		or _expedition_attempt.is_empty()
+		or StringName(_expedition_attempt.get("attempt_id", &"")) != attempt_id
+		or StringName(_expedition_attempt.get("source_id", &""))
+			!= BattleRequest.SOURCE_WARTIME_DEFENSE
+		or StringName(_expedition_attempt.get("phase", &"")) != BATTLE_PHASE_RESERVED
+	):
+		return _expedition_failure(&"DEFENSE_DEPLOYMENT_STATE", "当前守城实例不能调整部署")
+	var candidate := _expedition_attempt.duplicate(true)
+	var selected_formations: Array = Array(candidate.get("selected_formations", []))
+	var selected_index := -1
+	for index in range(selected_formations.size()):
+		var formation_value: Variant = selected_formations[index]
+		if formation_value is Dictionary and int(Dictionary(formation_value).get("squad_id", 0)) == squad_id:
+			selected_index = index
+			break
+	if selected_index < 0:
+		return _expedition_failure(&"DEFENSE_DEPLOYMENT_SQUAD", "指定守城编队不存在")
+	var committed := CommittedForceSnapshot.from_dictionary(
+		Dictionary(candidate.get("committed_force_snapshot", {}))
+	)
+	if committed == null or committed.transaction_id != attempt_id:
+		return _expedition_failure(&"DEFENSE_DEPLOYMENT_SNAPSHOT", "守城冻结编队快照非法")
+	var committed_index := -1
+	for index in range(committed.squads.size()):
+		if int(Dictionary(committed.squads[index]).get("squad_id", 0)) == squad_id:
+			committed_index = index
+			break
+	if committed_index < 0:
+		return _expedition_failure(&"DEFENSE_DEPLOYMENT_SQUAD", "守城冻结编队不完整")
+	var selected_formation: Dictionary = Dictionary(selected_formations[selected_index]).duplicate(true)
+	selected_formation.route_id = route_id
+	selected_formations[selected_index] = selected_formation
+	var committed_squad: Dictionary = Dictionary(committed.squads[committed_index]).duplicate(true)
+	committed_squad.route_id = route_id
+	committed.squads[committed_index] = committed_squad
+	candidate.selected_formations = selected_formations
+	candidate.committed_force_snapshot = committed.to_dictionary()
+	if get_durable_battle_request(candidate) == null:
+		return _expedition_failure(&"DEFENSE_DEPLOYMENT_SNAPSHOT", "守城部署无法重建战斗请求")
+	var prior_attempt := _expedition_attempt.duplicate(true)
+	_expedition_attempt = candidate
+	_refresh_city_ui()
+	city_state_changed.emit()
+	var persisted := _persist_expedition_departure(attempt_id)
+	if bool(persisted.get("success", false)):
+		return {
+			"success": true,
+			"committed_force_snapshot": committed.to_dictionary(),
+		}
+	_expedition_attempt = prior_attempt
+	_refresh_city_ui()
+	city_state_changed.emit()
+	if bool(persisted.get("uncertain", false)):
+		_expedition_commit_blocked = true
+		return _expedition_failure(&"SAVE_OUTCOME_UNCERTAIN", "守城部署存档结果无法确认；请冷启动恢复")
+	return _expedition_failure(&"SAVE_FAILED", "守城部署保存失败，已保留原部署")
+
+
 func _install_expedition_attempt(candidate: Dictionary) -> Dictionary:
 	if (
 		candidate.is_empty()

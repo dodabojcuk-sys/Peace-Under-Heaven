@@ -23,7 +23,13 @@ enemy approaches advance through their saved routes and only attack the saved
 Blackstone gate objective after reaching it without a frontline squad. Their
 route progress is part of the active battle snapshot. Historical schema-1/2/3
 sessions have no such fact, so migration conservatively restores them at the
-route origin rather than inventing an arrival. The C0 facility plan is available from this
+route origin rather than inventing an arrival. While its one frozen request is
+still `RESERVED`, the formal C0 squad route button can adjust a defense
+squad's selected approach. The controller writes the matching route into both
+the selected formation and immutable committed-force snapshot before it
+publishes; it neither replaces the roster nor charges departure food. Once
+activated, that deployment is locked like every other prepared request. The
+C0 facility plan is available from this
 source, but its source-aware authority permits only observation, arrow-tower
 and barricade works; a siege ram is neither displayed nor accepted by the
 controller transaction. Construction and repair stay attached to the same

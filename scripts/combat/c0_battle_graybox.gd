@@ -433,9 +433,33 @@ func set_squad_route(
 	squad_id: int,
 	route_id: StringName
 ) -> bool:
-	if _uses_prepared_expedition():
+	if request == null or request.phase != BattleRequest.PHASE_RESERVED:
 		return false
-	if not coordinator.set_squad_route(squad_id, route_id):
+	if _uses_prepared_expedition():
+		if not _can_edit_defense_deployment() or city_controller == null:
+			return false
+		var updated: Dictionary = city_controller.update_wartime_defense_deployment(
+			request.transaction_id, squad_id, route_id
+		)
+		if not bool(updated.get("success", false)):
+			var error_text := str(updated.get("error", "守城部署保存失败"))
+			_append_recent_action(error_text)
+			status_label.text = error_text
+			_refresh_battle_ui()
+			return false
+		var committed := CommittedForceSnapshot.from_dictionary(
+			Dictionary(updated.get("committed_force_snapshot", {}))
+		)
+		if committed == null:
+			var snapshot_error := "守城部署快照无效，未改变当前部署"
+			_append_recent_action(snapshot_error)
+			status_label.text = snapshot_error
+			_refresh_battle_ui()
+			return false
+		request.committed_force = committed
+		if coordinator.active_request != null:
+			coordinator.active_request.committed_force = committed
+	elif not coordinator.set_squad_route(squad_id, route_id):
 		return false
 	_append_recent_action(
 		"%s改为部署至%s"
@@ -734,7 +758,7 @@ func _create_squad_controls() -> void:
 		route_button.name = "RouteButton"
 		route_button.custom_minimum_size = Vector2(0.0, 44.0)
 		route_button.pressed.connect(_on_route_button_pressed.bind(squad_id))
-		if _uses_prepared_expedition():
+		if _uses_prepared_expedition() and not _can_edit_defense_deployment():
 			route_button.disabled = true
 			route_button.tooltip_text = "正式出征的部署已在确认时锁定"
 		panel.add_child(route_button)
@@ -760,9 +784,9 @@ func _create_squad_controls() -> void:
 
 func _on_route_button_pressed(squad_id: int) -> void:
 	if (
-		_uses_prepared_expedition()
-		or request == null
+		request == null
 		or request.phase != BattleRequest.PHASE_RESERVED
+		or (_uses_prepared_expedition() and not _can_edit_defense_deployment())
 	):
 		return
 	for squad in request.committed_force.squads:
@@ -1032,12 +1056,18 @@ func _refresh_battle_ui() -> void:
 			str(state.state_text),
 		]
 		_squad_ui[squad_id].route_button.text = (
-			"%s（部署已锁定）" % str(state.route_name)
-			if _uses_prepared_expedition()
-			else str(state.route_name)
+			"%s（可调整部署）" % str(state.route_name)
+			if _can_edit_defense_deployment()
+			else (
+				"%s（部署已锁定）" % str(state.route_name)
+				if _uses_prepared_expedition()
+				else str(state.route_name)
+			)
 		)
 		_squad_ui[squad_id].route_button.visible = request.phase == BattleRequest.PHASE_RESERVED
-		_squad_ui[squad_id].route_button.disabled = _uses_prepared_expedition()
+		_squad_ui[squad_id].route_button.disabled = (
+			_uses_prepared_expedition() and not _can_edit_defense_deployment()
+		)
 		_squad_ui[squad_id].select_button.text = (
 			"▶ %s" % str(state.name)
 			if bool(state.selected)
@@ -1611,6 +1641,15 @@ func _apply_northern_visual_palette() -> void:
 
 func _uses_prepared_expedition() -> bool:
 	return prepared_expedition_request != null and not noticeboard_mission_mode
+
+
+func _can_edit_defense_deployment() -> bool:
+	return (
+		_uses_prepared_expedition()
+		and request != null
+		and request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE
+		and request.phase == BattleRequest.PHASE_RESERVED
+	)
 
 
 ## The defense source shares the durable battle transaction but has no
