@@ -215,8 +215,11 @@ func _run() -> void:
 	)
 	battle._refresh_battle_ui()
 	_check(
-		facility_status_label.visible and facility_status_label.text.contains("拒马：受损"),
-		"活动 C0 的持续工事摘要从同一保存记录显示受损而非将其误报为完工"
+		facility_status_label.visible
+			and facility_status_label.text.contains("拒马：受损")
+			and facility_status_label.text.contains("伤害")
+			and facility_status_label.text.contains("推进"),
+		"活动 C0 的持续工事摘要从同一保存记录显示受损拒马的实际剩余防护与延缓作用"
 	)
 	var wood_before_repair := int(city.get("wood"))
 	battle._refresh_battle_ui()

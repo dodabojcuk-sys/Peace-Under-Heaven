@@ -230,6 +230,12 @@ func get_wartime_facility_state() -> Dictionary:
 			projection["barricade_incoming_damage_basis_points"] = (
 				_get_barricade_incoming_damage_basis_points(record)
 			)
+			projection["barricade_enemy_advance_basis_points"] = (
+				_get_barricade_durability_basis_points(
+					record,
+					BARRICADE_ENEMY_ADVANCE_BASIS_POINTS
+				)
+			)
 			continue
 		if phase != FACILITY_PHASE_ACTIVE:
 			continue

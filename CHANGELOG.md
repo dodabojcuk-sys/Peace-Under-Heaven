@@ -42,6 +42,9 @@
   summary visible for construction, active, damaged, repairing, and destroyed
   records. It consumes the active `BattleSession` projection and leaves plan,
   resource, and repair ownership unchanged.
+- Damaged barricade summaries now expose the saved durability-derived damage
+  and route-advance percentages, rather than presenting the remaining HP as a
+  cosmetic value with an implicit intact effect.
 
 ## 2026-09-12 - Formal Blackstone defense deployment
 

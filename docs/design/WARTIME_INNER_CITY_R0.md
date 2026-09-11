@@ -138,7 +138,10 @@ Once battle begins, the editable plan is hidden as intended. The same C0
 surface instead shows a persistent route-focused read-only summary of each
 saved facility's construction, active, damaged durability, repair, or
 destroyed phase. This is a projection of the active `BattleSession`; it does
-not create a UI-owned construction or durability state.
+not create a UI-owned construction or durability state. A damaged barricade
+also reports its currently passed damage and enemy-movement percentages from
+that same durable projection, so its repair priority is not inferred from a
+misleading intact-state label.
 
 The current C0 scene is an assault, not a city-defence simulation. These
 facilities therefore are siege preparation, not an assertion that the game now

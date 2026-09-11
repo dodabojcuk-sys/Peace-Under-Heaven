@@ -1291,6 +1291,17 @@ func _get_wartime_facility_status_text(record: Dictionary) -> String:
 		BattleSession.FACILITY_PHASE_REPAIRING:
 			return "%s：维修 %d/%d" % [name, progress, required]
 		BattleSession.FACILITY_PHASE_DAMAGED:
+			if StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE:
+				var effects := coordinator.active_session.get_wartime_facility_state()
+				var incoming_percent := float(
+					int(effects.get("barricade_incoming_damage_basis_points", BattleSession.BASIS_POINTS))
+				) / 100.0
+				var advance_percent := float(
+					int(effects.get("barricade_enemy_advance_basis_points", BattleSession.BASIS_POINTS))
+				) / 100.0
+				return "%s：受损 %d/%d · 伤害 %.0f%% · 推进 %.0f%%" % [
+					name, durability, max_durability, incoming_percent, advance_percent,
+				]
 			return "%s：受损 %d/%d" % [name, durability, max_durability]
 		BattleSession.FACILITY_PHASE_DESTROYED:
 			return "%s：已摧毁" % name
