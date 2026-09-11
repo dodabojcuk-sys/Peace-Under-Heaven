@@ -14,7 +14,7 @@ func _initialize() -> void:
 
 func _run() -> void:
 	var mode := _argument_value("--mode=")
-	_require(mode in ["A", "B", "C", "D"], "worker mode 必须为 A、B、C 或 D")
+	_require(mode in ["A", "B", "C", "D", "E"], "worker mode 必须为 A、B、C、D 或 E")
 	_require(not _argument_value("--txwzs-v5-save-dir=").is_empty(), "worker 必须使用隔离 V5 存档目录")
 	if not failures.is_empty():
 		_finish(mode)
@@ -32,7 +32,8 @@ func _run() -> void:
 		"A": await _run_a(scene, city)
 		"B": await _run_b(scene, city)
 		"C": await _run_c(scene, city)
-		"D": _run_d(city)
+		"D": await _run_d(scene, city)
+		"E": _run_e(city)
 	scene.queue_free()
 	await process_frame
 	_finish(mode)
@@ -66,13 +67,15 @@ func _run_a(scene: Node, city: Node) -> void:
 	var battle := city.get_formal_battle_scene() as C0BattleGraybox
 	var plan_panel := battle.get_node("UI/RootPanel/WartimePlanPanel") as Panel if battle != null else null
 	var watch_button := plan_panel.get_node("WatchButton") as Button if plan_panel != null else null
+	var barricade_button := plan_panel.get_node("BarricadeButton") as Button if plan_panel != null else null
 	var confirm_button := plan_panel.get_node("ConfirmButton") as Button if plan_panel != null else null
 	_require(
 		plan_panel != null and plan_panel.visible and watch_button != null and confirm_button != null,
 		"A 宏观围城冷恢复链从正式可见工事面板确认计划"
 	)
-	if watch_button != null and confirm_button != null:
+	if watch_button != null and barricade_button != null and confirm_button != null:
 		watch_button.emit_signal("pressed")
+		barricade_button.emit_signal("pressed")
 		await process_frame
 		confirm_button.emit_signal("pressed")
 		await process_frame
@@ -84,10 +87,10 @@ func _run_a(scene: Node, city: Node) -> void:
 			battle.coordinator.active_session.get_wartime_facility_state().get("facilities", [])
 		)
 		_require(
-			facilities.size() == 1
-				and StringName(Dictionary(facilities[0]).get("phase", &"")) == BattleSession.FACILITY_PHASE_CONSTRUCTING
-				and int(Dictionary(facilities[0]).get("progress_ticks", -1)) == 1,
-			"A 保存瞭望台施工中的实际战斗刻，而非完工后的替代状态"
+		facilities.size() == 2
+			and Array(facilities).all(func(record: Dictionary) -> bool: return StringName(record.get("phase", &"")) == BattleSession.FACILITY_PHASE_CONSTRUCTING)
+			and int(Dictionary(facilities[0]).get("progress_ticks", -1)) == 1,
+		"A 保存瞭望台和拒马施工中的实际战斗刻，而非完工后的替代状态"
 		)
 	var active_siege: Dictionary = city.get_macro_march_read_model().war_loop.active_siege
 	_require(
@@ -95,7 +98,7 @@ func _run_a(scene: Node, city: Node) -> void:
 		"A 激活后运行时围城已让出推进权"
 	)
 	_require(not city.export_v5_campaign_snapshot().is_empty(), "A 活动接管可导出当前 V5 快照")
-	_require(scene.flush_runtime_persistence(&"macro_siege_wartime_a"), "A 保存接管完成且战斗进行中的真实 V5 代次")
+	_require(scene.flush_runtime_persistence(&"macro_siege_wartime_a"), "A 保存接管完成且战斗施工中的真实 V5 代次")
 	if battle != null:
 		print("MACRO_SIEGE_WARTIME_DISK_A army=%s transaction=%s" % [army.army_id, battle.request.transaction_id])
 
@@ -115,20 +118,89 @@ func _run_b(scene: Node, city: Node) -> void:
 	var session := battle.coordinator.active_session
 	var restored_facilities: Array = Array(session.get_wartime_facility_state().get("facilities", []))
 	_require(
-		restored_facilities.size() == 1
-			and StringName(Dictionary(restored_facilities[0]).get("phase", &"")) == BattleSession.FACILITY_PHASE_CONSTRUCTING
+		restored_facilities.size() == 2
+			and Array(restored_facilities).all(func(record: Dictionary) -> bool: return StringName(record.get("phase", &"")) == BattleSession.FACILITY_PHASE_CONSTRUCTING)
 			and int(Dictionary(restored_facilities[0]).get("progress_ticks", -1)) == 1,
 		"B 独立进程读取施工中状态，不提前授予观察能力"
 	)
-	(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+	for _tick in range(BattleSession.FACILITY_BUILD_TICKS[WartimeFacilityPlan.KIND_BARRICADE] - 1):
+		(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
 	await process_frame
 	var completed_facilities: Array = Array(session.get_wartime_facility_state().get("facilities", []))
 	_require(
-		completed_facilities.size() == 1
-			and StringName(Dictionary(completed_facilities[0]).get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE,
-		"B 从恢复的施工进度继续完成瞭望台，不重建或重复扣费"
+		completed_facilities.size() == 2
+			and Array(completed_facilities).all(func(record: Dictionary) -> bool: return StringName(record.get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE),
+		"B 从恢复的施工进度继续完成瞭望台和拒马，不重建或重复扣费"
 	)
-	_require(session.request_forced_retreat(), "B 建立真实撤退请求")
+	var front_distance := int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("distance_fixed", 0))
+	session.squads[0].position_fixed = front_distance
+	(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+	var damaged_barricade: Dictionary = {}
+	for record_value in Array(session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE:
+			damaged_barricade = record
+			break
+	battle._refresh_battle_ui()
+	var repair_button := battle.get_node("UI/RootPanel/WartimeRepairButton") as Button
+	_require(
+		StringName(damaged_barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_DAMAGED
+			and repair_button.visible and not repair_button.disabled,
+		"B 正式围城界面显示受损拒马的维修按钮"
+	)
+	repair_button.emit_signal("pressed")
+	await process_frame
+	for record_value in Array(session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("facility_id", &"")) == StringName(damaged_barricade.get("facility_id", &"")):
+			damaged_barricade = record
+			break
+	_require(
+		StringName(damaged_barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_REPAIRING,
+		"B 由正式按钮将受损拒马提交为可恢复的维修态"
+	)
+	_require(scene.flush_runtime_persistence(&"macro_siege_wartime_b"), "B 保存维修中的真实 V5 代次")
+	print("MACRO_SIEGE_WARTIME_DISK_B repair=%s" % String(damaged_barricade.get("facility_id", &"")))
+
+
+func _run_c(scene: Node, city: Node) -> void:
+	var siege: Dictionary = Dictionary(city.get_macro_march_read_model().war_loop).active_siege
+	var handoff: Dictionary = Dictionary(siege.get("wartime_handoff", {}))
+	var army_id := StringName(siege.get("army_id", &""))
+	_require(StringName(handoff.get("phase", &"")) == WarLoopState.WARTIME_HANDOFF_ACTIVE, "C 冷启动读取维修中的活动接管")
+	_require(city.enter_macro_siege_wartime(army_id, &"redcliff_city"), "C 从维修中接管重开同一战时实例")
+	await process_frame
+	await process_frame
+	var battle := city.get_formal_battle_scene() as C0BattleGraybox
+	_require(battle != null and battle.coordinator.active_session != null, "C 恢复同一维修中战斗会话")
+	if battle == null or battle.coordinator.active_session == null:
+		return
+	var session := battle.coordinator.active_session
+	var repairing_barricade: Dictionary = {}
+	for record_value in Array(session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE:
+			repairing_barricade = record
+			break
+	_require(
+		StringName(repairing_barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_REPAIRING
+			and int(repairing_barricade.get("progress_ticks", -1)) == 0,
+		"C 独立进程读取维修进度，未提前恢复拒马"
+	)
+	session.squads[0].position_fixed = 0
+	for _tick in range(BattleSession.FACILITY_REPAIR_TICKS):
+		(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+	for record_value in Array(session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("facility_id", &"")) == StringName(repairing_barricade.get("facility_id", &"")):
+			repairing_barricade = record
+			break
+	_require(
+		StringName(repairing_barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE
+			and int(repairing_barricade.get("durability", 0)) == int(repairing_barricade.get("max_durability", -1)),
+		"C 恢复后只消费剩余正式战斗刻并完成拒马维修"
+	)
+	_require(session.request_forced_retreat(), "C 建立真实撤退请求")
 	battle.coordinator.advance_battle_tick()
 	for squad in session.squads:
 		if int(squad.get("total_hp", 0)) > 0 and not bool(squad.get("exited", false)):
@@ -139,30 +211,30 @@ func _run_b(scene: Node, city: Node) -> void:
 		if result != null:
 			break
 	var pending: Dictionary = city.get_macro_march_read_model().war_loop.active_siege
-	_require(result != null and StringName(Dictionary(pending.get("wartime_handoff", {})).get("phase", &"")) == WarLoopState.WARTIME_HANDOFF_RESULT_PENDING, "B 终局只发布待回写结果")
-	_require(scene.flush_runtime_persistence(&"macro_siege_wartime_b"), "B 保存终局待回写的真实 V5 代次")
-	print("MACRO_SIEGE_WARTIME_DISK_B result=%s" % String(result.result_id if result != null else &""))
+	_require(result != null and StringName(Dictionary(pending.get("wartime_handoff", {})).get("phase", &"")) == WarLoopState.WARTIME_HANDOFF_RESULT_PENDING, "C 终局只发布待回写结果")
+	_require(scene.flush_runtime_persistence(&"macro_siege_wartime_c"), "C 保存终局待回写的真实 V5 代次")
+	print("MACRO_SIEGE_WARTIME_DISK_C result=%s" % String(result.result_id if result != null else &""))
 
 
-func _run_c(scene: Node, city: Node) -> void:
+func _run_d(scene: Node, city: Node) -> void:
 	var siege: Dictionary = Dictionary(city.get_macro_march_read_model().war_loop).active_siege
 	var handoff: Dictionary = Dictionary(siege.get("wartime_handoff", {}))
 	var army_id := StringName(siege.get("army_id", &""))
-	_require(StringName(handoff.get("phase", &"")) == WarLoopState.WARTIME_HANDOFF_RESULT_PENDING, "C 冷启动读取待回写结果")
-	_require(city.enter_macro_siege_wartime(army_id, &"redcliff_city"), "C 重新进入同一待回写战时实例")
+	_require(StringName(handoff.get("phase", &"")) == WarLoopState.WARTIME_HANDOFF_RESULT_PENDING, "D 冷启动读取待回写结果")
+	_require(city.enter_macro_siege_wartime(army_id, &"redcliff_city"), "D 重新进入同一待回写战时实例")
 	await process_frame
 	await process_frame
 	var battle := city.get_formal_battle_scene() as C0BattleGraybox
-	_require(battle != null and battle.result_panel.visible and battle.coordinator.active_session.completed, "C 显示已保存战果而不重演战斗")
+	_require(battle != null and battle.result_panel.visible and battle.coordinator.active_session.completed, "D 显示已保存战果而不重演战斗")
 	if battle == null:
 		return
 	var settled := battle.confirm_pending_result()
-	_require(not settled.is_empty(), "C 一次回写原军队、围城与目标")
-	_require(scene.flush_runtime_persistence(&"macro_siege_wartime_c"), "C 保存已回写的真实 V5 代次")
-	print("MACRO_SIEGE_WARTIME_DISK_C army=%s" % army_id)
+	_require(not settled.is_empty(), "D 一次回写原军队、围城与目标")
+	_require(scene.flush_runtime_persistence(&"macro_siege_wartime_d"), "D 保存已回写的真实 V5 代次")
+	print("MACRO_SIEGE_WARTIME_DISK_D army=%s" % army_id)
 
 
-func _run_d(city: Node) -> void:
+func _run_e(city: Node) -> void:
 	var armies: Array = Array(city.get_macro_march_read_model().armies)
 	var retreating := false
 	for army_value in armies:
@@ -171,9 +243,9 @@ func _run_d(city: Node) -> void:
 	_require(
 		Dictionary(city.get_macro_march_read_model().war_loop).active_siege.is_empty()
 		and retreating,
-		"D 冷启动保持一次回写后的围城关闭与原军队撤退状态"
+		"E 冷启动保持一次回写后的围城关闭与原军队撤退状态"
 	)
-	print("MACRO_SIEGE_WARTIME_DISK_D complete")
+	print("MACRO_SIEGE_WARTIME_DISK_E complete")
 
 
 func _argument_value(prefix: String) -> String:

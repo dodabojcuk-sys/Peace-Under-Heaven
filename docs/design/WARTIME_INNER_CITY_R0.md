@@ -97,13 +97,14 @@ visible C0 plan controls, pre-confirm zero write, one-time resource debit,
 legacy migration, actual watch/ram/tower session effects, active-instance
 restore through the formal city entry, and rejection of tampered duplicate
 identities, malformed numeric fields and conflicting pending orders. Its scene
-rebuild exercise is **same-process** evidence only. The macro-siege A/B
-independent-process runner additionally saves a watch platform at construction
-tick 1/2 and cold-restores it to its single active completion tick, proving that
-this construction state does not become an immediately-active substitute or
-charge a second plan. It does not yet prove facility damage/repair or a complete
-defensive scenario across processes. The focused C0 smoke now additionally
-uses the visible, enabled repair button against a real damaged barricade and
-asserts one authority resource debit, a saved repairing phase, duplicate-click
-idempotence, completion and active-session restoration. Existing C0,
+rebuild exercise is **same-process** evidence only. The macro-siege A/B/C/D/E
+independent-process runner saves watch-platform and barricade construction,
+restores them before activation, damages the completed barricade through a real
+battle tick, begins repair through the visible button, cold-restores
+`REPAIRING`, completes its remaining two ticks, then separately restores and
+writes back the terminal result. This proves neither construction nor repair
+becomes an immediately-active substitute or charges a second plan. The focused
+C0 smoke additionally asserts one authority resource debit, duplicate-click
+idempotence, completion and active-session restoration. These are still
+assault-side lifecycle checks, not a complete defensive scenario. Existing C0,
 expedition-causality and V5 persistence runners remain regression gates.
