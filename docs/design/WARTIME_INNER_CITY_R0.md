@@ -157,3 +157,11 @@ C0 smoke additionally asserts one authority resource debit, duplicate-click
 idempotence, completion and active-session restoration. These are still
 assault-side lifecycle checks, not a complete defensive scenario. Existing C0,
 expedition-causality and V5 persistence runners remain regression gates.
+
+The dedicated defense process runner uses two isolated chains. A/B/C/D/E
+covers construction, damage, repair, retreat pending-result recovery and one
+writeback. F/G separately starts with three real formations, issues formal
+advance commands to reach a defense victory, saves its `RESULT_PENDING` fact,
+and lets a fresh process confirm exactly that result. Defense victory is not a
+first-war victory: V5 validation preserves the unrelated mainline cleared
+state instead of requiring it to match this mission outcome.

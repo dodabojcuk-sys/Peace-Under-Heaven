@@ -4713,8 +4713,15 @@ func _validate_applied_expedition_summary(
 			"error_id": &"EXPEDITION_SETTLEMENT_ROSTER_MISMATCH",
 			"error": "已结算出征缺少参战编队结果",
 		}
+	# A gate-defense result belongs to its dedicated mission, not the ordinary
+	# first-war pressure level. Only FIRST_WAR may make the mainline-cleared
+	# fact agree with its own victory; applying a defense victory must preserve
+	# whatever mainline fact was already saved.
+	var is_first_war_attempt := StringName(
+		attempt.get("source_id", &"FIRST_WAR")
+	) == &"FIRST_WAR"
 	var victory := battle_result.outcome == BattleOutcome.Value.VICTORY
-	if bool(candidate.mainline_level.cleared) != victory:
+	if is_first_war_attempt and bool(candidate.mainline_level.cleared) != victory:
 		return {
 			"valid": false,
 			"error_id": &"EXPEDITION_MAINLINE_OUTCOME_MISMATCH",

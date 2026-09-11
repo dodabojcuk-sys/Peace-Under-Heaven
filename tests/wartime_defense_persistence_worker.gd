@@ -12,7 +12,7 @@ func _initialize() -> void:
 func _run() -> void:
 	var mode := _argument_value("--mode=")
 	var save_directory := _argument_value("--txwzs-v5-save-dir=")
-	_require(mode in ["A", "B", "C", "D", "E"], "worker mode 必须有效")
+	_require(mode in ["A", "B", "C", "D", "E", "F", "G"], "worker mode 必须有效")
 	_require(not save_directory.is_empty(), "worker 必须使用隔离存档目录")
 	if not failures.is_empty():
 		_finish(mode, save_directory)
@@ -29,6 +29,8 @@ func _run() -> void:
 		"C": await _run_c(scene, city)
 		"D": await _run_d(scene, city)
 		"E": _run_e(city)
+		"F": await _run_f(scene, city)
+		"G": await _run_g(scene, city)
 	scene.queue_free()
 	await process_frame
 	_finish(mode, save_directory)
@@ -205,6 +207,75 @@ func _run_e(city: Node) -> void:
 			and city.get_formal_battle_scene() == null,
 		"E 冷启动保留已结算守城结果，不重开或重放战斗"
 	)
+
+
+## F-G receive a separate isolated save directory from the runner. That keeps
+## the first A-E chain's settled retreat fact intact while proving a distinct
+## victory terminal record remains pending across a real process.
+func _run_f(scene: Node, city: Node) -> void:
+	var formation_ids: Array[StringName] = []
+	for formation_value in city.get_formation_roster():
+		var formation: Dictionary = Dictionary(formation_value)
+		if int(formation.get("member_count", 0)) > 0:
+			formation_ids.append(StringName(formation.get("formation_id", &"")))
+	var started: Dictionary = city.begin_wartime_defense_attempt(formation_ids)
+	_require(bool(started.get("success", false)), "F 从正式守城入口冻结三支真实编队")
+	if not bool(started.get("success", false)) or not city.enter_wartime_defense_battle():
+		_require(false, "F 打开正式守城胜利实例")
+		return
+	await process_frame
+	var battle := city.get_formal_battle_scene() as C0BattleGraybox
+	if battle == null or not battle.start_battle():
+		_require(false, "F 启动正式守城胜利战斗")
+		return
+	battle.tick_timer.stop()
+	var advance_button := battle.get_node(
+		"UI/RootPanel/SelectedSquadPanel/AdvanceButton"
+	) as Button
+	for squad_id in [1, 2, 3]:
+		var select_button := battle.get_node(
+			"UI/RootPanel/SquadControls/Squad%d/SelectButton" % squad_id
+		) as Button
+		select_button.emit_signal("pressed")
+		advance_button.emit_signal("pressed")
+		await process_frame
+	var terminal_result: BattleResult = battle.step_battle_for_test(260)
+	_require(
+		terminal_result != null
+			and terminal_result.outcome == BattleOutcome.Value.VICTORY
+			and StringName(city.get_expedition_attempt().get("phase", &""))
+				== BattleRequest.PHASE_RESULT_PENDING,
+		"F 正式三编队操作产生待回写守城胜利而非测试伪造战果"
+	)
+	_require(scene.flush_runtime_persistence(&"wartime_defense_f"), "F 发布待回写守城胜利的真实 V5 代次")
+
+
+func _run_g(scene: Node, city: Node) -> void:
+	var attempt: Dictionary = city.get_expedition_attempt()
+	_require(
+		StringName(attempt.get("phase", &"")) == BattleRequest.PHASE_RESULT_PENDING
+			and not Dictionary(attempt.get("terminal_result_snapshot", {})).is_empty(),
+		"G 冷启动读取 F 的待回写守城胜利"
+	)
+	var opened: bool = city.get_formal_battle_scene() != null or city.enter_wartime_defense_battle()
+	if not failures.is_empty() or not opened:
+		_require(false, "G 重开同一待回写守城胜利实例")
+		return
+	await process_frame
+	var battle := city.get_formal_battle_scene() as C0BattleGraybox
+	var summary: Dictionary = (
+		battle.confirm_pending_result()
+		if battle != null and battle.result_panel.visible
+		else {}
+	)
+	_require(
+		not summary.is_empty()
+			and StringName(summary.get("outcome", &"")) == &"VICTORY"
+			and not bool(city.get("city_fallen"))
+			and city.get_city_defense() > 0,
+		"G 重开后一次确认守城胜利，保留真实城门且不重演战斗"
+	)
+	_require(scene.flush_runtime_persistence(&"wartime_defense_g"), "G 发布已回写守城胜利的真实 V5 代次")
 
 
 func _barricade(session: BattleSession) -> Dictionary:

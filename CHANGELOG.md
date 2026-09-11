@@ -14,6 +14,11 @@
   Blackstone formations receive visible selection and advance commands, defeat
   both routes, write one durable defense result while retaining the gate, then
   return to the normal city without mutating the ordinary first-war state.
+- Corrected V5 settlement validation so the dedicated defense source preserves
+  the already-saved ordinary mainline state. A defense victory no longer fails
+  persistence by being incorrectly required to clear the separate first-war
+  level. Independent F/G workers now cover victory pending-result restore and
+  one authorized writeback.
 
 ## 2026-09-12 - Durable pending-result recovery for wartime defense
 
