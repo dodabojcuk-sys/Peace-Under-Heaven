@@ -324,6 +324,7 @@ func _run() -> void:
 	scene.queue_free()
 	await process_frame
 	await _run_formal_macro_victory_chain()
+	await _run_formal_macro_defeat_chain()
 	_finish()
 
 
@@ -427,6 +428,87 @@ func _run_formal_macro_victory_chain() -> void:
 	)
 	victory_battle.queue_free()
 	victory_scene.queue_free()
+	await process_frame
+
+
+## This chain intentionally issues no advance order after the formal siege
+## takeover. The normal C0 time-limit resolution therefore produces a DEFEAT
+## with real survivors, proving that a macro-origin loss becomes one lawful
+## return journey rather than an occupation or a synthetic city expedition.
+func _run_formal_macro_defeat_chain() -> void:
+	var defeat_scene := CITY_SCENE.instantiate() as Node2D
+	root.add_child(defeat_scene)
+	await process_frame
+	await process_frame
+	var defeat_city: Node = defeat_scene.get_node("ConstructionController")
+	defeat_city.set_process(false)
+	defeat_city.food = 120
+	var defeat_roster: Array[Dictionary] = defeat_city.get_formation_roster()
+	var first_leg: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
+	var station_order: Dictionary = defeat_city.commit_macro_march_from_city(
+		[StringName(defeat_roster[0].formation_id)],
+		&"northwatch_garrison", StringName(first_leg.route_id), Array(first_leg.points)
+	)
+	var station_army: Dictionary = Dictionary(station_order.get("army", {}))
+	var station_macro: Dictionary = Dictionary(station_army.get("macro_march", {}))
+	defeat_city.advance_macro_march_time(
+		StringName(station_army.get("army_id", &"")), StringName(station_macro.get("order_id", &"")),
+		0, int(station_macro.get("total_millis", 0))
+	)
+	var attack_route: Dictionary = THEATER.get_route(&"road.northwatch.redcliff")
+	var siege_order: Dictionary = defeat_city.commit_macro_march_from_station(
+		StringName(station_army.get("army_id", &"")), &"redcliff_city",
+		StringName(attack_route.route_id), Array(attack_route.points)
+	)
+	var siege_army: Dictionary = Dictionary(siege_order.get("army", {}))
+	var siege_macro: Dictionary = Dictionary(siege_army.get("macro_march", {}))
+	defeat_city.advance_macro_march_time(
+		StringName(siege_army.get("army_id", &"")), StringName(siege_macro.get("order_id", &"")),
+		0, int(siege_macro.get("total_millis", 0))
+	)
+	var army_id := StringName(siege_army.get("army_id", &""))
+	var food_before_handoff := int(defeat_city.get("food"))
+	var entered: bool = defeat_city.enter_macro_siege_wartime(army_id, &"redcliff_city")
+	await process_frame
+	await process_frame
+	var defeat_battle := defeat_city.get_formal_battle_scene() as C0BattleGraybox
+	if defeat_battle == null or not defeat_battle.start_battle():
+		_check(false, "战败链正式 C0 实例可以激活")
+		defeat_scene.queue_free()
+		await process_frame
+		return
+	defeat_battle.tick_timer.stop()
+	var pending_result: BattleResult
+	for _tick in range(BattleSession.MAX_BATTLE_TICKS + 2):
+		(defeat_battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+		await process_frame
+		if defeat_battle.coordinator.active_session != null:
+			pending_result = defeat_battle.coordinator.active_session.result
+		if pending_result != null:
+			break
+	var committed_result: Dictionary = defeat_battle.confirm_pending_result()
+	await process_frame
+	var returned_army: Dictionary = defeat_city.get_army_state(army_id)
+	var redcliff_state: Dictionary = defeat_city.get_macro_march_read_model().war_loop.cities_by_id.get(
+		&"redcliff_city", {}
+	)
+	_check(
+		entered
+			and pending_result != null
+			and pending_result.outcome == BattleOutcome.Value.DEFEAT
+			and pending_result.survivor_count > 0
+			and not committed_result.is_empty()
+			and StringName(committed_result.get("army_id", &"")) == army_id
+			and StringName(committed_result.get("outcome", &""))
+				== BattleOutcome.to_id(BattleOutcome.Value.DEFEAT)
+			and StringName(returned_army.get("phase", &"")) == ArmyRegistry.PHASE_RETREATING
+			and StringName(redcliff_state.get("military_controller_faction_id", &"")) != &"player"
+			and defeat_city.get_macro_march_read_model().war_loop.active_siege.is_empty()
+			and int(defeat_city.get("food")) == food_before_handoff,
+		"宏观来源的正式战败保留幸存原军队返程，不占城且不重复扣粮"
+	)
+	defeat_battle.queue_free()
+	defeat_scene.queue_free()
 	await process_frame
 
 

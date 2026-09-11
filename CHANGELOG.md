@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-12 - Formal macro-siege defeat coverage
+
+- Extended the formal macro-siege handoff route with a real C0 defeat outcome:
+  a held original army reaches the normal battle time limit, confirms the
+  pending result once, then returns under its original macro identity. The
+  assertion checks that Redcliff remains enemy-controlled, the active siege
+  closes, survivors enter the existing retreat phase, and the takeover does
+  not charge a second food transaction.
+- This covers defeat with survivors. A separate macro-origin full-wipe route
+  remains a distinct verification gap; it is not inferred from the survivor
+  return path.
+
 ## 2026-09-12 - Interruptible wartime repairs
 
 - Put `REPAIRING` temporary facilities into the same reached-route target
