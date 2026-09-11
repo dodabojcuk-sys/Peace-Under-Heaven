@@ -69,8 +69,7 @@ WARTIME_DEFENSE_R0_SMOKE PASS
 
 Godot --headless --path . --script tests/run_wartime_defense_persistence_smoke.gd \
   -- --txwzs-v5-save-dir="$isolated_save_dir"
-Expected aggregate completion marker after adding the L/M pair:
-WARTIME_DEFENSE_PERSISTENCE_SMOKE PASS assertions=16
+WARTIME_DEFENSE_PERSISTENCE_SMOKE PASS assertions=18
 ```
 
 The construction detachment is a real committed battle squad, saved by
@@ -129,5 +128,9 @@ L follows the formal C0 repair button, then an ordinary reached-route battle
 tick interrupts the saved repair. M is a fresh Godot process that reopens that
 same directory and asserts the persisted `INTERRUPTED` phase, crew identity,
 and absent barricade projection. This is a true isolated-process save chain.
-The aggregate runner remains the full 16-assertion gate; its current candidate
-execution is not substituted for this directly captured L/M evidence.
+The aggregate runner has five isolated-directory checks and 13 worker checks,
+so it reports 18 real assertions rather than a hard-coded total. In this
+candidate, the same A→M worker order was also launched directly: all 13
+completion markers were present. The direct run is recorded as independent
+process evidence; it does not make the nested `OS.execute` runner's missing
+desktop-shell output look like a native-mouse or full-playthrough capture.

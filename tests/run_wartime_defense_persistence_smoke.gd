@@ -3,6 +3,7 @@ extends SceneTree
 
 const WORKER_PATH := "res://tests/wartime_defense_persistence_worker.gd"
 var failures: Array[String] = []
+var assertions := 0
 
 
 func _initialize() -> void:
@@ -40,7 +41,7 @@ func _run() -> void:
 	_remove_tree(crew_loss_save_directory)
 	_remove_tree(repair_interruption_save_directory)
 	if failures.is_empty():
-		print("WARTIME_DEFENSE_PERSISTENCE_SMOKE PASS assertions=16")
+		print("WARTIME_DEFENSE_PERSISTENCE_SMOKE PASS assertions=%d" % assertions)
 		quit(0)
 		return
 	quit(1)
@@ -62,6 +63,7 @@ func _run_worker(mode: String, save_directory: String) -> Dictionary:
 
 
 func _require(condition: bool, description: String) -> void:
+	assertions += 1
 	if condition:
 		return
 	failures.append(description)
