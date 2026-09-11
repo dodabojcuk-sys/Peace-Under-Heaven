@@ -492,6 +492,7 @@ var _macro_march_traces_for_war_step: Dictionary = {}
 var _field_supply_fault_for_test: StringName = &""
 var _field_reinforcement_fault_for_test: StringName = &""
 var _field_watchtower_fault_for_test: StringName = &""
+var _wartime_session_checkpoint_fault_for_test: StringName = &""
 
 
 func _ready() -> void:
@@ -2824,7 +2825,15 @@ func checkpoint_active_battle_session(
 		_expedition_attempt.get("battle_session_snapshot", {})
 	).duplicate(true)
 	_expedition_attempt.battle_session_snapshot = session_snapshot.duplicate(true)
-	var persisted := _persist_active_battle_checkpoint(attempt_id)
+	var checkpoint_faulted := _wartime_session_checkpoint_fault_for_test == &"CHECKPOINT_SAVE_FAILED"
+	_wartime_session_checkpoint_fault_for_test = (
+		&"" if checkpoint_faulted else _wartime_session_checkpoint_fault_for_test
+	)
+	var persisted := (
+		{"success": false}
+		if checkpoint_faulted
+		else _persist_active_battle_checkpoint(attempt_id)
+	)
 	if bool(persisted.get("success", false)):
 		return {"success": true}
 	_expedition_attempt.battle_session_snapshot = prior_snapshot
@@ -6374,6 +6383,10 @@ func set_field_watchtower_fault_for_test(fault_id: StringName) -> void:
 	_field_watchtower_fault_for_test = fault_id
 
 
+func set_wartime_session_checkpoint_fault_for_test(fault_id: StringName) -> void:
+	_wartime_session_checkpoint_fault_for_test = fault_id
+
+
 func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dictionary:
 	if city_time_paused or elapsed_milliseconds <= 0.0:
 		return {}
@@ -7878,7 +7891,11 @@ func checkpoint_macro_siege_battle_session(
 		city_id, transaction_id, session_snapshot
 	).is_empty():
 		return _macro_failure(&"WARTIME_SESSION_STATE", "围城战时实例状态不允许保存")
-	if bool(_persist_macro_march_checkpoint().get("success", false)):
+	var checkpoint_faulted := _wartime_session_checkpoint_fault_for_test == &"CHECKPOINT_SAVE_FAILED"
+	_wartime_session_checkpoint_fault_for_test = (
+		&"" if checkpoint_faulted else _wartime_session_checkpoint_fault_for_test
+	)
+	if not checkpoint_faulted and bool(_persist_macro_march_checkpoint().get("success", false)):
 		return {"success": true}
 	_war_loop_state.restore_snapshot(war_before)
 	return _macro_failure(&"SAVE_FAILED", "围城战时实例存档失败，已保留上次检查点")

@@ -1190,9 +1190,10 @@ func _repair_damaged_wartime_facility() -> void:
 		request.transaction_id, facility_kind
 	)
 	if not bool(cost_result.get("success", false)):
-		status_label.text = str(cost_result.get("error", "战时工事维修失败"))
-		_append_recent_action(status_label.text)
+		var cost_error := str(cost_result.get("error", "战时工事维修失败"))
+		_append_recent_action(cost_error)
 		_refresh_battle_ui()
+		status_label.text = cost_error
 		return
 	if (
 		not coordinator.active_session.begin_wartime_facility_repair(facility_id)
@@ -1201,9 +1202,10 @@ func _repair_damaged_wartime_facility() -> void:
 		coordinator.active_session.restore_snapshot(before_session)
 		if city_controller.has_method("rollback_wartime_facility_repair_cost"):
 			city_controller.rollback_wartime_facility_repair_cost(Dictionary(cost_result.get("costs", {})))
-		status_label.text = "战时工事维修保存失败，资源与状态已回滚"
-		_append_recent_action(status_label.text)
+		var rollback_error := "战时工事维修保存失败，资源与状态已回滚"
+		_append_recent_action(rollback_error)
 		_refresh_battle_ui()
+		status_label.text = rollback_error
 		return
 	_append_recent_action("%s开始维修" % _get_facility_name(facility_kind))
 	_refresh_battle_ui()

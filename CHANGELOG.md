@@ -12,6 +12,7 @@
   normal expedition and every active macro-siege handoff, including parallel
   sieges, without creating a second army or resource owner.
 - Extended the focused C0 smoke to exercise the visible repair button,
+  a forced existing-checkpoint failure with complete resource/session rollback,
   one-time payment, duplicate-click idempotence, completion and persistence.
 
 ## 2026-09-11 - Wartime barricade R0

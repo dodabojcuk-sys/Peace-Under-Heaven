@@ -163,6 +163,17 @@ func _run() -> void:
 			and repair_button.text.contains("拒马"),
 		"受损拒马通过正式战时界面显示可用维修入口"
 	)
+	var repair_snapshot_before_failure := session.get_snapshot()
+	city.set_wartime_session_checkpoint_fault_for_test(&"CHECKPOINT_SAVE_FAILED")
+	repair_button.emit_signal("pressed")
+	await process_frame
+	_check(
+		int(city.get("wood")) == wood_before_repair
+			and session.get_snapshot() == repair_snapshot_before_failure
+			and repair_button.visible
+			and battle.status_label.text.contains("已回滚"),
+		"维修检查点保存失败会原子回滚维修资源和战时设施状态，允许原计划重试"
+	)
 	repair_button.emit_signal("pressed")
 	await process_frame
 	var repairing_facilities: Array = Array(session.get_wartime_facility_state().get("facilities", []))
