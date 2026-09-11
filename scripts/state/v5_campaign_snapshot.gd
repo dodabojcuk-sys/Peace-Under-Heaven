@@ -241,7 +241,8 @@ static func validate_structure(
 		Rect2i(MACRO_MARCH_THEATER.get_world_bounds()),
 		MACRO_MARCH_THEATER.get_terrain_regions(),
 		MACRO_MARCH_THEATER.get_patrol_configs(),
-		MACRO_MARCH_THEATER.get_scout_visibility_range()
+		MACRO_MARCH_THEATER.get_scout_visibility_range(),
+		MACRO_MARCH_THEATER.get_watchtower_config()
 	)
 	normalized.war_loop = normalized_war_loop.get_snapshot()
 	var city_result := _validate_city(normalized.city)

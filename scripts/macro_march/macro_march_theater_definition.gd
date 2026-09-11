@@ -12,6 +12,16 @@ const FOREST_GARRISON := &"forest_garrison"
 
 @export var theater_name := "黑石战区"
 @export var scout_visibility_range := 2
+# Field watchtowers are deliberately authored as theatre rules.  They do not
+# turn every captured city into a building hub: a completed engineered camp is
+# the sole R0 anchor, and the Field remains the owner of the resulting fact.
+@export var watchtower_config: Dictionary = {
+	"build_radius": 150,
+	"visibility_range": 360,
+	"food_cost": 6,
+	"required_milliseconds": 6000,
+	"requires_connected_camp": true,
+}
 @export var presentation_profile: Dictionary = {
 	"ground_color": Color("7e966c"),
 	"ground_patch_color": Color("91a878"),

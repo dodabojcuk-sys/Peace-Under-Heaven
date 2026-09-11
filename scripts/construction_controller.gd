@@ -487,10 +487,11 @@ var _war_loop_state: WarLoopState = WAR_LOOP_STATE.new()
 var _war_loop_frame_remainder_milliseconds := 0.0
 var _macro_march_frame_remainders_by_order: Dictionary = {}
 var _macro_march_traces_for_war_step: Dictionary = {}
-# Test-only fault seam for verifying the atomic boundary after a NationState
-# supply credit. It is never serialized and production code has no caller.
+# Test-only fault seams verify Field transaction rollback after an existing
+# NationState commit. They are never serialized and production code has no caller.
 var _field_supply_fault_for_test: StringName = &""
 var _field_reinforcement_fault_for_test: StringName = &""
+var _field_watchtower_fault_for_test: StringName = &""
 
 
 func _ready() -> void:
@@ -5378,7 +5379,8 @@ func _ensure_war_loop_initialized() -> void:
 		Rect2i(MACRO_MARCH_THEATER.get_world_bounds()),
 		MACRO_MARCH_THEATER.get_terrain_regions(),
 		MACRO_MARCH_THEATER.get_patrol_configs(),
-		MACRO_MARCH_THEATER.get_scout_visibility_range()
+		MACRO_MARCH_THEATER.get_scout_visibility_range(),
+		MACRO_MARCH_THEATER.get_watchtower_config()
 	)
 
 
@@ -5406,6 +5408,7 @@ func get_field_tactics_read_model() -> Dictionary:
 	return {
 		"roads_by_id": Dictionary(field_snapshot.roads_by_id).duplicate(true),
 		"camps_by_id": Dictionary(field_snapshot.camps_by_id).duplicate(true),
+		"watchtowers_by_id": Dictionary(field_snapshot.get("watchtowers_by_id", {})).duplicate(true),
 		"specialists_by_id": Dictionary(field_snapshot.specialists_by_id).duplicate(true),
 		"projects_by_id": Dictionary(field_snapshot.projects_by_id).duplicate(true),
 		"intel_by_subject_id": Dictionary(field_snapshot.intel_by_subject_id).duplicate(true),
@@ -5651,6 +5654,48 @@ func begin_field_road_project(
 			[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": food_cost}],
 			&"field_road_project_rollback")
 		return _macro_failure(&"SAVE_FAILED", "工程施工存档失败，资源已回滚")
+	return {"success": true, "project": Dictionary(transaction.local_commit_result.project).duplicate(true), "food_cost": food_cost}
+
+
+func preview_field_watchtower_project(engineer_id: StringName, camp_id: StringName, world_position: Vector2i) -> Dictionary:
+	_ensure_war_loop_initialized()
+	var preview := _war_loop_state.field_tactics.preview_watchtower_project(engineer_id, camp_id, world_position)
+	if not bool(preview.get("valid", false)):
+		return preview
+	var food_cost := int(preview.get("food_cost", 0))
+	preview.food_shortage = maxi(food_cost - food, 0)
+	preview.affordable = food >= food_cost
+	if not bool(preview.affordable):
+		preview.valid = false
+		preview.error = "粮食不足：需要 %d，当前 %d" % [food_cost, food]
+	return preview
+
+
+func begin_field_watchtower_project(engineer_id: StringName, camp_id: StringName, world_position: Vector2i) -> Dictionary:
+	_ensure_war_loop_initialized()
+	var preview := preview_field_watchtower_project(engineer_id, camp_id, world_position)
+	if not bool(preview.get("valid", false)):
+		return _macro_failure(&"WATCHTOWER_INVALID", str(preview.get("error", "瞭望塔规划无效")))
+	var food_cost := int(preview.get("food_cost", 0))
+	var war_before := _war_loop_state.get_snapshot()
+	var local_commit := func() -> Dictionary:
+		var project := _war_loop_state.field_tactics.begin_watchtower_project(engineer_id, camp_id, world_position)
+		return {"success": not project.is_empty(), "project": project}
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": food_cost}],
+		&"field_watchtower_project", local_commit
+	)
+	if not bool(transaction.get("success", false)):
+		return _macro_failure(&"WATCHTOWER_TRANSACTION", "瞭望塔施工未提交")
+	var checkpoint_success := _field_watchtower_fault_for_test != &"CHECKPOINT_SAVE_FAILED" and bool(_persist_macro_march_checkpoint().get("success", false))
+	_field_watchtower_fault_for_test = &"" if _field_watchtower_fault_for_test == &"CHECKPOINT_SAVE_FAILED" else _field_watchtower_fault_for_test
+	if not checkpoint_success:
+		_war_loop_state.restore_snapshot(war_before)
+		_nation_state.commit_resource_transaction(NationState.BLACKSTONE_CITY_ID,
+			[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": food_cost}],
+			&"field_watchtower_project_rollback")
+		return _macro_failure(&"SAVE_FAILED", "瞭望塔施工存档失败，资源已回滚")
 	return {"success": true, "project": Dictionary(transaction.local_commit_result.project).duplicate(true), "food_cost": food_cost}
 
 
@@ -6097,6 +6142,10 @@ func set_field_supply_fault_for_test(fault_id: StringName) -> void:
 
 func set_field_reinforcement_fault_for_test(fault_id: StringName) -> void:
 	_field_reinforcement_fault_for_test = fault_id
+
+
+func set_field_watchtower_fault_for_test(fault_id: StringName) -> void:
+	_field_watchtower_fault_for_test = fault_id
 
 
 func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dictionary:

@@ -49,6 +49,11 @@ var _draw_preview_error := ""
 var _engineering_mode := false
 var _engineering_engineer_id: StringName = &""
 var _engineering_source_point_id: StringName = &""
+var _watchtower_mode := false
+var _watchtower_engineer_id: StringName = &""
+var _watchtower_camp_id: StringName = &""
+var _watchtower_draft: Dictionary = {}
+var _watchtower_preview_position := Vector2.INF
 var _scout_target_mode := false
 var _selected_scout_id: StringName = &""
 var _selected_specialist_id: StringName = &""
@@ -94,6 +99,7 @@ var _retreat_button := Button.new()
 var _scout_button := Button.new()
 var _engineer_button := Button.new()
 var _side_road_button := Button.new()
+var _watchtower_button := Button.new()
 var _resume_project_button := Button.new()
 var _interrupted_project_selector := OptionButton.new()
 var _return_button := Button.new()
@@ -441,7 +447,7 @@ func _build_ui() -> void:
 	_formation_scroll.add_child(_formation_list)
 	_formation_scroll.add_child(_location_garrison_list)
 	add_child(_formation_scroll)
-	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
+	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
 	_interrupted_project_selector.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -453,6 +459,8 @@ func _build_ui() -> void:
 	_scout_button.text = "派遣侦察兵（4 粮）"
 	_engineer_button.text = "派遣工程师（8 粮）"
 	_side_road_button.text = "工程师拖线修路"
+	_watchtower_button.text = "工程师建瞭望塔"
+	_watchtower_button.visible = false
 	_resume_project_button.text = "补派工程师接续所选工程"
 	_restore_default_route_button.text = "恢复默认路线"
 	_restore_default_route_button.visible = false
@@ -479,6 +487,7 @@ func _build_ui() -> void:
 	_scout_button.pressed.connect(_dispatch_scout)
 	_engineer_button.pressed.connect(_dispatch_engineer)
 	_side_road_button.pressed.connect(_build_side_road)
+	_watchtower_button.pressed.connect(_begin_watchtower_mode)
 	_resume_project_button.pressed.connect(_resume_selected_interrupted_project)
 	_interrupted_project_selector.item_selected.connect(_select_interrupted_project)
 	_return_button.pressed.connect(func():
@@ -500,7 +509,7 @@ func _layout_ui() -> void:
 	var panel_rect := _side_panel_rect()
 	var action_height := 34.0
 	var action_gap := 4.0
-	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _resume_project_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button]
+	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _resume_project_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button]
 	var visible_action_buttons: Array[Button] = []
 	for button in action_buttons:
 		if button.visible:
@@ -872,6 +881,14 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_side_road_button.visible = not specialists.is_empty()
 	_side_road_button.disabled = not _has_idle_engineer(specialists)
 	_side_road_button.text = "安排工程师维修受损道路（3 粮）" if has_selected_damage else "工程师拖线修路"
+	var selected_engineer := Dictionary(specialists.get(_selected_specialist_id, {}))
+	_watchtower_button.visible = (
+		not selected_engineer.is_empty()
+		and StringName(selected_engineer.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER
+		and bool(selected_engineer.get("alive", false))
+		and StringName(selected_engineer.get("project_id", &"")) == &""
+	)
+	_watchtower_button.disabled = not _watchtower_mode and _watchtower_button.visible == false
 	_resume_project_button.visible = not _first_interrupted_project(projects).is_empty()
 	_resume_project_button.disabled = not _has_idle_engineer(specialists)
 	_restore_default_route_button.visible = not _engineering_mode and _selected_route_road_id != &""
@@ -1014,6 +1031,8 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	# its confirm button is hidden behind the specialist detail after mouse-up.
 	var has_pending_command := _engineering_mode \
 		or not _engineering_draft.is_empty() \
+		or _watchtower_mode \
+		or not _watchtower_draft.is_empty() \
 		or not _selected_formation_ids.is_empty()
 	if not has_pending_command and not selected_specialist.is_empty() and bool(selected_specialist.get("alive", false)):
 		_confirm_button.visible = false
@@ -1039,6 +1058,36 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		str(source.get("display_name", source_id)),
 		str(_point_from_model(model, StringName(_draft_route.get("target_point_id", &""))).get("display_name", _draft_route.get("target_point_id", &""))),
 		]
+	if _watchtower_mode or not _watchtower_draft.is_empty():
+		_confirm_button.visible = true
+		_confirm_button.text = "开工建瞭望塔"
+		_confirm_button.disabled = _watchtower_draft.is_empty()
+		_block_button.visible = false
+		_recover_button.visible = false
+		_retreat_button.visible = false
+		_scout_button.visible = false
+		_engineer_button.visible = false
+		_side_road_button.visible = false
+		_watchtower_button.visible = false
+		_resume_project_button.visible = false
+		_restore_default_route_button.visible = false
+		_engineering_undo_button.visible = false
+		_engineering_clear_button.visible = false
+		_interrupted_project_selector.visible = false
+		var tower_camp_name := _point_display_name(model, StringName(_watchtower_draft.get("source_point_id", &"")), "待选择工程驻点")
+		if _watchtower_draft.is_empty():
+			_set_context_status("建瞭望塔：先点击已完工工程驻点，再在范围内选择陆地位置；右键取消不扣资源。")
+			_detail_label.text = "瞭望塔规划\n工程师：%s\n驻点：%s\n请选择驻点附近的可通行陆地。" % [_specialist_role_label(selected_engineer), tower_camp_name]
+		else:
+			_set_context_status("瞭望塔计划待开工；取消不会扣除资源。")
+			_detail_label.text = "瞭望塔施工计划\n驻点：%s\n到场 %0.1f 秒 · 施工 %0.1f 秒 · 粮食 %d\n完工后新增观察范围 %d。" % [
+				tower_camp_name,
+				float(_watchtower_draft.get("travel_milliseconds", 0)) / 1000.0,
+				float(_watchtower_draft.get("required_milliseconds", 0)) / 1000.0,
+				int(_watchtower_draft.get("food_cost", 0)),
+				int(_watchtower_draft.get("visibility_range", 0)),
+			]
+		return
 	if _engineering_mode or not _engineering_draft.is_empty():
 		var draft_kind := StringName(_engineering_draft.get("road_kind", FieldTacticsState.ROAD_NORMAL))
 		var draft_contains_bridge := bool(_engineering_draft.get("contains_bridge", false))
@@ -1456,7 +1505,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			accept_event()
 			return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		if _direct_dispatch_pending or _draw_hold_pending or _is_drawing or _scout_target_mode or not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty() or _selected_damaged_road_id != &"" or _selected_specialist_id != &"":
+		if _direct_dispatch_pending or _draw_hold_pending or _is_drawing or _scout_target_mode or _watchtower_mode or not _watchtower_draft.is_empty() or not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty() or _selected_damaged_road_id != &"" or _selected_specialist_id != &"":
 			var had_specialist_selection := _selected_specialist_id != &""
 			var had_scout_target_mode := _scout_target_mode
 			_cancel_direct_dispatch("")
@@ -1470,6 +1519,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			_engineering_mode = false
 			_engineering_engineer_id = &""
 			_engineering_source_point_id = &""
+			_clear_watchtower_draft()
 			_engineering_planned_points.clear()
 			_engineering_strokes.clear()
 			_selected_damaged_road_id = &""
@@ -1511,6 +1561,31 @@ func _on_gui_input(event: InputEvent) -> void:
 				return
 			_scout_target_mode = false
 			_status_label.text = "侦察目标已确认；侦察兵正在移动。"
+			refresh()
+			accept_event()
+			return
+		if _watchtower_mode:
+			var field_for_tower := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+			if _watchtower_camp_id == &"":
+				var tower_source_point_id := _point_id_at_screen(event.position)
+				_watchtower_camp_id = _camp_id_for_point(Dictionary(field_for_tower.get("camps_by_id", {})), tower_source_point_id)
+				if _watchtower_camp_id == &"":
+					_set_status_error("请选择已完工的工程驻点作为瞭望塔依托。")
+					return
+				_clear_status_error()
+				_status_label.text = "已选择工程驻点；在高亮范围内点击可通行陆地预览瞭望塔。"
+				refresh()
+				accept_event()
+				return
+			var tower_position := Vector2i(_screen_to_world(event.position))
+			var tower_preview := _dispatch_adapter.preview_field_watchtower_project(_watchtower_engineer_id, _watchtower_camp_id, tower_position) if _dispatch_adapter != null else {}
+			if not bool(tower_preview.get("valid", false)):
+				_set_status_error(str(tower_preview.get("error", "该位置无法建设瞭望塔")))
+				return
+			_watchtower_draft = tower_preview.duplicate(true)
+			_watchtower_preview_position = Vector2(tower_position)
+			_clear_status_error()
+			_status_label.text = "瞭望塔计划已生成；点击“开工建瞭望塔”后才扣除粮食。"
 			refresh()
 			accept_event()
 			return
@@ -2390,6 +2465,21 @@ func _engineering_segment_summary(draft: Dictionary) -> String:
 func _confirm_draft() -> void:
 	if _dispatch_adapter == null:
 		return
+	if not _watchtower_draft.is_empty():
+		var tower_draft := _watchtower_draft.duplicate(true)
+		var tower_result := _dispatch_adapter.begin_field_watchtower_project(
+			StringName(tower_draft.get("engineer_id", &"")),
+			StringName(tower_draft.get("camp_id", &"")),
+			Vector2i(tower_draft.get("world_position", Vector2i.ZERO))
+		)
+		if not bool(tower_result.get("success", false)):
+			_set_status_error(str(tower_result.get("error", "瞭望塔施工失败")))
+			return
+		_clear_watchtower_draft()
+		_clear_status_error()
+		_status_label.text = "瞭望塔工程已开工；工程师到场并完成施工后才会扩大观察范围。"
+		refresh()
+		return
 	if not _engineering_draft.is_empty():
 		var engineering := _engineering_draft.duplicate(true)
 		var engineering_result := _dispatch_adapter.begin_field_road_project(
@@ -2576,6 +2666,52 @@ func _build_side_road() -> void:
 		queue_redraw()
 		return
 	_status_label.text = "需要一名空闲且存活的工程师。"
+
+
+func _begin_watchtower_mode() -> void:
+	if _dispatch_adapter == null:
+		return
+	var field := _dispatch_adapter.get_field_tactics_read_model()
+	var engineer := Dictionary(Dictionary(field.get("specialists_by_id", {})).get(_selected_specialist_id, {}))
+	if (
+		engineer.is_empty()
+		or StringName(engineer.get("role", &"")) != FieldTacticsState.SPECIALIST_ENGINEER
+		or not bool(engineer.get("alive", false))
+		or StringName(engineer.get("project_id", &"")) != &""
+	):
+		_set_status_error("请选择一名空闲且存活的工程师后再建设瞭望塔。")
+		return
+	_cancel_direct_dispatch("")
+	_cancel_draw_interaction("")
+	_reset_march_draft()
+	_engineering_mode = false
+	_engineering_draft = {}
+	_engineering_planned_points.clear()
+	_engineering_strokes.clear()
+	_watchtower_mode = true
+	_watchtower_engineer_id = StringName(engineer.get("specialist_id", &""))
+	_watchtower_camp_id = &""
+	_watchtower_draft = {}
+	_watchtower_preview_position = Vector2.INF
+	_clear_status_error()
+	_status_label.text = "建瞭望塔：点击已完工工程驻点，再选择驻点范围内的可通行陆地。"
+	refresh()
+
+
+func _camp_id_for_point(camps: Dictionary, point_id: StringName) -> StringName:
+	for camp_id_value in camps:
+		var camp: Dictionary = Dictionary(camps[camp_id_value])
+		if StringName(camp.get("point_id", &"")) == point_id and bool(camp.get("connected", false)):
+			return StringName(camp_id_value)
+	return &""
+
+
+func _clear_watchtower_draft() -> void:
+	_watchtower_mode = false
+	_watchtower_engineer_id = &""
+	_watchtower_camp_id = &""
+	_watchtower_draft = {}
+	_watchtower_preview_position = Vector2.INF
 
 
 func _resume_selected_interrupted_project() -> void:
@@ -3131,6 +3267,7 @@ func _draw_map_canvas(canvas: Control) -> void:
 	if not _engineering_mode and (_has_explicit_command_subject(_model(), _selected_army(_model())) or (_direct_dispatch_pending and _direct_dispatch_is_march())):
 		_draw_road_choice_points(canvas, Dictionary(field.get("roads_by_id", {})))
 	_draw_engineering_draft_overlay(canvas, rect)
+	_draw_watchtower_overlay(canvas, rect, field)
 	_draw_project_construction_overlays(canvas, Dictionary(field.get("projects_by_id", {})))
 	_draw_supply_transport_markers(canvas, Dictionary(field.get("supply_transports_by_id", {})))
 	_draw_march_draft_or_live_preview(canvas)
@@ -3161,7 +3298,8 @@ func _draw_map_canvas(canvas: Control) -> void:
 		var progress_rect := Rect2(project_position + Vector2(-24, 15), Vector2(48, 6))
 		canvas.draw_rect(progress_rect, Color("2d3531"), true)
 		canvas.draw_rect(Rect2(progress_rect.position, Vector2(progress_rect.size.x * clampf(progress, 0.0, 1.0), progress_rect.size.y)), Color("f2b86e") if project_phase != &"INTERRUPTED" else Color("cf5b52"), true)
-		var phase_label := "赴工" if project_phase == &"TRAVELING" else ("中断·待补派" if project_phase == &"INTERRUPTED" else ("维修" if StringName(project.get("project_kind", &"")) == &"REPAIR" else "施工"))
+		var project_kind := StringName(project.get("project_kind", &""))
+		var phase_label := "赴工" if project_phase == &"TRAVELING" else ("中断·待补派" if project_phase == &"INTERRUPTED" else ("维修" if project_kind == &"REPAIR" else ("建瞭望塔" if project_kind == &"WATCHTOWER" else "施工")))
 		canvas.draw_string(ThemeDB.fallback_font, project_position + Vector2(-30, 34), phase_label, HORIZONTAL_ALIGNMENT_CENTER, 60, 12, Color("fff0c5"))
 	for patrol_value in Dictionary(field.get("visible_patrols_by_id", {})).values():
 		var patrol: Dictionary = patrol_value
@@ -3201,6 +3339,7 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 	# using the same 2D projection that receives input.
 	_draw_march_draft_or_live_preview(canvas)
 	_draw_engineering_draft_overlay(canvas, rect)
+	_draw_watchtower_overlay(canvas, rect, field)
 	_draw_project_construction_overlays(canvas, Dictionary(field.get("projects_by_id", {})))
 	_draw_supply_transport_markers(canvas, Dictionary(field.get("supply_transports_by_id", {})))
 	if not _engineering_mode and (_has_explicit_command_subject(_model(), _selected_army(_model())) or (_direct_dispatch_pending and _direct_dispatch_is_march())):
@@ -3234,7 +3373,9 @@ func _draw_low_poly_overlays(canvas: Control, rect: Rect2, field: Dictionary) ->
 		var progress_rect := Rect2(screen + Vector2(-25, 17), Vector2(50, 6))
 		canvas.draw_rect(progress_rect, Color("20302c", 0.88), true)
 		canvas.draw_rect(Rect2(progress_rect.position, Vector2(progress_rect.size.x * clampf(progress, 0.0, 1.0), progress_rect.size.y)), Color("f2b86e"), true)
-		canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-32, 38), "施工中" if StringName(project.get("phase", &"")) == &"BUILDING" else "赴工中", HORIZONTAL_ALIGNMENT_CENTER, 64, 12, Color("fff0c5"))
+		var project_kind := StringName(project.get("project_kind", &""))
+		var project_label := "建瞭望塔" if project_kind == &"WATCHTOWER" else "施工中"
+		canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-32, 38), project_label if StringName(project.get("phase", &"")) == &"BUILDING" else "赴工中", HORIZONTAL_ALIGNMENT_CENTER, 76, 12, Color("fff0c5"))
 	for patrol_value in Dictionary(field.get("visible_patrols_by_id", {})).values():
 		var patrol: Dictionary = Dictionary(patrol_value)
 		var patrol_screen := _world_to_screen(Vector2(patrol.get("last_known_world_position", Vector2.ZERO)))
@@ -3530,6 +3671,31 @@ func _draw_engineering_draft_overlay(canvas: Control, rect: Rect2) -> void:
 	if _engineering_draft.is_empty():
 		return
 	_draw_engineering_preview_overlay(canvas, _engineering_draft)
+
+
+func _draw_watchtower_overlay(canvas: Control, _rect: Rect2, field: Dictionary) -> void:
+	for tower_value in Dictionary(field.get("watchtowers_by_id", {})).values():
+		var tower: Dictionary = Dictionary(tower_value)
+		var tower_screen := _world_to_screen(Vector2(tower.get("world_position", Vector2.ZERO)))
+		canvas.draw_circle(tower_screen, 13.0, Color("d9b96d", 0.72))
+		canvas.draw_rect(Rect2(tower_screen + Vector2(-4, -18), Vector2(8, 24)), Color("6e513a"), true)
+		canvas.draw_colored_polygon(PackedVector2Array([tower_screen + Vector2(-10, -18), tower_screen + Vector2(0, -29), tower_screen + Vector2(10, -18)]), Color("304e55"))
+		canvas.draw_string(ThemeDB.fallback_font, tower_screen + Vector2(-42, 31), "瞭望塔 · 视野 %d" % int(tower.get("visibility_range", 0)), HORIZONTAL_ALIGNMENT_CENTER, 84, 12, Color("fff0c5"))
+	if not _watchtower_mode:
+		return
+	var camp := Dictionary(Dictionary(field.get("camps_by_id", {})).get(_watchtower_camp_id, {}))
+	if not camp.is_empty():
+		var camp_screen := _world_to_screen(Vector2(camp.get("world_position", Vector2.ZERO)))
+		var radius_world := maxi(int(_watchtower_draft.get("build_radius", 150)), 1)
+		canvas.draw_arc(camp_screen, float(radius_world) * _camera_zoom * OBLIQUE_Y_SCALE, 0.0, TAU, 48, Color("f2b86e", 0.68), 1.5, true)
+		canvas.draw_string(ThemeDB.fallback_font, camp_screen + Vector2(-58, -36), "瞭望塔建设范围", HORIZONTAL_ALIGNMENT_CENTER, 116, 12, Color("fff4d3"))
+	if _watchtower_preview_position != Vector2.INF:
+		var preview_screen := _world_to_screen(_watchtower_preview_position)
+		var valid := not _watchtower_draft.is_empty()
+		var color := Color("f2b86e") if valid else Color("e26452")
+		canvas.draw_arc(preview_screen, 16.0, 0.0, TAU, 24, color, 2.5, true)
+		canvas.draw_rect(Rect2(preview_screen + Vector2(-4, -16), Vector2(8, 22)), Color(color, 0.85), true)
+		canvas.draw_colored_polygon(PackedVector2Array([preview_screen + Vector2(-10, -16), preview_screen + Vector2(0, -27), preview_screen + Vector2(10, -16)]), color)
 
 
 func _draw_engineering_preview_overlay(canvas: Control, draft: Dictionary) -> void:

@@ -2,6 +2,17 @@
 
 ## 2026-09-11
 
+- Added Field Watchtower R0: a completed, connected engineering camp can host
+  one nearby land tower through the existing engineer-project, NationState
+  food-transaction, Controller world-clock and V5 rollback paths. The theatre
+  Resource authors the reversible radius, observation range, food and duration.
+  A tower is not a city building: it grants no production or upgrade capability
+  and contributes to existing patrol intel only after actual engineer travel and
+  completion. Added strict persisted tower/project validation, conservative
+  old-snapshot behavior, interruption on engineer loss during travel/build,
+  independent-process restore checks, and graphical GUI-event evidence under
+  `docs/milestones/field-tactics-r2/evidence/20260911-field-watchtower-r0/`.
+
 - Closed the stationed-reinforcement R0 guard and feedback follow-up. The
   authoritative preview used by commit now rejects a non-player army even when
   it is stationary inside player-controlled Silverford, with no Field,

@@ -79,6 +79,10 @@ static func get_scout_visibility_range() -> int:
 	return maxi(int(_current_definition().scout_visibility_range), 1)
 
 
+static func get_watchtower_config() -> Dictionary:
+	return _current_definition().watchtower_config.duplicate(true)
+
+
 static func get_presentation_profile() -> Dictionary:
 	return _current_definition().presentation_profile.duplicate(true)
 

@@ -6,6 +6,13 @@
 script = ExtResource("1_definition")
 theater_name = "黑石战区·试玩"
 scout_visibility_range = 190
+watchtower_config = {
+"build_radius": 150,
+"food_cost": 6,
+"required_milliseconds": 6000,
+"requires_connected_camp": true,
+"visibility_range": 360
+}
 world_bounds = Rect2i(0, 0, 1500, 980)
 points = {
 &"blackstone_city": {

@@ -32,6 +32,11 @@
 - Field project completion and encounters are persistence boundaries. They use
 	the controller's existing checkpoint and rollback transaction rather than
 	depending on unrelated siege activity.
+- A Field watchtower is a completed engineering-camp attachment, not a city
+	construction platform. `FieldTacticsState` persists its project and completed
+	observer; `ConstructionController` owns its resource transaction, world time
+	and V5 publication. A tower contributes only to the existing fog observer
+	set after completion, and older snapshots conservatively restore no tower.
 - Specialist movement and fog use persisted world coordinates. A historical
 	intel record exists only after actual visibility, never as a side effect of
 	reading the player projection.

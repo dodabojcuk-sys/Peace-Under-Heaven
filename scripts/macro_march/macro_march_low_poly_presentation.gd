@@ -515,6 +515,8 @@ func _rebuild_points(model: Dictionary, field: Dictionary) -> void:
 			_add_city(_point_root, position, controller != &"player")
 		else:
 			_add_garrison(_point_root, position, StringName(point.get("camp_id", &"")) != &"", point_id)
+	for tower_value in Dictionary(field.get("watchtowers_by_id", {})).values():
+		_add_field_watchtower(_point_root, Vector2(Dictionary(tower_value).get("world_position", Vector2.ZERO)))
 
 
 func _add_city(parent: Node3D, position: Vector2, enemy: bool) -> void:
@@ -556,6 +558,17 @@ func _add_garrison(parent: Node3D, position: Vector2, is_runtime_camp: bool, poi
 	if point_id == &"ridge_watch":
 		_add_box(camp, Vector3(15.0, 25.0, 15.0), Vector3(-17.0, 12.5, -5.0), Color("6a5039"), "Watchtower")
 		_add_box(camp, Vector3(25.0, 3.0, 25.0), Vector3(-17.0, 26.0, -5.0), Color("304e55"), "WatchtowerRoof")
+
+
+func _add_field_watchtower(parent: Node3D, position: Vector2) -> void:
+	var tower := Node3D.new()
+	tower.name = "FieldWatchtower"
+	tower.position = _ground_position(position, 0.5)
+	parent.add_child(tower)
+	_add_box(tower, Vector3(12.0, 29.0, 12.0), Vector3(0, 14.5, 0), Color("6a5039"), "WatchtowerFrame")
+	_add_box(tower, Vector3(22.0, 3.0, 22.0), Vector3(0, 29.5, 0), Color("304e55"), "WatchtowerRoof")
+	_add_box(tower, Vector3(2.0, 39.0, 2.0), Vector3(0, 20.0, 0), Color("49372b"), "WatchtowerFlagPole")
+	_add_box(tower, Vector3(10.0, 6.0, 1.0), Vector3(6.0, 32.0, 0), Color("ddb550"), "WatchtowerFlag")
 
 
 func _sync_armies(armies: Array) -> void:
@@ -860,7 +873,7 @@ func _road_state_signature(roads: Dictionary) -> String:
 
 
 func _point_state_signature(model: Dictionary, field: Dictionary) -> String:
-	return "%s|%s" % [str(Dictionary(Dictionary(model.get("war_loop", {})).get("cities_by_id", {}))), str(Dictionary(field.get("camps_by_id", {})))]
+	return "%s|%s|%s" % [str(Dictionary(Dictionary(model.get("war_loop", {})).get("cities_by_id", {}))), str(Dictionary(field.get("camps_by_id", {}))), str(Dictionary(field.get("watchtowers_by_id", {})))]
 
 
 func _remove_absent_nodes(nodes: Dictionary, signatures: Dictionary, seen: Dictionary) -> void:

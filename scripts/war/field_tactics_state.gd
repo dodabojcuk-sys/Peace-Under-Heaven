@@ -32,6 +32,7 @@ const INVALID_WORLD_POSITION := Vector2i(-999999, -999999)
 
 var roads_by_id: Dictionary = {}
 var camps_by_id: Dictionary = {}
+var watchtowers_by_id: Dictionary = {}
 var specialists_by_id: Dictionary = {}
 var projects_by_id: Dictionary = {}
 var patrols_by_id: Dictionary = {}
@@ -52,12 +53,20 @@ var world_milliseconds := 0
 var next_specialist_sequence := 1
 var next_project_sequence := 1
 var next_camp_sequence := 1
+var next_watchtower_sequence := 1
 var next_supply_transport_sequence := 1
 var _specialist_path_migration_pending := false
 var _supply_snapshot_restored := false
 var _stationed_reinforcement_snapshot_restored := false
 var _supply_checkpoint_required := false
 var scout_visibility_range := 2
+var watchtower_config: Dictionary = {
+	"build_radius": 150,
+	"visibility_range": 360,
+	"food_cost": 6,
+	"required_milliseconds": 6000,
+	"requires_connected_camp": true,
+}
 
 
 func initialize_from_theater(
@@ -67,12 +76,15 @@ func initialize_from_theater(
 	world_bounds_value: Rect2i = Rect2i(-260, -180, 1520, 1040),
 	terrain_regions_value: Array[Dictionary] = [],
 	patrol_configs: Array[Dictionary] = [],
-	scout_visibility_range_value := 2
+	scout_visibility_range_value := 2,
+	watchtower_config_value: Dictionary = {}
 ) -> void:
 	water_regions = water_regions_value.duplicate()
 	world_bounds = world_bounds_value
 	terrain_regions = terrain_regions_value.duplicate(true)
 	scout_visibility_range = maxi(int(scout_visibility_range_value), 1)
+	if not watchtower_config_value.is_empty():
+		watchtower_config = watchtower_config_value.duplicate(true)
 	for point_id_value in points:
 		var point: Dictionary = Dictionary(points[point_id_value])
 		point_positions_by_id[StringName(point_id_value)] = Vector2i(point.get("world_position", Vector2i.ZERO))
@@ -414,6 +426,124 @@ func preview_road_project(
 	}
 
 
+## R0 watchtowers are a constrained field engineering project, not a city
+## building system.  A completed camp supplies the road-connected anchor; the
+## tower itself is an additional observer only after its engineer finishes.
+func preview_watchtower_project(engineer_id: StringName, camp_id: StringName, world_position: Vector2i) -> Dictionary:
+	var engineer := Dictionary(specialists_by_id.get(engineer_id, {}))
+	var camp := Dictionary(camps_by_id.get(camp_id, {}))
+	if (
+		engineer.is_empty() or not bool(engineer.get("alive", false))
+		or StringName(engineer.get("role", &"")) != SPECIALIST_ENGINEER
+		or StringName(engineer.get("phase", &"")) not in [SPECIALIST_IDLE, SPECIALIST_BLOCKED]
+		or StringName(engineer.get("project_id", &"")) != &""
+	):
+		return {"valid": false, "error": "工程师当前无法建设瞭望塔"}
+	if camp.is_empty() or not bool(camp.get("connected", false)):
+		return {"valid": false, "error": "需要选择已完工且已连接的工程驻点"}
+	var camp_road_id := StringName(camp.get("road_id", &""))
+	if bool(watchtower_config.get("requires_connected_camp", true)) and not is_route_open(camp_road_id):
+		return {"valid": false, "error": "工程驻点道路尚未通行，无法建设瞭望塔"}
+	if not world_bounds.has_point(world_position):
+		return {"valid": false, "error": "瞭望塔必须位于战区范围内"}
+	if _point_is_in_water(world_position):
+		return {"valid": false, "error": "瞭望塔必须建在可通行陆地"}
+	var camp_position := Vector2(camp.get("world_position", INVALID_WORLD_POSITION))
+	if camp_position == Vector2(INVALID_WORLD_POSITION):
+		return {"valid": false, "error": "工程驻点位置无效"}
+	var build_radius := maxi(int(watchtower_config.get("build_radius", 150)), 1)
+	if camp_position.distance_to(Vector2(world_position)) > float(build_radius):
+		return {"valid": false, "error": "瞭望塔必须建在工程驻点 %d 范围内" % build_radius}
+	if camp_position.distance_to(Vector2(world_position)) < 32.0:
+		return {"valid": false, "error": "瞭望塔不能占用工程驻点位置"}
+	if not _watchtower_for_camp(camp_id).is_empty() or _watchtower_project_for_camp(camp_id) != &"":
+		return {"valid": false, "error": "该工程驻点已有瞭望塔或正在建设"}
+	for tower_value in watchtowers_by_id.values():
+		if Vector2(Dictionary(tower_value).get("world_position", Vector2.ZERO)).distance_to(Vector2(world_position)) < 28.0:
+			return {"valid": false, "error": "瞭望塔位置被已有设施占用"}
+	var start_position := Vector2(engineer.get("world_position", _point_position(StringName(engineer.get("current_point_id", &"")))))
+	var movement_plan := _plan_specialist_land_path(start_position, Vector2(world_position))
+	if movement_plan.is_empty():
+		return {"valid": false, "error": "工程师无法到达瞭望塔工地"}
+	return {
+		"valid": true,
+		"engineer_id": engineer_id,
+		"camp_id": camp_id,
+		"source_point_id": StringName(camp.get("point_id", &"")),
+		"road_id": camp_road_id,
+		"world_position": world_position,
+		"build_radius": build_radius,
+		"visibility_range": maxi(int(watchtower_config.get("visibility_range", 360)), 1),
+		"food_cost": maxi(int(watchtower_config.get("food_cost", 6)), 0),
+		"required_milliseconds": maxi(int(watchtower_config.get("required_milliseconds", 6000)), 1),
+		"engineer_movement_plan": movement_plan.duplicate(true),
+		"travel_milliseconds": int(movement_plan.get("duration_milliseconds", 0)) if start_position.distance_to(Vector2(world_position)) > 0.01 else 0,
+	}
+
+
+func begin_watchtower_project(engineer_id: StringName, camp_id: StringName, world_position: Vector2i) -> Dictionary:
+	var preview := preview_watchtower_project(engineer_id, camp_id, world_position)
+	if not bool(preview.get("valid", false)):
+		return {}
+	var engineer := Dictionary(specialists_by_id.get(engineer_id, {}))
+	var project_id := StringName("watchtower.%06d" % next_project_sequence)
+	next_project_sequence += 1
+	var tower_id := StringName("watchtower.%06d" % next_watchtower_sequence)
+	next_watchtower_sequence += 1
+	var travel_milliseconds := int(preview.get("travel_milliseconds", 0))
+	var start_position := Vector2(engineer.get("world_position", _point_position(StringName(engineer.get("current_point_id", &"")))))
+	var work_position := Vector2i(preview.get("world_position", INVALID_WORLD_POSITION))
+	var project := {
+		"project_id": project_id,
+		"project_kind": &"WATCHTOWER",
+		"engineer_id": engineer_id,
+		"road_id": StringName(preview.get("road_id", &"")),
+		"source_point_id": StringName(preview.get("source_point_id", &"")),
+		"target_point_id": StringName(preview.get("source_point_id", &"")),
+		"camp_id": camp_id,
+		"tower_id": tower_id,
+		"work_world_position": work_position,
+		"route_world_points": [work_position],
+		"road_kind": ROAD_NORMAL,
+		"progress_milliseconds": 0,
+		"travel_milliseconds": travel_milliseconds,
+		"required_milliseconds": int(preview.get("required_milliseconds", 1)),
+		"visibility_range": int(preview.get("visibility_range", 1)),
+		"segment_plans": [],
+		"build_camp": false,
+		"phase": &"TRAVELING" if travel_milliseconds > 0 else &"BUILDING",
+	}
+	projects_by_id[project_id] = project
+	engineer.project_id = project_id
+	engineer.target_point_id = StringName(preview.get("source_point_id", &""))
+	engineer.target_world_position = work_position
+	engineer.move_start_position = Vector2i(start_position)
+	engineer.move_route_world_points = Array(Dictionary(preview.get("engineer_movement_plan", {})).get("points", [])).duplicate(true)
+	engineer.move_total_milliseconds = travel_milliseconds
+	engineer.move_elapsed_milliseconds = 0
+	engineer.move_remaining_milliseconds = travel_milliseconds
+	engineer.phase = SPECIALIST_MOVING if travel_milliseconds > 0 else SPECIALIST_BUILDING
+	engineer.world_position = Vector2i(start_position) if travel_milliseconds > 0 else work_position
+	specialists_by_id[engineer_id] = engineer
+	return project.duplicate(true)
+
+
+func _watchtower_for_camp(camp_id: StringName) -> Dictionary:
+	for tower_value in watchtowers_by_id.values():
+		var tower: Dictionary = Dictionary(tower_value)
+		if StringName(tower.get("camp_id", &"")) == camp_id:
+			return tower.duplicate(true)
+	return {}
+
+
+func _watchtower_project_for_camp(camp_id: StringName) -> StringName:
+	for project_id_value in projects_by_id:
+		var project: Dictionary = Dictionary(projects_by_id[project_id_value])
+		if StringName(project.get("project_kind", &"")) == &"WATCHTOWER" and StringName(project.get("camp_id", &"")) == camp_id and StringName(project.get("phase", &"")) != &"COMPLETE":
+			return StringName(project_id_value)
+	return &""
+
+
 func _canonical_world_points(points: Array) -> Array:
 	var canonical: Array = []
 	for point in points:
@@ -667,6 +797,8 @@ func resume_interrupted_project(engineer_id: StringName, project_id: StringName)
 func _interrupted_project_work_position(project: Dictionary) -> Vector2i:
 	if StringName(project.get("project_kind", &"")) == &"REPAIR":
 		return _point_position(StringName(project.get("target_point_id", &"")))
+	if StringName(project.get("project_kind", &"")) == &"WATCHTOWER":
+		return Vector2i(project.get("work_world_position", INVALID_WORLD_POSITION))
 	var elapsed := int(project.get("progress_milliseconds", 0))
 	var accumulated := 0
 	for segment_value in Array(project.get("segment_plans", [])):
@@ -710,7 +842,7 @@ func _reachable_repair_endpoint(engineer: Dictionary, road: Dictionary) -> Dicti
 	return best
 
 
-static func _has_valid_references(roads: Dictionary, camps: Dictionary, specialists: Dictionary, projects: Dictionary, patrols: Dictionary, intel: Dictionary) -> bool:
+static func _has_valid_references(roads: Dictionary, camps: Dictionary, watchtowers: Dictionary, specialists: Dictionary, projects: Dictionary, patrols: Dictionary, intel: Dictionary) -> bool:
 	for road_id_value in roads:
 		var road: Dictionary = Dictionary(roads[road_id_value])
 		if StringName(road_id_value) == &"" or StringName(road.get("road_id", &"")) != StringName(road_id_value) or StringName(road.get("state", &"")) not in [ROAD_OPEN, ROAD_DAMAGED]:
@@ -726,9 +858,30 @@ static func _has_valid_references(roads: Dictionary, camps: Dictionary, speciali
 		var project: Dictionary = Dictionary(projects[project_id_value])
 		if StringName(project_id_value) == &"" or StringName(project.get("project_id", &"")) != StringName(project_id_value) or not specialists.has(StringName(project.get("engineer_id", &""))) or StringName(project.get("road_id", &"")) == &"":
 			return false
+		if StringName(project.get("project_kind", &"")) == &"WATCHTOWER" and (
+			not camps.has(StringName(project.get("camp_id", &"")))
+			or not _is_snapshot_id(project.get("tower_id", null))
+			or not project.get("work_world_position", null) is Vector2i
+			or not _is_snapshot_int(project.get("visibility_range", null))
+			or int(project.get("visibility_range", 0)) <= 0
+		):
+			return false
 	for camp_id_value in camps:
 		var camp: Dictionary = Dictionary(camps[camp_id_value])
 		if StringName(camp_id_value) == &"" or StringName(camp.get("camp_id", &"")) != StringName(camp_id_value) or not roads.has(StringName(camp.get("road_id", &""))):
+			return false
+	for tower_id_value in watchtowers:
+		var tower: Dictionary = Dictionary(watchtowers[tower_id_value])
+		if (
+			StringName(tower_id_value) == &""
+			or StringName(tower.get("watchtower_id", &"")) != StringName(tower_id_value)
+			or not camps.has(StringName(tower.get("camp_id", &"")))
+			or not tower.get("world_position", null) is Vector2i
+			or not _is_snapshot_int(tower.get("visibility_range", null))
+			or int(tower.get("visibility_range", 0)) <= 0
+			or typeof(tower.get("complete", null)) != TYPE_BOOL
+			or not bool(tower.get("complete", false))
+		):
 			return false
 	for patrol_id_value in patrols:
 		if StringName(patrol_id_value) == &"" or not patrols[patrol_id_value] is Dictionary:
@@ -1647,7 +1800,19 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 	for specialist_id_value in specialists_by_id.keys():
 		var moving_id := StringName(specialist_id_value)
 		var moving := Dictionary(specialists_by_id[moving_id])
-		if not bool(moving.get("alive", false)) or StringName(moving.get("phase", &"")) != SPECIALIST_MOVING:
+		if not bool(moving.get("alive", false)):
+			# A specialist can be lost on the approach as well as while already
+			# working.  Leaving a TRAVELING project live would make a later restore
+			# look like a tower is still reachable and would hide the interruption.
+			var lost_project_id := StringName(moving.get("project_id", &""))
+			if projects_by_id.has(lost_project_id):
+				var lost_project := Dictionary(projects_by_id[lost_project_id])
+				if StringName(lost_project.get("phase", &"")) in [&"TRAVELING", &"BUILDING"]:
+					lost_project.phase = &"INTERRUPTED"
+					lost_project.interruption_reason = &"ENGINEER_LOST"
+					projects_by_id[lost_project_id] = lost_project
+			continue
+		if StringName(moving.get("phase", &"")) != SPECIALIST_MOVING:
 			continue
 		var move_remaining_before := int(moving.get("move_remaining_milliseconds", 0))
 		var move_elapsed_before := int(moving.get("move_elapsed_milliseconds", 0))
@@ -1664,7 +1829,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 			moving.world_position = Vector2i(moving.get("target_world_position", Vector2i.ZERO))
 			var active_project_id := StringName(moving.get("project_id", &""))
 			var active_project := Dictionary(projects_by_id.get(active_project_id, {}))
-			if StringName(active_project.get("phase", &"")) == &"TRAVELING" and StringName(active_project.get("project_kind", &"")) in [&"REPAIR", &"CONSTRUCTION"]:
+			if StringName(active_project.get("phase", &"")) == &"TRAVELING" and StringName(active_project.get("project_kind", &"")) in [&"REPAIR", &"CONSTRUCTION", &"WATCHTOWER"]:
 				active_project.phase = &"BUILDING"
 				projects_by_id[active_project_id] = active_project
 				project_arrival_work_milliseconds[active_project_id] = maxi(delta_milliseconds - move_remaining_before, 0)
@@ -1716,10 +1881,13 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 			progress_before + project_delta_milliseconds,
 			int(project.required_milliseconds)
 		)
-		if StringName(project.get("project_kind", &"")) != &"REPAIR":
+		if StringName(project.get("project_kind", &"")) == &"CONSTRUCTION":
 			_update_engineer_construction_position(engineer, project)
 			specialists_by_id[engineer_id] = engineer
 			opened_road_ids.append_array(_open_completed_construction_segments(project_id, project))
+		elif StringName(project.get("project_kind", &"")) == &"WATCHTOWER":
+			engineer.world_position = Vector2i(project.get("work_world_position", engineer.get("world_position", Vector2i.ZERO)))
+			specialists_by_id[engineer_id] = engineer
 		var construction_trace := _timed_project_work_records(
 			engineer_id, project, progress_before, int(project.progress_milliseconds), work_start_offset
 		)
@@ -1752,8 +1920,10 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 				repaired_road.state = ROAD_OPEN
 				roads_by_id[StringName(project.road_id)] = repaired_road
 				repaired_road_open_offsets[StringName(project.road_id)] = work_start_offset + work_consumed
-			else:
+			elif StringName(project.get("project_kind", &"")) == &"CONSTRUCTION":
 				opened_road_ids.append_array(_open_completed_construction_segments(project_id, project))
+			elif StringName(project.get("project_kind", &"")) == &"WATCHTOWER":
+				_create_completed_watchtower(project)
 			engineer.phase = SPECIALIST_IDLE
 			if StringName(project.get("project_kind", &"")) != &"REPAIR":
 				engineer.current_point_id = StringName(project.get("target_point_id", &""))
@@ -1762,7 +1932,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 				# final physical road endpoint is already authoritative here, whereas
 				# resolving the not-yet-created camp would incorrectly place the
 				# engineer at the zero vector for one persistence frame.
-				engineer.world_position = Vector2i(_road_endpoint_position(StringName(project.get("road_id", &""))))
+				engineer.world_position = Vector2i(project.get("work_world_position", _road_endpoint_position(StringName(project.get("road_id", &""))))) if StringName(project.get("project_kind", &"")) == &"WATCHTOWER" else Vector2i(_road_endpoint_position(StringName(project.get("road_id", &""))))
 			engineer.project_id = &""
 			specialists_by_id[engineer_id] = engineer
 			if bool(project.build_camp):
@@ -2247,6 +2417,7 @@ func get_snapshot() -> Dictionary:
 		"schema_version": SCHEMA_VERSION,
 		"roads_by_id": roads_by_id.duplicate(true),
 		"camps_by_id": camps_by_id.duplicate(true),
+		"watchtowers_by_id": watchtowers_by_id.duplicate(true),
 		"specialists_by_id": specialists_by_id.duplicate(true),
 		"projects_by_id": projects_by_id.duplicate(true),
 		"patrols_by_id": patrols_by_id.duplicate(true),
@@ -2258,6 +2429,7 @@ func get_snapshot() -> Dictionary:
 		"next_specialist_sequence": next_specialist_sequence,
 		"next_project_sequence": next_project_sequence,
 		"next_camp_sequence": next_camp_sequence,
+		"next_watchtower_sequence": next_watchtower_sequence,
 		"next_supply_transport_sequence": next_supply_transport_sequence,
 	}
 
@@ -2268,9 +2440,12 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	supply_required.append_array(["supply_inventory_by_point_id", "supply_transports_by_id", "next_supply_transport_sequence"])
 	var required := supply_required.duplicate()
 	required.append("stationed_reinforcements_by_point_id")
+	var watchtower_required := required.duplicate()
+	watchtower_required.append_array(["watchtowers_by_id", "next_watchtower_sequence"])
 	var is_legacy_supply_snapshot := snapshot.size() == legacy_required.size()
 	var is_legacy_reinforcement_snapshot := snapshot.size() == supply_required.size()
-	if (not is_legacy_supply_snapshot and not is_legacy_reinforcement_snapshot and snapshot.size() != required.size()) or typeof(snapshot.get("schema_version")) != TYPE_INT or int(snapshot.get("schema_version")) != SCHEMA_VERSION:
+	var is_legacy_watchtower_snapshot := snapshot.size() == required.size()
+	if (not is_legacy_supply_snapshot and not is_legacy_reinforcement_snapshot and not is_legacy_watchtower_snapshot and snapshot.size() != watchtower_required.size()) or typeof(snapshot.get("schema_version")) != TYPE_INT or int(snapshot.get("schema_version")) != SCHEMA_VERSION:
 		return false
 	for key in legacy_required:
 		if not snapshot.has(key):
@@ -2281,6 +2456,8 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 				return false
 	if not is_legacy_supply_snapshot and not is_legacy_reinforcement_snapshot and not snapshot.has("stationed_reinforcements_by_point_id"):
 		return false
+	if not is_legacy_watchtower_snapshot and (not snapshot.has("watchtowers_by_id") or not snapshot.has("next_watchtower_sequence")):
+		return false
 	if (
 		not snapshot.roads_by_id is Dictionary or not snapshot.camps_by_id is Dictionary
 		or not snapshot.specialists_by_id is Dictionary or not snapshot.projects_by_id is Dictionary
@@ -2289,10 +2466,11 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		or typeof(snapshot.next_project_sequence) != TYPE_INT or int(snapshot.next_project_sequence) <= 0 or typeof(snapshot.next_camp_sequence) != TYPE_INT or int(snapshot.next_camp_sequence) <= 0
 		or (not is_legacy_supply_snapshot and (not snapshot.supply_inventory_by_point_id is Dictionary or not snapshot.supply_transports_by_id is Dictionary or typeof(snapshot.next_supply_transport_sequence) != TYPE_INT or int(snapshot.next_supply_transport_sequence) <= 0))
 		or (not is_legacy_supply_snapshot and not is_legacy_reinforcement_snapshot and not snapshot.stationed_reinforcements_by_point_id is Dictionary)
+		or (not is_legacy_watchtower_snapshot and (not snapshot.watchtowers_by_id is Dictionary or not _is_snapshot_int(snapshot.next_watchtower_sequence) or int(snapshot.next_watchtower_sequence) <= 0))
 	):
 		return false
 	if not _has_valid_references(
-		Dictionary(snapshot.roads_by_id), Dictionary(snapshot.camps_by_id),
+		Dictionary(snapshot.roads_by_id), Dictionary(snapshot.camps_by_id), Dictionary(snapshot.get("watchtowers_by_id", {})),
 		Dictionary(snapshot.specialists_by_id), Dictionary(snapshot.projects_by_id),
 		Dictionary(snapshot.patrols_by_id), Dictionary(snapshot.intel_by_subject_id)
 	):
@@ -2305,6 +2483,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		return false
 	roads_by_id = Dictionary(snapshot.roads_by_id).duplicate(true)
 	camps_by_id = Dictionary(snapshot.camps_by_id).duplicate(true)
+	watchtowers_by_id = Dictionary(snapshot.get("watchtowers_by_id", {})).duplicate(true)
 	specialists_by_id = Dictionary(snapshot.specialists_by_id).duplicate(true)
 	projects_by_id = Dictionary(snapshot.projects_by_id).duplicate(true)
 	patrols_by_id = Dictionary(snapshot.patrols_by_id).duplicate(true)
@@ -2316,6 +2495,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	next_specialist_sequence = int(snapshot.next_specialist_sequence)
 	next_project_sequence = int(snapshot.next_project_sequence)
 	next_camp_sequence = int(snapshot.next_camp_sequence)
+	next_watchtower_sequence = int(snapshot.get("next_watchtower_sequence", 1))
 	next_supply_transport_sequence = int(snapshot.get("next_supply_transport_sequence", 1))
 	_specialist_path_migration_pending = true
 	_supply_snapshot_restored = true
@@ -2375,6 +2555,21 @@ func _create_completed_camp(point_id: StringName, road_id: StringName, reserved_
 	}
 
 
+func _create_completed_watchtower(project: Dictionary) -> void:
+	var tower_id := StringName(project.get("tower_id", &""))
+	var camp_id := StringName(project.get("camp_id", &""))
+	if tower_id == &"" or camp_id == &"" or not camps_by_id.has(camp_id) or watchtowers_by_id.has(tower_id):
+		return
+	watchtowers_by_id[tower_id] = {
+		"watchtower_id": tower_id,
+		"camp_id": camp_id,
+		"project_id": StringName(project.get("project_id", &"")),
+		"world_position": Vector2i(project.get("work_world_position", Vector2i.ZERO)),
+		"visibility_range": maxi(int(project.get("visibility_range", 1)), 1),
+		"complete": true,
+	}
+
+
 func _road_endpoint_position(road_id: StringName) -> Vector2:
 	var road: Dictionary = Dictionary(roads_by_id.get(road_id, {}))
 	var points: Array = road.get("route_world_points", [])
@@ -2411,6 +2606,10 @@ func _refresh_intel() -> void:
 			})
 	for camp_value in camps_by_id.values():
 		observers.append({"world_position": Vector2(Dictionary(camp_value).get("world_position", Vector2.ZERO)), "range": 120})
+	for tower_value in watchtowers_by_id.values():
+		var tower: Dictionary = Dictionary(tower_value)
+		if bool(tower.get("complete", false)):
+			observers.append({"world_position": Vector2(tower.get("world_position", Vector2.ZERO)), "range": maxi(int(tower.get("visibility_range", 1)), 1)})
 	for patrol_id_value in patrols_by_id:
 		var patrol: Dictionary = Dictionary(patrols_by_id[patrol_id_value])
 		var patrol_id := StringName(patrol_id_value)
