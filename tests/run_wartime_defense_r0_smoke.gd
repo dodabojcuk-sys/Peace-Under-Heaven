@@ -329,6 +329,22 @@ func _run() -> void:
 	restored_session.routes[deployment_after_route] = quiet_arrow_route
 	restored_battle._refresh_battle_ui()
 	var restored_repair_button := restored_battle.get_node("UI/RootPanel/WartimeRepairButton") as Button
+	var restored_repair_target_button := restored_battle.get_node(
+		"UI/RootPanel/WartimeRepairTargetButton"
+	) as Button
+	var multiple_repair_targets_visible := restored_repair_target_button.visible
+	if multiple_repair_targets_visible:
+		restored_repair_target_button.emit_signal("pressed")
+		await process_frame
+	var arrow_target_selected := StringName(
+		restored_battle._selected_repairable_facility().get("facility_id", &"")
+	) == StringName(arrow_tower.get("facility_id", &""))
+	_check(
+		multiple_repair_targets_visible
+			and arrow_target_selected
+			and restored_repair_button.text.contains("箭塔"),
+		"同路线的拒马和箭塔同时受损时，正式维修界面允许玩家明确切换到箭塔目标"
+	)
 	restored_repair_button.emit_signal("pressed")
 	await process_frame
 	var arrow_repair_started := StringName(

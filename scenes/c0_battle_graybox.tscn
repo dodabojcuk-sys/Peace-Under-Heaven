@@ -374,6 +374,16 @@ offset_bottom = -206.0
 text = "维修战时工事"
 theme_type_variation = &"PrimaryButton"
 
+[node name="WartimeRepairTargetButton" type="Button" parent="UI/RootPanel"]
+visible = false
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 212.0
+offset_top = -246.0
+offset_right = 452.0
+offset_bottom = -206.0
+text = "切换维修目标"
+
 [node name="WartimeFacilityStatusLabel" type="Label" parent="UI/RootPanel"]
 visible = false
 anchor_top = 1.0

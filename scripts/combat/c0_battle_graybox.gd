@@ -66,6 +66,9 @@ const DEBUG_PLAYER_COUNT := 50
 	$UI/RootPanel/WartimePlanPanel/ConfirmButton
 )
 @onready var wartime_repair_button: Button = $UI/RootPanel/WartimeRepairButton
+@onready var wartime_repair_target_button: Button = (
+	$UI/RootPanel/WartimeRepairTargetButton
+)
 @onready var wartime_facility_status_label: Label = (
 	$UI/RootPanel/WartimeFacilityStatusLabel
 )
@@ -159,6 +162,7 @@ var _selected_squad_id := -1
 var _presentation_snapshot: Dictionary = {}
 var _recent_actions: Array[String] = []
 var _pending_wartime_facility_plan: Dictionary = {}
+var _selected_repair_facility_id: StringName = &""
 
 
 func _ready() -> void:
@@ -178,6 +182,7 @@ func _ready() -> void:
 	)
 	wartime_plan_confirm_button.pressed.connect(_confirm_wartime_facility_plan)
 	wartime_repair_button.pressed.connect(_repair_damaged_wartime_facility)
+	wartime_repair_target_button.pressed.connect(_cycle_wartime_repair_target)
 	exit_button.pressed.connect(request_exit_or_return)
 	exit_cancel_button.pressed.connect(cancel_exit_confirmation)
 	exit_confirm_button.pressed.connect(confirm_exit_as_retreat)
@@ -1239,8 +1244,19 @@ func _confirm_wartime_facility_plan() -> void:
 
 func _refresh_wartime_repair_ui() -> void:
 	wartime_repair_button.visible = false
+	wartime_repair_target_button.visible = false
 	if request == null or request.phase != BattleRequest.PHASE_ACTIVE or coordinator.active_session == null:
+		_selected_repair_facility_id = &""
 		return
+	var repairable := _repairable_facilities_on_selected_route()
+	if repairable.is_empty():
+		_selected_repair_facility_id = &""
+		return
+	if not repairable.any(
+		func(candidate: Dictionary) -> bool:
+			return StringName(candidate.get("facility_id", &"")) == _selected_repair_facility_id
+	):
+		_selected_repair_facility_id = StringName(repairable[0].get("facility_id", &""))
 	var record := _selected_repairable_facility()
 	if record.is_empty():
 		return
@@ -1253,6 +1269,13 @@ func _refresh_wartime_repair_ui() -> void:
 	]
 	wartime_repair_button.visible = true
 	wartime_repair_button.disabled = wood_cost <= 0
+	if repairable.size() > 1:
+		wartime_repair_target_button.text = "切换维修：%s（%d/%d）" % [
+			_get_facility_name(StringName(record.get("kind", &""))),
+			repairable.find(record) + 1,
+			repairable.size(),
+		]
+		wartime_repair_target_button.visible = true
 
 
 ## The active facility record is durable session state, not a transient action
@@ -1358,10 +1381,20 @@ func _repair_damaged_wartime_facility() -> void:
 
 ## The selected squad is the player's existing route focus during an active
 ## C0 battle.  Reuse it for repair targeting so one generic button cannot
-## silently repair the first damaged record on a different route.
+## silently repair a work on another route.  A route may contain more than one
+## damaged work, so retain an explicit UI-local target rather than treating its
+## facility-array order as the player's choice.
 func _selected_repairable_facility() -> Dictionary:
+	for record in _repairable_facilities_on_selected_route():
+		if StringName(record.get("facility_id", &"")) == _selected_repair_facility_id:
+			return record
+	return {}
+
+
+func _repairable_facilities_on_selected_route() -> Array[Dictionary]:
+	var records: Array[Dictionary] = []
 	if coordinator.active_session == null:
-		return {}
+		return records
 	var target_route := _selected_deployment_route()
 	for record_value in Array(coordinator.active_session.get_wartime_facility_state().get("facilities", [])):
 		var record: Dictionary = Dictionary(record_value)
@@ -1372,8 +1405,25 @@ func _selected_repairable_facility() -> Dictionary:
 				BattleSession.FACILITY_PHASE_DESTROYED,
 			]
 		):
-			return record
-	return {}
+			records.append(record)
+	return records
+
+
+func _cycle_wartime_repair_target() -> void:
+	var repairable := _repairable_facilities_on_selected_route()
+	if repairable.size() < 2:
+		return
+	var current_index := -1
+	for index in repairable.size():
+		if StringName(repairable[index].get("facility_id", &"")) == _selected_repair_facility_id:
+			current_index = index
+			break
+	var next_index := (current_index + 1) % repairable.size()
+	_selected_repair_facility_id = StringName(repairable[next_index].get("facility_id", &""))
+	_append_recent_action("维修目标切换为%s" % _get_facility_name(
+		StringName(repairable[next_index].get("kind", &""))
+	))
+	_refresh_battle_ui()
 
 
 func _can_edit_wartime_facilities() -> bool:

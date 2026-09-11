@@ -102,6 +102,12 @@ so the tower may make its final eligible volley on the tick it is destroyed,
 but never on a later tick. The existing repair transaction can restore a
 destroyed tower to its full saved volley after its repair ticks complete.
 
+Repair controls are scoped to the selected squad's route. If that route has
+more than one damaged or destroyed facility, C0 exposes a local `switch repair
+target` action before any repair transaction is submitted. The selected target
+does not alter facility state or spend resources; the existing transaction
+still revalidates and repairs exactly that saved facility ID.
+
 Before confirming a plan, new works bind to the currently selected squad's
 formal deployment route. C0 displays that route in the plan title, and the
 controller still validates the route in the persisted plan at confirmation.

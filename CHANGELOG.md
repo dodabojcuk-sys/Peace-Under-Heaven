@@ -14,6 +14,10 @@
 - Extended the formal defense smoke through a restored session: it proves the
   barricade-to-tower sequence, scaled damaged volley, silent post-destruction
   interval, and repair back to full firepower.
+- Added an explicit route-local repair target switch for the case where several
+  temporary works are damaged together. It changes only C0's current UI focus;
+  the already-established repair transaction remains the sole writer of costs,
+  lifecycle state, and checkpoints.
 
 ## 2026-09-12 - Defense observation projection
 
