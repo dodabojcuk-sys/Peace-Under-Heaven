@@ -275,10 +275,60 @@ func _run() -> void:
 			) == &"wartime_defense.blackstone_gate.v0",
 		"已结算的守城失守在 V5 冷恢复后保留原结果与城门状态，不会被主线运行时投影忽略"
 	)
+
+	# Win through the same formal route controls rather than synthesizing a
+	# terminal result: all three real formations advance to their saved routes.
+	var victory_scene := CITY_SCENE.instantiate() as Node2D
+	root.add_child(victory_scene)
+	await process_frame
+	var victory_city: Node = victory_scene.get_node("ConstructionController")
+	var victory_ids: Array[StringName] = []
+	for formation_value in victory_city.get_formation_roster():
+		var formation: Dictionary = Dictionary(formation_value)
+		if int(formation.get("member_count", 0)) > 0:
+			victory_ids.append(StringName(formation.get("formation_id", &"")))
+	var victory_started: Dictionary = victory_city.begin_wartime_defense_attempt(victory_ids)
+	var victory_entered: bool = (
+		bool(victory_started.get("success", false))
+		and victory_city.enter_wartime_defense_battle()
+	)
+	await process_frame
+	var victory_battle := victory_city.get_formal_battle_scene() as C0BattleGraybox
+	var victory_result: BattleResult
+	if victory_battle != null and victory_battle.start_battle():
+		victory_battle.tick_timer.stop()
+		var advance_button := victory_battle.get_node(
+			"UI/RootPanel/SelectedSquadPanel/AdvanceButton"
+		) as Button
+		for squad_id in [1, 2, 3]:
+			var select_button := victory_battle.get_node(
+				"UI/RootPanel/SquadControls/Squad%d/SelectButton" % squad_id
+			) as Button
+			select_button.emit_signal("pressed")
+			advance_button.emit_signal("pressed")
+			await process_frame
+		victory_result = victory_battle.step_battle_for_test(260)
+	var victory_summary: Dictionary = (
+		victory_battle.confirm_pending_result()
+		if victory_battle != null and victory_result != null
+		else {}
+	)
+	_check(
+		victory_entered
+			and victory_result != null
+			and victory_result.outcome == BattleOutcome.Value.VICTORY
+			and not victory_summary.is_empty()
+			and StringName(victory_summary.get("source_id", &""))
+				== BattleRequest.SOURCE_WARTIME_DEFENSE
+			and not bool(victory_city.get("city_fallen"))
+			and victory_city.get_city_defense() > 0,
+		"三支真实守军经可见选择与前进命令击退来敌，胜利只回写同一守城事务并保留城门"
+	)
 	city_scene.queue_free()
 	restored_scene.queue_free()
 	defeat_scene.queue_free()
 	defeat_restored_scene.queue_free()
+	victory_scene.queue_free()
 	await process_frame
 	_finish()
 

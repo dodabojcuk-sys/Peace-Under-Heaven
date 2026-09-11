@@ -10,6 +10,9 @@
 - Other prepared expeditions remain locked after their normal confirmation;
   deployment cannot change after activation. The focused defense GUI smoke
   exercises the visible route button and validates the strict V5 snapshot.
+- Added the missing formal defense-victory path to that smoke: three real
+  Blackstone formations receive visible selection and advance commands, defeat
+  both routes, and write one durable defense result while retaining the gate.
 
 ## 2026-09-12 - Durable pending-result recovery for wartime defense
 
