@@ -42,8 +42,9 @@ loss applies the recorded defense loss once and restores it from the settled V5
 result; it does not reset the gate because the first-war runtime projection was
 rebuilt. The focused formal smoke also sends three real Blackstone formations
 through the visible select-and-advance controls until both approaches are
-cleared, then confirms one defense victory with the gate still intact. This is
-a durable defense conclusion, not a substitute for the later full
+cleared, then confirms one defense victory with the gate still intact and
+returns to the normal city. This is a durable defense conclusion, not a
+substitute for the later full
 defence/city-fall campaign flow.
 
 ## Ownership

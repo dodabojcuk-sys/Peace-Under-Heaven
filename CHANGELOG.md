@@ -12,7 +12,8 @@
   exercises the visible route button and validates the strict V5 snapshot.
 - Added the missing formal defense-victory path to that smoke: three real
   Blackstone formations receive visible selection and advance commands, defeat
-  both routes, and write one durable defense result while retaining the gate.
+  both routes, write one durable defense result while retaining the gate, then
+  return to the normal city without mutating the ordinary first-war state.
 
 ## 2026-09-12 - Durable pending-result recovery for wartime defense
 

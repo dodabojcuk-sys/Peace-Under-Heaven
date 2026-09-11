@@ -313,16 +313,26 @@ func _run() -> void:
 		if victory_battle != null and victory_result != null
 		else {}
 	)
+	var victory_return_requested := (
+		victory_battle.request_return_to_city() != null
+		if victory_battle != null and not victory_summary.is_empty()
+		else false
+	)
+	await process_frame
+	await process_frame
 	_check(
 		victory_entered
 			and victory_result != null
 			and victory_result.outcome == BattleOutcome.Value.VICTORY
 			and not victory_summary.is_empty()
+			and victory_return_requested
 			and StringName(victory_summary.get("source_id", &""))
 				== BattleRequest.SOURCE_WARTIME_DEFENSE
 			and not bool(victory_city.get("city_fallen"))
-			and victory_city.get_city_defense() > 0,
-		"三支真实守军经可见选择与前进命令击退来敌，胜利只回写同一守城事务并保留城门"
+			and victory_city.get_city_defense() > 0
+			and victory_city.get_formal_battle_scene() == null
+			and int(victory_city.get("first_war_state")) == 0,
+		"三支真实守军经可见选择与前进命令击退来敌，胜利只回写同一守城事务、保留城门并返回常态内城"
 	)
 	city_scene.queue_free()
 	restored_scene.queue_free()
