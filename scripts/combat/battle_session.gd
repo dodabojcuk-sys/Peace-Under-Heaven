@@ -48,7 +48,15 @@ const FACILITY_MAX_DURABILITY := {
 	WartimeFacilityPlan.KIND_BARRICADE: 180,
 }
 const FACILITY_REPAIR_TICKS := 2
-const SNAPSHOT_SCHEMA_VERSION := 4
+## City-gate repair is a temporary, battle-local construction action.  It
+## restores the mission target only after its own saved work ticks complete;
+## settlement damage is still written once, when this battle resolves.
+const PROTECT_TARGET_REPAIR_WOOD_COST := 4
+const PROTECT_TARGET_REPAIR_TICKS := 2
+const PROTECT_TARGET_REPAIR_HP := 120
+const PROTECT_TARGET_REPAIR_IDLE := &"IDLE"
+const PROTECT_TARGET_REPAIRING := &"REPAIRING"
+const SNAPSHOT_SCHEMA_VERSION := 5
 const SNAPSHOT_KEYS := [
 	"schema_version", "current_tick", "next_order_id", "squads", "routes",
 	"pending_orders", "accepted_orders", "retreat_was_ordered",
@@ -183,6 +191,7 @@ func step_tick() -> bool:
 	_update_positions()
 	_advance_mission_enemy_positions()
 	_advance_wartime_facilities()
+	_advance_protect_target_repair()
 	var damage_intents := _build_damage_intents()
 	_apply_damage_intents(damage_intents)
 	_check_outcome()
@@ -364,6 +373,15 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 			var legacy_route: Dictionary = Dictionary(normalized_snapshot.routes.get(route_id, {}))
 			legacy_route.enemy_position_fixed = 0
 			normalized_snapshot.routes[route_id] = legacy_route
+		normalized_snapshot.schema_version = SNAPSHOT_SCHEMA_VERSION
+	if source_schema_version < SNAPSHOT_SCHEMA_VERSION:
+		## Pre-v5 sessions predate a repair-in-progress state.  Preserve their
+		## recorded target HP exactly and upgrade them to the only truthful
+		## compatible state: no repair was pending at the moment of the save.
+		normalized_snapshot.mission_objective_state["protect_target_repair_phase"] = PROTECT_TARGET_REPAIR_IDLE
+		normalized_snapshot.mission_objective_state["protect_target_repair_progress_ticks"] = 0
+		normalized_snapshot.mission_objective_state["protect_target_repair_required_ticks"] = 0
+		normalized_snapshot.mission_objective_state["protect_target_repair_amount"] = 0
 		normalized_snapshot.schema_version = SNAPSHOT_SCHEMA_VERSION
 	var restored_squads: Array[Dictionary] = []
 	var expected_squads: Dictionary = {}
@@ -618,6 +636,40 @@ func begin_wartime_facility_repair(facility_id: StringName) -> bool:
 	return false
 
 
+func can_begin_protect_target_repair() -> bool:
+	return (
+		not completed
+		and mission_definition != null
+		and mission_definition.objective_type == MissionDefinition.OBJECTIVE_PROTECT
+		and StringName(mission_objective_state.get("protect_target_repair_phase", &""))
+			== PROTECT_TARGET_REPAIR_IDLE
+		and int(mission_objective_state.get("protect_target_hp", 0)) > 0
+		and int(mission_objective_state.get("protect_target_hp", 0))
+			< int(mission_objective_state.get("protect_target_max_hp", 0))
+	)
+
+
+func begin_protect_target_repair() -> bool:
+	if not can_begin_protect_target_repair():
+		return false
+	var missing_hp := (
+		int(mission_objective_state.protect_target_max_hp)
+		- int(mission_objective_state.protect_target_hp)
+	)
+	mission_objective_state["protect_target_repair_phase"] = PROTECT_TARGET_REPAIRING
+	mission_objective_state["protect_target_repair_progress_ticks"] = 0
+	mission_objective_state["protect_target_repair_required_ticks"] = PROTECT_TARGET_REPAIR_TICKS
+	mission_objective_state["protect_target_repair_amount"] = mini(
+		PROTECT_TARGET_REPAIR_HP,
+		missing_hp
+	)
+	last_tick_facility_events.append({
+		"kind": &"GATE", "route_id": &"",
+		"event": &"GATE_REPAIR_STARTED", "tick": current_tick,
+	})
+	return true
+
+
 func _orders_to_snapshot(orders: Array[BattleOrder]) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	for order in orders:
@@ -684,7 +736,7 @@ func _has_matching_snapshot_value_types(value: Dictionary, expected: Dictionary)
 
 func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 	var schema_version = snapshot.get("schema_version", null)
-	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, 2, 3, SNAPSHOT_SCHEMA_VERSION]:
+	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, 2, 3, 4, SNAPSHOT_SCHEMA_VERSION]:
 		return false
 	var expected_keys: Array = SNAPSHOT_KEYS.duplicate()
 	if int(schema_version) == 1:
@@ -705,6 +757,24 @@ func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 		and typeof(snapshot.get("forced_retreat_requested", null)) == TYPE_BOOL
 		and typeof(snapshot.get("mission_objective_state", null)) == TYPE_DICTIONARY
 		and (
+			(
+				_has_valid_legacy_mission_objective_state(
+					Dictionary(snapshot.get("mission_objective_state", {}))
+				)
+				## Test and migration tooling may rewrite only the outer schema tag
+				## while retaining an otherwise valid contemporary target state.
+				## Accept that representation, then normalize its repair state below;
+				## actual historical records still use the narrower legacy shape.
+				or _has_valid_mission_objective_state(
+					Dictionary(snapshot.get("mission_objective_state", {}))
+				)
+			)
+			if int(schema_version) < SNAPSHOT_SCHEMA_VERSION
+			else _has_valid_mission_objective_state(
+				Dictionary(snapshot.get("mission_objective_state", {}))
+			)
+		)
+		and (
 			int(schema_version) == 1
 			or (
 				int(schema_version) == 2
@@ -713,6 +783,87 @@ func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 			or _has_valid_wartime_facility_state(Dictionary(snapshot.get("wartime_facility_state", {})))
 		)
 	)
+
+
+func _has_valid_legacy_mission_objective_state(state: Dictionary) -> bool:
+	if mission_definition == null:
+		return state.is_empty()
+	var expected := _get_base_mission_objective_state()
+	return _has_valid_mission_objective_state_fields(state, expected)
+
+
+func _has_valid_mission_objective_state(state: Dictionary) -> bool:
+	if mission_definition == null:
+		return state.is_empty()
+	var expected := _get_base_mission_objective_state()
+	expected["protect_target_repair_phase"] = PROTECT_TARGET_REPAIR_IDLE
+	expected["protect_target_repair_progress_ticks"] = 0
+	expected["protect_target_repair_required_ticks"] = 0
+	expected["protect_target_repair_amount"] = 0
+	if not _has_valid_mission_objective_state_fields(state, expected):
+		return false
+	var repair_phase := StringName(state.get("protect_target_repair_phase", &""))
+	var progress := int(state.get("protect_target_repair_progress_ticks", -1))
+	var required := int(state.get("protect_target_repair_required_ticks", -1))
+	var amount := int(state.get("protect_target_repair_amount", -1))
+	if repair_phase == PROTECT_TARGET_REPAIR_IDLE:
+		return progress == 0 and required == 0 and amount == 0
+	if repair_phase != PROTECT_TARGET_REPAIRING:
+		return false
+	return (
+		mission_definition != null
+		and mission_definition.objective_type == MissionDefinition.OBJECTIVE_PROTECT
+		and int(state.get("protect_target_hp", 0)) > 0
+		and int(state.get("protect_target_hp", 0))
+			< int(state.get("protect_target_max_hp", 0))
+		and required == PROTECT_TARGET_REPAIR_TICKS
+		and progress >= 0
+		and progress < required
+		and amount > 0
+		and amount <= PROTECT_TARGET_REPAIR_HP
+		and amount <= (
+			int(state.get("protect_target_max_hp", 0))
+			- int(state.get("protect_target_hp", 0))
+		)
+	)
+
+
+func _has_valid_mission_objective_state_fields(state: Dictionary, expected: Dictionary) -> bool:
+	if mission_definition == null or not _has_matching_snapshot_value_types(state, expected):
+		return false
+	if (
+		StringName(state.get("objective_type", &"")) != mission_definition.objective_type
+		or str(state.get("protect_target_name", "")) != mission_definition.protect_target_name
+		## Mission content supplies the minimum durable target capacity. Scenario
+		## setup may raise it for a reinforced objective, but snapshots may never
+		## reduce it below the configured baseline or exceed their own maximum.
+		or int(state.get("protect_target_max_hp", -1)) < mission_definition.protect_target_hp
+		or int(state.get("remaining_enemy_count", -1)) < 0
+		or int(state.get("protect_target_hp", -1)) < 0
+		or int(state.get("protect_target_hp", 0))
+			> int(state.get("protect_target_max_hp", 0))
+	):
+		return false
+	if mission_definition.objective_type != MissionDefinition.OBJECTIVE_PROTECT:
+		return (
+			int(state.get("protect_target_hp", -1)) == 0
+			and int(state.get("protect_target_max_hp", -1)) == 0
+		)
+	return true
+
+
+func _get_base_mission_objective_state() -> Dictionary:
+	if mission_definition == null:
+		return {}
+	return {
+		"objective_type": mission_definition.objective_type,
+		"remaining_enemy_count": request.enemy_force.enemy_count,
+		"protect_target_name": mission_definition.protect_target_name,
+		"protect_target_hp": mission_definition.protect_target_hp,
+		"protect_target_max_hp": mission_definition.protect_target_hp,
+		"scout_found": false,
+		"extraction_reached": false,
+	}
 
 
 func _has_exact_snapshot_keys(snapshot: Dictionary, expected_keys: Array = SNAPSHOT_KEYS) -> bool:
@@ -1267,17 +1418,43 @@ func restore_terminal_result(authority_snapshot: Dictionary) -> bool:
 
 
 func _initialize_mission_objective_state() -> void:
-	if mission_definition == null:
+	mission_objective_state = _get_base_mission_objective_state()
+	if mission_objective_state.is_empty():
 		return
-	mission_objective_state = {
-		"objective_type": mission_definition.objective_type,
-		"remaining_enemy_count": request.enemy_force.enemy_count,
-		"protect_target_name": mission_definition.protect_target_name,
-		"protect_target_hp": mission_definition.protect_target_hp,
-		"protect_target_max_hp": mission_definition.protect_target_hp,
-		"scout_found": false,
-		"extraction_reached": false,
-	}
+	mission_objective_state["protect_target_repair_phase"] = PROTECT_TARGET_REPAIR_IDLE
+	mission_objective_state["protect_target_repair_progress_ticks"] = 0
+	mission_objective_state["protect_target_repair_required_ticks"] = 0
+	mission_objective_state["protect_target_repair_amount"] = 0
+
+
+func _advance_protect_target_repair() -> void:
+	if (
+		StringName(mission_objective_state.get("protect_target_repair_phase", &""))
+		!= PROTECT_TARGET_REPAIRING
+	):
+		return
+	var required := int(mission_objective_state.get("protect_target_repair_required_ticks", 0))
+	var progress := mini(
+		int(mission_objective_state.get("protect_target_repair_progress_ticks", 0)) + 1,
+		required
+	)
+	mission_objective_state["protect_target_repair_progress_ticks"] = progress
+	if progress < required:
+		return
+	var restored_hp := mini(
+		int(mission_objective_state.protect_target_hp)
+		+ int(mission_objective_state["protect_target_repair_amount"]),
+		int(mission_objective_state.protect_target_max_hp)
+	)
+	mission_objective_state.protect_target_hp = restored_hp
+	mission_objective_state["protect_target_repair_phase"] = PROTECT_TARGET_REPAIR_IDLE
+	mission_objective_state["protect_target_repair_progress_ticks"] = 0
+	mission_objective_state["protect_target_repair_required_ticks"] = 0
+	mission_objective_state["protect_target_repair_amount"] = 0
+	last_tick_facility_events.append({
+		"kind": &"GATE", "route_id": &"",
+		"event": &"GATE_REPAIR_COMPLETED", "tick": current_tick,
+	})
 
 
 func _update_mission_search_progress() -> void:

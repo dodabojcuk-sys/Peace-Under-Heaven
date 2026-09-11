@@ -151,6 +151,25 @@ func _run_b(scene: Node, city: Node) -> void:
 			and int(barricade.get("progress_ticks", -1)) == 0,
 		"B 维修一次写入同一会话，不复制设施"
 	)
+	var gate_repair_button := battle.get_node(
+		"UI/RootPanel/WartimeGateRepairButton"
+	) as Button
+	var gate_hp_before := int(session.get_mission_objective_state().get("protect_target_hp", 0))
+	var wood_before_gate_repair := int(city.get("wood"))
+	battle._refresh_battle_ui()
+	gate_repair_button.emit_signal("pressed")
+	await process_frame
+	var gate_repair: Dictionary = session.get_mission_objective_state()
+	_require(
+		gate_repair_button.visible
+		and StringName(gate_repair.get("protect_target_repair_phase", &""))
+			== BattleSession.PROTECT_TARGET_REPAIRING
+		and int(gate_repair.get("protect_target_repair_progress_ticks", -1)) == 0
+		and int(city.get("wood"))
+			== wood_before_gate_repair - BattleSession.PROTECT_TARGET_REPAIR_WOOD_COST
+		and int(gate_repair.get("protect_target_hp", 0)) == gate_hp_before,
+		"B 正式城门维修在独立进程保存前只扣一次资源并保留未完成工期"
+	)
 	_require(scene.flush_runtime_persistence(&"wartime_defense_b"), "B 发布维修中守城的真实 V5 代次")
 
 
@@ -164,7 +183,13 @@ func _run_c(scene: Node, city: Node) -> void:
 		return
 	var session := battle.coordinator.active_session
 	var repairing := _barricade(session)
-	_require(StringName(repairing.get("phase", &"")) == BattleSession.FACILITY_PHASE_REPAIRING, "C 冷启动读取维修态")
+	var gate_repair_before: Dictionary = session.get_mission_objective_state()
+	_require(
+		StringName(repairing.get("phase", &"")) == BattleSession.FACILITY_PHASE_REPAIRING
+		and StringName(gate_repair_before.get("protect_target_repair_phase", &""))
+			== BattleSession.PROTECT_TARGET_REPAIRING,
+		"C 冷启动读取设施与城门的维修态"
+	)
 	battle.tick_timer.stop()
 	var remaining_repair_ticks := maxi(
 		int(repairing.get("required_ticks", 0)) - int(repairing.get("progress_ticks", 0)),
@@ -172,7 +197,9 @@ func _run_c(scene: Node, city: Node) -> void:
 	)
 	battle.step_battle_for_test(remaining_repair_ticks)
 	var repaired := _barricade(session)
+	var gate_repair_after: Dictionary = session.get_mission_objective_state()
 	var repair_completed := false
+	var gate_repair_completed := false
 	for event_value in session.get_last_tick_facility_events():
 		var event: Dictionary = Dictionary(event_value)
 		if (
@@ -180,15 +207,24 @@ func _run_c(scene: Node, city: Node) -> void:
 			and StringName(event.get("route_id", &"")) == CommittedForceSnapshot.SIDE_ROUTE
 		):
 			repair_completed = true
-			break
+		if StringName(event.get("event", &"")) == &"GATE_REPAIR_COMPLETED":
+			gate_repair_completed = true
 	_require(
 		repair_completed
-			and StringName(repaired.get("phase", &"")) in [
+		and StringName(repaired.get("phase", &"")) in [
 				BattleSession.FACILITY_PHASE_ACTIVE,
 				BattleSession.FACILITY_PHASE_DAMAGED,
 				BattleSession.FACILITY_PHASE_DESTROYED,
-			],
+		],
 		"C 只消费剩余战斗刻完成侧翼维修；同刻真实攻击可使其再次受损或摧毁"
+	)
+	_require(
+		gate_repair_completed
+		and StringName(gate_repair_after.get("protect_target_repair_phase", &""))
+			== BattleSession.PROTECT_TARGET_REPAIR_IDLE
+		and int(gate_repair_after.get("protect_target_hp", 0))
+			> int(gate_repair_before.get("protect_target_hp", 0)),
+		"C 冷启动后只消费城门维修剩余工期并恢复一次真实防线耐久"
 	)
 	_require(session.request_forced_retreat(), "C 以正式撤离规则结束已恢复守城")
 	var terminal_result: BattleResult

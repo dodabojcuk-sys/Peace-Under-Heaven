@@ -69,6 +69,9 @@ const DEBUG_PLAYER_COUNT := 50
 @onready var wartime_repair_target_button: Button = (
 	$UI/RootPanel/WartimeRepairTargetButton
 )
+@onready var wartime_gate_repair_button: Button = (
+	$UI/RootPanel/WartimeGateRepairButton
+)
 @onready var wartime_facility_status_label: Label = (
 	$UI/RootPanel/WartimeFacilityStatusLabel
 )
@@ -183,6 +186,7 @@ func _ready() -> void:
 	wartime_plan_confirm_button.pressed.connect(_confirm_wartime_facility_plan)
 	wartime_repair_button.pressed.connect(_repair_damaged_wartime_facility)
 	wartime_repair_target_button.pressed.connect(_cycle_wartime_repair_target)
+	wartime_gate_repair_button.pressed.connect(_repair_protect_target)
 	exit_button.pressed.connect(request_exit_or_return)
 	exit_cancel_button.pressed.connect(cancel_exit_confirmation)
 	exit_confirm_button.pressed.connect(confirm_exit_as_retreat)
@@ -876,6 +880,10 @@ func _append_wartime_facility_feedback(events: Array[Dictionary]) -> void:
 			_append_recent_action("%s在%s被摧毁，已停止作用" % [_get_facility_name(kind), route_name])
 		elif StringName(event.get("event", &"")) == &"GATE_DAMAGED":
 			_append_recent_action("攻城槌完成%s破门：城门受损 %d" % [route_name, int(event.get("damage", 0))])
+		elif StringName(event.get("event", &"")) == &"GATE_REPAIR_STARTED":
+			_append_recent_action("工程队开始维修城门")
+		elif StringName(event.get("event", &"")) == &"GATE_REPAIR_COMPLETED":
+			_append_recent_action("城门维修完成，防线已恢复")
 		elif kind == WartimeFacilityPlan.KIND_ARROW_TOWER:
 			_append_recent_action("箭塔齐射%s：敌军受创 %d" % [route_name, int(event.get("damage", 0))])
 
@@ -1090,6 +1098,7 @@ func _refresh_battle_ui() -> void:
 	start_button.visible = request.phase == BattleRequest.PHASE_RESERVED
 	_refresh_wartime_plan_ui()
 	_refresh_wartime_repair_ui()
+	_refresh_wartime_gate_repair_ui()
 	_refresh_wartime_facility_status_ui()
 	_refresh_recent_actions()
 	_refresh_exit_ui()
@@ -1278,6 +1287,44 @@ func _refresh_wartime_repair_ui() -> void:
 		wartime_repair_target_button.visible = true
 
 
+func _refresh_wartime_gate_repair_ui() -> void:
+	wartime_gate_repair_button.visible = false
+	if (
+		request == null
+		or request.phase != BattleRequest.PHASE_ACTIVE
+		or coordinator.active_session == null
+		or request.source_id != BattleRequest.SOURCE_WARTIME_DEFENSE
+	):
+		return
+	var objective := coordinator.active_session.get_mission_objective_state()
+	if StringName(objective.get("objective_type", &"")) != MissionDefinition.OBJECTIVE_PROTECT:
+		return
+	var hp := int(objective.get("protect_target_hp", 0))
+	var max_hp := int(objective.get("protect_target_max_hp", 0))
+	if hp <= 0 or hp >= max_hp:
+		return
+	var phase := StringName(objective.get("protect_target_repair_phase", &""))
+	if phase == BattleSession.PROTECT_TARGET_REPAIRING:
+		wartime_gate_repair_button.text = "城门维修中 · %d/%d" % [
+			int(objective.get("protect_target_repair_progress_ticks", 0)),
+			int(objective.get("protect_target_repair_required_ticks", 0)),
+		]
+		wartime_gate_repair_button.disabled = true
+	else:
+		var restore_amount := mini(
+			BattleSession.PROTECT_TARGET_REPAIR_HP,
+			max_hp - hp
+		)
+		wartime_gate_repair_button.text = "维修城门 +%d · 木材 %d" % [
+			restore_amount,
+			BattleSession.PROTECT_TARGET_REPAIR_WOOD_COST,
+		]
+		wartime_gate_repair_button.disabled = (
+			not coordinator.active_session.can_begin_protect_target_repair()
+		)
+	wartime_gate_repair_button.visible = true
+
+
 ## The active facility record is durable session state, not a transient action
 ## message. Keep the focused route's construction, damage, and repair phase
 ## visible while the plan buttons themselves are correctly hidden after start.
@@ -1376,6 +1423,44 @@ func _repair_damaged_wartime_facility() -> void:
 		status_label.text = rollback_error
 		return
 	_append_recent_action("%s开始维修" % _get_facility_name(facility_kind))
+	_refresh_battle_ui()
+
+
+func _repair_protect_target() -> void:
+	if (
+		request == null
+		or request.phase != BattleRequest.PHASE_ACTIVE
+		or coordinator.active_session == null
+		or city_controller == null
+		or not city_controller.has_method("commit_wartime_protect_target_repair_cost")
+		or not coordinator.active_session.can_begin_protect_target_repair()
+	):
+		return
+	var before_session := coordinator.active_session.get_snapshot()
+	var cost_result: Dictionary = city_controller.commit_wartime_protect_target_repair_cost(
+		request.transaction_id
+	)
+	if not bool(cost_result.get("success", false)):
+		var cost_error := str(cost_result.get("error", "城门维修失败"))
+		_append_recent_action(cost_error)
+		_refresh_battle_ui()
+		status_label.text = cost_error
+		return
+	if (
+		not coordinator.active_session.begin_protect_target_repair()
+		or not _checkpoint_active_battle_session()
+	):
+		coordinator.active_session.restore_snapshot(before_session)
+		if city_controller.has_method("rollback_wartime_protect_target_repair_cost"):
+			city_controller.rollback_wartime_protect_target_repair_cost(
+				Dictionary(cost_result.get("costs", {}))
+			)
+		var rollback_error := "城门维修保存失败，资源与状态已回滚"
+		_append_recent_action(rollback_error)
+		_refresh_battle_ui()
+		status_label.text = rollback_error
+		return
+	_append_recent_action("城门维修已开工")
 	_refresh_battle_ui()
 
 

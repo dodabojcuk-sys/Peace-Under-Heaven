@@ -7901,6 +7901,62 @@ func rollback_wartime_facility_repair_cost(costs: Dictionary) -> bool:
 	return bool(transaction.get("success", false))
 
 
+## The city gate is the protection mission's real target, so its temporary
+## battle repair spends from the same city resource authority as facilities.
+## C0 checkpoints the matching session state immediately after this commit and
+## invokes the paired refund if that checkpoint cannot be published.
+func commit_wartime_protect_target_repair_cost(
+	transaction_id: StringName
+) -> Dictionary:
+	if transaction_id == &"":
+		return _macro_failure(&"WARTIME_GATE_REPAIR_STATE", "城门维修来源无效")
+	var active_attempt := (
+		not _expedition_attempt.is_empty()
+		and StringName(_expedition_attempt.get("attempt_id", &"")) == transaction_id
+		and StringName(_expedition_attempt.get("phase", &"")) == BATTLE_PHASE_ACTIVE
+		and StringName(_expedition_attempt.get("source_id", &""))
+			== BattleRequest.SOURCE_WARTIME_DEFENSE
+	)
+	if not active_attempt:
+		return _macro_failure(&"WARTIME_GATE_REPAIR_STATE", "当前没有可维修的战时城门")
+	var costs := {&"wood": BattleSession.PROTECT_TARGET_REPAIR_WOOD_COST}
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{
+			"resource_id": &"wood",
+			"operation": NationState.RESOURCE_OPERATION_SPEND,
+			"amount": BattleSession.PROTECT_TARGET_REPAIR_WOOD_COST,
+		}],
+		&"wartime_protect_target_repair"
+	)
+	if not bool(transaction.get("success", false)):
+		return _macro_failure(
+			StringName(transaction.get("error_id", &"WARTIME_GATE_REPAIR_RESOURCE")),
+			str(transaction.get("error", "城门维修资源不足"))
+		)
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {"success": true, "costs": costs}
+
+
+func rollback_wartime_protect_target_repair_cost(costs: Dictionary) -> bool:
+	var wood: Variant = costs.get(&"wood", null)
+	if typeof(wood) != TYPE_INT or int(wood) != BattleSession.PROTECT_TARGET_REPAIR_WOOD_COST:
+		return false
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{
+			"resource_id": &"wood",
+			"operation": NationState.RESOURCE_OPERATION_ADD,
+			"amount": int(wood),
+		}],
+		&"wartime_protect_target_repair_rollback"
+	)
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return bool(transaction.get("success", false))
+
+
 func _build_macro_siege_battle_request(
 	army: Dictionary,
 	siege: Dictionary,

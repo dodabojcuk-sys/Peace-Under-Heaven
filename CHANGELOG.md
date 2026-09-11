@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-12 - Recoverable Blackstone gate repair
+
+- Added the missing formal repair path for the actual `PROTECT_AND_ELIMINATE`
+  target. A damaged Blackstone gate now consumes 4 wood through the existing
+  city resource transaction, enters a saved two-tick repair state, then
+  restores up to 120 real target HP. A checkpoint failure refunds the same
+  transaction and restores the preceding battle-session snapshot.
+- The repair remains battle-local: `BattleSession` owns gate HP, work progress
+  and completion; settlement defense damage is still applied once by normal
+  battle-result writeback. C0 only exposes the persisted action and feedback.
+- Bumped the battle-session snapshot to schema 5 and strictly validates the
+  target state and repair phase. Schema 1-4 restores preserve recorded target
+  HP and normalize to no pending gate repair; malformed new repair state is
+  rejected without changing the active session.
+- Extended the formal defense smoke and independent A-to-E process chain with
+  a resource debit, repair-in-progress cold restore, remaining-tick completion
+  and one-time target-HP recovery check.
+
 ## 2026-09-12 - Damageable wartime arrow towers
 
 - Extended the existing temporary-facility lifecycle to the defense arrow

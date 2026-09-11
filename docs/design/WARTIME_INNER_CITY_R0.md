@@ -160,6 +160,16 @@ macro-siege handoff transaction, so parallel siege display order cannot deny a
 legitimate battle its repair. This is still assault-side facility lifecycle
 coverage, not the complete independent city-defence gameplay promised later.
 
+The actual `PROTECT_AND_ELIMINATE` target has a separate, equally temporary
+repair action: while the Blackstone gate is damaged but not destroyed, C0 can
+spend 4 wood through the existing city transaction to begin a two-tick repair.
+The active `BattleSession` owns that phase, its remaining ticks and the
+one-time restoration of up to 120 target HP; a save failure restores both the
+resource transaction and the prior session. Completion is processed before
+the ordinary incoming damage intent of that same tick, so the target receives
+its restored HP before any valid contemporaneous enemy hit. This does not
+alter permanent city defense until the ordinary battle result is settled.
+
 Once battle begins, the editable plan is hidden as intended. The same C0
 surface instead shows a persistent route-focused read-only summary of each
 saved facility's construction, active, damaged durability, repair, or
@@ -199,6 +209,12 @@ A terminal result retains that last active checkpoint beside its terminal
 authority until normal result settlement applies its already-established atomic
 transaction, then clears both records.
 
+Schema 5 adds strict protection-target repair state (`IDLE` or `REPAIRING`,
+progress, required ticks and capped restore amount). Older schemas retain
+their recorded target HP and are normalized to `IDLE`; no historical repair is
+invented. New malformed target/repair records are rejected before they can
+alter a live session.
+
 ## Verification
 
 `tests/run_wartime_inner_city_r0_smoke.gd` covers the formal city departure,
@@ -222,8 +238,9 @@ assault-side lifecycle checks, not a complete defensive scenario. Existing C0,
 expedition-causality and V5 persistence runners remain regression gates.
 
 The dedicated defense process runner uses two isolated chains. A/B/C/D/E
-covers construction, damage, repair, retreat pending-result recovery and one
-writeback. F/G separately starts with three real formations, issues formal
+covers construction, damage, facility and gate repair, retreat pending-result
+recovery and one writeback. In particular B saves both repairs while pending;
+C cold-restores them and consumes only the remaining ticks. F/G separately starts with three real formations, issues formal
 advance commands to reach a defense victory, saves its `RESULT_PENDING` fact,
 and lets a fresh process confirm exactly that result. Defense victory is not a
 first-war victory: V5 validation preserves the unrelated mainline cleared

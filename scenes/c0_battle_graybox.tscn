@@ -384,6 +384,17 @@ offset_right = 452.0
 offset_bottom = -206.0
 text = "切换维修目标"
 
+[node name="WartimeGateRepairButton" type="Button" parent="UI/RootPanel"]
+visible = false
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -344.0
+offset_right = 452.0
+offset_bottom = -304.0
+text = "维修城门"
+theme_type_variation = &"PrimaryButton"
+
 [node name="WartimeFacilityStatusLabel" type="Label" parent="UI/RootPanel"]
 visible = false
 anchor_top = 1.0

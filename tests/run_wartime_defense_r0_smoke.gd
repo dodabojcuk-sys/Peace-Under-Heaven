@@ -181,6 +181,11 @@ func _run() -> void:
 	)
 	var legacy_session_snapshot := session.get_snapshot()
 	legacy_session_snapshot.schema_version = 3
+	## This fixture temporarily enlarges the live target to keep the later
+	## facility-damage exercise active.  A historical snapshot must still obey
+	## the mission's immutable maximum target HP before strict restoration.
+	legacy_session_snapshot.mission_objective_state.protect_target_hp = 540
+	legacy_session_snapshot.mission_objective_state.protect_target_max_hp = 540
 	for route_id in [CommittedForceSnapshot.FRONT_ROUTE, CommittedForceSnapshot.SIDE_ROUTE]:
 		var legacy_route: Dictionary = Dictionary(legacy_session_snapshot.routes[route_id])
 		legacy_route.erase("enemy_position_fixed")
@@ -190,6 +195,15 @@ func _run() -> void:
 		legacy_session.restore_snapshot(legacy_session_snapshot)
 			and int(legacy_session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("enemy_position_fixed", -1)) == 0,
 		"V3 活动战时会话升级为从路线起点推进的防守敌军，不伪造旧档的抵近进度"
+	)
+	var malformed_session_snapshot := session.get_snapshot()
+	malformed_session_snapshot.mission_objective_state["protect_target_repair_phase"] = &"BROKEN"
+	var malformed_probe := BattleSession.new(battle.request)
+	var live_digest_before_malformed_restore := session.get_state_digest()
+	_check(
+		not malformed_probe.restore_snapshot(malformed_session_snapshot)
+			and session.get_state_digest() == live_digest_before_malformed_restore,
+		"新格式城门维修快照严格拒绝非法阶段，且不会污染当前活动防守"
 	)
 	battle.step_battle_for_test(168)
 	var after_construction: Dictionary = session.get_wartime_facility_state()
@@ -221,6 +235,30 @@ func _run() -> void:
 			repair_started = StringName(record.get("phase", &"")) == BattleSession.FACILITY_PHASE_REPAIRING
 			break
 	_check(repair_started, "守城受损拒马可通过正式维修按钮进入可保存的维修阶段")
+	var gate_repair_button := battle.get_node(
+		"UI/RootPanel/WartimeGateRepairButton"
+	) as Button
+	var gate_repair_hp_before := int(
+		session.get_mission_objective_state().get("protect_target_hp", 0)
+	)
+	var wood_before_gate_repair := int(city.get("wood"))
+	battle._refresh_battle_ui()
+	gate_repair_button.emit_signal("pressed")
+	await process_frame
+	var gate_repair_started: Dictionary = session.get_mission_objective_state()
+	_check(
+		gate_repair_button.visible
+		and StringName(gate_repair_started.get("protect_target_repair_phase", &""))
+			== BattleSession.PROTECT_TARGET_REPAIRING
+		and int(gate_repair_started.get("protect_target_repair_amount", 0))
+			== mini(
+				BattleSession.PROTECT_TARGET_REPAIR_HP,
+				int(gate_repair_started.get("protect_target_max_hp", 0)) - gate_repair_hp_before
+			)
+		and int(city.get("wood"))
+			== wood_before_gate_repair - BattleSession.PROTECT_TARGET_REPAIR_WOOD_COST,
+		"受损城门经正式按钮一次扣除维修木材并进入可保存的维修阶段"
+	)
 	var active_snapshot: Dictionary = city.export_v5_campaign_snapshot()
 	battle.abort_formal_entry()
 	await process_frame
@@ -250,6 +288,14 @@ func _run() -> void:
 			)
 			break
 	var restored_session := restored_battle.coordinator.active_session
+	var restored_gate_repair := restored_session.get_mission_objective_state()
+	_check(
+		StringName(restored_gate_repair.get("protect_target_repair_phase", &""))
+			== BattleSession.PROTECT_TARGET_REPAIR_IDLE
+		and int(restored_gate_repair.get("protect_target_hp", 0))
+			== gate_repair_hp_before + int(gate_repair_started.get("protect_target_repair_amount", 0)),
+		"城门维修中的正式会话冷恢复后只消费剩余工期，并恢复一次真实耐久"
+	)
 	var arrow_lifecycle_route: Dictionary = restored_session.get_route_state(deployment_after_route)
 	# The formal setup and cold restore above already built/repaired this route.
 	# Hold its real invaders at the reached objective with enough HP to exercise
