@@ -317,13 +317,117 @@ func _run() -> void:
 	var retreating: Dictionary = city.get_army_state(army_id)
 	_check(
 		StringName(retreating.get("phase", &"")) == ArmyRegistry.PHASE_RETREATING
-		and city.get_macro_march_read_model().war_loop.active_siege.is_empty(),
+			and city.get_macro_march_read_model().war_loop.active_siege.is_empty(),
 		"撤退回写关闭原围城并保留同一军队的合法返程，而非重建城市出征"
 	)
 	battle.queue_free()
 	scene.queue_free()
 	await process_frame
+	await _run_formal_macro_victory_chain()
 	_finish()
+
+
+## This is a separate city and army so the existing retreat proof above keeps
+## its exact source facts.  It drives the visible C0 squad-selection and
+## advance buttons, then the same timeout callback that a running battle uses;
+## it never turns a siege into a victory by modifying route HP or ownership.
+func _run_formal_macro_victory_chain() -> void:
+	var victory_scene := CITY_SCENE.instantiate() as Node2D
+	root.add_child(victory_scene)
+	await process_frame
+	await process_frame
+	var victory_city: Node = victory_scene.get_node("ConstructionController")
+	victory_city.set_process(false)
+	victory_city.food = 120
+	var victory_roster: Array[Dictionary] = victory_city.get_formation_roster()
+	var first_leg: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
+	var station_order: Dictionary = victory_city.commit_macro_march_from_city(
+		[
+			StringName(victory_roster[0].formation_id),
+			StringName(victory_roster[1].formation_id),
+			StringName(victory_roster[2].formation_id),
+		],
+		&"northwatch_garrison", StringName(first_leg.route_id), Array(first_leg.points)
+	)
+	var station_army: Dictionary = Dictionary(station_order.get("army", {}))
+	var station_macro: Dictionary = Dictionary(station_army.get("macro_march", {}))
+	victory_city.advance_macro_march_time(
+		StringName(station_army.get("army_id", &"")), StringName(station_macro.get("order_id", &"")),
+		0, int(station_macro.get("total_millis", 0))
+	)
+	var attack_route: Dictionary = THEATER.get_route(&"road.northwatch.redcliff")
+	var siege_order: Dictionary = victory_city.commit_macro_march_from_station(
+		StringName(station_army.get("army_id", &"")), &"redcliff_city",
+		StringName(attack_route.route_id), Array(attack_route.points)
+	)
+	var siege_army: Dictionary = Dictionary(siege_order.get("army", {}))
+	var siege_macro: Dictionary = Dictionary(siege_army.get("macro_march", {}))
+	victory_city.advance_macro_march_time(
+		StringName(siege_army.get("army_id", &"")), StringName(siege_macro.get("order_id", &"")),
+		0, int(siege_macro.get("total_millis", 0))
+	)
+	var army_id := StringName(siege_army.get("army_id", &""))
+	var food_before_handoff := int(victory_city.get("food"))
+	_check(
+		victory_city.enter_macro_siege_wartime(army_id, &"redcliff_city"),
+		"胜利链由正式宏观围城入口打开唯一战时实例"
+	)
+	await process_frame
+	await process_frame
+	var victory_battle := victory_city.get_formal_battle_scene() as C0BattleGraybox
+	if victory_battle == null or not victory_battle.start_battle():
+		_check(false, "胜利链正式 C0 实例可以激活")
+		victory_scene.queue_free()
+		await process_frame
+		return
+	victory_battle.tick_timer.stop()
+	var selected_and_advanced := true
+	for squad_id in range(1, victory_battle.request.committed_force.squads.size() + 1):
+		var select_button := victory_battle.get_node_or_null(
+			"UI/RootPanel/SquadControls/Squad%d/SelectButton" % squad_id
+		) as Button
+		if select_button == null or select_button.disabled:
+			selected_and_advanced = false
+			continue
+		select_button.emit_signal("pressed")
+		await process_frame
+		if victory_battle.selected_advance_button.disabled:
+			selected_and_advanced = false
+			continue
+		victory_battle.selected_advance_button.emit_signal("pressed")
+		await process_frame
+	var pending_result: BattleResult
+	for _tick in range(BattleSession.MAX_BATTLE_TICKS + 2):
+		(victory_battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+		await process_frame
+		if victory_battle.coordinator.active_session != null:
+			pending_result = victory_battle.coordinator.active_session.result
+		if pending_result != null:
+			break
+	var committed_result: Dictionary = victory_battle.confirm_pending_result()
+	await process_frame
+	var settled_army: Dictionary = victory_city.get_army_state(army_id)
+	var redcliff_state: Dictionary = victory_city.get_macro_march_read_model().war_loop.cities_by_id.get(
+		&"redcliff_city", {}
+	)
+	_check(
+		selected_and_advanced
+			and pending_result != null
+			and pending_result.outcome == BattleOutcome.Value.VICTORY
+			and not committed_result.is_empty()
+			and StringName(committed_result.get("army_id", &"")) == army_id
+			and StringName(committed_result.get("outcome", &""))
+				== BattleOutcome.to_id(BattleOutcome.Value.VICTORY)
+			and StringName(settled_army.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED
+			and StringName(settled_army.get("target_node_id", &"")) == &"redcliff_city"
+			and StringName(redcliff_state.get("military_controller_faction_id", &"")) == &"player"
+			and victory_city.get_macro_march_read_model().war_loop.active_siege.is_empty()
+			and int(victory_city.get("food")) == food_before_handoff,
+		"宏观来源经正式 C0 前进、胜利回写后只更新原军队驻扎和目标控制权，不重复扣粮"
+	)
+	victory_battle.queue_free()
+	victory_scene.queue_free()
+	await process_frame
 
 
 func _formation_total(army: Dictionary) -> int:

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-12 - Formal macro-siege victory coverage
+
+- Extended the macro-siege wartime handoff smoke with a separate, fully formal
+  C0 victory route: the original army travels to the siege, each committed
+  formation is selected and advanced through visible C0 controls, then normal
+  battle ticks produce one pending result and one macro writeback.
+- The regression now checks that victory stations the same army at Redcliff,
+  updates control once, closes the handoff siege, preserves per-formation
+  survivors, and creates no second departure-food charge. The existing retreat
+  and cold-recovery paths remain separate evidence.
+
 ## 2026-09-12 - Explicit wartime repair crews
 
 - Made the selected C0 formation the explicit repair crew for a damaged,
