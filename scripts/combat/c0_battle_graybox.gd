@@ -65,6 +65,7 @@ const DEBUG_PLAYER_COUNT := 50
 @onready var wartime_plan_confirm_button: Button = (
 	$UI/RootPanel/WartimePlanPanel/ConfirmButton
 )
+@onready var wartime_repair_button: Button = $UI/RootPanel/WartimeRepairButton
 @onready var exit_button: Button = $UI/RootPanel/ExitButton
 @onready var squad_controls: HBoxContainer = (
 	$UI/RootPanel/SquadControls
@@ -173,6 +174,7 @@ func _ready() -> void:
 		_toggle_wartime_facility.bind(WartimeFacilityPlan.KIND_BARRICADE)
 	)
 	wartime_plan_confirm_button.pressed.connect(_confirm_wartime_facility_plan)
+	wartime_repair_button.pressed.connect(_repair_damaged_wartime_facility)
 	exit_button.pressed.connect(request_exit_or_return)
 	exit_cancel_button.pressed.connect(cancel_exit_confirmation)
 	exit_confirm_button.pressed.connect(confirm_exit_as_retreat)
@@ -837,6 +839,14 @@ func _append_wartime_facility_feedback(events: Array[Dictionary]) -> void:
 		var route_name := _get_route_name(StringName(event.get("route_id", &"")))
 		if StringName(event.get("event", &"")) == &"CONSTRUCTION_COMPLETED":
 			_append_recent_action("%s已在%s完工并投入战斗" % [_get_facility_name(kind), route_name])
+		elif StringName(event.get("event", &"")) == &"REPAIR_STARTED":
+			_append_recent_action("%s开始在%s维修" % [_get_facility_name(kind), route_name])
+		elif StringName(event.get("event", &"")) == &"REPAIR_COMPLETED":
+			_append_recent_action("%s已在%s维修完成并恢复作用" % [_get_facility_name(kind), route_name])
+		elif StringName(event.get("event", &"")) == &"DAMAGED":
+			_append_recent_action("%s在%s受损，防御效果下降" % [_get_facility_name(kind), route_name])
+		elif StringName(event.get("event", &"")) == &"DESTROYED":
+			_append_recent_action("%s在%s被摧毁，已停止作用" % [_get_facility_name(kind), route_name])
 		elif StringName(event.get("event", &"")) == &"GATE_DAMAGED":
 			_append_recent_action("攻城槌完成%s破门：城门受损 %d" % [route_name, int(event.get("damage", 0))])
 		elif kind == WartimeFacilityPlan.KIND_ARROW_TOWER:
@@ -1017,6 +1027,7 @@ func _refresh_battle_ui() -> void:
 	_refresh_mission_objects(next_snapshot.objective)
 	start_button.visible = request.phase == BattleRequest.PHASE_RESERVED
 	_refresh_wartime_plan_ui()
+	_refresh_wartime_repair_ui()
 	_refresh_recent_actions()
 	_refresh_exit_ui()
 
@@ -1136,6 +1147,65 @@ func _confirm_wartime_facility_plan() -> void:
 	request.wartime_facility_plan = Dictionary(result.plan).duplicate(true)
 	_pending_wartime_facility_plan = request.wartime_facility_plan.duplicate(true)
 	_append_recent_action("战时工事已确认，资源已一次性扣除")
+	_refresh_battle_ui()
+
+
+func _refresh_wartime_repair_ui() -> void:
+	wartime_repair_button.visible = false
+	if request == null or request.phase != BattleRequest.PHASE_ACTIVE or coordinator.active_session == null:
+		return
+	for record_value in Array(coordinator.active_session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("phase", &"")) not in [BattleSession.FACILITY_PHASE_DAMAGED, BattleSession.FACILITY_PHASE_DESTROYED]:
+			continue
+		var costs := WartimeFacilityPlan.get_repair_costs(StringName(record.get("kind", &"")))
+		var wood_cost := int(costs.get(&"wood", 0))
+		wartime_repair_button.text = "维修%s · 木材 %d" % [_get_facility_name(StringName(record.get("kind", &""))), wood_cost]
+		wartime_repair_button.visible = true
+		wartime_repair_button.disabled = wood_cost <= 0
+		return
+
+
+func _repair_damaged_wartime_facility() -> void:
+	if (
+		request == null
+		or request.phase != BattleRequest.PHASE_ACTIVE
+		or coordinator.active_session == null
+		or city_controller == null
+		or not city_controller.has_method("commit_wartime_facility_repair_cost")
+	):
+		return
+	var facility_id: StringName = &""
+	var facility_kind: StringName = &""
+	for record_value in Array(coordinator.active_session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("phase", &"")) in [BattleSession.FACILITY_PHASE_DAMAGED, BattleSession.FACILITY_PHASE_DESTROYED]:
+			facility_id = StringName(record.get("facility_id", &""))
+			facility_kind = StringName(record.get("kind", &""))
+			break
+	if facility_id == &"":
+		return
+	var before_session := coordinator.active_session.get_snapshot()
+	var cost_result: Dictionary = city_controller.commit_wartime_facility_repair_cost(
+		request.transaction_id, facility_kind
+	)
+	if not bool(cost_result.get("success", false)):
+		status_label.text = str(cost_result.get("error", "战时工事维修失败"))
+		_append_recent_action(status_label.text)
+		_refresh_battle_ui()
+		return
+	if (
+		not coordinator.active_session.begin_wartime_facility_repair(facility_id)
+		or not _checkpoint_active_battle_session()
+	):
+		coordinator.active_session.restore_snapshot(before_session)
+		if city_controller.has_method("rollback_wartime_facility_repair_cost"):
+			city_controller.rollback_wartime_facility_repair_cost(Dictionary(cost_result.get("costs", {})))
+		status_label.text = "战时工事维修保存失败，资源与状态已回滚"
+		_append_recent_action(status_label.text)
+		_refresh_battle_ui()
+		return
+	_append_recent_action("%s开始维修" % _get_facility_name(facility_kind))
 	_refresh_battle_ui()
 
 

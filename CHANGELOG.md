@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-11 - Wartime facility repair transaction
+
+- Added a formal C0 repair action for damaged or destroyed temporary
+  facilities. Repair cost is committed through the existing
+  `ConstructionController` resource transaction before the same
+  `BattleSession` facility enters `REPAIRING`; failed session checkpointing
+  refunds the cost and restores the preceding session state.
+- Repair UI reports damaged, destroyed, started and completed states from
+  committed facility events. Source authentication now recognises both the
+  normal expedition and every active macro-siege handoff, including parallel
+  sieges, without creating a second army or resource owner.
+- Extended the focused C0 smoke to exercise the visible repair button,
+  one-time payment, duplicate-click idempotence, completion and persistence.
+
 ## 2026-09-11 - Wartime barricade R0
 
 - Added a visible C0 barricade plan for 5 wood. It spends once with the

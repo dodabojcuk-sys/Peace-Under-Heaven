@@ -83,7 +83,9 @@ func _run() -> void:
 	)
 	var plan_panel := battle.get_node("UI/RootPanel/WartimePlanPanel") as Panel
 	var watch_button := plan_panel.get_node("WatchButton") as Button
+	var barricade_button := plan_panel.get_node("BarricadeButton") as Button
 	var plan_confirm_button := plan_panel.get_node("ConfirmButton") as Button
+	var repair_button := battle.get_node("UI/RootPanel/WartimeRepairButton") as Button
 	var wood_before_plan := int(city.get("wood"))
 	_check(
 		plan_panel.visible
@@ -94,15 +96,16 @@ func _run() -> void:
 		"宏观围城正式界面也提供战时工事草稿入口，尚未扣除建设资源"
 	)
 	watch_button.emit_signal("pressed")
+	barricade_button.emit_signal("pressed")
 	await process_frame
 	plan_confirm_button.emit_signal("pressed")
 	await process_frame
 	handoff = Dictionary(city.get_macro_march_read_model().war_loop.active_siege.get("wartime_handoff", {}))
 	frozen_request = Dictionary(handoff.get("battle_request_snapshot", {}))
 	_check(
-		Array(battle.request.wartime_facility_plan.get("facilities", [])).size() == 1
-			and Array(Dictionary(frozen_request.get("wartime_facility_plan", {})).get("facilities", [])).size() == 1
-			and int(city.get("wood")) == wood_before_plan - 6
+		Array(battle.request.wartime_facility_plan.get("facilities", [])).size() == 2
+			and Array(Dictionary(frozen_request.get("wartime_facility_plan", {})).get("facilities", [])).size() == 2
+			and int(city.get("wood")) == wood_before_plan - 11
 			and plan_confirm_button.visible == false,
 		"宏观围城确认工事只扣一次建设木材，并写入冻结接管请求"
 	)
@@ -111,7 +114,7 @@ func _run() -> void:
 	)
 	_check(
 		not bool(duplicate_plan.get("success", false))
-			and int(city.get("wood")) == wood_before_plan - 6,
+			and int(city.get("wood")) == wood_before_plan - 11,
 		"宏观围城工事重复提交被权威入口拒绝，不重复扣费"
 	)
 	var frozen_day := battle.request.created_day
@@ -129,6 +132,7 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	battle = city.get_formal_battle_scene() as C0BattleGraybox
+	repair_button = battle.get_node("UI/RootPanel/WartimeRepairButton") as Button
 	_check(
 		battle != null
 		and battle.request != null
@@ -158,14 +162,57 @@ func _run() -> void:
 	# Drive the formal scene timer signal so each construction tick uses the
 	# same checkpoint path as a running battle rather than an unpersisted unit
 	# test advance on the coordinator.
-	(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
-	(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+	for _tick in range(BattleSession.FACILITY_BUILD_TICKS[WartimeFacilityPlan.KIND_BARRICADE]):
+		(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
 	var macro_facility_state := battle.coordinator.active_session.get_wartime_facility_state()
 	var macro_facilities: Array = Array(macro_facility_state.get("facilities", []))
 	_check(
-		macro_facilities.size() == 1
-			and StringName(Dictionary(macro_facilities[0]).get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE,
-		"宏观围城确认的瞭望台随正式战斗刻施工完成后才生效"
+		macro_facilities.size() == 2
+			and macro_facilities.all(func(record: Dictionary) -> bool: return StringName(record.get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE),
+		"宏观围城确认的瞭望台和拒马随正式战斗刻施工完成后才生效"
+	)
+	var session := battle.coordinator.active_session
+	var front_distance := int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).distance_fixed)
+	session.squads[0].position_fixed = front_distance
+	(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+	var damaged_barricade: Dictionary = {}
+	for record_value in Array(session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE:
+			damaged_barricade = record
+			break
+	battle._refresh_battle_ui()
+	var wood_before_repair := int(city.get("wood"))
+	_check(
+		StringName(damaged_barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_DAMAGED
+			and repair_button.visible and not repair_button.disabled,
+		"宏观围城中真实受损拒马显示正式维修入口"
+	)
+	repair_button.emit_signal("pressed")
+	await process_frame
+	var repair_cost := int(WartimeFacilityPlan.get_repair_costs(WartimeFacilityPlan.KIND_BARRICADE).get(&"wood", 0))
+	for record_value in Array(session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("facility_id", &"")) == StringName(damaged_barricade.get("facility_id", &"")):
+			damaged_barricade = record
+			break
+	_check(
+		StringName(damaged_barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_REPAIRING
+			and int(city.get("wood")) == wood_before_repair - repair_cost,
+		"宏观围城维修使用同一接管事务扣一次资源并保存工事阶段"
+	)
+	session.squads[0].position_fixed = 0
+	for _tick in range(BattleSession.FACILITY_REPAIR_TICKS):
+		(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+	for record_value in Array(session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("facility_id", &"")) == StringName(damaged_barricade.get("facility_id", &"")):
+			damaged_barricade = record
+			break
+	_check(
+		StringName(damaged_barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE
+			and int(damaged_barricade.get("durability", 0)) == int(damaged_barricade.get("max_durability", -1)),
+		"宏观围城维修在正式战斗刻完成后恢复同一拒马的实际防护"
 	)
 	var active: Dictionary = city.get_macro_march_read_model().war_loop.active_siege
 	_check(

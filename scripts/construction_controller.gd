@@ -7532,6 +7532,74 @@ func commit_macro_siege_wartime_facility_plan(
 	return _macro_failure(&"SAVE_FAILED", "战时工事保存失败，资源与计划已回滚")
 
 
+## Repair changes the active BattleSession only after this one resource
+## transaction succeeds. C0 immediately checkpoints the changed session and
+## calls the paired refund if that checkpoint cannot be published.
+func commit_wartime_facility_repair_cost(
+	transaction_id: StringName,
+	facility_kind: StringName
+) -> Dictionary:
+	if transaction_id == &"":
+		return _macro_failure(&"WARTIME_REPAIR_STATE", "战时工事维修来源无效")
+	var active_attempt := (
+		not _expedition_attempt.is_empty()
+		and StringName(_expedition_attempt.get("attempt_id", &"")) == transaction_id
+		and StringName(_expedition_attempt.get("phase", &"")) == BATTLE_PHASE_ACTIVE
+	)
+	# `active_siege` is only the legacy primary projection.  A battle launched
+	# from a parallel macro siege is equally entitled to repair its own
+	# facilities, so authenticate the immutable handoff transaction against all
+	# current siege records rather than accidentally rejecting it by UI order.
+	var active_handoff := false
+	for siege_value in _war_loop_state.get_active_sieges():
+		var siege: Dictionary = Dictionary(siege_value)
+		var handoff: Dictionary = Dictionary(siege.get("wartime_handoff", {}))
+		if (
+			StringName(handoff.get("transaction_id", &"")) == transaction_id
+			and StringName(handoff.get("phase", &"")) == WarLoopState.WARTIME_HANDOFF_ACTIVE
+		):
+			active_handoff = true
+			break
+	if not active_attempt and not active_handoff:
+		return _macro_failure(&"WARTIME_REPAIR_STATE", "当前没有可维修的活动战时实例")
+	var costs := WartimeFacilityPlan.get_repair_costs(facility_kind)
+	if costs.is_empty():
+		return _macro_failure(&"WARTIME_REPAIR_KIND", "该战时工事不能维修")
+	var operations: Array[Dictionary] = []
+	for resource_id_value in costs.keys():
+		operations.append({
+			"resource_id": StringName(resource_id_value),
+			"operation": NationState.RESOURCE_OPERATION_SPEND,
+			"amount": int(costs[resource_id_value]),
+		})
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID, operations, &"wartime_facility_repair"
+	)
+	if not bool(transaction.get("success", false)):
+		return _macro_failure(StringName(transaction.get("error_id", &"WARTIME_REPAIR_RESOURCE")), str(transaction.get("error", "维修资源不足")))
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {"success": true, "costs": costs.duplicate(true)}
+
+
+func rollback_wartime_facility_repair_cost(costs: Dictionary) -> bool:
+	var operations: Array[Dictionary] = []
+	for resource_id_value in costs.keys():
+		operations.append({
+			"resource_id": StringName(resource_id_value),
+			"operation": NationState.RESOURCE_OPERATION_ADD,
+			"amount": int(costs[resource_id_value]),
+		})
+	if operations.is_empty():
+		return false
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID, operations, &"wartime_facility_repair_rollback"
+	)
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return bool(transaction.get("success", false))
+
+
 func _build_macro_siege_battle_request(
 	army: Dictionary,
 	siege: Dictionary,

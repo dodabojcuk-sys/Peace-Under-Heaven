@@ -43,6 +43,7 @@ func _run() -> void:
 	var arrow_tower_button := plan_panel.get_node("ArrowTowerButton") as Button
 	var barricade_button := plan_panel.get_node("BarricadeButton") as Button
 	var confirm_button := plan_panel.get_node("ConfirmButton") as Button
+	var repair_button := battle.get_node("UI/RootPanel/WartimeRepairButton") as Button
 	_check(
 		plan_panel.visible and confirm_button.disabled,
 		"正式战前界面显示可操作的临时工事计划，而非城市永久建造"
@@ -155,9 +156,32 @@ func _run() -> void:
 			and int(barricade_record.get("durability", 0)) < int(barricade_record.get("max_durability", 0)),
 		"敌军同一刻的未抵消伤害写入拒马耐久与受损状态，而非丢失为表现事件"
 	)
+	var wood_before_repair := int(city.get("wood"))
+	battle._refresh_battle_ui()
 	_check(
-		session.begin_wartime_facility_repair(StringName(barricade_record.get("facility_id", &""))),
-		"受损拒马可进入可保存的维修阶段"
+		repair_button.visible and not repair_button.disabled
+			and repair_button.text.contains("拒马"),
+		"受损拒马通过正式战时界面显示可用维修入口"
+	)
+	repair_button.emit_signal("pressed")
+	await process_frame
+	var repairing_facilities: Array = Array(session.get_wartime_facility_state().get("facilities", []))
+	for record_value in repairing_facilities:
+		var record: Dictionary = record_value
+		if StringName(record.get("facility_id", &"")) == StringName(barricade_record.get("facility_id", &"")):
+			barricade_record = record
+			break
+	var repair_cost := int(WartimeFacilityPlan.get_repair_costs(WartimeFacilityPlan.KIND_BARRICADE).get(&"wood", 0))
+	_check(
+		StringName(barricade_record.get("phase", &"")) == BattleSession.FACILITY_PHASE_REPAIRING
+			and int(city.get("wood")) == wood_before_repair - repair_cost,
+		"正式维修按钮一次扣除权威维修费用并将同一拒马置为可保存维修态"
+	)
+	repair_button.emit_signal("pressed")
+	await process_frame
+	_check(
+		int(city.get("wood")) == wood_before_repair - repair_cost,
+		"维修已开始后重复点击不会重复扣除战时维修资源"
 	)
 	# Keep the hostile contact out of the repair fixture: these two simulation
 	# ticks prove repair completion rather than a deliberately concurrent new

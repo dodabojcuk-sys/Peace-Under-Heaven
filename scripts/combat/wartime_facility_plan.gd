@@ -18,6 +18,12 @@ const FACILITY_COSTS := {
 	KIND_ARROW_TOWER: {&"wood": 10},
 	KIND_BARRICADE: {&"wood": 5},
 }
+const FACILITY_REPAIR_COSTS := {
+	KIND_WATCH_PLATFORM: {&"wood": 2},
+	KIND_SIEGE_RAM: {&"wood": 3},
+	KIND_ARROW_TOWER: {&"wood": 3},
+	KIND_BARRICADE: {&"wood": 2},
+}
 
 
 static func empty_snapshot() -> Dictionary:
@@ -86,6 +92,10 @@ static func get_costs(snapshot: Dictionary) -> Dictionary:
 				FACILITY_COSTS[facility.kind][resource_id]
 			)
 	return costs
+
+
+static func get_repair_costs(kind: StringName) -> Dictionary:
+	return Dictionary(FACILITY_REPAIR_COSTS.get(kind, {})).duplicate(true)
 
 
 static func has_kind(snapshot: Dictionary, kind: StringName) -> bool:

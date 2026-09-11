@@ -53,6 +53,18 @@ complete, the selected route's enemy hit is multiplied by 6500 basis points
 before the existing squad-HP writer applies it. It does not hide or rewrite
 casualties, introduce a second combat loop, or affect another route.
 
+When a facility is damaged or destroyed, the active C0 panel exposes the next
+eligible facility and its repair cost. Pressing that formal action spends only
+the published repair cost through `ConstructionController`, changes the same
+saved `BattleSession` record to `REPAIRING`, and checkpoints it immediately.
+If that checkpoint fails, the session and resource spend are both rolled back.
+Repairs take two battle ticks and restore the record's recorded maximum
+durability; a repeated action while repair is underway has no second cost.
+The repair source check accepts either the active city expedition or any active
+macro-siege handoff transaction, so parallel siege display order cannot deny a
+legitimate battle its repair. This is still assault-side facility lifecycle
+coverage, not the complete independent city-defence gameplay promised later.
+
 The current C0 scene is an assault, not a city-defence simulation. These
 facilities therefore are siege preparation, not an assertion that the game now
 has defensive wall repair, defenders, traps or a permanent wartime build mode.
@@ -90,5 +102,8 @@ independent-process runner additionally saves a watch platform at construction
 tick 1/2 and cold-restores it to its single active completion tick, proving that
 this construction state does not become an immediately-active substitute or
 charge a second plan. It does not yet prove facility damage/repair or a complete
-defensive scenario across processes. Existing C0, expedition-causality and V5
-persistence runners remain regression gates.
+defensive scenario across processes. The focused C0 smoke now additionally
+uses the visible, enabled repair button against a real damaged barricade and
+asserts one authority resource debit, a saved repairing phase, duplicate-click
+idempotence, completion and active-session restoration. Existing C0,
+expedition-causality and V5 persistence runners remain regression gates.
