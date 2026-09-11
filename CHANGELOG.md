@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026-09-12 - Durable defense enemy approach
+
+- Added persisted enemy route progress to active battle session schema 4 for
+  `PROTECT_AND_ELIMINATE` defense missions. Invaders advance through their
+  real route and only damage the protected target after reaching it; C0 route
+  status and danger feedback now use that same position.
+- Older schema-1/2/3 sessions restore with zero recorded invader approach
+  rather than fabricating unrecorded proximity. The focused defense smoke
+  verifies the migration and that no gate damage occurs before arrival.
+
 ## 2026-09-12 - Defense-specific wartime facilities
 
 - Restricted the durable Blackstone defense plan to observation, arrow-tower

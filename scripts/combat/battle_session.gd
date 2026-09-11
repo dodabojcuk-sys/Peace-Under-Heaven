@@ -45,7 +45,7 @@ const FACILITY_MAX_DURABILITY := {
 	WartimeFacilityPlan.KIND_BARRICADE: 180,
 }
 const FACILITY_REPAIR_TICKS := 2
-const SNAPSHOT_SCHEMA_VERSION := 3
+const SNAPSHOT_SCHEMA_VERSION := 4
 const SNAPSHOT_KEYS := [
 	"schema_version", "current_tick", "next_order_id", "squads", "routes",
 	"pending_orders", "accepted_orders", "retreat_was_ordered",
@@ -134,6 +134,10 @@ func initialize(request_value: BattleRequest) -> bool:
 			"gate_initial_hp": int(enemy_route.gate_hp),
 			"gate_hp": int(enemy_route.gate_hp),
 			"distance_fixed": _get_initial_route_distance_fixed(route_id),
+			## Protection missions advance invaders through this same authoritative
+			## route before they may harm the protected target. Assault sessions keep
+			## the field at zero and retain their existing gate interaction.
+			"enemy_position_fixed": 0,
 		}
 	_initialize_wartime_facilities()
 	_initialize_mission_objective_state()
@@ -174,6 +178,7 @@ func step_tick() -> bool:
 	current_tick += 1
 	_apply_orders_for_current_tick()
 	_update_positions()
+	_advance_mission_enemy_positions()
 	_advance_wartime_facilities()
 	var damage_intents := _build_damage_intents()
 	_apply_damage_intents(damage_intents)
@@ -325,12 +330,24 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		return false
 	if not _is_valid_snapshot(snapshot):
 		return false
+	var source_schema_version := int(snapshot.schema_version)
+	var normalized_snapshot := snapshot.duplicate(true)
+	if source_schema_version <= 3:
+		## Older sessions had no invader position because protection targets were
+		## damaged immediately. They cannot truthfully recover lost approach
+		## progress, so restore them at their recorded route origin rather than
+		## granting a hit on the protected target.
+		for route_id in [CommittedForceSnapshot.FRONT_ROUTE, CommittedForceSnapshot.SIDE_ROUTE]:
+			var legacy_route: Dictionary = Dictionary(normalized_snapshot.routes.get(route_id, {}))
+			legacy_route.enemy_position_fixed = 0
+			normalized_snapshot.routes[route_id] = legacy_route
+		normalized_snapshot.schema_version = SNAPSHOT_SCHEMA_VERSION
 	var restored_squads: Array[Dictionary] = []
 	var expected_squads: Dictionary = {}
 	for original in squads:
 		expected_squads[int(original.squad_id)] = original
 	var restored_squad_ids: Dictionary = {}
-	for squad_value in Array(snapshot.squads):
+	for squad_value in Array(normalized_snapshot.squads):
 		if not squad_value is Dictionary:
 			return false
 		var squad: Dictionary = squad_value
@@ -357,7 +374,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		restored_squads.append(squad.duplicate(true))
 	if restored_squads.size() != squads.size():
 		return false
-	var restored_routes: Dictionary = Dictionary(snapshot.routes).duplicate(true)
+	var restored_routes: Dictionary = Dictionary(normalized_snapshot.routes).duplicate(true)
 	for route_id in [CommittedForceSnapshot.FRONT_ROUTE, CommittedForceSnapshot.SIDE_ROUTE]:
 		var original_route: Dictionary = routes.get(route_id, {})
 		var restored_route: Dictionary = restored_routes.get(route_id, {})
@@ -369,12 +386,14 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 			or int(restored_route.get("gate_initial_hp", -1)) != int(original_route.gate_initial_hp)
 			or int(restored_route.get("distance_fixed", -1)) != int(original_route.distance_fixed)
 			or int(restored_route.get("enemy_total_hp", -1)) < 0
+			or int(restored_route.get("enemy_position_fixed", -1)) < 0
+			or int(restored_route.get("enemy_position_fixed", 0)) > int(original_route.distance_fixed)
 			or int(restored_route.get("gate_hp", -1)) < 0
 			or int(restored_route.get("gate_hp", 0)) > int(original_route.gate_initial_hp)
 		):
 			return false
-	var restored_pending: Variant = _orders_from_snapshot(Array(snapshot.pending_orders))
-	var restored_accepted: Variant = _orders_from_snapshot(Array(snapshot.accepted_orders))
+	var restored_pending: Variant = _orders_from_snapshot(Array(normalized_snapshot.pending_orders))
+	var restored_accepted: Variant = _orders_from_snapshot(Array(normalized_snapshot.accepted_orders))
 	if restored_pending == null or restored_accepted == null:
 		return false
 	var valid_squad_ids: Dictionary = {}
@@ -386,7 +405,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		if (
 			order.session_id != session_id
 			or not valid_squad_ids.has(order.squad_id)
-			or order.issued_tick > int(snapshot.current_tick)
+			or order.issued_tick > int(normalized_snapshot.current_tick)
 		):
 			return false
 		accepted_orders_by_id[order.order_id] = order
@@ -399,24 +418,24 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 			or not _orders_match(order, accepted_orders_by_id[order.order_id])
 		):
 			return false
-	if int(snapshot.next_order_id) <= highest_order_id:
+	if int(normalized_snapshot.next_order_id) <= highest_order_id:
 		return false
-	current_tick = int(snapshot.current_tick)
-	next_order_id = int(snapshot.next_order_id)
+	current_tick = int(normalized_snapshot.current_tick)
+	next_order_id = int(normalized_snapshot.next_order_id)
 	squads = restored_squads
 	routes = restored_routes
 	pending_orders = restored_pending
 	accepted_orders = restored_accepted
-	retreat_was_ordered = bool(snapshot.retreat_was_ordered)
-	forced_retreat_requested = bool(snapshot.forced_retreat_requested)
-	mission_objective_state = Dictionary(snapshot.mission_objective_state).duplicate(true)
-	if int(snapshot.schema_version) == 1:
+	retreat_was_ordered = bool(normalized_snapshot.retreat_was_ordered)
+	forced_retreat_requested = bool(normalized_snapshot.forced_retreat_requested)
+	mission_objective_state = Dictionary(normalized_snapshot.mission_objective_state).duplicate(true)
+	if source_schema_version == 1:
 		# Version-one sessions applied their confirmed plan at tick zero. Preserve
 		# that already-paid historical effect instead of starting a second build.
 		_initialize_wartime_facilities(true)
 	else:
-		wartime_facility_state = Dictionary(snapshot.wartime_facility_state).duplicate(true)
-		if int(snapshot.schema_version) == 2:
+		wartime_facility_state = Dictionary(normalized_snapshot.wartime_facility_state).duplicate(true)
+		if source_schema_version == 2:
 			for index in Array(wartime_facility_state.get("facilities", [])).size():
 				var legacy_record: Dictionary = Dictionary(wartime_facility_state.facilities[index])
 				var maximum := int(FACILITY_MAX_DURABILITY.get(StringName(legacy_record.get("kind", &"")), 0))
@@ -642,7 +661,7 @@ func _has_matching_snapshot_value_types(value: Dictionary, expected: Dictionary)
 
 func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 	var schema_version = snapshot.get("schema_version", null)
-	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, 2, SNAPSHOT_SCHEMA_VERSION]:
+	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, 2, 3, SNAPSHOT_SCHEMA_VERSION]:
 		return false
 	var expected_keys: Array = SNAPSHOT_KEYS.duplicate()
 	if int(schema_version) == 1:
@@ -797,6 +816,27 @@ func _update_positions() -> void:
 	_update_mission_search_progress()
 
 
+func _advance_mission_enemy_positions() -> void:
+	if (
+		mission_definition == null
+		or mission_definition.objective_type != MissionDefinition.OBJECTIVE_PROTECT
+	):
+		return
+	var advance_per_tick := _positive_integer_divide(
+		request.committed_force.move_speed_fixed,
+		4
+	)
+	for route_id in [CommittedForceSnapshot.FRONT_ROUTE, CommittedForceSnapshot.SIDE_ROUTE]:
+		var route: Dictionary = Dictionary(routes[route_id])
+		if int(route.get("enemy_total_hp", 0)) <= 0:
+			continue
+		route.enemy_position_fixed = mini(
+			int(route.get("enemy_position_fixed", 0)) + advance_per_tick,
+			int(route.distance_fixed)
+		)
+		routes[route_id] = route
+
+
 func _build_damage_intents() -> Dictionary:
 	var gate_damage := {
 		CommittedForceSnapshot.FRONT_ROUTE: 0,
@@ -845,6 +885,12 @@ func _build_damage_intents() -> Dictionary:
 	]:
 		var route: Dictionary = routes[route_id]
 		if int(route.enemy_total_hp) <= 0:
+			continue
+		if (
+			mission_definition != null
+			and mission_definition.objective_type == MissionDefinition.OBJECTIVE_PROTECT
+			and not _enemy_has_reached_objective(route_id)
+		):
 			continue
 		var target := _get_enemy_target(route_id)
 		if target.is_empty():
@@ -1155,6 +1201,7 @@ func _apply_mission_objective_damage() -> void:
 		var route: Dictionary = routes[route_id]
 		if (
 			int(route.enemy_total_hp) > 0
+			and _enemy_has_reached_objective(route_id)
 			and not _has_frontline_squad(route_id)
 		):
 			var raw_damage := (
@@ -1236,6 +1283,16 @@ func _has_frontline_squad(route_id: StringName) -> bool:
 		):
 			return true
 	return false
+
+
+func _enemy_has_reached_objective(route_id: StringName) -> bool:
+	if mission_definition == null or mission_definition.objective_type != MissionDefinition.OBJECTIVE_PROTECT:
+		return true
+	var route: Dictionary = routes.get(route_id, {})
+	return (
+		not route.is_empty()
+		and int(route.get("enemy_position_fixed", 0)) >= int(route.get("distance_fixed", 0))
+	)
 
 
 func _has_surviving_exited_squad() -> bool:

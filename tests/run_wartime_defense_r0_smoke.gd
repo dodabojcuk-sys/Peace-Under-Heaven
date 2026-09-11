@@ -35,10 +35,15 @@ func _run() -> void:
 			and bool(snapshot_validation.get("valid", false)),
 		"守城 RESERVED 状态进入严格 V5 快照，而非公告板临时状态"
 	)
-	_check(city.enter_wartime_defense_battle(), "正式守城入口打开独立 C0 战时实例")
+	var gate_button := city_scene.get_node("UI/Shell/BuildingDetailPanel/CityGateActions/EnterWartimeDefenseButton") as Button
+	gate_button.emit_signal("pressed")
 	await process_frame
 	await process_frame
 	var battle := city.get_formal_battle_scene() as C0BattleGraybox
+	_check(
+		battle != null,
+		"黑石城门的已连接正式守城按钮打开独立 C0 战时实例"
+	)
 	var plan_panel := battle.get_node("UI/RootPanel/WartimePlanPanel") as Panel
 	var watch_button := plan_panel.get_node("WatchButton") as Button
 	var ram_button := plan_panel.get_node("RamButton") as Button
@@ -61,7 +66,6 @@ func _run() -> void:
 		"守城界面隐藏攻城槌，权威提交也拒绝绕过界面的攻城设施且不扣木材"
 	)
 	watch_button.emit_signal("pressed")
-	arrow_button.emit_signal("pressed")
 	barricade_button.emit_signal("pressed")
 	await process_frame
 	_check(
@@ -81,12 +85,27 @@ func _run() -> void:
 		"守城实例从冻结任务读取真实城门保护目标，而非复用攻城胜利条件"
 	)
 	var target_hp_before := int(objective.get("protect_target_hp", 0))
-	var front_raw_damage := int(
-		session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).enemy_initial_members
-	) * 2
-	var side_raw_damage := int(
-		session.get_route_state(CommittedForceSnapshot.SIDE_ROUTE).enemy_initial_members) * 2
 	battle.step_battle_for_test(4)
+	_check(
+		int(session.get_mission_objective_state().get("protect_target_hp", 0)) == target_hp_before
+			and int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("enemy_position_fixed", 0)) > 0
+			and int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("enemy_position_fixed", 0))
+				< int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).distance_fixed),
+		"守城敌军先沿真实路线推进；未抵达城门前不偷扣保护目标生命"
+	)
+	var legacy_session_snapshot := session.get_snapshot()
+	legacy_session_snapshot.schema_version = 3
+	for route_id in [CommittedForceSnapshot.FRONT_ROUTE, CommittedForceSnapshot.SIDE_ROUTE]:
+		var legacy_route: Dictionary = Dictionary(legacy_session_snapshot.routes[route_id])
+		legacy_route.erase("enemy_position_fixed")
+		legacy_session_snapshot.routes[route_id] = legacy_route
+	var legacy_session := BattleSession.new(battle.request)
+	_check(
+		legacy_session.restore_snapshot(legacy_session_snapshot)
+			and int(legacy_session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("enemy_position_fixed", -1)) == 0,
+		"V3 活动战时会话升级为从路线起点推进的防守敌军，不伪造旧档的抵近进度"
+	)
+	battle.step_battle_for_test(124)
 	var after_construction: Dictionary = session.get_wartime_facility_state()
 	var barricade: Dictionary = {}
 	for record_value in Array(after_construction.get("facilities", [])):
@@ -94,13 +113,13 @@ func _run() -> void:
 		if StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE:
 			barricade = record
 			break
-	var expected_gate_damage := side_raw_damage + (
-		front_raw_damage * BattleSession.BARRICADE_INCOMING_DAMAGE_BASIS_POINTS
-		/ BattleSession.BASIS_POINTS
-	)
 	_check(
 		int(session.get_mission_objective_state().get("protect_target_hp", 0))
-			== target_hp_before - expected_gate_damage
+			< target_hp_before
+			and int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("enemy_position_fixed", 0))
+				== int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).distance_fixed)
+			and int(session.get_route_state(CommittedForceSnapshot.SIDE_ROUTE).get("enemy_position_fixed", 0))
+				== int(session.get_route_state(CommittedForceSnapshot.SIDE_ROUTE).distance_fixed)
 			and StringName(barricade.get("phase", &"")) == BattleSession.FACILITY_PHASE_DAMAGED
 			and int(barricade.get("durability", 0)) < int(barricade.get("max_durability", 0)),
 		"守城拒马完工后分担城门的真实敌军伤害，并进入可维修的受损状态"

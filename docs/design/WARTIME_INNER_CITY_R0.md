@@ -19,8 +19,11 @@ not advance or settle the ordinary first-war pressure track. It must therefore
 not be substituted with the noticeboard's transient protection missions.
 
 The first R0 defense objective is a real `PROTECT_AND_ELIMINATE` task: two
-enemy approaches attack the saved Blackstone gate objective whenever they are
-not stopped by a frontline squad. The C0 facility plan is available from this
+enemy approaches advance through their saved routes and only attack the saved
+Blackstone gate objective after reaching it without a frontline squad. Their
+route progress is part of the active battle snapshot. Historical schema-1/2/3
+sessions have no such fact, so migration conservatively restores them at the
+route origin rather than inventing an arrival. The C0 facility plan is available from this
 source, but its source-aware authority permits only observation, arrow-tower
 and barricade works; a siege ram is neither displayed nor accepted by the
 controller transaction. Construction and repair stay attached to the same

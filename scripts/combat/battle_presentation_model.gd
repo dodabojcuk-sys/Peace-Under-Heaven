@@ -71,12 +71,14 @@ static func _build_route(
 	)
 	var gate_hp := int(initial.get("gate_hp", 0))
 	var gate_max_hp := gate_hp
+	var enemy_position_fixed := 0
 	if session != null:
 		var state := session.get_route_state(route_id)
 		distance_fixed = int(state.get("distance_fixed", distance_fixed))
 		enemy_hp = int(state.get("enemy_total_hp", enemy_hp))
 		gate_hp = int(state.get("gate_hp", gate_hp))
 		gate_max_hp = int(state.get("gate_initial_hp", gate_max_hp))
+		enemy_position_fixed = int(state.get("enemy_position_fixed", 0))
 	var enemy_count := _alive_members(
 		enemy_hp,
 		request.committed_force.hp_per_member
@@ -96,7 +98,11 @@ static func _build_route(
 	if enemy_count > 0 and not engaged_squads.is_empty():
 		enemy_status = "正在与%s接战" % _join_squad_names(engaged_squads)
 	elif enemy_count > 0:
-		enemy_status = "据守路线尽头"
+		enemy_status = (
+			"正在逼近城门"
+			if mission != null and mission.objective_type == MissionDefinition.OBJECTIVE_PROTECT
+			else "据守路线尽头"
+		)
 	return {
 		"route_id": route_id,
 		"name": route_name,
@@ -108,7 +114,11 @@ static func _build_route(
 		"gate_hp": gate_hp,
 		"gate_max_hp": gate_max_hp,
 		"has_obstacle": gate_max_hp > 0,
-		"enemy_position_ratio": 1.0,
+		"enemy_position_ratio": (
+			clampf(float(enemy_position_fixed) / float(maxi(distance_fixed, 1)), 0.0, 1.0)
+			if mission != null and mission.objective_type == MissionDefinition.OBJECTIVE_PROTECT
+			else 1.0
+		),
 		"enemy_direction_text": "敌军来向 ←",
 	}
 
@@ -224,6 +234,7 @@ static func _build_objective(
 			for route in routes:
 				if (
 					int(route.enemy_count) > 0
+					and float(route.get("enemy_position_ratio", 0.0)) >= 1.0
 					and Array(route.engaged_squad_ids).is_empty()
 				):
 					attacking_routes.append(str(route.name))
