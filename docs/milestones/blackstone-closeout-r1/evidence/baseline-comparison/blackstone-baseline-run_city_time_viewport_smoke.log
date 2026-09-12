@@ -1,0 +1,50 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+PASS: 正式城市场景可以加载
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 进入场景后时间默认运行
+PASS: 运行态顶部控件显示暂停
+PASS: 正式 UI 不存在结束本日入口
+PASS: 每日日长集中为 180 秒正式首战参数
+PASS: 未点击按钮也可由模拟时钟跨越日界线
+ERROR: FAIL: 一次日界线只结算一次维护与研究
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_city_time_viewport_smoke.gd:435)
+       [1] _run (res://tests/run_city_time_viewport_smoke.gd:52)
+PASS: 暂停冻结日期并保留当天进度
+PASS: 暂停态顶部控件显示继续
+PASS: 暂停时地图拖拽仍可操作
+PASS: 暂停时建筑查看可用且不会改变暂停状态
+PASS: 暂停时建设规划入口仍可操作
+PASS: 继续后从暂停前进度恢复而非重置当天
+PASS: 打开普通详情面板不会自动暂停
+PASS: 窗口焦点变化不会主动切换暂停状态
+PASS: 相同模拟时间在不同帧增量下得到相同日期与事件结果
+PASS: 大增量不重复或漏掉第 5、8、10 日日界线
+PASS: 运行状态可以正常到达第 11 日
+PASS: 从第 11 日进入第 12 日不会自动暂停
+PASS: 第 12 日当天进度继续积累且时间进度不被内容边界封顶
+PASS: 第 12 日只有玩家明确暂停才冻结且焦点变化不改状态
+PASS: 继续后从第 12 日原进度恢复并自动进入第 13 日
+PASS: 第 13 日不重复触发第 12 日特殊事件
+PASS: 大增量跨越第 12、13 日不重复结算、不丢失日期
+PASS: 第 5 日威胁仍按原规则触发
+PASS: 第 8 日威胁仍按原规则触发
+PASS: 第 10 日威胁仍按原规则触发
+PASS: 第 12 日威胁仍按原规则触发
+PASS: 右侧城市经营默认展开且城市切换入口始终可见
+PASS: 城市序列可以收起
+PASS: 收起城市序列不修改建筑 placement
+PASS: 收起城市序列不会改变时间运行状态
+PASS: 默认展开后全部建筑都能通过相机拖动进入安全可见区域
+PASS: 左侧栏收起后隐藏控件不再拦截地图输入
+PASS: 收起侧栏不修改建筑 placement
+PASS: 侧栏 UI 点击不会穿透到地图拖拽
+PASS: 暂停控件不会触发地图拖拽或建筑选择
+PASS: 仍只有一个 MapWorld
+PASS: 仍只有一个 Camera2D
+PASS: 仍只有一个 ConstructionController
+PASS: 仍只有一个正式 _input 所有者
+CITY_TIME_VIEWPORT_SMOKE FAIL (1)
+ - 一次日界线只结算一次维护与研究

@@ -1,0 +1,1112 @@
+{
+	"accelerated_driver": false,
+	"failures": [],
+	"input": "formal Controller commands, connected GUI signals and spatial map events",
+	"nodes": [
+		{
+			"day": 1,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"definition_id": "building.farm.t1",
+					"display_name": "农田",
+					"effect_text": "粮食 +22/日",
+					"eta_text": "第 2 日 00:01",
+					"next_missing_text": "",
+					"paid_text": "木材 0/45",
+					"progress_percent": 0.0,
+					"refund_text": "",
+					"remaining_text": "木材 45",
+					"state": "PRODUCING",
+					"status_text": "建造中"
+				},
+				"city_reservation_blocked": false,
+				"controller_processing": true,
+				"day": 1,
+				"day_elapsed_ms": 143,
+				"field_projects": {
+
+				},
+				"last_checkpoint": {
+
+				},
+				"persistence": {
+					"dirty": true,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-b-live",
+					"save_sequence": 1,
+					"status": "created_initial_generation",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 0,
+					"next_order_sequence": 1,
+					"orders_by_id": {
+
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 143
+			},
+			"food": 80,
+			"invasion": {
+				"activation_day": 5,
+				"known": false,
+				"phase": "DORMANT",
+				"warning_day": 4
+			},
+			"node": "preparation",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 0,
+				"adults": 72,
+				"available": 20,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 0,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 0,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 20,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 1,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 0,
+				"total_living": 72,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 72,
+				"unsettled_refugees": 0,
+				"work_eligible": 20,
+				"wounded": 0
+			},
+			"real_ms": 562,
+			"wood": 100
+		},
+		{
+			"day": 4,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": false,
+				"controller_processing": true,
+				"day": 4,
+				"day_elapsed_ms": 36,
+				"field_projects": {
+
+				},
+				"last_checkpoint": {
+
+				},
+				"persistence": {
+					"dirty": true,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-b-live",
+					"save_sequence": 362,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 540036
+			},
+			"food": 88,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "DORMANT",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "warning",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 55,
+				"adults": 72,
+				"available": 15,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 0,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 250,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 25,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 1,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 0,
+				"total_living": 72,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 72,
+				"unsettled_refugees": 0,
+				"work_eligible": 15,
+				"wounded": 0
+			},
+			"real_ms": 540315,
+			"wood": 20
+		},
+		{
+			"day": 5,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": false,
+				"controller_processing": true,
+				"day": 5,
+				"day_elapsed_ms": 55,
+				"field_projects": {
+
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": false,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-b-live",
+					"save_sequence": 364,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 720055
+			},
+			"food": 102,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "INVADING",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "invasion-marching",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 70,
+				"adults": 72,
+				"available": 15,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 0,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 500,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 25,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 1,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 0,
+				"total_living": 72,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 72,
+				"unsettled_refugees": 0,
+				"work_eligible": 15,
+				"wounded": 0
+			},
+			"real_ms": 720332,
+			"wood": 20
+		},
+		{
+			"day": 5,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": true,
+				"controller_processing": true,
+				"day": 5,
+				"day_elapsed_ms": 28295,
+				"field_projects": {
+
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": false,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-b-live",
+					"save_sequence": 367,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 748295
+			},
+			"food": 102,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "HANDED_OFF",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "defense-active",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 70,
+				"adults": 72,
+				"available": 15,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 0,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 500,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 25,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 1,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 0,
+				"total_living": 72,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 72,
+				"unsettled_refugees": 0,
+				"work_eligible": 15,
+				"wounded": 0
+			},
+			"real_ms": 748700,
+			"wood": 20
+		},
+		{
+			"day": 5,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": true,
+				"controller_processing": true,
+				"day": 5,
+				"day_elapsed_ms": 28295,
+				"field_projects": {
+
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": false,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-b-live",
+					"save_sequence": 667,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 748295
+			},
+			"food": 102,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "HANDED_OFF",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "defense-result-pending",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 70,
+				"adults": 72,
+				"available": 15,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 0,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 500,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 25,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 1,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 0,
+				"total_living": 72,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 72,
+				"unsettled_refugees": 0,
+				"work_eligible": 15,
+				"wounded": 0
+			},
+			"real_ms": 824237,
+			"wood": 20
+		},
+		{
+			"day": 5,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": false,
+				"controller_processing": true,
+				"day": 5,
+				"day_elapsed_ms": 107453,
+				"field_projects": {
+
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": true,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-b-live",
+					"save_sequence": 670,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 752453
+			},
+			"food": 98,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "RESOLVED",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "recovery",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 70,
+				"adults": 69,
+				"available": 15,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 3,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 500,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 22,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 2,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 0,
+				"total_living": 69,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 69,
+				"unsettled_refugees": 0,
+				"work_eligible": 15,
+				"wounded": 0
+			},
+			"real_ms": 828422,
+			"wood": 20
+		},
+		{
+			"day": 5,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": false,
+				"controller_processing": true,
+				"day": 5,
+				"day_elapsed_ms": 146824,
+				"field_projects": {
+
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": false,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-b-live",
+					"save_sequence": 689,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 791823
+			},
+			"food": 88,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "RESOLVED",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "retreat-returned",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 70,
+				"adults": 66,
+				"available": 15,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 6,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 500,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 19,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 2,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 0,
+				"total_living": 66,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 66,
+				"unsettled_refugees": 0,
+				"work_eligible": 15,
+				"wounded": 0
+			},
+			"real_ms": 869903,
+			"wood": 20
+		},
+		{
+			"day": 5,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": false,
+				"controller_processing": true,
+				"day": 5,
+				"day_elapsed_ms": 159062,
+				"field_projects": {
+
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": true,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-b-live",
+					"save_sequence": 1006,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 804060
+			},
+			"food": 84,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "RESOLVED",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "occupation",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 70,
+				"adults": 65,
+				"available": 15,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 7,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 500,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 17,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 2,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 0,
+				"total_living": 65,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 65,
+				"unsettled_refugees": 0,
+				"work_eligible": 15,
+				"wounded": 1
+			},
+			"real_ms": 959976,
+			"wood": 20
+		},
+		{
+			"day": 5,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": false,
+				"controller_processing": true,
+				"day": 5,
+				"day_elapsed_ms": 170069,
+				"field_projects": {
+
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": false,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-b-live",
+					"save_sequence": 1008,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 815067
+			},
+			"food": 80,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "RESOLVED",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "victory",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 70,
+				"adults": 65,
+				"available": 15,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 7,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 500,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 17,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 2,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 0,
+				"total_living": 65,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 65,
+				"unsettled_refugees": 0,
+				"work_eligible": 15,
+				"wounded": 1
+			},
+			"real_ms": 970988,
+			"wood": 20
+		}
+	],
+	"real_ms": 973964,
+	"route": "B"
+}

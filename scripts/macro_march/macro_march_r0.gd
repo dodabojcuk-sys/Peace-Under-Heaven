@@ -795,6 +795,16 @@ func _open_selected_location_detail() -> void:
 	refresh()
 
 
+func focus_campaign_location(point_id: StringName) -> void:
+	_select_location_detail(point_id)
+	var point := _point_from_model(_model(), point_id)
+	if not point.is_empty():
+		_camera_center = Vector2(point.get("world_position", _camera_center))
+		_camera_zoom = maxf(_camera_zoom, 0.9)
+		_clamp_camera()
+		refresh()
+
+
 func _select_location_detail(point_id: StringName) -> void:
 	var location := _point_from_model(_model(), point_id)
 	if location.is_empty():
@@ -972,6 +982,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_engineer_button.visible = _count_available_specialists(specialists, FieldTacticsState.SPECIALIST_ENGINEER) < 1
 	_side_road_button.visible = not specialists.is_empty()
 	_side_road_button.disabled = not _has_idle_engineer(specialists)
+	_side_road_button.tooltip_text = "需要空闲且存活的工程师；正在行军或施工的工程师需先完成当前任务。" if _side_road_button.disabled else "拖线预览道路及实际粮食成本"
 	_side_road_button.text = "安排工程师维修受损道路（3 粮）" if has_selected_damage else "工程师拖线修路"
 	var selected_engineer := Dictionary(specialists.get(_selected_specialist_id, {}))
 	_watchtower_button.visible = (
@@ -994,6 +1005,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_minefield_button.disabled = _watchtower_button.disabled
 	_resume_project_button.visible = not _first_interrupted_project(projects).is_empty()
 	_resume_project_button.disabled = not _has_idle_engineer(specialists)
+	_resume_project_button.tooltip_text = "缺少空闲工程师；可先在工程列表定位中断现场。" if _resume_project_button.disabled else "沿现有道路前往原工程接续，不创建重复项目"
 	_restore_default_route_button.visible = not _engineering_mode and _selected_route_road_id != &""
 	_restore_default_route_button.disabled = _selected_route_road_id == &""
 	_engineering_undo_button.visible = not _engineering_draft.is_empty() and _engineering_planned_points.size() > 2
@@ -1017,11 +1029,13 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		_facility_repair_button.visible = hostile_mine or facility_durability < facility_maximum
 		_facility_repair_button.text = "工程师排除已发现地雷" if hostile_mine else "维修所选外部设施 · 3 粮"
 		_facility_repair_button.disabled = not _has_idle_engineer(specialists)
+		_facility_repair_button.tooltip_text = "需要空闲且存活的工程师" if _facility_repair_button.disabled else "沿连通道路到场维修；保持同一设施身份"
 		_facility_upgrade_button.visible = int(selected_facility.get("level", 1)) < 2 and facility_durability > 0
 		var upgrade_engineer_id := _first_idle_engineer_id(specialists)
 		var upgrade_preview: Dictionary = _dispatch_adapter.preview_field_facility_upgrade(upgrade_engineer_id, _selected_field_facility_id) if _dispatch_adapter != null and upgrade_engineer_id != &"" else {}
 		_facility_upgrade_button.text = "升级至 2 级 · %d 粮 / %0.1f 秒" % [int(upgrade_preview.get("food_cost", 0)), float(upgrade_preview.get("required_milliseconds", 0)) / 1000.0] if bool(upgrade_preview.get("valid", false)) else "升级至 2 级 · 需要空闲工程师"
 		_facility_upgrade_button.disabled = not bool(upgrade_preview.get("valid", false))
+		_facility_upgrade_button.tooltip_text = str(upgrade_preview.get("error", "需要空闲工程师及可达设施")) if _facility_upgrade_button.disabled else "升级同一设施，不会免费修复战损"
 		_fortress_garrison_button.visible = selected_facility_kind == FieldTacticsState.FACILITY_FORTRESS
 		var fortress_army_id := StringName(selected_facility.get("garrison_army_id", &""))
 		_fortress_garrison_button.text = "撤出堡垒 · %s" % String(fortress_army_id) if fortress_army_id != &"" else "所选驻扎军队进驻堡垒"
@@ -1618,7 +1632,17 @@ func _refresh_interrupted_project_selector(model: Dictionary, projects: Dictiona
 
 func _select_interrupted_project(index: int) -> void:
 	_selected_interrupted_project_id = StringName(_interrupted_project_selector.get_item_metadata(index))
-	_status_label.text = "已选中中断工程；选择空闲工程师后可接续。"
+	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+	var project := Dictionary(Dictionary(field.get("projects_by_id", {})).get(_selected_interrupted_project_id, {}))
+	var points: Array = project.get("route_world_points", [])
+	if not points.is_empty():
+		_camera_center = Vector2(points.back())
+	elif project.has("world_position"):
+		_camera_center = Vector2(project.world_position)
+	_camera_zoom = maxf(_camera_zoom, 0.9)
+	_clamp_camera()
+	_status_label.text = "已定位中断工程；选择空闲工程师后可接续。"
+	queue_redraw()
 
 
 func _on_gui_input(event: InputEvent) -> void:

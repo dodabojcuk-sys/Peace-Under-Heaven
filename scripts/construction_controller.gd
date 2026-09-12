@@ -444,6 +444,7 @@ var recruitment_cap := BASE_RECRUITMENT_CAP
 var selected_general_id: StringName = &""
 var _training_queue: TrainingQueue = TRAINING_QUEUE.new(&"blackstone_city")
 var _last_training_failure_id: StringName = &""
+var _last_campaign_checkpoint_result: Dictionary = {}
 var _army_registry: ArmyRegistry = ARMY_REGISTRY.new()
 var _population_recovery: PopulationRecoveryState = POPULATION_RECOVERY_STATE.new()
 var _city_governance: CityGovernanceState = CITY_GOVERNANCE_STATE.new()
@@ -472,6 +473,7 @@ var city_time_paused := false
 var city_time_speed := 1.0
 var _macro_march_blocked_route_ids: Dictionary = {}
 var day_elapsed_seconds := 0.0
+var _city_frame_remainder_milliseconds := 0.0
 var first_war_state := FirstWarState.PREPARATION
 var first_war_warning_count := 0
 var city_fallen := false
@@ -590,6 +592,9 @@ func _ready() -> void:
 	current_mainline_entry_button.pressed.connect(
 		_on_current_mainline_entry_pressed
 	)
+	alert_summary.mouse_filter = Control.MOUSE_FILTER_STOP
+	alert_summary.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	alert_summary.gui_input.connect(_on_campaign_status_input)
 	enter_wartime_defense_button.pressed.connect(enter_wartime_defense_battle)
 	expedition_preparation_panel.selection_changed.connect(
 		_on_expedition_selection_changed
@@ -2285,7 +2290,9 @@ func advance_city_time(simulation_delta: float) -> int:
 	):
 		return 0
 
-	var remaining_milliseconds := roundi(simulation_delta * 1000.0)
+	var frame_milliseconds := simulation_delta * 1000.0 + _city_frame_remainder_milliseconds
+	var remaining_milliseconds := floori(frame_milliseconds + 0.000000001)
+	_city_frame_remainder_milliseconds = maxf(frame_milliseconds - remaining_milliseconds, 0.0)
 	if remaining_milliseconds <= 0:
 		return 0
 	var elapsed_milliseconds := clampi(
@@ -3267,7 +3274,22 @@ func _launch_active_expedition_battle() -> bool:
 	return true
 
 
+func _on_campaign_status_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_on_current_mainline_entry_pressed()
+		alert_summary.accept_event()
+
+
 func _on_current_mainline_entry_pressed() -> void:
+	if has_resumable_expedition():
+		resume_persisted_expedition()
+		return
+	if uses_blackstone_campaign():
+		if get_parent().open_macro_march_r0():
+			var invasion := get_blackstone_invasion_read_model()
+			var point_id := StringName(invasion.get("source_point_id", &"blackstone_city"))
+			get_parent().get_node("UI/MacroMarchR0").focus_campaign_location(point_id)
+		return
 	if not open_expedition_preparation():
 		_show_placement_feedback(get_first_war_entry_blocked_reason())
 
@@ -3422,6 +3444,7 @@ func can_start_noticeboard_mission(mission_id: StringName) -> bool:
 	var mission := get_noticeboard_mission_definition(mission_id)
 	return (
 		mission != null
+		and not uses_blackstone_campaign()
 		and mission.is_valid()
 		and _active_noticeboard_mission_id == &""
 		and not is_city_action_locked_for_battle()
@@ -3794,6 +3817,8 @@ func _advance_day_boundary(
 
 
 func _apply_mainline_pressure_for_current_day() -> void:
+	if is_campaign_pressure_cleared():
+		return
 	var event := _current_mainline_level.build_pressure_event(
 		current_day,
 		city_security
@@ -3844,9 +3869,9 @@ func get_mainline_pressure_state() -> Dictionary:
 			current_day - _current_mainline_level.deadline_day,
 			0
 		),
-		"stage_id": _current_mainline_level.pressure_stage_id,
-		"stage_name": MAINLINE_PRESSURE_PROFILE.get_stage_display_name(current_day),
-		"cleared": _current_mainline_level.cleared,
+		"stage_id": &"PRESSURE_0" if is_campaign_pressure_cleared() else _current_mainline_level.pressure_stage_id,
+		"stage_name": "压力解除" if is_campaign_pressure_cleared() else MAINLINE_PRESSURE_PROFILE.get_stage_display_name(current_day),
+		"cleared": is_campaign_pressure_cleared(),
 		"security": city_security,
 		"construction_modifier_permille": get_pressure_modifier_permille(&"construction"),
 		"production_modifier_permille": get_pressure_modifier_permille(&"production"),
@@ -4306,7 +4331,7 @@ func set_construction_priority(placement_id: int, priority: int) -> bool:
 
 func get_pressure_modifier_permille(channel_id: StringName) -> int:
 	var value := 1000
-	if not _current_mainline_level.cleared:
+	if not is_campaign_pressure_cleared():
 		if channel_id == &"construction":
 			value = MAINLINE_PRESSURE_PROFILE.get_construction_modifier_permille(current_day)
 		elif channel_id in [
@@ -5040,18 +5065,31 @@ func adjust_city_workforce(channel: StringName, delta: int) -> Dictionary:
 	return {"success": true, "population_recovery": get_population_recovery_read_model()}
 
 
-func begin_wounded_treatment() -> Dictionary:
+func preview_wounded_treatment() -> Dictionary:
+	var error := ""
+	var count := mini(mini(_population_recovery.wounded, RECOVERY_RULES.treatment_batch_size), mini(get_city_medical_capacity(), _population_recovery.medical_workers))
+	var cost := count * RECOVERY_RULES.treatment_food_per_person
 	if is_city_action_locked_for_battle():
-		return {"success": false, "error": "战斗事务处理中不能开始治疗"}
-	if StringName(_population_recovery.treatment.phase) != PopulationRecoveryState.TREATMENT_IDLE:
-		return {"success": false, "error": "已有伤员正在治疗"}
-	var count := mini(
-		mini(_population_recovery.wounded, RECOVERY_RULES.treatment_batch_size),
-		mini(get_city_medical_capacity(), _population_recovery.medical_workers)
-	)
-	if count <= 0:
-		return {"success": false, "error": "当前没有待治疗伤员，或医舍容量与医疗人员不足"}
-	var food_cost := count * RECOVERY_RULES.treatment_food_per_person
+		error = "战斗事务处理中不能开始治疗"
+	elif StringName(_population_recovery.treatment.phase) != PopulationRecoveryState.TREATMENT_IDLE:
+		error = "已有治疗正在进行，需等待当前批次完成"
+	elif _population_recovery.wounded <= 0:
+		error = "当前没有待治疗伤员"
+	elif _population_recovery.medical_workers <= 0:
+		error = "医疗岗位无人；先调入至少 1 名可用人员"
+	elif get_city_medical_capacity() <= 0:
+		error = "没有可用医疗容量；检查医舍是否完工"
+	elif food < cost:
+		error = "治疗 %d 人还缺 %d 粮" % [count, cost - food]
+	return {"valid": error.is_empty(), "error": error, "count": count, "food_cost": cost}
+
+
+func begin_wounded_treatment() -> Dictionary:
+	var preview := preview_wounded_treatment()
+	if not bool(preview.valid):
+		return {"success": false, "error": str(preview.error)}
+	var count := int(preview.count)
+	var food_cost := int(preview.food_cost)
 	var required := count * RECOVERY_RULES.treatment_milliseconds_per_person
 	var population_before := _population_recovery.get_snapshot()
 	var local_commit := func() -> Dictionary:
@@ -6296,6 +6334,7 @@ func _install_early_city_snapshot(
 		}
 	current_day = int(city.current_day)
 	day_elapsed_seconds = float(city.day_elapsed_seconds)
+	_city_frame_remainder_milliseconds = 0.0
 	infantry_count = int(city.infantry_count)
 	recruitment_cap = int(city.recruitment_cap)
 	selected_general_id = StringName(city.selected_general_id)
@@ -6876,6 +6915,76 @@ func get_field_tactics_read_model() -> Dictionary:
 		"supply_transports_by_id": Dictionary(field_snapshot.get("supply_transports_by_id", {})).duplicate(true),
 		"world_milliseconds": int(field_snapshot.world_milliseconds),
 		"blackstone_invasion": get_blackstone_invasion_read_model(),
+	}
+
+
+## Read projections deliberately leave the historical first-war ledger intact.
+func uses_blackstone_campaign() -> bool:
+	return _war_loop_state != null and not _war_loop_state.field_tactics.get_blackstone_invasion().is_empty()
+
+
+func is_campaign_pressure_cleared() -> bool:
+	if uses_blackstone_campaign():
+		return _war_loop_state.is_level_cleared()
+	return _current_mainline_level.cleared
+
+
+func get_blackstone_campaign_status_text() -> String:
+	var invasion := get_blackstone_invasion_read_model()
+	var phase := StringName(invasion.get("phase", &""))
+	var threat := "准备期 · 第 %d 日预警 / 第 %d 日出发" % [int(invasion.get("warning_day", 4)), int(invasion.get("activation_day", 5))]
+	if bool(invasion.get("known", false)):
+		threat = {
+			FieldTacticsState.INVASION_DORMANT: "预警：赤崖先遣军将沿北道来袭",
+			FieldTacticsState.INVASION_MARCHING: "来袭途中 · 可截击或回城备防",
+			FieldTacticsState.INVASION_ARRIVED: "敌军抵城 · 城门可接战",
+			FieldTacticsState.INVASION_HANDED_OFF: "守城事务处理中 · 继续原战斗",
+			FieldTacticsState.INVASION_RESOLVED: "来袭已结算 · 可治疗、整备与反攻",
+		}.get(phase, "来袭军已消灭 · 可继续行动")
+	var objective := "控制赤崖与银渡 · 第 7 日后经济压力递增"
+	if _war_loop_state.is_level_cleared():
+		objective = "双城目标达成 · 可继续经营、驻扎与续令"
+	return objective + "\n" + threat
+
+
+func get_city_food_forecast() -> Dictionary:
+	var income := 0
+	for placement_id in _placement_order:
+		if not is_building_operational(placement_id): continue
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		var definition := get_definition(StringName(record.get("definition_id", &"")))
+		if definition == null: continue
+		var production := definition.get_capability(&"production")
+		if production != null and production.resource_id == &"food":
+			income += _get_production_amount(definition, production)
+	var upkeep := get_maintenance_food_cost()
+	return {"income": income, "upkeep": upkeep, "net": income - upkeep}
+
+
+## Developer diagnostics are transient read models, never campaign save data.
+func get_campaign_progress_diagnostics() -> Dictionary:
+	var blocked_armies: Array[Dictionary] = []
+	for army in get_macro_march_armies():
+		if StringName(army.get("phase", &"")) == ArmyRegistry.PHASE_BLOCKED:
+			blocked_armies.append(army.duplicate(true))
+	return {
+		"player_paused": city_time_paused,
+		"city_reservation_blocked": is_first_war_time_blocked(),
+		"controller_processing": is_processing(),
+		"controller_can_process": can_process(),
+		"city_scene_process_mode": get_parent().process_mode,
+		"speed": city_time_speed,
+		"day": current_day,
+		"day_elapsed_ms": get_day_elapsed_milliseconds(),
+		"world_ms": _war_loop_state.field_tactics.world_milliseconds,
+		"training_wait_reason": _last_training_failure_id,
+		"training": _training_queue.get_snapshot(),
+		"treatment": _population_recovery.treatment.duplicate(true),
+		"blocked_armies": blocked_armies,
+		"field_projects": _war_loop_state.field_tactics.projects_by_id.duplicate(true),
+		"last_checkpoint": _last_campaign_checkpoint_result.duplicate(true),
+		"persistence": get_parent().get_runtime_persistence_status(),
+		"city_build_slot": get_build_slot_presentation(),
 	}
 
 
@@ -8873,7 +8982,8 @@ func resume_blocked_macro_march(army_id: StringName, order_id: StringName) -> Di
 func _persist_macro_march_checkpoint() -> Dictionary:
 	var root := get_parent()
 	if root != null and root.has_method("persist_macro_march_checkpoint"):
-		return root.persist_macro_march_checkpoint()
+		_last_campaign_checkpoint_result = root.persist_macro_march_checkpoint().duplicate(true)
+		return _last_campaign_checkpoint_result.duplicate(true)
 	if DisplayServer.get_name() == "headless":
 		return {"success": true, "headless_test_store_disabled": true}
 	return {"success": false}
@@ -10202,13 +10312,30 @@ func apply_battle_result_atomic(
 		),
 	}
 
+	# Legacy non-durable missions still settle real people. Keep their original
+	# identity/reward ledger while using the same casualty accounting as V5.
+	var population_before := _population_recovery.get_snapshot()
+	var garrison_before := _garrison_state.get_persistence_snapshot()
+	var casualty_commit := func() -> Dictionary:
+		infantry_count = next_infantry
+		var casualties := _population_recovery.record_casualties(
+			battle_result.casualty_count, RECOVERY_RULES.wounded_permille
+		) if battle_result.casualty_count > 0 else {"wounded": 0, "fallen": 0}
+		if casualties.is_empty() or not _population_recovery.invariant_matches(
+			_current_military_population(), _current_alive_specialists()
+		):
+			_garrison_state.restore_persistence_snapshot(garrison_before)
+			_population_recovery.restore_snapshot(population_before)
+			return {"success": false}
+		summary["wounded_added"] = int(casualties.wounded)
+		summary["fallen_added"] = int(casualties.fallen)
+		return {"success": true}
 	if not _commit_national_resource_targets(
 		{&"wood": next_wood, &"food": next_food},
-		&"battle_result_settlement"
+		&"battle_result_settlement", casualty_commit
 	):
 		_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
 		return {}
-	infantry_count = next_infantry
 	if request.formal_city_entry:
 		city_defense_damage += defense_damage
 		enemy_count = next_enemy_count
@@ -11041,7 +11168,7 @@ func _get_training_failure_id(
 ) -> StringName:
 	if is_city_action_locked_for_battle():
 		return &"CITY_BATTLE_LOCKED"
-	if current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day:
+	if not uses_blackstone_campaign() and current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day:
 		return &"TRAINING_DAY_LIMIT"
 	if _training_queue.has_active_order():
 		return &"TRAINING_QUEUE_BUSY"
@@ -11161,8 +11288,8 @@ func get_training_blocked_reason() -> Dictionary:
 		&"SUPPLY_SHORTAGE": "供给不足，训练暂停",
 		&"RECRUITMENT_CAPACITY": "驻军已达征募容量",
 		&"COMMAND_LIMIT": "驻军将超过指挥上限",
-		&"INSUFFICIENT_FOOD": "粮食不足",
-		&"INSUFFICIENT_AVAILABLE_POPULATION": "可用人口不足",
+		&"INSUFFICIENT_FOOD": "粮食还缺 %d" % maxi(get_training_batch_size() * INFANTRY_ROLE.recruit_food_per_unit - food, 0),
+		&"INSUFFICIENT_AVAILABLE_POPULATION": "可用人口还缺 %d；可调整生产、施工、医疗或治理岗位" % maxi(get_training_batch_size() - _population_recovery.available, 0),
 	}
 	return {
 		"blocked": error_id != &"",
@@ -11537,6 +11664,7 @@ func restart_first_map() -> bool:
 	city_time_paused = false
 	city_time_speed = 1.0
 	day_elapsed_seconds = 0.0
+	_city_frame_remainder_milliseconds = 0.0
 	first_war_state = FirstWarState.PREPARATION
 	first_war_warning_count = 0
 	city_fallen = false
@@ -11588,7 +11716,7 @@ func _update_threat_for_current_day(apply_event: bool) -> void:
 		return
 	enemy_count = threat_event.enemy_count
 	enemy_fortification = threat_event.fortification_level
-	if apply_event and threat_event.day == current_day:
+	if apply_event and not uses_blackstone_campaign() and threat_event.day == current_day:
 		_apply_threat_event(threat_event)
 
 
@@ -13376,6 +13504,9 @@ func _refresh_noticeboard_ui() -> void:
 		start_button.text = (
 			"再次挑战" if state_id == &"COMPLETED" else "开始任务"
 		)
+		start_button.tooltip_text = "旧独立任务：不改变赤崖、银渡控制权；正式黑石战役不再新开，旧活动事务仍按原身份恢复。"
+		if uses_blackstone_campaign():
+			start_button.text = "历史任务 · 已退出首关入口"
 		start_button.disabled = not can_start_noticeboard_mission(
 			mission.mission_id
 		)
@@ -13792,6 +13923,8 @@ func _refresh_city_ui() -> void:
 			]
 		)
 	)
+	if uses_blackstone_campaign():
+		alert_summary.text = get_blackstone_campaign_status_text()
 	_refresh_first_war_ui()
 	threat_detail.text = (
 		"城防 %d\n当前敌军 %d · 工事 %d\n%s"
@@ -13855,10 +13988,14 @@ func _refresh_city_ui() -> void:
 		is_city_action_locked_for_battle()
 		or
 		emergency_mobilization_used
+		or current_day != FIRST_MAP_THREAT_SCHEDULE.max_day
 		or food < EMERGENCY_MOBILIZATION_FOOD_COST
+		or _population_recovery.available < EMERGENCY_MOBILIZATION_INFANTRY
 	)
+	emergency_mobilization_button.tooltip_text = "仅第 %d 日可用一次；需要 %d 粮、%d 名可用人员。其他日期可用正常征募。" % [FIRST_MAP_THREAT_SCHEDULE.max_day, EMERGENCY_MOBILIZATION_FOOD_COST, EMERGENCY_MOBILIZATION_INFANTRY]
 	restore_checkpoint_button.visible = (
 		current_day >= FIRST_MAP_THREAT_SCHEDULE.max_day
+		and not uses_blackstone_campaign()
 		and has_readiness_checkpoint()
 	)
 	restart_map_button.visible = (
@@ -14000,10 +14137,10 @@ func _refresh_first_war_ui() -> void:
 
 
 func _refresh_current_mainline_entry_ui() -> void:
-	if not get_blackstone_invasion_read_model().is_empty():
-		current_mainline_entry_button.text = "首关目标：守住黑石并从战区反攻"
-		current_mainline_entry_button.tooltip_text = "从黑石城门进入外部战区；本按钮不再生成无来源的北坡战斗"
-		current_mainline_entry_button.disabled = true
+	if uses_blackstone_campaign():
+		current_mainline_entry_button.text = "继续原战斗" if has_resumable_expedition() else "查看战区 · 赤崖 / 银渡"
+		current_mainline_entry_button.tooltip_text = get_blackstone_campaign_status_text() + "\n点击定位已知来袭来源；侦察、工程和直接出兵均可选。"
+		current_mainline_entry_button.disabled = is_instance_valid(_formal_battle_scene)
 		return
 	if _current_mainline_level.cleared:
 		current_mainline_entry_button.text = "主线已完成 · 压力解除"
@@ -14061,6 +14198,7 @@ func _refresh_time_ui() -> void:
 	)
 	if pause_button.text != pause_text:
 		pause_button.text = pause_text
+	time_summary.tooltip_text = "常态内城与外部战区共享暂停和倍速；切换战区不暂停生产、施工、治疗。战时内城与战区冻结；守城确认补计城市战斗时长，反攻围城不补计城市日历。"
 	pause_button.disabled = is_first_war_time_blocked()
 	time_speed_option.disabled = is_first_war_time_blocked()
 	for index in range(time_speed_option.item_count):
@@ -14073,6 +14211,8 @@ func _refresh_time_ui() -> void:
 
 
 func _get_first_war_objective_text() -> String:
+	if uses_blackstone_campaign():
+		return get_blackstone_campaign_status_text()
 	if (
 		_first_war_pending_outcome != &""
 		and not _first_war_result_acknowledged

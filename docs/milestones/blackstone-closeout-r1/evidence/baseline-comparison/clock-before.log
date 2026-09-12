@@ -1,0 +1,17 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: restore identical clock input
+CLOCK fps=30 milliseconds=1980
+FAIL: two seconds stay two seconds at 30 FPS
+PASS: restore identical clock input
+CLOCK fps=60 milliseconds=2040
+FAIL: two seconds stay two seconds at 60 FPS
+PASS: restore identical clock input
+CLOCK fps=120 milliseconds=1920
+FAIL: two seconds stay two seconds at 120 FPS
+PASS: day one is seven days from day-eight economic pressure
+PASS: day seven is one day before pressure
+PASS: fresh city exposes actual food deficit
+PASS: stagnation diagnosis includes real save status
+BLACKSTONE_CLOCK_SMOKE ["two seconds stay two seconds at 30 FPS","two seconds stay two seconds at 60 FPS","two seconds stay two seconds at 120 FPS"]

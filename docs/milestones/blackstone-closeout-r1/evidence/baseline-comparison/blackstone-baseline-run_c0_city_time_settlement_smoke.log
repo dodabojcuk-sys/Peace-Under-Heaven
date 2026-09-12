@@ -1,0 +1,188 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: City 不再暴露单边 bind，未反向指向时内部握手也零写入拒绝
+PASS: 原半绑定顺序失败后 coordinator 只与 Source City 原子双向绑定
+PASS: 绑定 Source City 的 coordinator 不能在 Target City 建立驻军预留
+PASS: Source City 真实 terminal result 经 City/Applier 均不能结算到 Target City
+PASS: 跨 City 攻击拒绝后 Source City 仍唯一合法结算 125000ms
+PASS: 相同 City 与 coordinator 的原子绑定可幂等重复
+PASS: 第二 coordinator 绑定与全部驻军 mutator 均确定性拒绝
+PASS: 第二 coordinator 失败操作不修改城市时间、驻军预留或 owner
+PASS: 失败绑定不遗留半状态，attacker 随后可绑定全新 City
+PASS: 第二 coordinator 攻击失败后原 owner 仍可合法清理预留
+PASS: VICTORY 主线待处理期间城市时间继续推进
+PASS: VICTORY 进入正式 C0
+PASS: VICTORY 启动真实 BattleSession
+PASS: VICTORY 由真实 tick 产生 canonical BattleResult
+PASS: VICTORY result pending 与真实等待帧不推进城市时间
+ERROR: V5 campaign snapshot validation failed: POPULATION_CONSERVATION_FAILED
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5233)
+       [1] _apply_durable_expedition_result_atomic (res://scripts/construction_controller.gd:10367)
+       [2] apply_battle_result_atomic (res://scripts/construction_controller.gd:10046)
+       [3] apply_authorized (res://scripts/combat/battle_result_applier.gd:21)
+       [4] confirm_result (res://scripts/combat/combat_transaction_coordinator.gd:438)
+       [5] confirm_pending_result (res://scripts/combat/c0_battle_graybox.gd:598)
+       [6] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:305)
+ERROR: FAIL: VICTORY 首次提交精确推进 finished_tick × canonical tick_ms
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0_city_time_settlement_smoke.gd:798)
+       [1] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:312)
+ERROR: V5 campaign snapshot validation failed: POPULATION_CONSERVATION_FAILED
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5233)
+       [1] _apply_durable_expedition_result_atomic (res://scripts/construction_controller.gd:10367)
+       [2] apply_battle_result_atomic (res://scripts/construction_controller.gd:10046)
+       [3] apply_authorized (res://scripts/combat/battle_result_applier.gd:21)
+       [4] confirm_result (res://scripts/combat/combat_transaction_coordinator.gd:438)
+       [5] confirm_pending_result (res://scripts/combat/c0_battle_graybox.gd:598)
+       [6] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:327)
+PASS: VICTORY 同 result_id 重复确认不二次推进
+ERROR: FAIL: VICTORY 建立返回保护契约
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0_city_time_settlement_smoke.gd:798)
+       [1] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:333)
+PASS: VICTORY 摘要等待期间不再增加时间
+ERROR: FAIL: VICTORY 确认城市摘要
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0_city_time_settlement_smoke.gd:798)
+       [1] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:349)
+ERROR: FAIL: VICTORY acknowledge 后从已推进时间继续
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0_city_time_settlement_smoke.gd:798)
+       [1] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:352)
+PASS: DEFEAT 主线待处理期间城市时间继续推进
+PASS: DEFEAT 进入正式 C0
+PASS: DEFEAT 启动真实 BattleSession
+PASS: DEFEAT 由真实 tick 产生 canonical BattleResult
+PASS: DEFEAT result pending 与真实等待帧不推进城市时间
+ERROR: V5 campaign snapshot validation failed: POPULATION_CONSERVATION_FAILED
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5233)
+       [1] _apply_durable_expedition_result_atomic (res://scripts/construction_controller.gd:10367)
+       [2] apply_battle_result_atomic (res://scripts/construction_controller.gd:10046)
+       [3] apply_authorized (res://scripts/combat/battle_result_applier.gd:21)
+       [4] confirm_result (res://scripts/combat/combat_transaction_coordinator.gd:438)
+       [5] confirm_pending_result (res://scripts/combat/c0_battle_graybox.gd:598)
+       [6] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:305)
+ERROR: FAIL: DEFEAT 首次提交精确推进 finished_tick × canonical tick_ms
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0_city_time_settlement_smoke.gd:798)
+       [1] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:312)
+ERROR: V5 campaign snapshot validation failed: POPULATION_CONSERVATION_FAILED
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5233)
+       [1] _apply_durable_expedition_result_atomic (res://scripts/construction_controller.gd:10367)
+       [2] apply_battle_result_atomic (res://scripts/construction_controller.gd:10046)
+       [3] apply_authorized (res://scripts/combat/battle_result_applier.gd:21)
+       [4] confirm_result (res://scripts/combat/combat_transaction_coordinator.gd:438)
+       [5] confirm_pending_result (res://scripts/combat/c0_battle_graybox.gd:598)
+       [6] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:327)
+PASS: DEFEAT 同 result_id 重复确认不二次推进
+ERROR: FAIL: DEFEAT 建立返回保护契约
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0_city_time_settlement_smoke.gd:798)
+       [1] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:333)
+PASS: DEFEAT 摘要等待期间不再增加时间
+PASS: RETREAT 主线待处理期间城市时间继续推进
+PASS: RETREAT 进入正式 C0
+PASS: RETREAT 启动真实 BattleSession
+PASS: RETREAT 由真实 tick 产生 canonical BattleResult
+PASS: RETREAT result pending 与真实等待帧不推进城市时间
+ERROR: V5 campaign snapshot validation failed: POPULATION_CONSERVATION_FAILED
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5233)
+       [1] _apply_durable_expedition_result_atomic (res://scripts/construction_controller.gd:10367)
+       [2] apply_battle_result_atomic (res://scripts/construction_controller.gd:10046)
+       [3] apply_authorized (res://scripts/combat/battle_result_applier.gd:21)
+       [4] confirm_result (res://scripts/combat/combat_transaction_coordinator.gd:438)
+       [5] confirm_pending_result (res://scripts/combat/c0_battle_graybox.gd:598)
+       [6] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:305)
+ERROR: FAIL: RETREAT 首次提交精确推进 finished_tick × canonical tick_ms
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0_city_time_settlement_smoke.gd:798)
+       [1] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:312)
+ERROR: V5 campaign snapshot validation failed: POPULATION_CONSERVATION_FAILED
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5233)
+       [1] _apply_durable_expedition_result_atomic (res://scripts/construction_controller.gd:10367)
+       [2] apply_battle_result_atomic (res://scripts/construction_controller.gd:10046)
+       [3] apply_authorized (res://scripts/combat/battle_result_applier.gd:21)
+       [4] confirm_result (res://scripts/combat/combat_transaction_coordinator.gd:438)
+       [5] confirm_pending_result (res://scripts/combat/c0_battle_graybox.gd:598)
+       [6] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:327)
+PASS: RETREAT 同 result_id 重复确认不二次推进
+ERROR: FAIL: RETREAT 建立返回保护契约
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0_city_time_settlement_smoke.gd:798)
+       [1] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:333)
+PASS: RETREAT 摘要等待期间不再增加时间
+ERROR: FAIL: RETREAT 确认城市摘要
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0_city_time_settlement_smoke.gd:798)
+       [1] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:349)
+ERROR: FAIL: RETREAT acknowledge 后从已推进时间继续
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0_city_time_settlement_smoke.gd:798)
+       [1] _check_formal_outcome_time_settlement (res://tests/run_c0_city_time_settlement_smoke.gd:352)
+PASS: 跨日用例建立已运行伐木场
+PASS: 跨日用例伐木场已接入路网并运行
+PASS: 跨日用例进入正式 C0
+ERROR: V5 campaign snapshot validation failed: POPULATION_CONSERVATION_FAILED
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5233)
+       [1] _apply_durable_expedition_result_atomic (res://scripts/construction_controller.gd:10367)
+       [2] apply_battle_result_atomic (res://scripts/construction_controller.gd:10046)
+       [3] apply_authorized (res://scripts/combat/battle_result_applier.gd:21)
+       [4] confirm_result (res://scripts/combat/combat_transaction_coordinator.gd:438)
+       [5] confirm_pending_result (res://scripts/combat/c0_battle_graybox.gd:598)
+       [6] _check_cross_day_reward_order (res://tests/run_c0_city_time_settlement_smoke.gd:408)
+SCRIPT ERROR: Invalid access to property or key 'city_time_advanced_days' on a base object of type 'Dictionary'.
+          at: _check_cross_day_reward_order (res://tests/run_c0_city_time_settlement_smoke.gd:420)
+          GDScript backtrace (most recent call first):
+              [0] _check_cross_day_reward_order (res://tests/run_c0_city_time_settlement_smoke.gd:420)
+PASS: 已付费 RESERVED 拒绝用例进入正式 C0
+PASS: 已付费 RESERVED 不可无战果取消，时间与 attempt 保持不变
+PASS: 非法 transaction/result 被拒绝且没有时间或其他部分写入
+ERROR: FAIL: 历史重打用例形成两次真实 BattleSession 结果
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0_city_time_settlement_smoke.gd:798)
+       [1] _check_historical_replay_accumulates_time_without_reward (res://tests/run_c0_city_time_settlement_smoke.gd:507)
+PASS: 完成 signal 篡改 payload 前已冻结 125000ms terminal authority
+PASS: finalize 后篡改 payload 和 getter 嵌套副本均不能污染 terminal authority
+PASS: 篡改非时长结算字段同样被 authority 拒绝
+PASS: 伪造拒绝后真实 canonical result 仍按 125000ms 首次结算
+PASS: 完全相同 canonical duplicate 返回原摘要且零写入
+PASS: committed 后同 result_id 不同 payload 产生 conflict 且零写入
+PASS: 未经过真实 finalize 的自造 result 不能注册或提交
+C0_CITY_TIME_SETTLEMENT_SMOKE FAIL (11)
+ - VICTORY 首次提交精确推进 finished_tick × canonical tick_ms
+ - VICTORY 建立返回保护契约
+ - VICTORY 确认城市摘要
+ - VICTORY acknowledge 后从已推进时间继续
+ - DEFEAT 首次提交精确推进 finished_tick × canonical tick_ms
+ - DEFEAT 建立返回保护契约
+ - RETREAT 首次提交精确推进 finished_tick × canonical tick_ms
+ - RETREAT 建立返回保护契约
+ - RETREAT 确认城市摘要
+ - RETREAT acknowledge 后从已推进时间继续
+ - 历史重打用例形成两次真实 BattleSession 结果

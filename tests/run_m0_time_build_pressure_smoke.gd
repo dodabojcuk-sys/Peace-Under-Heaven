@@ -199,6 +199,9 @@ func _check_v5_roundtrip_and_v3_migration() -> void:
 func _to_v3(snapshot: Dictionary) -> Dictionary:
 	var legacy := snapshot.duplicate(true)
 	legacy.schema_version = 3
+	# V3 had no field war, population or governance roots.
+	for key in ["war_loop", "population_recovery", "city_governance", "city_strategy"]:
+		legacy.erase(key)
 	legacy.erase("expedition_attempt")
 	legacy.garrison = _legacy_garrison_projection(snapshot.garrison)
 	legacy.erase("mainline_level")

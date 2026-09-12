@@ -1,0 +1,10 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: cold process loads isolated saved generation
+PASS: restored population is conserved
+PASS: formal campaign cannot start legacy noticeboard battle
+PASS: restored defense is actionable
+PASS: cold active defense continues
+PASS: cold active battle advances one tick
+COLD_RECOVERY {"attempt":"defense-000001","failures":[],"source_sequence":1}

@@ -24,6 +24,15 @@ battle result returns only the facts authorised by the normal settlement path;
 it never writes a permanent city building just because a temporary tower was
 built in the battle scene.
 
+## Current closeout contract
+
+[Blackstone closeout R1](BLACKSTONE_FIRST_CAMPAIGN_CLOSEOUT_R1.md) supersedes
+historical first-war/noticeboard entry and deadline descriptions. The current
+campaign requires both cities, permits post-victory operation, and shares
+actual population/resource owners across recovery and war. The evidence table
+in [R1 verification](../milestones/blackstone-closeout-r1/VERIFICATION.md)
+separates normal-start journeys, extreme fixtures and human acceptance.
+
 ## Coverage matrix
 
 | User requirement | Existing evidence | Formal entry | Gap at this checkpoint | Planned proof |
@@ -34,10 +43,10 @@ built in the battle scene.
 | R2 field operations | R2 Field/Macro March smoke, Route A/B, supply/reinforcement/tower persistence, specialist action V5 chain | Macro March from city; compact war-specialist menu | Engineer/scout plus medic, saboteur, thief and sniper have formal targets and real persisted effects; wider specialist content and balance remain later work | Route A/B plus interrupted/recovered operations and specialist cold restore |
 | Field construction catalogue | Roads, bridges, camps, watchtowers, arrow towers, barricades, forts and minefields are persistent field facts | Engineer map planning and facility detail/repair/upgrade actions | R0 observation/fire/blocking/fortification/mine line is connected; later catalogue expansion and final balance remain | Facility project -> route effect/garrison protection -> damage/consumption -> repair/upgrade -> restore |
 | Regular/occupied/resource-city capability separation | Central theatre capability table merged into every point read model | Map location details and command validation | Blackstone is the long-term city; Silverford retains supply/replenishment without city building; Redcliff remains an occupied garrison after capture | Occupy -> restore -> inspect permissions -> reissue orders without city-build leakage |
-| Wartime inner city | C0 has distinct assault/defense identities, two routes, gates, deployment, deterministic battle and atomic settlement | Formal C0 scene; `enter_macro_siege_wartime()` for an existing macro siege; Blackstone gate action only after the configured invader arrives | The same sourced field invader now hands its surviving count to one defense transaction and resolves once. Formal macro victory, retreat, survivor defeat and full wipe remain covered. A single unaccelerated human run spanning preparation, defense, recovery and counterattack remains unaccepted. | Sourced warning -> march/interception -> handoff -> defense result; stable siege/counterattack regression; human player journey remains OPEN |
+| Wartime inner city | C0 has distinct assault/defense identities, spatial corridors, gates, deployment, deterministic battle and atomic settlement | Formal C0 scene; `enter_macro_siege_wartime()` for an existing macro siege; Blackstone gate action only after the configured invader arrives | The same sourced field invader now hands its surviving count to one defense transaction and resolves once. Formal macro victory, retreat, survivor defeat and full wipe remain covered. A single unaccelerated human run spanning preparation, defense, recovery and counterattack remains unaccepted. | Sourced warning -> march/interception -> handoff -> defense result; stable siege/counterattack regression; human player journey remains OPEN |
 | Generals, civilian abilities, equipment, technologies and trade | Strategy logic, growth/V5 cold restore, formal march/battle snapshots and graphical controls | Separate city strategy workspace; active-battle official support menu | Three officials, six-slot general equipment, deterministic growth/inheritance, two daily trades, physician healing and strategist move/attack/protection/domain commands are formally usable; wider rosters and market simulation remain later scope | City input -> support/loadout/growth/trade -> frozen march/battle -> active command -> restore |
 
-## First implementation sequence
+## Historical implementation sequence (superseded by R1)
 
 1. Keep the regular city and R2 field theatre separate; add integration tests
    that demonstrate their current resource/personnel hand-off rather than

@@ -7,6 +7,8 @@ var failures: Array[String] = []
 
 
 func _initialize() -> void:
+	# Historical mission contracts use the existing pre-campaign theatre fixture.
+	preload("res://scripts/macro_march/macro_march_theater.gd").use_regression_definition_for_tests()
 	call_deferred("_run")
 
 
@@ -52,6 +54,7 @@ func _check_atomic_coordinator_binding() -> void:
 	target_city.set_process(false)
 	source_city.set_process(false)
 	source_city.infantry_count = 50
+	source_city._population_recovery.initialize_fresh(source_city.RECOVERY_RULES, source_city.infantry_count)
 	var coordinator := CombatTransactionCoordinator.new()
 	root.add_child(coordinator)
 
@@ -383,6 +386,7 @@ func _check_cross_day_reward_order() -> void:
 	_check(city.is_building_operational(logging_id), "跨日用例伐木场已接入路网并运行")
 	city.advance_city_time_for_test(city.SECONDS_PER_DAY * 5.0)
 	city.infantry_count = 50
+	city._population_recovery.initialize_fresh(city.RECOVERY_RULES, city.infantry_count)
 	var wood_capacity: int = city.get_resource_capacity(&"wood")
 	city.wood = wood_capacity - 20
 	city.day_elapsed_seconds = city.SECONDS_PER_DAY - 0.5
@@ -460,6 +464,7 @@ func _check_cancel_and_invalid_result_do_not_advance_time() -> void:
 	var invalid_city: Node = invalid_scene.get_node("ConstructionController")
 	invalid_city.set_process(false)
 	invalid_city.infantry_count = 10
+	invalid_city._population_recovery.initialize_fresh(invalid_city.RECOVERY_RULES, invalid_city.infantry_count)
 	var coordinator := CombatTransactionCoordinator.new()
 	invalid_scene.add_child(coordinator)
 	coordinator.configure(invalid_city)
@@ -498,10 +503,12 @@ func _check_historical_replay_accumulates_time_without_reward() -> void:
 	var city: Node = scene.get_node("ConstructionController")
 	city.set_process(false)
 	city.infantry_count = 50
+	city._population_recovery.initialize_fresh(city.RECOVERY_RULES, city.infantry_count)
 	var coordinator := CombatTransactionCoordinator.new()
 	scene.add_child(coordinator)
 	coordinator.configure(city)
 	var first := await _run_fixture_victory(city, coordinator)
+	_check(city.get_population_recovery_read_model().accounted, "历史任务首次结算保持真实人口守恒")
 	var second := await _run_fixture_victory(city, coordinator)
 	if first.is_empty() or second.is_empty():
 		_check(false, "历史重打用例形成两次真实 BattleSession 结果")
@@ -531,6 +538,7 @@ func _check_canonical_result_authority() -> void:
 	var city: Node = scene.get_node("ConstructionController")
 	city.set_process(false)
 	city.infantry_count = 50
+	city._population_recovery.initialize_fresh(city.RECOVERY_RULES, city.infantry_count)
 	var coordinator := CombatTransactionCoordinator.new()
 	scene.add_child(coordinator)
 	coordinator.configure(city)
@@ -641,6 +649,7 @@ func _check_unfinalized_result_has_no_authority() -> void:
 	var city: Node = scene.get_node("ConstructionController")
 	city.set_process(false)
 	city.infantry_count = 10
+	city._population_recovery.initialize_fresh(city.RECOVERY_RULES, city.infantry_count)
 	var coordinator := CombatTransactionCoordinator.new()
 	scene.add_child(coordinator)
 	coordinator.configure(city)
@@ -722,6 +731,7 @@ func _make_pending_city(player_count: int) -> Dictionary:
 	city.set_process(false)
 	city.advance_city_time_for_test(city.SECONDS_PER_DAY * 6.0)
 	city.infantry_count = player_count
+	city._population_recovery.initialize_fresh(city.RECOVERY_RULES, city.infantry_count)
 	city.food = 80
 	city._refresh_city_ui()
 	return {"scene": scene, "city": city}

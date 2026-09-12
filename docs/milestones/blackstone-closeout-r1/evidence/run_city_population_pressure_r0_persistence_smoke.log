@@ -1,0 +1,25 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+POPULATION_PRESSURE_WORKER_A_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+POPULATION_PRESSURE_A day=10 total=81 unsettled=9 growth=750 event=governance.blackstone.000001 treatment=500 winter_shortfall=1
+
+POPULATION_PRESSURE_WORKER_B_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+POPULATION_PRESSURE_B day=10 total=81 unsettled=9 growth=750 event=governance.blackstone.000001 treatment=500 winter_shortfall=1
+
+POPULATION_PRESSURE_WORKER_C_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+POPULATION_PRESSURE_C day=10 total=81 unsettled=9 growth=750 event=governance.blackstone.000001 treatment=500 winter_shortfall=1
+
+PASS: 三个独立进程保存并恢复人口增长、待安置难民、治安事件、治疗与冬季压力
+PASS: 重复加载保持同一人数、进度、事件身份、治疗进度与冬季缺口
+PASS: 活动治安事件身份不因独立进程恢复而重抽
+CITY_POPULATION_PRESSURE_R0_PERSISTENCE_SMOKE PASS
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
