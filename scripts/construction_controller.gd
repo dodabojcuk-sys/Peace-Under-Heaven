@@ -3704,27 +3704,54 @@ func _advance_day_boundary(
 	if not _commit_national_resources(day_entries, &"day_end_settlement"):
 		return false
 	var governance_before := _city_governance.get_snapshot()
+	var population_before := _population_recovery.get_snapshot()
 	var vulnerable_people := maxi(
-		_population_recovery.total_living
-		- _current_military_population()
-		- _current_alive_specialists()
-		- _population_recovery.wounded,
+		_population_recovery.available
+		+ _population_recovery.production_workers
+		+ _population_recovery.construction_workers
+		+ _population_recovery.medical_workers
+		+ _population_recovery.governance_workers,
 		0
 	)
+	var shared_medical_capacity := mini(get_city_medical_capacity(), _population_recovery.medical_workers)
+	var active_wound_reservation := 0
+	if StringName(_population_recovery.treatment.phase) == PopulationRecoveryState.TREATMENT_ACTIVE:
+		active_wound_reservation = int(_population_recovery.treatment.count)
+	var remaining_medical_capacity := maxi(shared_medical_capacity - active_wound_reservation, 0)
+	var refugee_recoveries := _city_governance.apply_refugee_medical_care(remaining_medical_capacity)
+	remaining_medical_capacity -= refugee_recoveries
 	var governance_result := _city_governance.apply_day(
 		current_day,
 		maxi(maintenance_required - maintenance_paid, 0),
 		maxi(_population_recovery.total_living - get_city_housing_capacity(), 0),
 		vulnerable_people,
-		get_city_medical_capacity(),
-		_population_recovery.medical_workers,
+		_population_recovery.resident_sick,
+		remaining_medical_capacity,
 		city_security,
 		CITY_GOVERNANCE_RULES
 	)
 	if governance_result.is_empty():
 		_city_governance.restore_snapshot(governance_before)
+		_population_recovery.restore_snapshot(population_before)
+		return false
+	if int(governance_result.recovered) > 0 and not _population_recovery.recover_sickness(int(governance_result.recovered)):
+		_city_governance.restore_snapshot(governance_before)
+		_population_recovery.restore_snapshot(population_before)
+		return false
+	if int(governance_result.new_cases) > 0 and not _population_recovery.record_sickness(int(governance_result.new_cases)):
+		_city_governance.restore_snapshot(governance_before)
+		_population_recovery.restore_snapshot(population_before)
+		return false
+	var population_changes := _advance_city_demography(
+		maintenance_required == maintenance_paid,
+		get_city_housing_capacity() - _population_recovery.total_living
+	)
+	if not _population_recovery.invariant_matches(_current_military_population(), _current_alive_specialists()):
+		_city_governance.restore_snapshot(governance_before)
+		_population_recovery.restore_snapshot(population_before)
 		return false
 	city_security = clampi(city_security + int(governance_result.security_delta), 0, 100)
+	var governance_consequence := _apply_city_governance_event_consequence()
 	last_daily_breakdown = {
 		"maintenance_food": maintenance_paid,
 		"maintenance_required": maintenance_required,
@@ -3734,10 +3761,16 @@ func _advance_day_boundary(
 		"food_income": accepted_food,
 		"research_income": 1,
 		"event_wood_loss": 0,
-		"event_food_loss": 0,
+		"event_food_loss": int(governance_consequence.get("food_loss", 0)),
 		"stopped_placement_id": -1,
 		"new_disease_cases": int(governance_result.new_cases),
 		"disease_recoveries": int(governance_result.recovered),
+		"refugee_recoveries": refugee_recoveries,
+		"births": int(population_changes.get("births", 0)),
+		"matured": int(population_changes.get("matured", 0)),
+		"aged": int(population_changes.get("aged", 0)),
+		"civilian_deaths": int(population_changes.get("deaths", 0)),
+		"refugee_arrivals": _count_refugees_arriving_on_day(current_day),
 		"health_permille": _city_governance.health_permille,
 	}
 	_apply_mainline_pressure_for_current_day()
@@ -4323,21 +4356,27 @@ func _get_production_amount(
 func get_workforce_modifier_permille(channel: StringName) -> int:
 	var health_modifier := clampi(
 		_city_governance.health_permille - int(
-			float(_city_governance.diseased_count * 300)
+			float(_population_recovery.resident_sick * 300)
 			/ float(maxi(_population_recovery.total_living, 1))
 		),
 		250,
 		1000
 	)
 	if channel == &"production":
+		if StringName(_city_governance.active_event.get("kind", &"")) == &"LOCAL_UNREST" and bool(_city_governance.active_event.get("consequence_applied", false)):
+			return 0
 		var result := floori(float(clampi(
 			floori(float(_population_recovery.production_workers * 1000) / float(RECOVERY_RULES.production_workers_for_full_output)),
 			0, 1000
 		) * health_modifier) / 1000.0)
 		if _is_city_support_active(&"PRODUCTION"):
 			result += CITY_STRATEGY_RULES.production_support_permille
+		if StringName(_city_governance.active_event.get("kind", &"")) == &"BANDIT_DISRUPTION" and bool(_city_governance.active_event.get("consequence_applied", false)):
+			result = floori(float(result) * 0.5)
 		return result
 	if channel == &"construction":
+		if StringName(_city_governance.active_event.get("kind", &"")) == &"LOCAL_UNREST" and bool(_city_governance.active_event.get("consequence_applied", false)):
+			return 0
 		return floori(float(clampi(
 			floori(float(_population_recovery.construction_workers * 1000) / float(RECOVERY_RULES.construction_workers_for_full_speed)),
 			0, 1000
@@ -4448,6 +4487,8 @@ func get_population_recovery_read_model() -> Dictionary:
 	snapshot.construction_permille = mini(1000, floori(float(_population_recovery.construction_workers * 1000) / float(RECOVERY_RULES.construction_workers_for_full_speed)))
 	snapshot.medical_workers = _population_recovery.medical_workers
 	snapshot.governance_workers = _population_recovery.governance_workers
+	snapshot.adults = _population_recovery.total_living - _population_recovery.children - _population_recovery.elderly
+	snapshot.work_eligible = _population_recovery.available
 	return snapshot
 
 
@@ -4496,18 +4537,97 @@ func get_city_governance_read_model() -> Dictionary:
 	snapshot.medical_capacity = get_city_medical_capacity()
 	snapshot.security = city_security
 	snapshot.food_required = get_maintenance_food_cost()
+	snapshot.diseased_count = _population_recovery.resident_sick
+	snapshot.pending_refugees = _population_recovery.unsettled_refugees
+	snapshot.housing_surplus = maxi(int(snapshot.housing_capacity) - _population_recovery.total_living, 0)
+	snapshot.growth_blocker = _get_population_growth_blocker()
+	snapshot.refugee_medical_burden = _get_refugee_medical_burden()
 	snapshot.active_issue = ""
 	if int(snapshot.housing_shortfall) > 0:
 		snapshot.active_issue = "居住容量不足 %d 人" % int(snapshot.housing_shortfall)
 	elif _city_governance.consecutive_food_shortage_days > 0:
 		snapshot.active_issue = "粮食短缺已持续 %d 日" % _city_governance.consecutive_food_shortage_days
-	elif _city_governance.diseased_count > 0:
-		snapshot.active_issue = "患病 %d 人，医疗照护中" % _city_governance.diseased_count
+	elif _population_recovery.resident_sick > 0:
+		snapshot.active_issue = "患病 %d 人，医疗照护中" % _population_recovery.resident_sick
 	elif StringName(_city_governance.active_event.phase) == CityGovernanceState.EVENT_ACTIVE:
-		snapshot.active_issue = "轻微盗窃事件待治理"
+		snapshot.active_issue = {&"PETTY_THEFT": "轻微盗窃事件待治理", &"BANDIT_DISRUPTION": "周边土匪正在干扰生产", &"LOCAL_UNREST": "局部秩序失控，城市工作停顿"}.get(StringName(_city_governance.active_event.kind), "治安事件待处理")
+	elif _city_governance.pressure_points >= CITY_GOVERNANCE_RULES.pressure_warning_threshold:
+		snapshot.active_issue = "治安压力正在累积：%d/100；可调整治理岗位并改善粮食、住房与健康" % _city_governance.pressure_points
 	elif get_city_season_id() == &"AUTUMN":
 		snapshot.active_issue = "入冬预警：检查粮储与住房"
 	return snapshot
+
+
+func _get_population_growth_blocker() -> String:
+	if get_city_housing_capacity() <= _population_recovery.total_living:
+		return "住房已满"
+	if supply_shortage or _city_governance.consecutive_food_shortage_days > 0:
+		return "粮食不足"
+	if _city_governance.health_permille < CITY_GOVERNANCE_RULES.growth_health_threshold_permille or _population_recovery.resident_sick > 0:
+		return "健康承压"
+	return ""
+
+
+func _get_refugee_medical_burden() -> int:
+	var total := 0
+	for value in _city_governance.refugee_cases_by_id.values():
+		var refugee_case: Dictionary = Dictionary(value)
+		if StringName(refugee_case.phase) in [CityGovernanceState.REFUGEE_WAITING_HOUSING, CityGovernanceState.REFUGEE_SETTLED]:
+			total += int(refugee_case.medical_burden)
+	return total
+
+
+func _count_refugees_arriving_on_day(day: int) -> int:
+	var total := 0
+	for value in _city_governance.refugee_cases_by_id.values():
+		var refugee_case: Dictionary = Dictionary(value)
+		if int(refugee_case.arrival_day) == day:
+			total += int(refugee_case.count)
+	return total
+
+
+func _advance_city_demography(food_ok: bool, housing_surplus: int) -> Dictionary:
+	var result := {"births": 0, "matured": 0, "aged": 0, "deaths": 0}
+	if food_ok and housing_surplus > 0 and _city_governance.health_permille >= CITY_GOVERNANCE_RULES.growth_health_threshold_permille and _population_recovery.resident_sick == 0:
+		_population_recovery.growth_progress += CITY_GOVERNANCE_RULES.growth_progress_per_day
+		if _population_recovery.growth_progress >= CITY_GOVERNANCE_RULES.birth_progress_required and _population_recovery.record_birth():
+			_population_recovery.growth_progress -= CITY_GOVERNANCE_RULES.birth_progress_required
+			result.births = 1
+	_population_recovery.child_age_progress += _population_recovery.children
+	if _population_recovery.child_age_progress >= CITY_GOVERNANCE_RULES.child_maturation_person_days and _population_recovery.mature_child():
+		_population_recovery.child_age_progress -= CITY_GOVERNANCE_RULES.child_maturation_person_days
+		result.matured = 1
+	_population_recovery.adult_age_progress += _population_recovery.available
+	if _population_recovery.adult_age_progress >= CITY_GOVERNANCE_RULES.adult_ageing_person_days and _population_recovery.age_available_adult():
+		_population_recovery.adult_age_progress -= CITY_GOVERNANCE_RULES.adult_ageing_person_days
+		result.aged = 1
+	if get_city_season_id() == &"WINTER" and _city_governance.consecutive_housing_pressure_days >= CITY_GOVERNANCE_RULES.cold_consequence_trigger_days:
+		_population_recovery.elderly_exposure_progress += _population_recovery.elderly
+	else:
+		_population_recovery.elderly_exposure_progress = maxi(_population_recovery.elderly_exposure_progress - _population_recovery.elderly, 0)
+	if _population_recovery.elderly_exposure_progress >= CITY_GOVERNANCE_RULES.elderly_exposure_person_days and _population_recovery.record_elderly_death():
+		_population_recovery.elderly_exposure_progress -= CITY_GOVERNANCE_RULES.elderly_exposure_person_days
+		result.deaths = 1
+	return result
+
+
+func _apply_city_governance_event_consequence() -> Dictionary:
+	if StringName(_city_governance.active_event.phase) != CityGovernanceState.EVENT_ACTIVE or bool(_city_governance.active_event.consequence_applied):
+		return {}
+	var kind := StringName(_city_governance.active_event.kind)
+	if kind == &"PETTY_THEFT":
+		var loss := mini(food, CITY_GOVERNANCE_RULES.petty_theft_food_loss)
+		var before := _city_governance.get_snapshot()
+		var local_commit := func() -> Dictionary:
+			return {"success": _city_governance.mark_active_event_consequence_applied()}
+		if loss > 0 and not _commit_national_resources([{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": loss}], &"city_petty_theft", local_commit):
+			_city_governance.restore_snapshot(before)
+			return {}
+		if loss == 0:
+			_city_governance.mark_active_event_consequence_applied()
+		return {"food_loss": loss, "target_id": &"food"}
+	_city_governance.mark_active_event_consequence_applied()
+	return {"food_loss": 0, "target_id": StringName(_city_governance.active_event.target_id)}
 
 
 func get_city_strategy_read_model() -> Dictionary:
@@ -4842,7 +4962,7 @@ func resolve_city_governance_event() -> Dictionary:
 	var governance_before := _city_governance.get_snapshot()
 	var security_before := city_security
 	var local_commit := func() -> Dictionary:
-		if _city_governance.resolve_active_event().is_empty():
+		if _city_governance.resolve_active_event(CITY_GOVERNANCE_RULES.governance_resolution_pressure_relief).is_empty():
 			return {"success": false}
 		city_security = mini(city_security + 5, 100)
 		return {"success": true}
@@ -4858,6 +4978,52 @@ func resolve_city_governance_event() -> Dictionary:
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return {"success": true, "governance": get_city_governance_read_model()}
+
+
+func decide_refugee_case(case_id: StringName, decision: StringName) -> Dictionary:
+	if is_city_action_locked_for_battle():
+		return {"success": false, "error": "战斗事务处理中不能处理安置"}
+	var refugee_case: Dictionary = Dictionary(_city_governance.refugee_cases_by_id.get(case_id, {}))
+	if refugee_case.is_empty():
+		return {"success": false, "error": "难民来源不存在或尚未抵达"}
+	var population_before := _population_recovery.get_snapshot()
+	var governance_before := _city_governance.get_snapshot()
+	var success := false
+	match decision:
+		&"ACCEPT":
+			success = _population_recovery.accept_refugees(int(refugee_case.count)) and _city_governance.set_refugee_phase(case_id, CityGovernanceState.REFUGEE_WAITING_HOUSING, current_day)
+		&"DEFER":
+			success = _city_governance.set_refugee_phase(case_id, CityGovernanceState.REFUGEE_DEFERRED, current_day)
+		&"REJECT":
+			success = _city_governance.set_refugee_phase(case_id, CityGovernanceState.REFUGEE_REJECTED, current_day)
+	if not success or not _population_recovery.invariant_matches(_current_military_population(), _current_alive_specialists()):
+		_population_recovery.restore_snapshot(population_before)
+		_city_governance.restore_snapshot(governance_before)
+		return {"success": false, "error": "该来源已经决定，或人口守恒校验失败"}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {"success": true, "case": Dictionary(_city_governance.refugee_cases_by_id[case_id]).duplicate(true), "governance": get_city_governance_read_model()}
+
+
+func settle_refugee_case(case_id: StringName) -> Dictionary:
+	if is_city_action_locked_for_battle():
+		return {"success": false, "error": "战斗事务处理中不能安排安置"}
+	var refugee_case: Dictionary = Dictionary(_city_governance.refugee_cases_by_id.get(case_id, {}))
+	if refugee_case.is_empty() or StringName(refugee_case.phase) != CityGovernanceState.REFUGEE_WAITING_HOUSING:
+		return {"success": false, "error": "该来源当前不在待安置状态"}
+	if get_city_housing_capacity() < _population_recovery.total_living:
+		return {"success": false, "error": "住房不足 %d 人；可先建设民居并保持等待" % (_population_recovery.total_living - get_city_housing_capacity())}
+	var population_before := _population_recovery.get_snapshot()
+	var governance_before := _city_governance.get_snapshot()
+	var count := int(refugee_case.count)
+	var sick_count := int(refugee_case.medical_burden)
+	if not _population_recovery.settle_refugees(count, sick_count) or not _city_governance.set_refugee_phase(case_id, CityGovernanceState.REFUGEE_SETTLED, current_day) or not _population_recovery.invariant_matches(_current_military_population(), _current_alive_specialists()):
+		_population_recovery.restore_snapshot(population_before)
+		_city_governance.restore_snapshot(governance_before)
+		return {"success": false, "error": "安置事务失败，状态未改变"}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {"success": true, "case": Dictionary(_city_governance.refugee_cases_by_id[case_id]).duplicate(true), "population_recovery": get_population_recovery_read_model()}
 
 
 func adjust_city_workforce(channel: StringName, delta: int) -> Dictionary:
@@ -5169,7 +5335,7 @@ func validate_v5_campaign_snapshot(
 			candidate_specialists += 1
 	if not population_probe.invariant_matches(candidate_military, candidate_specialists):
 		return {"valid": false, "error_id": &"POPULATION_CONSERVATION_FAILED", "error": "人口、驻军、外派军队与专家不守恒"}
-	if governance_probe.diseased_count > population_probe.total_living - population_probe.wounded - candidate_military - candidate_specialists:
+	if population_probe.resident_sick > population_probe.total_living - population_probe.wounded - candidate_military - candidate_specialists:
 		return {"valid": false, "error_id": &"DISEASE_POPULATION_MISMATCH", "error": "患病人口超过可归属居民"}
 	var sequence_validation := _validate_battle_sequence_high_water(candidate)
 	if not bool(sequence_validation.get("valid", false)):
@@ -11584,6 +11750,18 @@ func _rebuild_daily_report() -> void:
 		last_daily_report += "｜新增患病%d" % int(last_daily_breakdown.new_disease_cases)
 	if int(last_daily_breakdown.get("disease_recoveries", 0)) > 0:
 		last_daily_report += "｜康复%d" % int(last_daily_breakdown.disease_recoveries)
+	if int(last_daily_breakdown.get("refugee_recoveries", 0)) > 0:
+		last_daily_report += "｜难民医疗%d" % int(last_daily_breakdown.refugee_recoveries)
+	if int(last_daily_breakdown.get("births", 0)) > 0:
+		last_daily_report += "｜出生%d" % int(last_daily_breakdown.births)
+	if int(last_daily_breakdown.get("matured", 0)) > 0:
+		last_daily_report += "｜成长%d" % int(last_daily_breakdown.matured)
+	if int(last_daily_breakdown.get("aged", 0)) > 0:
+		last_daily_report += "｜老化%d" % int(last_daily_breakdown.aged)
+	if int(last_daily_breakdown.get("civilian_deaths", 0)) > 0:
+		last_daily_report += "｜严寒死亡%d" % int(last_daily_breakdown.civilian_deaths)
+	if int(last_daily_breakdown.get("refugee_arrivals", 0)) > 0:
+		last_daily_report += "｜难民抵达%d（待决定）" % int(last_daily_breakdown.refugee_arrivals)
 	if supply_shortage:
 		last_daily_report += "｜粮食短缺，健康承压"
 

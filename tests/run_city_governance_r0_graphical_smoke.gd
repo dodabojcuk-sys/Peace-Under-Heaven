@@ -52,8 +52,29 @@ func _run() -> void:
 	_capture("city-governance-resolved-1280x720.png")
 	await _drop_city(pressure.scene)
 
+	var refugees := await _new_city(Vector2i(1280, 720))
+	while refugees.city.current_day < 6:
+		refugees.city._advance_day_boundary(true)
+	refugees.city._refresh_city_ui()
+	await _frames(2)
+	var refugee_scroll: ScrollContainer = refugees.workspace.get_node("GovernanceMargin/GovernanceScroll")
+	refugee_scroll.scroll_vertical = 100000
+	await _frames(2)
+	var accept_button: Button = refugees.workspace.find_child("RefugeeAcceptButton", true, false)
+	_check(accept_button != null and accept_button.is_visible_in_tree() and not accept_button.disabled and refugees.workspace.get_global_rect().encloses(accept_button.get_global_rect()), "黑石来源难民在治理区显示可用的正式决定入口")
+	_capture("city-population-refugee-pending-1280x720.png")
+	accept_button.pressed.emit()
+	await _frames(2)
+	refugee_scroll.scroll_vertical = 100000
+	await _frames(2)
+	var settle_button: Button = refugees.workspace.find_child("RefugeeSettleButton", true, false)
+	var refugee_population: Dictionary = refugees.city.get_population_recovery_read_model()
+	_check(settle_button != null and settle_button.is_visible_in_tree() and refugees.workspace.get_global_rect().encloses(settle_button.get_global_rect()) and settle_button.disabled and int(refugee_population.unsettled_refugees) == 9 and int(refugee_population.available) == 20, "可见接纳按钮只增加一次待安置人口，住房不足时安置入口明确等待")
+	_capture("city-population-refugee-waiting-1280x720.png")
+	await _drop_city(refugees.scene)
+
 	if failures.is_empty():
-		print("CITY_GOVERNANCE_R0_GRAPHICAL_SMOKE PASS assertions=6")
+		print("CITY_GOVERNANCE_R0_GRAPHICAL_SMOKE PASS assertions=8")
 		quit(0)
 		return
 	for failure in failures:

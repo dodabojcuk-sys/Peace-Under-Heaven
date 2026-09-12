@@ -29,8 +29,8 @@ built in the battle scene.
 | User requirement | Existing evidence | Formal entry | Gap at this checkpoint | Planned proof |
 | --- | --- | --- | --- | --- |
 | Persistent city construction, roads, production, storage, training and research | `ConstructionController`, `NationState`, city road/placement and V5 runners | `blank_map.tscn` city rail and default governance workspace | Production and construction now consume exclusive workforce allocations; broader production chains remain incomplete | Normal start -> allocate -> train/build -> next day -> save/restore |
-| Population and post-war medical recovery | `PopulationRecoveryState`, battle settlement, `TrainingQueue`, V14 snapshot | Default city governance workspace | R0 has one aggregate population ledger, wounded/fallen split, recoverable treatment and an operational clinic capacity; individual residents remain intentionally absent | Defense casualties -> treatment -> surviving formation counterattack, including in-progress restore |
-| Food, disease, seasons, housing and basic security | `CityGovernanceState`, city calendar, `NationState`, housing/clinic definitions | Existing city governance workspace and normal construction placement | R0 warning, sustained pressure, recovery and one stable petty-theft intervention are connected; age groups, population growth and deep unrest remain later work | Normal and pressure recovery routes, independent-process event restore and three-resolution graphical trace |
+| Population growth, allocation and post-war medical recovery | `PopulationRecoveryState`, battle settlement, `TrainingQueue`, campaign schema 16 | Default city governance workspace | Aggregate age/sex, calendar births, long-horizon transitions, sourced refugees, wounded/fallen and shared treatment are connected; individual residents and final balance remain intentionally absent | Housing -> birth -> age boundaries; refugee decision/settlement; defense casualties -> treatment -> counterattack; cold restore |
+| Food, disease, seasons, housing and recoverable social pressure | `CityGovernanceState`, city calendar, `NationState`, housing/clinic definitions | Existing city governance workspace and normal construction placement | Warning, finite theft, production disruption, local stoppage, explicit intervention and gradual cause recovery are connected; wider authored event catalogue remains later work | Normal and pressure/recovery routes, stable event identity across processes and graphical state trace |
 | R2 field operations | R2 Field/Macro March smoke, Route A/B, supply/reinforcement/tower persistence, specialist action V5 chain | Macro March from city; compact war-specialist menu | Engineer/scout plus medic, saboteur, thief and sniper have formal targets and real persisted effects; wider specialist content and balance remain later work | Route A/B plus interrupted/recovered operations and specialist cold restore |
 | Field construction catalogue | Roads, bridges, camps, watchtowers, arrow towers, barricades, forts and minefields are persistent field facts | Engineer map planning and facility detail/repair/upgrade actions | R0 observation/fire/blocking/fortification/mine line is connected; later catalogue expansion and final balance remain | Facility project -> route effect/garrison protection -> damage/consumption -> repair/upgrade -> restore |
 | Regular/occupied/resource-city capability separation | Central theatre capability table merged into every point read model | Map location details and command validation | Blackstone is the long-term city; Silverford retains supply/replenishment without city building; Redcliff remains an occupied garrison after capture | Occupy -> restore -> inspect permissions -> reissue orders without city-build leakage |
@@ -58,8 +58,9 @@ built in the battle scene.
    facility effects. Fortress protection requires one real stationed army;
    minefields trigger on actual route crossings and preserve discovery and
    consumed charges; level-two upgrades retain the same facility identity and
-   do not repair it for free. Population and city governance now use V14
-   authorities. Civil officials, six-slot equipment growth and authored trade
+   do not repair it for free. Population and city governance now use campaign
+   schema 16 authorities. Civil officials, six-slot equipment growth and
+   authored trade
    now affect formal city, march and battle transactions rather than UI-only
    counters; wider content remains separate from this R0.
 

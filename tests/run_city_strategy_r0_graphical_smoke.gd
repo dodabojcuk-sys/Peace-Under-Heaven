@@ -26,7 +26,7 @@ func _initialize() -> void:
 func _run() -> void:
 	for size in [Vector2i(1152, 648), Vector2i(1280, 720), Vector2i(1920, 1080)]:
 		var data := await _new_city(size)
-		var entry: Button = data.shell.get_node("GovernanceWorkspace/GovernanceMargin/GovernanceContent/CityStrategyEntryButton")
+		var entry: Button = data.shell.get_node("GovernanceWorkspace/GovernanceMargin/GovernanceScroll/GovernanceContent/CityStrategyEntryButton")
 		_check(entry.is_visible_in_tree() and not entry.disabled, "战略详情入口在 %s 可见可用" % size)
 		entry.pressed.emit()
 		await _frames(2)
@@ -38,7 +38,7 @@ func _run() -> void:
 	var data := await _new_city(Vector2i(1280, 720))
 	data.city.wood = 300
 	data.city.select_general(&"general.vanguard")
-	var entry: Button = data.shell.get_node("GovernanceWorkspace/GovernanceMargin/GovernanceContent/CityStrategyEntryButton")
+	var entry: Button = data.shell.get_node("GovernanceWorkspace/GovernanceMargin/GovernanceScroll/GovernanceContent/CityStrategyEntryButton")
 	entry.pressed.emit()
 	await _frames(2)
 	var content: VBoxContainer = data.shell.get_node("CityStrategyWorkspace/StrategyMargin/StrategyScroll/StrategyContent")

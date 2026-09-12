@@ -2,7 +2,7 @@ class_name PopulationRecoveryState
 extends RefCounted
 
 
-const SCHEMA_VERSION := 2
+const SCHEMA_VERSION := 3
 const TREATMENT_IDLE := &"IDLE"
 const TREATMENT_ACTIVE := &"ACTIVE"
 
@@ -13,8 +13,20 @@ var construction_workers := 0
 var medical_workers := 0
 var governance_workers := 0
 var training_reserved := 0
+var children := 0
+var elderly := 0
+var resident_sick := 0
+var unsettled_refugees := 0
 var wounded := 0
 var fallen := 0
+var male_count := 0
+var female_count := 0
+var unknown_sex_count := 0
+var growth_progress := 0
+var child_age_progress := 0
+var adult_age_progress := 0
+var elderly_exposure_progress := 0
+var next_birth_sequence := 1
 var next_treatment_sequence := 1
 var treatment := empty_treatment()
 
@@ -38,14 +50,27 @@ func initialize_fresh(rules: CampaignRecoveryRules, military_count: int, special
 	medical_workers = rules.initial_medical_workers
 	governance_workers = rules.initial_governance_workers
 	training_reserved = 0
+	children = 0
+	elderly = 0
+	resident_sick = 0
+	unsettled_refugees = 0
 	wounded = 0
 	fallen = 0
+	male_count = 0
+	female_count = 0
+	unknown_sex_count = 0
+	growth_progress = 0
+	child_age_progress = 0
+	adult_age_progress = 0
+	elderly_exposure_progress = 0
+	next_birth_sequence = 1
 	next_treatment_sequence = 1
 	treatment = empty_treatment()
 	total_living = maxi(
 		rules.initial_living_population,
 		military_count + specialist_count + production_workers + construction_workers + medical_workers + governance_workers
 	)
+	unknown_sex_count = total_living
 	available = total_living - military_count - specialist_count - production_workers - construction_workers - medical_workers - governance_workers
 	return true
 
@@ -72,7 +97,114 @@ func admit_external_population(count: int) -> bool:
 	if count <= 0:
 		return false
 	total_living += count
+	unknown_sex_count += count
 	return true
+
+
+func accept_refugees(count: int) -> bool:
+	if count <= 0:
+		return false
+	total_living += count
+	unsettled_refugees += count
+	unknown_sex_count += count
+	return true
+
+
+func settle_refugees(count: int, sick_count := 0) -> bool:
+	if count <= 0 or count > unsettled_refugees or sick_count < 0 or sick_count > count:
+		return false
+	unsettled_refugees -= count
+	resident_sick += sick_count
+	available += count - sick_count
+	return true
+
+
+func record_birth() -> bool:
+	if next_birth_sequence <= 0:
+		return false
+	total_living += 1
+	children += 1
+	if next_birth_sequence % 2 == 0:
+		female_count += 1
+	else:
+		male_count += 1
+	next_birth_sequence += 1
+	return true
+
+
+func mature_child() -> bool:
+	if children <= 0:
+		return false
+	children -= 1
+	available += 1
+	return true
+
+
+func age_available_adult() -> bool:
+	if available <= 0:
+		return false
+	available -= 1
+	elderly += 1
+	return true
+
+
+func record_sickness(count: int) -> bool:
+	if count <= 0:
+		return false
+	if count > available + production_workers + construction_workers + governance_workers + medical_workers:
+		return false
+	var remaining := count
+	for channel in [&"available", &"production", &"construction", &"governance", &"medical"]:
+		if remaining <= 0:
+			break
+		var current := 0
+		match channel:
+			&"available": current = available
+			&"production": current = production_workers
+			&"construction": current = construction_workers
+			&"governance": current = governance_workers
+			&"medical": current = medical_workers
+		var moved := mini(current, remaining)
+		match channel:
+			&"available": available -= moved
+			&"production": production_workers -= moved
+			&"construction": construction_workers -= moved
+			&"governance": governance_workers -= moved
+			&"medical": medical_workers -= moved
+		remaining -= moved
+	if remaining > 0:
+		return false
+	resident_sick += count
+	return true
+
+
+func recover_sickness(count: int) -> bool:
+	if count <= 0 or count > resident_sick:
+		return false
+	resident_sick -= count
+	available += count
+	return true
+
+
+func record_elderly_death(count := 1) -> bool:
+	if count <= 0 or count > elderly:
+		return false
+	elderly -= count
+	total_living -= count
+	fallen += count
+	_remove_sex_count(count)
+	return true
+
+
+func _remove_sex_count(count: int) -> void:
+	var remaining := count
+	var removed := mini(unknown_sex_count, remaining)
+	unknown_sex_count -= removed
+	remaining -= removed
+	removed = mini(male_count, remaining)
+	male_count -= removed
+	remaining -= removed
+	female_count = maxi(female_count - remaining, 0)
 
 
 func complete_training(count: int) -> bool:
@@ -128,6 +260,7 @@ func record_fallen(count: int) -> bool:
 		return false
 	fallen += count
 	total_living -= count
+	_remove_sex_count(count)
 	return true
 
 
@@ -139,6 +272,7 @@ func record_casualties(casualties: int, wounded_permille: int) -> Dictionary:
 	wounded += wounded_added
 	fallen += fallen_added
 	total_living -= fallen_added
+	_remove_sex_count(fallen_added)
 	return {"casualties": casualties, "wounded": wounded_added, "fallen": fallen_added}
 
 
@@ -190,8 +324,20 @@ func get_snapshot() -> Dictionary:
 		"medical_workers": medical_workers,
 		"governance_workers": governance_workers,
 		"training_reserved": training_reserved,
+		"children": children,
+		"elderly": elderly,
+		"resident_sick": resident_sick,
+		"unsettled_refugees": unsettled_refugees,
 		"wounded": wounded,
 		"fallen": fallen,
+		"male_count": male_count,
+		"female_count": female_count,
+		"unknown_sex_count": unknown_sex_count,
+		"growth_progress": growth_progress,
+		"child_age_progress": child_age_progress,
+		"adult_age_progress": adult_age_progress,
+		"elderly_exposure_progress": elderly_exposure_progress,
+		"next_birth_sequence": next_birth_sequence,
 		"next_treatment_sequence": next_treatment_sequence,
 		"treatment": treatment.duplicate(true),
 	}
@@ -209,24 +355,38 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	medical_workers = int(normalized.medical_workers)
 	governance_workers = int(normalized.governance_workers)
 	training_reserved = int(normalized.training_reserved)
+	children = int(normalized.children)
+	elderly = int(normalized.elderly)
+	resident_sick = int(normalized.resident_sick)
+	unsettled_refugees = int(normalized.unsettled_refugees)
 	wounded = int(normalized.wounded)
 	fallen = int(normalized.fallen)
+	male_count = int(normalized.male_count)
+	female_count = int(normalized.female_count)
+	unknown_sex_count = int(normalized.unknown_sex_count)
+	growth_progress = int(normalized.growth_progress)
+	child_age_progress = int(normalized.child_age_progress)
+	adult_age_progress = int(normalized.adult_age_progress)
+	elderly_exposure_progress = int(normalized.elderly_exposure_progress)
+	next_birth_sequence = int(normalized.next_birth_sequence)
 	next_treatment_sequence = int(normalized.next_treatment_sequence)
 	treatment = Dictionary(normalized.treatment).duplicate(true)
 	return true
 
 
 static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
-	var keys := ["schema_version", "total_living", "available", "production_workers", "construction_workers", "medical_workers", "governance_workers", "training_reserved", "wounded", "fallen", "next_treatment_sequence", "treatment"]
+	var keys := ["schema_version", "total_living", "available", "production_workers", "construction_workers", "medical_workers", "governance_workers", "training_reserved", "children", "elderly", "resident_sick", "unsettled_refugees", "wounded", "fallen", "male_count", "female_count", "unknown_sex_count", "growth_progress", "child_age_progress", "adult_age_progress", "elderly_exposure_progress", "next_birth_sequence", "next_treatment_sequence", "treatment"]
 	if snapshot.size() != keys.size():
 		return {"valid": false}
 	for key in keys:
 		if not snapshot.has(key):
 			return {"valid": false}
-	for key in ["total_living", "available", "production_workers", "construction_workers", "medical_workers", "governance_workers", "training_reserved", "wounded", "fallen", "next_treatment_sequence"]:
+	for key in ["total_living", "available", "production_workers", "construction_workers", "medical_workers", "governance_workers", "training_reserved", "children", "elderly", "resident_sick", "unsettled_refugees", "wounded", "fallen", "male_count", "female_count", "unknown_sex_count", "growth_progress", "child_age_progress", "adult_age_progress", "elderly_exposure_progress", "next_birth_sequence", "next_treatment_sequence"]:
 		if typeof(snapshot.get(key)) != TYPE_INT or int(snapshot.get(key)) < 0:
 			return {"valid": false}
-	if int(snapshot.schema_version) != SCHEMA_VERSION or int(snapshot.next_treatment_sequence) <= 0 or not snapshot.treatment is Dictionary:
+	if int(snapshot.schema_version) != SCHEMA_VERSION or int(snapshot.next_treatment_sequence) <= 0 or int(snapshot.next_birth_sequence) <= 0 or not snapshot.treatment is Dictionary:
+		return {"valid": false}
+	if int(snapshot.male_count) + int(snapshot.female_count) + int(snapshot.unknown_sex_count) != int(snapshot.total_living):
 		return {"valid": false}
 	var treatment_value: Dictionary = snapshot.treatment
 	var treatment_keys := ["treatment_id", "phase", "count", "progress_milliseconds", "required_milliseconds", "food_cost_committed"]
@@ -252,4 +412,4 @@ static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
 func invariant_matches(military_count: int, specialist_count: int) -> bool:
 	if military_count < 0 or specialist_count < 0:
 		return false
-	return total_living == available + production_workers + construction_workers + medical_workers + governance_workers + training_reserved + wounded + military_count + specialist_count
+	return total_living == children + elderly + available + production_workers + construction_workers + medical_workers + governance_workers + training_reserved + resident_sick + unsettled_refugees + wounded + military_count + specialist_count

@@ -1,5 +1,33 @@
 # 当前状态
 
+## City population development and social pressure R0 (2026-09-12)
+
+The regular inner city now advances population only through its authoritative
+calendar. Housing creates capacity rather than residents; healthy surplus
+accumulates births into a child group, while configurable long-horizon tests
+cover maturation, available-adult ageing and warned winter exposure. Age, sex,
+health and allocation remain separate aggregate dimensions. The conservation
+ledger counts city jobs, training, sickness, unsettled refugees, wounded,
+garrison/field armies and specialists exactly once. Legacy V15 saves migrate
+to campaign schema 16 without inventing age/sex history, people or jobs.
+
+One finite Blackstone-invasion refugee case now arrives with a stable source
+and identity. The governance workspace previews its nine people, housing/food/
+medical pressure and explicit accept/defer/reject choices. Acceptance is
+one-time and remains unavailable for work or training until housing-backed
+settlement; remaining carried illness joins the existing resident sickness and
+shared medical-capacity flow.
+
+Security is now a recoverable pressure process: warning, finite theft, targeted
+production disruption and local work stoppage share one staged event identity.
+Governance and relief address a specific event gradually; food, housing and
+health causes still require normal city operations. No stage transfers main-city
+control or creates an unsourced battle. Focused population/pressure, three-
+process recovery, related war/strategy regressions and Metal GUI traces pass.
+Human normal-speed acceptance remains **OPEN**. See
+`docs/design/CITY_POPULATION_AND_SOCIAL_PRESSURE_R0.md` and the milestone
+evidence package.
+
 ## Wartime spatial battle R1 (2026-09-12)
 
 Macro siege and sourced Blackstone defense now use a real corridor battlefield:

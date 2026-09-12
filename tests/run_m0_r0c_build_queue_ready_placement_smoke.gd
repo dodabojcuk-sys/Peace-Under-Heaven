@@ -31,7 +31,7 @@ func _check_real_input_queue_to_ready_placement() -> void:
 	var scene: Node = context.scene
 	var controller: Node = context.controller
 	var build_button: Button = scene.get_node(
-		"UI/Shell/GovernanceWorkspace/GovernanceMargin/GovernanceContent/GovernanceCatalogButton"
+		"UI/Shell/GovernanceWorkspace/GovernanceMargin/GovernanceScroll/GovernanceContent/GovernanceCatalogButton"
 	)
 	var camp_button: Button = scene.get_node(
 		"UI/Shell/ConstructionMenu/LoggingCampButton"

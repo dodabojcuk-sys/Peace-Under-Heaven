@@ -286,7 +286,7 @@ func _on_canonical_state_changed() -> void:
 	if not _is_initialized or _writes_blocked:
 		return
 	_dirty = true
-	if _dirty_flush_timer != null:
+	if _dirty_flush_timer != null and _dirty_flush_timer.is_inside_tree():
 		_dirty_flush_timer.start()
 
 

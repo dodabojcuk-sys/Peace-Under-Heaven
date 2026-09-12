@@ -6,7 +6,7 @@ const MACRO_MARCH_THEATER = preload("res://scripts/macro_march/macro_march_theat
 const POPULATION_RECOVERY_STATE = preload("res://scripts/state/population_recovery_state.gd")
 const CITY_GOVERNANCE_STATE = preload("res://scripts/state/city_governance_state.gd")
 const CITY_STRATEGY_STATE = preload("res://scripts/state/city_strategy_state.gd")
-const SCHEMA_VERSION := 15
+const SCHEMA_VERSION := 16
 const SNAPSHOT_KIND := &"campaign_authoritative"
 const CITY_ID := "blackstone_city"
 const LEGACY_SILVERFORD_REINFORCEMENT_TOTAL := 4
@@ -28,6 +28,12 @@ const ROOT_KEYS := [
 	"population_recovery",
 	"city_governance",
 	"city_strategy",
+]
+const V15_ROOT_KEYS := [
+	"schema_version", "snapshot_kind", "city_id", "city", "placements",
+	"next_placement_id", "garrison", "training_queue", "army_registry",
+	"settlement_ledger", "mainline_level", "build_slot", "expedition_attempt",
+	"war_loop", "population_recovery", "city_governance", "city_strategy",
 ]
 const V14_ROOT_KEYS := [
 	"schema_version", "snapshot_kind", "city_id", "city", "placements",
@@ -235,6 +241,7 @@ static func validate_structure(
 	var source_version := int(snapshot.get("schema_version", 0))
 	if (
 		(source_version == SCHEMA_VERSION and not _has_exact_keys(snapshot, ROOT_KEYS))
+		or (source_version == 15 and not _has_exact_keys(snapshot, V15_ROOT_KEYS))
 		or (source_version == 14 and not _has_exact_keys(snapshot, V14_ROOT_KEYS))
 		or (source_version == 13 and not _has_exact_keys(snapshot, V13_ROOT_KEYS))
 		or (source_version in [7, 8, 9, 10, 11, 12] and not _has_exact_keys(snapshot, V12_ROOT_KEYS))
@@ -246,7 +253,7 @@ static func validate_structure(
 		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段不完整或含未知字段")
 	if (
 		typeof(snapshot.schema_version) != TYPE_INT
-		or int(snapshot.schema_version) not in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, SCHEMA_VERSION]
+		or int(snapshot.schema_version) not in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, SCHEMA_VERSION]
 		or typeof(snapshot.snapshot_kind) != TYPE_STRING_NAME
 		or StringName(snapshot.snapshot_kind) != SNAPSHOT_KIND
 		or typeof(snapshot.city_id) != TYPE_STRING
@@ -340,7 +347,12 @@ static func validate_structure(
 		normalized = migration.snapshot
 	if int(normalized.schema_version) == 14:
 		normalized.city_strategy = CITY_STRATEGY_STATE.empty_legacy_snapshot()
-		normalized.schema_version = SCHEMA_VERSION
+		normalized.schema_version = 15
+	if int(normalized.schema_version) == 15:
+		var migration := _migrate_v15_population_pressure(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
 	if typeof(normalized.get("war_loop", null)) != TYPE_DICTIONARY:
 		return _failure(&"INVALID_WAR_LOOP", "WarLoop 快照字段非法")
 	# WarLoop owns its nested R1 -> R2 migration.  Normalize it here so the
@@ -814,7 +826,7 @@ static func _migrate_v13_city_governance(snapshot: Dictionary) -> Dictionary:
 	available -= medical_workers
 	var governance_workers := mini(4, available)
 	available -= governance_workers
-	population.schema_version = POPULATION_RECOVERY_STATE.SCHEMA_VERSION
+	population.schema_version = 2
 	population.available = available
 	population.medical_workers = medical_workers
 	population.governance_workers = governance_workers
@@ -841,7 +853,7 @@ static func _migrate_v13_city_governance(snapshot: Dictionary) -> Dictionary:
 		population.total_living = int(population.total_living) + conservation_deficit
 	normalized.population_recovery = population
 	normalized.city_governance = {
-		"schema_version": CITY_GOVERNANCE_STATE.SCHEMA_VERSION,
+		"schema_version": 1,
 		"health_permille": 1000,
 		"diseased_count": 0,
 		"consecutive_food_shortage_days": 0,
@@ -868,10 +880,72 @@ static func _validate_v13_population_recovery(value: Variant) -> Dictionary:
 	current_probe.schema_version = POPULATION_RECOVERY_STATE.SCHEMA_VERSION
 	current_probe.medical_workers = 0
 	current_probe.governance_workers = 0
+	current_probe.children = 0
+	current_probe.elderly = 0
+	current_probe.resident_sick = 0
+	current_probe.unsettled_refugees = 0
+	current_probe.male_count = 0
+	current_probe.female_count = 0
+	current_probe.unknown_sex_count = int(population.total_living)
+	current_probe.growth_progress = 0
+	current_probe.child_age_progress = 0
+	current_probe.adult_age_progress = 0
+	current_probe.elderly_exposure_progress = 0
+	current_probe.next_birth_sequence = 1
 	var validation := POPULATION_RECOVERY_STATE.validate_snapshot(current_probe)
 	if not bool(validation.get("valid", false)):
 		return _failure(&"INVALID_POPULATION_RECOVERY", "V13 人口状态内容非法")
 	return {"valid": true, "error_id": &"", "error": "", "snapshot": population.duplicate(true)}
+
+
+static func _migrate_v15_population_pressure(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, V15_ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V15 CampaignSnapshot 根字段非法")
+	var population: Dictionary = Dictionary(normalized.population_recovery).duplicate(true)
+	var legacy_population_keys := ["schema_version", "total_living", "available", "production_workers", "construction_workers", "medical_workers", "governance_workers", "training_reserved", "wounded", "fallen", "next_treatment_sequence", "treatment"]
+	if not _has_exact_keys(population, legacy_population_keys) or typeof(population.schema_version) != TYPE_INT or int(population.schema_version) != 2:
+		return _failure(&"INVALID_POPULATION_RECOVERY", "V15 人口状态字段非法")
+	var governance: Dictionary = Dictionary(normalized.city_governance).duplicate(true)
+	var legacy_governance_keys := ["schema_version", "health_permille", "diseased_count", "consecutive_food_shortage_days", "consecutive_housing_pressure_days", "last_applied_day", "next_event_sequence", "active_event", "resolved_event_ids"]
+	if not _has_exact_keys(governance, legacy_governance_keys) or typeof(governance.schema_version) != TYPE_INT or int(governance.schema_version) != 1:
+		return _failure(&"INVALID_CITY_GOVERNANCE", "V15 治理状态字段非法")
+	var sick := int(governance.get("diseased_count", -1))
+	if sick < 0 or sick > int(population.get("available", 0)):
+		return _failure(&"DISEASE_POPULATION_MISMATCH", "V15 患病人口无法从可用成年人保守迁移")
+	population.schema_version = POPULATION_RECOVERY_STATE.SCHEMA_VERSION
+	population.available = int(population.available) - sick
+	population.children = 0
+	population.elderly = 0
+	population.resident_sick = sick
+	population.unsettled_refugees = 0
+	population.male_count = 0
+	population.female_count = 0
+	population.unknown_sex_count = int(population.total_living)
+	population.growth_progress = 0
+	population.child_age_progress = 0
+	population.adult_age_progress = 0
+	population.elderly_exposure_progress = 0
+	population.next_birth_sequence = 1
+	governance.erase("diseased_count")
+	governance.schema_version = CITY_GOVERNANCE_STATE.SCHEMA_VERSION
+	governance.pressure_points = 0
+	governance.refugee_cases_by_id = {}
+	var legacy_event: Dictionary = Dictionary(governance.active_event)
+	if StringName(legacy_event.get("phase", &"")) == CITY_GOVERNANCE_STATE.EVENT_ACTIVE:
+		governance.active_event = {
+			"event_id": StringName(legacy_event.event_id), "phase": CITY_GOVERNANCE_STATE.EVENT_ACTIVE,
+			"kind": &"PETTY_THEFT", "started_day": int(legacy_event.started_day),
+			"stage_started_day": int(legacy_event.started_day), "stage_index": 1,
+			"target_kind": &"INVENTORY", "target_id": &"food",
+			"consequence_applied": true, "cause": &"LOW_SECURITY",
+		}
+	else:
+		governance.active_event = CITY_GOVERNANCE_STATE.empty_event()
+	normalized.population_recovery = population
+	normalized.city_governance = governance
+	normalized.schema_version = SCHEMA_VERSION
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
 
 
 static func _population_conservation_deficit(snapshot: Dictionary, population: Dictionary) -> int:
