@@ -1,0 +1,15 @@
+[gd_resource type="Resource" script_class="CampaignRecoveryRules" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/content/campaign_recovery_rules.gd" id="1_rules"]
+
+[resource]
+script = ExtResource("1_rules")
+initial_living_population = 72
+initial_production_workers = 12
+initial_construction_workers = 12
+wounded_permille = 500
+treatment_batch_size = 6
+treatment_food_per_person = 1
+treatment_milliseconds_per_person = 1000
+production_workers_for_full_output = 12
+construction_workers_for_full_speed = 12

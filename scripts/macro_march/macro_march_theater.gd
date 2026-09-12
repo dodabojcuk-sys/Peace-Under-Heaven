@@ -35,7 +35,18 @@ static func _current_definition():
 
 
 static func get_points() -> Dictionary:
-	return _current_definition().points.duplicate(true)
+	var definition = _current_definition()
+	var projected: Dictionary = definition.points.duplicate(true)
+	for point_id_value in projected.keys():
+		var point_id := StringName(point_id_value)
+		var point := Dictionary(projected[point_id])
+		point.merge(definition.get_location_capability(point_id), true)
+		projected[point_id] = point
+	return projected
+
+
+static func get_location_capability(point_id: StringName) -> Dictionary:
+	return _current_definition().get_location_capability(point_id).duplicate(true)
 
 
 static func get_routes() -> Dictionary:

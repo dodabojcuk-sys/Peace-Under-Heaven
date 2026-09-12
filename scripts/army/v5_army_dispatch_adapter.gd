@@ -201,6 +201,31 @@ func begin_field_watchtower_project(engineer_id: StringName, camp_id: StringName
 	return city.begin_field_watchtower_project(engineer_id, camp_id, world_position, facility_kind) if city != null else {}
 
 
+func begin_field_facility_upgrade(engineer_id: StringName, facility_id: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.begin_field_facility_upgrade(engineer_id, facility_id) if city != null else {}
+
+
+func preview_field_facility_upgrade(engineer_id: StringName, facility_id: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.preview_field_facility_upgrade(engineer_id, facility_id) if city != null else {}
+
+
+func assign_field_fortress_garrison(facility_id: StringName, army_id: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.assign_field_fortress_garrison(facility_id, army_id) if city != null else {}
+
+
+func release_field_fortress_garrison(facility_id: StringName, army_id: StringName = &"") -> Dictionary:
+	var city := _get_city()
+	return city.release_field_fortress_garrison(facility_id, army_id) if city != null else {}
+
+
+func clear_discovered_field_mine(facility_id: StringName, engineer_id: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.clear_discovered_field_mine(facility_id, engineer_id) if city != null else {}
+
+
 func preview_field_facility_repair(engineer_id: StringName, facility_id: StringName) -> Dictionary:
 	var city := _get_city()
 	return city.preview_field_facility_repair(engineer_id, facility_id) if city != null else {}

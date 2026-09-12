@@ -91,6 +91,12 @@ const V5_CAMPAIGN_SNAPSHOT = preload(
 const NATION_STATE = preload(
 	"res://scripts/state/nation_state.gd"
 )
+const POPULATION_RECOVERY_STATE = preload(
+	"res://scripts/state/population_recovery_state.gd"
+)
+const RECOVERY_RULES: CampaignRecoveryRules = preload(
+	"res://resources/war/blackstone_recovery_r0.tres"
+)
 const CITY_LAYOUT_PROFILE_RESOLVER = preload(
 	"res://scripts/city_layout_profile_resolver.gd"
 )
@@ -413,6 +419,7 @@ var selected_general_id: StringName = &""
 var _training_queue: TrainingQueue = TRAINING_QUEUE.new(&"blackstone_city")
 var _last_training_failure_id: StringName = &""
 var _army_registry: ArmyRegistry = ARMY_REGISTRY.new()
+var _population_recovery: PopulationRecoveryState = POPULATION_RECOVERY_STATE.new()
 var _army_dispatch_adapter: V5ArmyDispatchAdapter
 var _active_army_dispatch_reservation: Dictionary = {}
 var _next_army_dispatch_transaction_sequence := 1
@@ -503,6 +510,8 @@ var _wartime_session_checkpoint_fault_for_test: StringName = &""
 
 func _ready() -> void:
 	_ensure_war_loop_initialized()
+	if _population_recovery.total_living <= 0:
+		_population_recovery.initialize_fresh(RECOVERY_RULES, _garrison_state.get_total_count())
 	_register_definition(ROAD_DEFINITION)
 	_register_definition(LOGGING_CAMP_DEFINITION)
 	_register_definition(FARM_DEFINITION)
@@ -2256,6 +2265,7 @@ func advance_city_time(simulation_delta: float) -> int:
 			0
 		)
 		if remaining_milliseconds < milliseconds_until_boundary:
+			_advance_population_recovery(remaining_milliseconds)
 			_advance_construction_between(
 				elapsed_milliseconds,
 				remaining_milliseconds
@@ -2264,6 +2274,7 @@ func advance_city_time(simulation_delta: float) -> int:
 			remaining_milliseconds = 0
 			break
 
+		_advance_population_recovery(milliseconds_until_boundary)
 		_advance_construction_between(
 			elapsed_milliseconds,
 			milliseconds_until_boundary
@@ -2301,6 +2312,7 @@ func _advance_city_time_for_battle_settlement(
 			MILLISECONDS_PER_DAY - elapsed_milliseconds
 		)
 		if remaining_milliseconds < milliseconds_until_boundary:
+			_advance_population_recovery(remaining_milliseconds)
 			_advance_construction_between(
 				elapsed_milliseconds,
 				remaining_milliseconds
@@ -2308,6 +2320,7 @@ func _advance_city_time_for_battle_settlement(
 			elapsed_milliseconds += remaining_milliseconds
 			remaining_milliseconds = 0
 			break
+		_advance_population_recovery(milliseconds_until_boundary)
 		_advance_construction_between(
 			elapsed_milliseconds,
 			milliseconds_until_boundary
@@ -3757,6 +3770,9 @@ func _can_complete_training_for_day(boundary_day: int) -> bool:
 	var future_total := (
 		_garrison_state.get_total_count() + int(order.quantity)
 	)
+	if _population_recovery.training_reserved < int(order.quantity):
+		_last_training_failure_id = &"TRAINING_COMPLETION_POPULATION"
+		return false
 	if future_total > recruitment_cap:
 		_last_training_failure_id = &"TRAINING_COMPLETION_CAPACITY"
 		return false
@@ -3772,6 +3788,9 @@ func _complete_training_for_current_day() -> int:
 		return 0
 	var quantity := int(order.quantity)
 	var capacity := mini(recruitment_cap, get_effective_command_limit())
+	var garrison_before := _garrison_state.get_persistence_snapshot()
+	var queue_before := _training_queue.get_snapshot()
+	var population_before := _population_recovery.get_snapshot()
 	if not _garrison_state.try_add_units(
 		StringName(order.unit_definition_id),
 		quantity,
@@ -3779,14 +3798,16 @@ func _complete_training_for_current_day() -> int:
 	):
 		_last_training_failure_id = &"TRAINING_COMPLETION_CAPACITY"
 		return 0
-	if not _training_queue.mark_completed(
+	if (
+		not _population_recovery.complete_training(quantity)
+		or not _training_queue.mark_completed(
 		StringName(order.order_id),
 		current_day
-	):
-		_garrison_state.try_remove_units(
-			StringName(order.unit_definition_id),
-			quantity
 		)
+	):
+		_garrison_state.restore_persistence_snapshot(garrison_before)
+		_training_queue.restore_snapshot(queue_before)
+		_population_recovery.restore_snapshot(population_before)
 		_last_training_failure_id = &"TRAINING_COMPLETION_COMMIT"
 		return 0
 	_last_training_failure_id = &""
@@ -3823,7 +3844,9 @@ func _advance_construction_tick() -> void:
 			continue
 		var required := int(record.construction_required_milliseconds)
 		var progress := int(record.construction_progress_milliseconds)
-		var modifier := get_pressure_modifier_permille(&"construction")
+		var modifier := floori(float(get_pressure_modifier_permille(&"construction") * get_workforce_modifier_permille(&"construction")) / 1000.0)
+		if modifier <= 0:
+			continue
 		var progress_delta := maxi(
 			roundi(float(CONSTRUCTION_TICK_MILLISECONDS * modifier) / 1000.0),
 			1
@@ -3895,7 +3918,15 @@ func _get_build_slot_next_payment() -> Dictionary:
 			"missing_ids": [],
 			"shortages": [],
 		}
-	var modifier := get_pressure_modifier_permille(&"construction")
+	var modifier := floori(float(get_pressure_modifier_permille(&"construction") * get_workforce_modifier_permille(&"construction")) / 1000.0)
+	if modifier <= 0:
+		return {
+			"next_progress": progress,
+			"entries": [],
+			"next_paid": Dictionary(_build_slot.get("paid_costs", {})).duplicate(true),
+			"missing_ids": [],
+			"shortages": [],
+		}
 	var progress_delta := maxi(
 		roundi(float(CONSTRUCTION_TICK_MILLISECONDS * modifier) / 1000.0),
 		1
@@ -4217,7 +4248,25 @@ func _get_production_amount(
 		floori(float(amount * get_pressure_modifier_permille(&"production")) / 1000.0),
 		0
 	)
+	amount = maxi(
+		floori(float(amount * get_workforce_modifier_permille(&"production")) / 1000.0),
+		0
+	)
 	return amount
+
+
+func get_workforce_modifier_permille(channel: StringName) -> int:
+	if channel == &"production":
+		return clampi(
+			floori(float(_population_recovery.production_workers * 1000) / float(RECOVERY_RULES.production_workers_for_full_output)),
+			0, 1000
+		)
+	if channel == &"construction":
+		return clampi(
+			floori(float(_population_recovery.construction_workers * 1000) / float(RECOVERY_RULES.construction_workers_for_full_speed)),
+			0, 1000
+		)
+	return 1000
 
 
 func get_city_state() -> Dictionary:
@@ -4236,6 +4285,7 @@ func get_city_state() -> Dictionary:
 		"training_queued_count": training_queued_count,
 		"training_complete_day": training_complete_day,
 		"training_queue": get_training_queue_snapshot(),
+		"population_recovery": get_population_recovery_read_model(),
 		"day_elapsed_milliseconds": get_day_elapsed_milliseconds(),
 		"city_time_speed_id": StringName(
 			"%dx" % roundi(city_time_speed)
@@ -4290,6 +4340,99 @@ func get_city_state() -> Dictionary:
 		"last_daily_report": last_daily_report,
 		"last_daily_breakdown": last_daily_breakdown.duplicate(true),
 	}
+
+
+func _current_military_population() -> int:
+	var total := _garrison_state.get_total_count()
+	for army_value in _army_registry.get_armies():
+		var army: Dictionary = Dictionary(army_value)
+		if StringName(army.get("phase", &"")) == ArmyRegistry.PHASE_CLOSED:
+			continue
+		for count in Dictionary(army.get("units_by_definition_id", {})).values():
+			total += int(count)
+	return total
+
+
+func _current_alive_specialists() -> int:
+	_ensure_war_loop_initialized()
+	var total := 0
+	for specialist_value in _war_loop_state.field_tactics.specialists_by_id.values():
+		if bool(Dictionary(specialist_value).get("alive", false)):
+			total += 1
+	return total
+
+
+func get_population_recovery_read_model() -> Dictionary:
+	var snapshot := _population_recovery.get_snapshot()
+	snapshot.military = _current_military_population()
+	snapshot.specialists = _current_alive_specialists()
+	snapshot.accounted = _population_recovery.invariant_matches(int(snapshot.military), int(snapshot.specialists))
+	snapshot.production_permille = mini(1000, floori(float(_population_recovery.production_workers * 1000) / float(RECOVERY_RULES.production_workers_for_full_output)))
+	snapshot.construction_permille = mini(1000, floori(float(_population_recovery.construction_workers * 1000) / float(RECOVERY_RULES.construction_workers_for_full_speed)))
+	return snapshot
+
+
+func adjust_city_workforce(channel: StringName, delta: int) -> Dictionary:
+	if is_city_action_locked_for_battle():
+		return {"success": false, "error": "战斗事务处理中不能调整人员"}
+	var before := _population_recovery.get_snapshot()
+	if not _population_recovery.allocate_worker(channel, delta):
+		return {"success": false, "error": "没有足够可用人口，或该岗位无人可调离"}
+	if not _population_recovery.invariant_matches(_current_military_population(), _current_alive_specialists()):
+		_population_recovery.restore_snapshot(before)
+		return {"success": false, "error": "人口守恒校验失败"}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {"success": true, "population_recovery": get_population_recovery_read_model()}
+
+
+func begin_wounded_treatment() -> Dictionary:
+	if is_city_action_locked_for_battle():
+		return {"success": false, "error": "战斗事务处理中不能开始治疗"}
+	if StringName(_population_recovery.treatment.phase) != PopulationRecoveryState.TREATMENT_IDLE:
+		return {"success": false, "error": "已有伤员正在治疗"}
+	var count := mini(_population_recovery.wounded, RECOVERY_RULES.treatment_batch_size)
+	if count <= 0:
+		return {"success": false, "error": "当前没有待治疗伤员"}
+	var food_cost := count * RECOVERY_RULES.treatment_food_per_person
+	var required := count * RECOVERY_RULES.treatment_milliseconds_per_person
+	var population_before := _population_recovery.get_snapshot()
+	var local_commit := func() -> Dictionary:
+		var treatment := _population_recovery.begin_treatment(count, food_cost, required)
+		if treatment.is_empty():
+			return {"success": false}
+		return {"success": true, "treatment": treatment}
+	var entries: Array[Dictionary] = []
+	if food_cost > 0:
+		entries.append({"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": food_cost})
+	var committed := _commit_national_resources(entries, &"wounded_treatment", local_commit) if not entries.is_empty() else bool(local_commit.call().get("success", false))
+	if not committed:
+		_population_recovery.restore_snapshot(population_before)
+		return {"success": false, "error": "粮食不足或治疗事务未提交"}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {"success": true, "treatment": _population_recovery.treatment.duplicate(true)}
+
+
+func _advance_population_recovery(delta_milliseconds: int) -> void:
+	var due := _population_recovery.advance_treatment(delta_milliseconds)
+	if due.is_empty():
+		return
+	var count := int(due.get("count", 0))
+	var capacity := mini(recruitment_cap, get_effective_command_limit())
+	if _garrison_state.get_total_count() + count > capacity:
+		return
+	var garrison_before := _garrison_state.get_persistence_snapshot()
+	var population_before := _population_recovery.get_snapshot()
+	if (
+		not _garrison_state.try_add_units(INFANTRY_ROLE.role_id, count, capacity)
+		or _population_recovery.complete_treatment(StringName(due.get("treatment_id", &""))) != count
+	):
+		_garrison_state.restore_persistence_snapshot(garrison_before)
+		_population_recovery.restore_snapshot(population_before)
+		return
+	_refresh_city_ui()
+	city_state_changed.emit()
 
 
 func export_early_city_snapshot() -> Dictionary:
@@ -4424,6 +4567,7 @@ func export_v5_campaign_snapshot() -> Dictionary:
 		"build_slot": get_build_slot_snapshot(),
 		"expedition_attempt": _expedition_attempt.duplicate(true),
 		"war_loop": _war_loop_state.get_snapshot(),
+		"population_recovery": _population_recovery.get_snapshot(),
 	}
 	var validation := validate_v5_campaign_snapshot(snapshot)
 	if not bool(validation.valid):
@@ -4508,6 +4652,24 @@ func validate_v5_campaign_snapshot(
 				"error_id": &"WAR_LOOP_ARMY_MISMATCH",
 				"error": "攻城事务与军队快照不一致",
 			}
+	var population_probe := PopulationRecoveryState.new()
+	if not population_probe.restore_snapshot(candidate.population_recovery):
+		return {"valid": false, "error_id": &"INVALID_POPULATION_RECOVERY", "error": "人口恢复状态无法恢复"}
+	var candidate_military := 0
+	for count_value in Dictionary(Dictionary(candidate.garrison).get("unit_counts_by_definition_id", {})).values():
+		candidate_military += int(count_value)
+	for army_value in Dictionary(Dictionary(candidate.army_registry).get("armies_by_id", {})).values():
+		var candidate_army: Dictionary = Dictionary(army_value)
+		if StringName(candidate_army.get("phase", &"")) == ArmyRegistry.PHASE_CLOSED:
+			continue
+		for count_value in Dictionary(candidate_army.get("units_by_definition_id", {})).values():
+			candidate_military += int(count_value)
+	var candidate_specialists := 0
+	for specialist_value in war_probe.field_tactics.specialists_by_id.values():
+		if bool(Dictionary(specialist_value).get("alive", false)):
+			candidate_specialists += 1
+	if not population_probe.invariant_matches(candidate_military, candidate_specialists):
+		return {"valid": false, "error_id": &"POPULATION_CONSERVATION_FAILED", "error": "人口、驻军、外派军队与专家不守恒"}
 	var sequence_validation := _validate_battle_sequence_high_water(candidate)
 	if not bool(sequence_validation.get("valid", false)):
 		return sequence_validation
@@ -5058,6 +5220,18 @@ func _apply_validated_v5_campaign_snapshot(
 	# Restore installs state first; this initializes that same authority before
 	# any migrated route can be queried or advanced.
 	_ensure_war_loop_initialized()
+	if not _population_recovery.restore_snapshot(snapshot.population_recovery):
+		return {
+			"success": false,
+			"error_id": &"POPULATION_RECOVERY_APPLY_FAILED",
+			"error": "人口与恢复状态恢复失败",
+		}
+	if not _population_recovery.invariant_matches(_current_military_population(), _current_alive_specialists()):
+		return {
+			"success": false,
+			"error_id": &"POPULATION_CONSERVATION_FAILED",
+			"error": "恢复后人口分配不守恒",
+		}
 	var ledger: Dictionary = snapshot.settlement_ledger
 	_committed_battle_result_ids = Dictionary(
 		ledger.committed_results_by_id
@@ -5997,6 +6171,15 @@ func get_field_tactics_read_model() -> Dictionary:
 	# hit testing and risk labels must consume this projection rather than the
 	# authoritative simulation dictionary.
 	var visible_patrols: Dictionary = {}
+	var visible_facilities: Dictionary = {}
+	for facility_id_value in Dictionary(field_snapshot.get("watchtowers_by_id", {})).keys():
+		var facility := Dictionary(field_snapshot.watchtowers_by_id[facility_id_value])
+		if (
+			StringName(facility.get("facility_kind", &"")) != FieldTacticsState.FACILITY_MINEFIELD
+			or StringName(facility.get("owner_faction_id", &"player")) == &"player"
+			or &"player" in Array(facility.get("discovered_by_faction_ids", []))
+		):
+			visible_facilities[StringName(facility_id_value)] = facility.duplicate(true)
 	for patrol_id_value in Dictionary(field_snapshot.patrols_by_id):
 		var patrol_id := StringName(patrol_id_value)
 		var intel := _war_loop_state.field_tactics.observe_subject(patrol_id)
@@ -6009,7 +6192,7 @@ func get_field_tactics_read_model() -> Dictionary:
 	return {
 		"roads_by_id": Dictionary(field_snapshot.roads_by_id).duplicate(true),
 		"camps_by_id": Dictionary(field_snapshot.camps_by_id).duplicate(true),
-		"watchtowers_by_id": Dictionary(field_snapshot.get("watchtowers_by_id", {})).duplicate(true),
+		"watchtowers_by_id": visible_facilities,
 		"specialists_by_id": Dictionary(field_snapshot.specialists_by_id).duplicate(true),
 		"projects_by_id": Dictionary(field_snapshot.projects_by_id).duplicate(true),
 		"intel_by_subject_id": Dictionary(field_snapshot.intel_by_subject_id).duplicate(true),
@@ -6139,8 +6322,13 @@ func dispatch_field_specialist(role: StringName) -> Dictionary:
 	if food < food_cost:
 		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足，无法派遣特殊单位")
 	var war_before := _war_loop_state.get_snapshot()
+	var population_before := _population_recovery.get_snapshot()
 	var local_commit := func() -> Dictionary:
+		if not _population_recovery.allocate_specialist():
+			return {"success": false}
 		var specialist := _war_loop_state.field_tactics.dispatch_specialist(role, &"blackstone_city")
+		if specialist.is_empty():
+			_population_recovery.restore_snapshot(population_before)
 		return {"success": not specialist.is_empty(), "specialist": specialist}
 	var transaction := _nation_state.commit_resource_transaction(
 		NationState.BLACKSTONE_CITY_ID,
@@ -6148,9 +6336,11 @@ func dispatch_field_specialist(role: StringName) -> Dictionary:
 		&"field_specialist_dispatch", local_commit
 	)
 	if not bool(transaction.get("success", false)):
+		_population_recovery.restore_snapshot(population_before)
 		return _macro_failure(&"SPECIALIST_TRANSACTION", "特殊单位派遣未提交")
 	if not bool(_persist_macro_march_checkpoint().get("success", false)):
 		_war_loop_state.restore_snapshot(war_before)
+		_population_recovery.restore_snapshot(population_before)
 		_nation_state.commit_resource_transaction(NationState.BLACKSTONE_CITY_ID,
 			[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": food_cost}],
 			&"field_specialist_dispatch_rollback")
@@ -6175,13 +6365,18 @@ func dispatch_field_specialist_to_target(role: StringName, target_point_id: Stri
 	if food < food_cost:
 		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足，无法派遣特殊单位")
 	var war_before := _war_loop_state.get_snapshot()
+	var population_before := _population_recovery.get_snapshot()
 	var local_commit := func() -> Dictionary:
+		if not _population_recovery.allocate_specialist():
+			return {"success": false}
 		var specialist := _war_loop_state.field_tactics.dispatch_specialist(role, &"blackstone_city")
 		if specialist.is_empty():
+			_population_recovery.restore_snapshot(population_before)
 			return {"success": false}
 		var ordered := _war_loop_state.field_tactics.order_specialist_move(StringName(specialist.get("specialist_id", &"")), target_point_id)
 		if ordered.is_empty():
 			_war_loop_state.restore_snapshot(war_before)
+			_population_recovery.restore_snapshot(population_before)
 			return {"success": false}
 		return {"success": true, "specialist": ordered}
 	var transaction := _nation_state.commit_resource_transaction(
@@ -6190,9 +6385,11 @@ func dispatch_field_specialist_to_target(role: StringName, target_point_id: Stri
 		&"field_specialist_dispatch_and_move", local_commit
 	)
 	if not bool(transaction.get("success", false)):
+		_population_recovery.restore_snapshot(population_before)
 		return _macro_failure(&"SPECIALIST_TRANSACTION", "特殊单位派遣与目标下令未提交")
 	if not bool(_persist_macro_march_checkpoint().get("success", false)):
 		_war_loop_state.restore_snapshot(war_before)
+		_population_recovery.restore_snapshot(population_before)
 		_nation_state.commit_resource_transaction(NationState.BLACKSTONE_CITY_ID,
 			[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": food_cost}],
 			&"field_specialist_dispatch_and_move_rollback")
@@ -6364,6 +6561,89 @@ func begin_field_facility_repair(engineer_id: StringName, facility_id: StringNam
 		_nation_state.commit_resource_transaction(NationState.BLACKSTONE_CITY_ID, [{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": food_cost}], &"field_facility_repair_rollback")
 		return _macro_failure(&"SAVE_FAILED", "设施维修存档失败，资源已回滚")
 	return {"success": true, "project": Dictionary(transaction.local_commit_result.project).duplicate(true), "food_cost": food_cost}
+
+
+func preview_field_facility_upgrade(engineer_id: StringName, facility_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	var preview := _war_loop_state.field_tactics.preview_field_facility_upgrade(engineer_id, facility_id)
+	if not bool(preview.get("valid", false)):
+		return preview
+	preview.affordable = food >= int(preview.get("food_cost", 0))
+	if not bool(preview.affordable):
+		preview.valid = false
+		preview.error = "粮食不足，无法升级外部设施"
+	return preview
+
+
+func begin_field_facility_upgrade(engineer_id: StringName, facility_id: StringName) -> Dictionary:
+	var preview := preview_field_facility_upgrade(engineer_id, facility_id)
+	if not bool(preview.get("valid", false)):
+		return _macro_failure(&"FIELD_FACILITY_UPGRADE_INVALID", str(preview.get("error", "设施升级无效")))
+	var food_cost := int(preview.get("food_cost", 0))
+	var war_before := _war_loop_state.get_snapshot()
+	var local_commit := func() -> Dictionary:
+		var project := _war_loop_state.field_tactics.begin_field_facility_upgrade(engineer_id, facility_id)
+		return {"success": not project.is_empty(), "project": project}
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": food_cost}],
+		&"field_facility_upgrade",
+		local_commit
+	)
+	if not bool(transaction.get("success", false)):
+		return _macro_failure(&"FIELD_FACILITY_UPGRADE_TRANSACTION", "设施升级事务未提交")
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		_nation_state.commit_resource_transaction(
+			NationState.BLACKSTONE_CITY_ID,
+			[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": food_cost}],
+			&"field_facility_upgrade_rollback"
+		)
+		return _macro_failure(&"SAVE_FAILED", "设施升级存档失败，资源已回滚")
+	return {"success": true, "project": Dictionary(transaction.local_commit_result.project).duplicate(true), "food_cost": food_cost}
+
+
+func assign_field_fortress_garrison(facility_id: StringName, army_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	var army := _army_registry.get_army(army_id)
+	var positions := _macro_army_world_positions()
+	if (
+		army.is_empty()
+		or StringName(army.get("phase", &"")) != ArmyRegistry.PHASE_STATIONED
+		or not positions.has(army_id)
+	):
+		return _macro_failure(&"FORTRESS_ARMY_INVALID", "只有位于堡垒范围内的已驻扎军队可以进驻")
+	var war_before := _war_loop_state.get_snapshot()
+	if not _war_loop_state.field_tactics.assign_fortress_garrison(
+		facility_id, army_id, Vector2(positions[army_id])
+	):
+		return _macro_failure(&"FORTRESS_ASSIGN_INVALID", "堡垒已被占用，或军队不在有效范围内")
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		return _macro_failure(&"SAVE_FAILED", "堡垒驻军存档失败，状态已回滚")
+	return {"success": true, "facility_id": facility_id, "army_id": army_id}
+
+
+func release_field_fortress_garrison(facility_id: StringName, army_id: StringName = &"") -> Dictionary:
+	_ensure_war_loop_initialized()
+	var war_before := _war_loop_state.get_snapshot()
+	if not _war_loop_state.field_tactics.release_fortress_garrison(facility_id, army_id):
+		return _macro_failure(&"FORTRESS_RELEASE_INVALID", "该堡垒没有对应驻军")
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		return _macro_failure(&"SAVE_FAILED", "堡垒撤军存档失败，状态已回滚")
+	return {"success": true, "facility_id": facility_id, "army_id": army_id}
+
+
+func clear_discovered_field_mine(facility_id: StringName, engineer_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	var war_before := _war_loop_state.get_snapshot()
+	if not _war_loop_state.field_tactics.clear_discovered_minefield(facility_id, &"player", engineer_id):
+		return _macro_failure(&"MINE_CLEAR_INVALID", "需要由已到达现场的工程师排除已发现地雷")
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		return _macro_failure(&"SAVE_FAILED", "排雷存档失败，地雷状态已回滚")
+	return {"success": true, "facility_id": facility_id}
 
 
 func begin_field_road_repair(engineer_id: StringName, road_id: StringName) -> Dictionary:
@@ -6561,9 +6841,13 @@ func commit_macro_march_from_station(
 	route_id: StringName,
 	route_world_points: Array
 ) -> Dictionary:
+	_ensure_war_loop_initialized()
 	var army := _army_registry.get_army(army_id)
 	if army.is_empty() or StringName(army.phase) != ArmyRegistry.PHASE_STATIONED:
 		return _macro_failure(&"STATION_REQUIRED", "只有已驻扎的军队可以继续发令")
+	var occupied_fortress := _war_loop_state.field_tactics.fortress_for_army(army_id)
+	if not occupied_fortress.is_empty():
+		return _macro_failure(&"FORTRESS_GARRISONED", "该军队正在驻守堡垒；请先执行撤出堡垒")
 	var route_validation := _validate_macro_march_route(StringName(army.target_node_id), target_point_id, route_id, route_world_points)
 	if not bool(route_validation.valid):
 		return _macro_failure(StringName(route_validation.error_id), str(route_validation.error))
@@ -6832,6 +7116,9 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		return {}
 	var registry_before := _army_registry.get_snapshot()
 	var war_before := _war_loop_state.get_snapshot()
+	var population_before := _population_recovery.get_snapshot()
+	var military_before := _current_military_population()
+	var specialists_before := _current_alive_specialists()
 	var activated_invasion_ids := _war_loop_state.field_tactics.activate_configured_invasions(current_day)
 	var field_advance := _war_loop_state.field_tactics.advance_world(
 		whole_milliseconds, _macro_army_world_positions(), _macro_march_traces_for_war_step
@@ -6917,6 +7204,15 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 			if StringName(result.phase) == WarLoopState.PHASE_FAILED:
 				result = _resolve_failed_macro_siege(result)
 				break
+	var military_losses := maxi(military_before - _current_military_population(), 0)
+	var specialist_losses := maxi(specialists_before - _current_alive_specialists(), 0)
+	if military_losses + specialist_losses > 0:
+		if not _population_recovery.record_fallen(military_losses + specialist_losses):
+			_war_loop_state.restore_snapshot(war_before)
+			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+			_population_recovery.restore_snapshot(population_before)
+			return _macro_failure(&"POPULATION_CASUALTY_FAILED", "战区人员损失无法写回人口状态")
+		field_checkpoint_required = true
 	if not result.is_empty() or field_checkpoint_required:
 		_refresh_city_ui()
 		city_state_changed.emit()
@@ -6930,6 +7226,7 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 			_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
 			_war_loop_state.restore_snapshot(war_before)
 			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+			_population_recovery.restore_snapshot(population_before)
 			return _macro_failure(&"SAVE_FAILED", "战区关键状态存档失败，事务已回滚")
 	if result.is_empty() and not resumed_armies.is_empty():
 		field_advance.resumed_army_ids = resumed_armies
@@ -7091,6 +7388,12 @@ func _resolve_field_patrol_encounters(field_advance: Dictionary) -> Dictionary:
 			var army := _army_registry.get_army(army_id)
 			var macro: Dictionary = Dictionary(army.get("macro_march", {}))
 			var remaining_loss := int(losses_by_army.get(army_id, 0))
+			var fortress := field.fortress_for_army(army_id)
+			if not fortress.is_empty() and remaining_loss > 0:
+				var reduction := clampi(int(fortress.get("garrison_casualty_reduction_permille", 0)), 0, 1000)
+				var prevented := mini(remaining_loss, floori(float(remaining_loss * reduction) / 1000.0))
+				if prevented > 0 and field.absorb_fortress_casualties(StringName(fortress.get("watchtower_id", &"")), prevented):
+					remaining_loss -= prevented
 			var formation_losses: Dictionary = {}
 			var formations: Array = Array(macro.get("formation_snapshots", []))
 			for formation_index in range(formations.size() - 1, -1, -1):
@@ -7107,6 +7410,8 @@ func _resolve_field_patrol_encounters(field_advance: Dictionary) -> Dictionary:
 					updated_army = _army_registry.close_macro_field_lost(army_id, StringName(macro.get("order_id", &"")), StringName("field.%s.%d.%s" % [String(patrol_id), int(field_advance.get("world_milliseconds", 0)), String(army_id)]))
 					if updated_army.is_empty():
 						return _macro_failure(&"FIELD_ARMY_CLOSE_FAILED", "野外交战全灭军队无法关闭")
+					if not fortress.is_empty():
+						field.release_fortress_garrison(StringName(fortress.get("watchtower_id", &"")), army_id)
 			formation_losses_by_army[army_id] = formation_losses
 			var army_after := _army_registry.get_army(army_id)
 			army_strength_after_by_army[army_id] = _macro_army_member_count(army_after)
@@ -9142,6 +9447,15 @@ func _apply_durable_expedition_result_atomic(
 		survivors_by_formation_id
 	):
 		return {}
+	var recovery_casualties := _population_recovery.record_casualties(
+		battle_result.casualty_count,
+		RECOVERY_RULES.wounded_permille
+	) if battle_result.casualty_count > 0 else {"casualties": 0, "wounded": 0, "fallen": 0}
+	if recovery_casualties.is_empty() or not _population_recovery.invariant_matches(
+		_current_military_population(), _current_alive_specialists()
+	):
+		_rollback_durable_expedition_settlement(rollback_snapshot)
+		return {}
 
 	var battle_duration_milliseconds := battle_result.get_duration_milliseconds()
 	if battle_duration_milliseconds < 0:
@@ -9226,6 +9540,8 @@ func _apply_durable_expedition_result_atomic(
 		"committed_count": battle_result.committed_count,
 		"survivor_count": battle_result.survivor_count,
 		"casualty_count": battle_result.casualty_count,
+		"wounded_added": int(recovery_casualties.get("wounded", 0)),
+		"fallen_added": int(recovery_casualties.get("fallen", 0)),
 		"enemy_casualties": battle_result.enemy_casualties,
 		"formation_results": normalized_formation_results.duplicate(true),
 		"first_clear_granted": grants_first_clear,
@@ -9442,11 +9758,20 @@ func _apply_macro_siege_battle_result_atomic(
 		losses_by_formation_id[formation_id] = int(original.get("member_count", 0)) - int(formation_result.get("survivor_count", 0))
 	var registry_before := _army_registry.get_snapshot()
 	var war_before := _war_loop_state.get_snapshot()
+	var population_before := _population_recovery.get_snapshot()
 	_battle_result_commit_in_flight_ids[battle_result.result_id] = true
 	var updated_army := _army_registry.apply_macro_formation_losses(
 		army_id, StringName(macro.get("order_id", &"")), losses_by_formation_id
 	)
 	if updated_army.is_empty():
+		_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
+		return {}
+	var recovery_casualties := _population_recovery.record_casualties(
+		battle_result.casualty_count, RECOVERY_RULES.wounded_permille
+	) if battle_result.casualty_count > 0 else {"casualties": 0, "wounded": 0, "fallen": 0}
+	if recovery_casualties.is_empty() or not _population_recovery.invariant_matches(_current_military_population(), _current_alive_specialists()):
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		_population_recovery.restore_snapshot(population_before)
 		_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
 		return {}
 	var resolved := _war_loop_state.resolve_wartime_handoff(
@@ -9461,6 +9786,7 @@ func _apply_macro_siege_battle_result_atomic(
 	)
 	if resolved.is_empty():
 		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		_population_recovery.restore_snapshot(population_before)
 		_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
 		return {}
 	var settled: Dictionary = {}
@@ -9471,6 +9797,7 @@ func _apply_macro_siege_battle_result_atomic(
 	if not bool(settled.get("success", false)):
 		_war_loop_state.restore_snapshot(war_before)
 		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		_population_recovery.restore_snapshot(population_before)
 		_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
 		return {}
 	var summary := {
@@ -9485,6 +9812,8 @@ func _apply_macro_siege_battle_result_atomic(
 		"committed_count": battle_result.committed_count,
 		"survivor_count": battle_result.survivor_count,
 		"casualty_count": battle_result.casualty_count,
+		"wounded_added": int(recovery_casualties.get("wounded", 0)),
+		"fallen_added": int(recovery_casualties.get("fallen", 0)),
 		"enemy_casualties": battle_result.enemy_casualties,
 		"formation_results": battle_result.formation_results.duplicate(true),
 		"actual_food_cost": 0,
@@ -9500,6 +9829,7 @@ func _apply_macro_siege_battle_result_atomic(
 	if not bool(_persist_macro_march_checkpoint().get("success", false)):
 		_war_loop_state.restore_snapshot(war_before)
 		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		_population_recovery.restore_snapshot(population_before)
 		_committed_battle_result_ids.erase(battle_result.result_id)
 		_closed_battle_transactions.erase(battle_result.transaction_id)
 		return {}
@@ -9594,6 +9924,8 @@ func _apply_army_battle_result_atomic(
 	if duration_milliseconds < 0:
 		return {}
 	_battle_result_commit_in_flight_ids[battle_result.result_id] = true
+	var registry_before := _army_registry.get_snapshot()
+	var population_before := _population_recovery.get_snapshot()
 	var time_before_day := current_day
 	var time_before_milliseconds := get_day_elapsed_milliseconds()
 	var advanced_days := _advance_city_time_for_battle_settlement(
@@ -9611,6 +9943,14 @@ func _apply_army_battle_result_atomic(
 	):
 		_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
 		return {}
+	var recovery_casualties := _population_recovery.record_casualties(
+		battle_result.casualty_count, RECOVERY_RULES.wounded_permille
+	) if battle_result.casualty_count > 0 else {"casualties": 0, "wounded": 0, "fallen": 0}
+	if recovery_casualties.is_empty() or not _population_recovery.invariant_matches(_current_military_population(), _current_alive_specialists()):
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		_population_recovery.restore_snapshot(population_before)
+		_battle_result_commit_in_flight_ids.erase(battle_result.result_id)
+		return {}
 	var summary := {
 		"result_id": battle_result.result_id,
 		"transaction_id": battle_result.transaction_id,
@@ -9622,6 +9962,8 @@ func _apply_army_battle_result_atomic(
 		"committed_count": battle_result.committed_count,
 		"survivor_count": battle_result.survivor_count,
 		"casualty_count": battle_result.casualty_count,
+		"wounded_added": int(recovery_casualties.get("wounded", 0)),
+		"fallen_added": int(recovery_casualties.get("fallen", 0)),
 		"enemy_casualties": battle_result.enemy_casualties,
 		"disposition": disposition,
 		"battle_duration_milliseconds": duration_milliseconds,
@@ -9784,6 +10126,8 @@ func _get_training_failure_id(
 		return &"UNKNOWN_UNIT_DEFINITION"
 	if quantity <= 0 or quantity != get_training_batch_size():
 		return &"INVALID_TRAINING_QUANTITY"
+	if _population_recovery.available < quantity:
+		return &"INSUFFICIENT_AVAILABLE_POPULATION"
 	if supply_shortage:
 		return &"SUPPLY_SHORTAGE"
 	var future_total := _garrison_state.get_total_count() + quantity
@@ -9820,6 +10164,20 @@ func request_training(
 	var food_cost := (
 		requested_quantity * INFANTRY_ROLE.recruit_food_per_unit
 	)
+	var queue_before := _training_queue.get_snapshot()
+	var population_before := _population_recovery.get_snapshot()
+	var local_commit := func() -> Dictionary:
+		if not _population_recovery.reserve_training(requested_quantity):
+			return {"success": false}
+		var order := _training_queue.enqueue(
+			StringName(unit_definition_id), requested_quantity, current_day,
+			current_day + 1, food_cost
+		)
+		if order.is_empty():
+			_population_recovery.restore_snapshot(population_before)
+			_training_queue.restore_snapshot(queue_before)
+			return {"success": false}
+		return {"success": true, "order": order}
 	var transaction: Dictionary = _nation_state.commit_resource_transaction(
 		NationState.BLACKSTONE_CITY_ID,
 		[{
@@ -9827,14 +10185,7 @@ func request_training(
 			"operation": NationState.RESOURCE_OPERATION_SPEND,
 			"amount": food_cost,
 		}],
-		&"training_order",
-		Callable(_training_queue, "enqueue").bind(
-			StringName(unit_definition_id),
-			requested_quantity,
-			current_day,
-			current_day + 1,
-			food_cost
-		)
+		&"training_order", local_commit
 	)
 	if not bool(transaction.success):
 		_last_training_failure_id = (
@@ -9847,7 +10198,7 @@ func request_training(
 			"error_id": _last_training_failure_id,
 			"order": {},
 		}
-	var order: Dictionary = transaction.local_commit_result.duplicate(true)
+	var order: Dictionary = Dictionary(transaction.local_commit_result.get("order", {})).duplicate(true)
 	_last_training_failure_id = &""
 	_refresh_city_ui()
 	city_state_changed.emit()
@@ -9886,6 +10237,7 @@ func get_training_blocked_reason() -> Dictionary:
 		&"RECRUITMENT_CAPACITY": "驻军已达征募容量",
 		&"COMMAND_LIMIT": "驻军将超过指挥上限",
 		&"INSUFFICIENT_FOOD": "粮食不足",
+		&"INSUFFICIENT_AVAILABLE_POPULATION": "可用人口不足",
 	}
 	return {
 		"blocked": error_id != &"",
@@ -9993,18 +10345,41 @@ func emergency_mobilization() -> bool:
 		current_day != FIRST_MAP_THREAT_SCHEDULE.max_day
 		or emergency_mobilization_used
 		or food < EMERGENCY_MOBILIZATION_FOOD_COST
+		or _population_recovery.available < EMERGENCY_MOBILIZATION_INFANTRY
 	):
 		return false
+	var population_before := _population_recovery.get_snapshot()
+	var local_commit := func() -> Dictionary:
+		if not _population_recovery.allocate_to_military(EMERGENCY_MOBILIZATION_INFANTRY):
+			return {"success": false}
+		return {"success": true}
 	if not _commit_national_resources(
 		[{
 			"resource_id": &"food",
 			"operation": NationState.RESOURCE_OPERATION_SPEND,
 			"amount": EMERGENCY_MOBILIZATION_FOOD_COST,
 		}],
-		&"emergency_mobilization"
+		&"emergency_mobilization",
+		local_commit
 	):
+		_population_recovery.restore_snapshot(population_before)
 		return false
 	infantry_count += EMERGENCY_MOBILIZATION_INFANTRY
+	if not _population_recovery.invariant_matches(
+		_current_military_population(), _current_alive_specialists()
+	):
+		infantry_count -= EMERGENCY_MOBILIZATION_INFANTRY
+		_population_recovery.restore_snapshot(population_before)
+		_nation_state.commit_resource_transaction(
+			NationState.BLACKSTONE_CITY_ID,
+			[{
+				"resource_id": &"food",
+				"operation": NationState.RESOURCE_OPERATION_ADD,
+				"amount": EMERGENCY_MOBILIZATION_FOOD_COST,
+			}],
+			&"emergency_mobilization_rollback"
+		)
+		return false
 	emergency_mobilization_used = true
 	_refresh_city_ui()
 	city_state_changed.emit()
@@ -10183,6 +10558,8 @@ func restart_first_map() -> bool:
 	_training_queue.clear()
 	_last_training_failure_id = &""
 	_army_registry = ARMY_REGISTRY.new()
+	_population_recovery = POPULATION_RECOVERY_STATE.new()
+	_population_recovery.initialize_fresh(RECOVERY_RULES, _garrison_state.get_total_count())
 	_active_army_dispatch_reservation = {}
 	_next_army_dispatch_transaction_sequence = 1
 	_active_army_encounter = {}

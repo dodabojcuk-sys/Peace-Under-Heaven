@@ -3,7 +3,8 @@ extends RefCounted
 
 
 const MACRO_MARCH_THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
-const SCHEMA_VERSION := 12
+const POPULATION_RECOVERY_STATE = preload("res://scripts/state/population_recovery_state.gd")
+const SCHEMA_VERSION := 13
 const SNAPSHOT_KIND := &"campaign_authoritative"
 const CITY_ID := "blackstone_city"
 const ROOT_KEYS := [
@@ -20,6 +21,13 @@ const ROOT_KEYS := [
 	"mainline_level",
 	"build_slot",
 	"expedition_attempt",
+	"war_loop",
+	"population_recovery",
+]
+const V12_ROOT_KEYS := [
+	"schema_version", "snapshot_kind", "city_id", "city", "placements",
+	"next_placement_id", "garrison", "training_queue", "army_registry",
+	"settlement_ledger", "mainline_level", "build_slot", "expedition_attempt",
 	"war_loop",
 ]
 const V6_ROOT_KEYS := [
@@ -209,7 +217,8 @@ static func validate_structure(
 		)
 	var source_version := int(snapshot.get("schema_version", 0))
 	if (
-		(source_version in [7, 8, 9, 10, 11, SCHEMA_VERSION] and not _has_exact_keys(snapshot, ROOT_KEYS))
+		(source_version == SCHEMA_VERSION and not _has_exact_keys(snapshot, ROOT_KEYS))
+		or (source_version in [7, 8, 9, 10, 11, 12] and not _has_exact_keys(snapshot, V12_ROOT_KEYS))
 		or (source_version == 6 and not _has_exact_keys(snapshot, V6_ROOT_KEYS))
 		or (source_version == 5 and not _has_exact_keys(snapshot, V5_ROOT_KEYS))
 		or (source_version == 4 and not _has_exact_keys(snapshot, V4_ROOT_KEYS))
@@ -218,7 +227,7 @@ static func validate_structure(
 		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段不完整或含未知字段")
 	if (
 		typeof(snapshot.schema_version) != TYPE_INT
-		or int(snapshot.schema_version) not in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, SCHEMA_VERSION]
+		or int(snapshot.schema_version) not in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, SCHEMA_VERSION]
 		or typeof(snapshot.snapshot_kind) != TYPE_STRING_NAME
 		or StringName(snapshot.snapshot_kind) != SNAPSHOT_KIND
 		or typeof(snapshot.city_id) != TYPE_STRING
@@ -230,6 +239,10 @@ static func validate_structure(
 		or typeof(snapshot.training_queue) != TYPE_DICTIONARY
 		or typeof(snapshot.army_registry) != TYPE_DICTIONARY
 		or typeof(snapshot.settlement_ledger) != TYPE_DICTIONARY
+		or (
+			source_version == SCHEMA_VERSION
+			and typeof(snapshot.get("population_recovery", null)) != TYPE_DICTIONARY
+		)
 	):
 		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段类型或身份错误")
 	if not _is_persistence_value(snapshot):
@@ -291,6 +304,11 @@ static func validate_structure(
 		if not bool(migration.valid):
 			return migration
 		normalized = migration.snapshot
+	if int(normalized.schema_version) == 12:
+		var migration := _migrate_v12_population_recovery(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
 	if typeof(normalized.get("war_loop", null)) != TYPE_DICTIONARY:
 		return _failure(&"INVALID_WAR_LOOP", "WarLoop 快照字段非法")
 	# WarLoop owns its nested R1 -> R2 migration.  Normalize it here so the
@@ -349,6 +367,11 @@ static func validate_structure(
 			StringName(queue_result.error_id),
 			"TrainingQueue 校验失败"
 		)
+	var population_result := POPULATION_RECOVERY_STATE.validate_snapshot(
+		Dictionary(normalized.population_recovery)
+	)
+	if not bool(population_result.get("valid", false)):
+		return _failure(&"INVALID_POPULATION_RECOVERY", "人口与恢复状态校验失败")
 	var army_result := ArmyRegistry.validate_snapshot(
 		normalized.army_registry,
 		allowed_unit_definition_ids,
@@ -359,6 +382,17 @@ static func validate_structure(
 			StringName(army_result.error_id),
 			"ArmyRegistry 校验失败"
 		)
+	var armies_by_id := Dictionary(Dictionary(army_result.snapshot).get("armies_by_id", {}))
+	for facility_value in Dictionary(Dictionary(normalized.war_loop).get("field_tactics", {})).get("watchtowers_by_id", {}).values():
+		var facility: Dictionary = Dictionary(facility_value)
+		if StringName(facility.get("facility_kind", &"")) != &"FORTRESS":
+			continue
+		var garrison_army_id := StringName(facility.get("garrison_army_id", &""))
+		if garrison_army_id == &"":
+			continue
+		var garrison_army := Dictionary(armies_by_id.get(garrison_army_id, {}))
+		if garrison_army.is_empty() or StringName(garrison_army.get("phase", &"")) != &"STATIONED":
+			return _failure(&"INVALID_FORTRESS_GARRISON", "堡垒驻军必须引用一支真实驻扎军队")
 	# ArmyRegistry owns its own schema migration.  Persist the normalized
 	# registry so a restored schema-1 army snapshot cannot fail the controller's
 	# exact postcondition after the macro-march extension writes schema 2.
@@ -604,7 +638,7 @@ static func _migrate_v6_war_loop(snapshot: Dictionary) -> Dictionary:
 
 static func _migrate_v7_wartime_facilities(snapshot: Dictionary) -> Dictionary:
 	var normalized := snapshot.duplicate(true)
-	if not _has_exact_keys(normalized, ROOT_KEYS):
+	if not _has_exact_keys(normalized, V12_ROOT_KEYS):
 		return _failure(&"INVALID_ROOT", "V7 CampaignSnapshot 根字段非法")
 	var attempt: Dictionary = Dictionary(normalized.expedition_attempt)
 	if not attempt.is_empty():
@@ -618,7 +652,7 @@ static func _migrate_v7_wartime_facilities(snapshot: Dictionary) -> Dictionary:
 
 static func _migrate_v8_battle_session(snapshot: Dictionary) -> Dictionary:
 	var normalized := snapshot.duplicate(true)
-	if not _has_exact_keys(normalized, ROOT_KEYS):
+	if not _has_exact_keys(normalized, V12_ROOT_KEYS):
 		return _failure(&"INVALID_ROOT", "V8 CampaignSnapshot 根字段非法")
 	var attempt: Dictionary = Dictionary(normalized.expedition_attempt)
 	if not attempt.is_empty():
@@ -632,7 +666,7 @@ static func _migrate_v8_battle_session(snapshot: Dictionary) -> Dictionary:
 
 static func _migrate_v9_battle_source(snapshot: Dictionary) -> Dictionary:
 	var normalized := snapshot.duplicate(true)
-	if not _has_exact_keys(normalized, ROOT_KEYS):
+	if not _has_exact_keys(normalized, V12_ROOT_KEYS):
 		return _failure(&"INVALID_ROOT", "V9 CampaignSnapshot 根字段非法")
 	var attempt: Dictionary = Dictionary(normalized.expedition_attempt)
 	if not attempt.is_empty():
@@ -650,7 +684,7 @@ static func _migrate_v9_battle_source(snapshot: Dictionary) -> Dictionary:
 
 static func _migrate_v10_terminal_result(snapshot: Dictionary) -> Dictionary:
 	var normalized := snapshot.duplicate(true)
-	if not _has_exact_keys(normalized, ROOT_KEYS):
+	if not _has_exact_keys(normalized, V12_ROOT_KEYS):
 		return _failure(&"INVALID_ROOT", "V10 CampaignSnapshot 根字段非法")
 	var attempt: Dictionary = Dictionary(normalized.expedition_attempt)
 	if not attempt.is_empty():
@@ -669,7 +703,7 @@ static func _migrate_v10_terminal_result(snapshot: Dictionary) -> Dictionary:
 
 static func _migrate_v11_invasion_source(snapshot: Dictionary) -> Dictionary:
 	var normalized := snapshot.duplicate(true)
-	if not _has_exact_keys(normalized, ROOT_KEYS):
+	if not _has_exact_keys(normalized, V12_ROOT_KEYS):
 		return _failure(&"INVALID_ROOT", "V11 CampaignSnapshot 根字段非法")
 	var attempt: Dictionary = Dictionary(normalized.expedition_attempt)
 	if not attempt.is_empty():
@@ -680,6 +714,48 @@ static func _migrate_v11_invasion_source(snapshot: Dictionary) -> Dictionary:
 		attempt.source_point_id = &""
 		attempt.source_route_name = ""
 		normalized.expedition_attempt = attempt
+	normalized.schema_version = 12
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _migrate_v12_population_recovery(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, V12_ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V12 CampaignSnapshot 根字段非法")
+	var military_count := 0
+	for value in Dictionary(Dictionary(normalized.garrison).get("unit_counts_by_definition_id", {})).values():
+		military_count += int(value)
+	for army_value in Dictionary(Dictionary(normalized.army_registry).get("armies_by_id", {})).values():
+		var army: Dictionary = Dictionary(army_value)
+		if StringName(army.get("phase", &"")) == &"CLOSED":
+			continue
+		for value in Dictionary(army.get("units_by_definition_id", {})).values():
+			military_count += int(value)
+	var specialist_count := 0
+	var war_loop := Dictionary(normalized.war_loop)
+	var field := Dictionary(war_loop.get("field_tactics", {}))
+	for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
+		if bool(Dictionary(specialist_value).get("alive", false)):
+			specialist_count += 1
+	var queue := Dictionary(normalized.training_queue)
+	var active_order_id := StringName(queue.get("active_order_id", &""))
+	var active_order := Dictionary(Dictionary(queue.get("orders_by_id", {})).get(active_order_id, {}))
+	var training_reserved := int(active_order.get("quantity", 0))
+	var production_workers := 12
+	var construction_workers := 12
+	var total_living := maxi(72, military_count + specialist_count + training_reserved + production_workers + construction_workers)
+	normalized.population_recovery = {
+		"schema_version": POPULATION_RECOVERY_STATE.SCHEMA_VERSION,
+		"total_living": total_living,
+		"available": total_living - military_count - specialist_count - training_reserved - production_workers - construction_workers,
+		"production_workers": production_workers,
+		"construction_workers": construction_workers,
+		"training_reserved": training_reserved,
+		"wounded": 0,
+		"fallen": 0,
+		"next_treatment_sequence": 1,
+		"treatment": POPULATION_RECOVERY_STATE.empty_treatment(),
+	}
 	normalized.schema_version = SCHEMA_VERSION
 	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
 

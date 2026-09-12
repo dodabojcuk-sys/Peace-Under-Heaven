@@ -1910,3 +1910,36 @@ one 17.01-second continuous Godot recording are in `docs/m0/evidence/r0a/`.
 
 Founder live smoke remains pending. Do not push, merge, deploy, or start new
 gameplay from this result.
+
+## 2026-09-12 - Blackstone recovery and defense expansion R0
+
+Blackstone now has one formal aggregate population/recovery state under the
+existing campaign snapshot. A normal start accounts for available residents,
+production and construction workers, the garrison, external armies,
+specialists, training reservations and wounded. Training reserves people;
+formal battle settlement records wounded/fallen once; treatment pays existing
+food and advances on city time. Fallen are not recoverable.
+
+The field catalogue now includes fortresses and minefields beside roads,
+bridges, camps, watchtowers, arrow towers and barricades. A fortress protects
+one real stationed army and converts configured avoided casualties into durable
+facility damage. Minefields trigger on actual patrol movement segments, retain
+finite consumed charges and support faction-aware discovery and engineer
+clearing. Existing facilities can reach level two through a paid, interruptible,
+recoverable engineer project without changing identity or receiving a free
+repair.
+
+Blackstone, Silverford and occupied Redcliff now read one centralized location
+capability definition. Only Blackstone exposes long-term city construction;
+Silverford retains its resource-city supply/replenishment role; Redcliff remains
+a garrison/order point after occupation.
+
+Focused and affected regressions, editor import, isolated startup and the
+1152x648 graphical layout runner pass. The deterministic continuous runner
+covers sourced invasion, defense, treatment, re-dispatch, macro siege and
+Redcliff occupation without editing combat outcome or control. It uses formal
+time acceleration, so a single normal-speed human journey and player-feel
+acceptance remain `OPEN`.
+
+Disease, seasons, public-order depth, civilian officials, equipment and trade
+remain explicit functional-edition gaps.

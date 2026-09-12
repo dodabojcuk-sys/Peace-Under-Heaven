@@ -359,3 +359,28 @@ Road-damage checks start at
   snapshot per independent scenario. This prevents normal persistence
   publication from leaking one test route's armies or patrol results into the
   next one; dedicated multi-process workers continue to prove disk recovery.
+
+## 2026-09-12 - Population, recovery, location capability and field-defense ownership
+
+- `PopulationRecoveryState` is the only aggregate population allocation and
+  casualty/recovery authority. `GarrisonState`, `ArmyRegistry`, `TrainingQueue`
+  and `FieldTacticsState` keep their existing domain identities; population
+  validates their totals instead of replacing them.
+- Training, specialist dispatch, battle casualties and treatment are atomic
+  cross-authority operations. A settlement creates wounded/fallen facts; a
+  medical screen never invents casualties, and fallen never re-enter a roster.
+- Recovery parameters are authored in one adjustable resource. They are R0
+  balance inputs, not scattered UI constants or an individual-NPC simulation.
+- Location capability is a stable theatre-definition property, independent of
+  military control and display name. Occupation changes controller, not city
+  class or construction permission.
+- Fortress garrison identity is a real stationed `ArmyRegistry` army. Hidden
+  soldiers or a second fortress roster are prohibited.
+- Mine ownership, discovery, charge use and destruction are persistent field
+  facts. Player read models hide hostile mines until the existing specialist
+  rules discover them.
+- A field facility keeps its original effect while upgrading. Completion changes
+  configured parameters while preserving durability ratio; upgrade, repair and
+  C0 temporary construction remain distinct transactions and lifecycles.
+- Automated accelerated flow and engine-GUI screenshots are implementation
+  evidence only. Normal-speed human acceptance remains a separate open gate.

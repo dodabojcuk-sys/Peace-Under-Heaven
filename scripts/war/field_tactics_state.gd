@@ -33,10 +33,13 @@ const INVASION_RESOLVED := &"RESOLVED"
 const FACILITY_WATCHTOWER := &"WATCHTOWER"
 const FACILITY_ARROW_TOWER := &"ARROW_TOWER"
 const FACILITY_BARRICADE := &"BARRICADE"
+const FACILITY_FORTRESS := &"FORTRESS"
+const FACILITY_MINEFIELD := &"MINEFIELD"
 const FACILITY_ACTIVE := &"ACTIVE"
 const FACILITY_DAMAGED := &"DAMAGED"
 const FACILITY_DESTROYED := &"DESTROYED"
 const PROJECT_FACILITY_REPAIR := &"FACILITY_REPAIR"
+const PROJECT_FACILITY_UPGRADE := &"FACILITY_UPGRADE"
 const SUPPLY_MOVING := &"MOVING"
 const SUPPLY_WAITING_ROUTE := &"WAITING_ROUTE"
 const SUPPLY_WAITING_CAPACITY := &"WAITING_CAPACITY"
@@ -519,7 +522,7 @@ func preview_road_project(
 ## tower itself is an additional observer only after its engineer finishes.
 func preview_watchtower_project(engineer_id: StringName, camp_id: StringName, world_position: Vector2i, facility_kind: StringName = FACILITY_WATCHTOWER) -> Dictionary:
 	var facility_config := _field_facility_config(facility_kind)
-	if facility_kind not in [FACILITY_WATCHTOWER, FACILITY_ARROW_TOWER, FACILITY_BARRICADE] or facility_config.is_empty():
+	if facility_kind not in [FACILITY_WATCHTOWER, FACILITY_ARROW_TOWER, FACILITY_BARRICADE, FACILITY_FORTRESS, FACILITY_MINEFIELD] or facility_config.is_empty():
 		return {"valid": false, "error": "未知的外部设施类型"}
 	var facility_name := str(facility_config.get("display_name", "瞭望塔"))
 	var engineer := Dictionary(specialists_by_id.get(engineer_id, {}))
@@ -587,6 +590,9 @@ func preview_watchtower_project(engineer_id: StringName, camp_id: StringName, wo
 		"damage": maxi(int(facility_config.get("damage", 0)), 0),
 		"route_delay_milliseconds": maxi(int(facility_config.get("route_delay_milliseconds", 0)), 0),
 		"collision_damage": maxi(int(facility_config.get("collision_damage", 0)), 0),
+		"garrison_casualty_reduction_permille": clampi(int(facility_config.get("garrison_casualty_reduction_permille", 0)), 0, 1000),
+		"mine_charges": maxi(int(facility_config.get("mine_charges", 0)), 0),
+		"mine_damage": maxi(int(facility_config.get("mine_damage", 0)), 0),
 		"engineer_movement_plan": movement_plan.duplicate(true),
 		"travel_milliseconds": int(movement_plan.get("duration_milliseconds", 0)) if start_position.distance_to(Vector2(world_position)) > 0.01 else 0,
 	}
@@ -627,6 +633,9 @@ func begin_watchtower_project(engineer_id: StringName, camp_id: StringName, worl
 		"damage": int(preview.get("damage", 0)),
 		"route_delay_milliseconds": int(preview.get("route_delay_milliseconds", 0)),
 		"collision_damage": int(preview.get("collision_damage", 0)),
+		"garrison_casualty_reduction_permille": int(preview.get("garrison_casualty_reduction_permille", 0)),
+		"mine_charges": int(preview.get("mine_charges", 0)),
+		"mine_damage": int(preview.get("mine_damage", 0)),
 		"segment_plans": [],
 		"build_camp": false,
 		"phase": &"TRAVELING" if travel_milliseconds > 0 else &"BUILDING",
@@ -670,6 +679,112 @@ func _field_facility_project_for_camp(camp_id: StringName, facility_kind: String
 	return &""
 
 
+func assign_fortress_garrison(
+	facility_id: StringName,
+	army_id: StringName,
+	army_world_position: Vector2
+) -> bool:
+	var facility := Dictionary(watchtowers_by_id.get(facility_id, {}))
+	if (
+		facility.is_empty()
+		or StringName(facility.get("facility_kind", &"")) != FACILITY_FORTRESS
+		or StringName(facility.get("state", FACILITY_ACTIVE)) == FACILITY_DESTROYED
+		or army_id == &""
+		or Vector2(facility.get("world_position", Vector2.INF)).distance_to(army_world_position)
+			> float(facility.get("effect_range", 70))
+	):
+		return false
+	for other_value in watchtowers_by_id.values():
+		if StringName(Dictionary(other_value).get("garrison_army_id", &"")) == army_id:
+			return false
+	if StringName(facility.get("garrison_army_id", &"")) != &"":
+		return false
+	facility.garrison_army_id = army_id
+	watchtowers_by_id[facility_id] = facility
+	return true
+
+
+func release_fortress_garrison(facility_id: StringName, army_id: StringName = &"") -> bool:
+	var facility := Dictionary(watchtowers_by_id.get(facility_id, {}))
+	if facility.is_empty() or StringName(facility.get("facility_kind", &"")) != FACILITY_FORTRESS:
+		return false
+	var assigned_id := StringName(facility.get("garrison_army_id", &""))
+	if assigned_id == &"" or (army_id != &"" and assigned_id != army_id):
+		return false
+	facility.garrison_army_id = &""
+	watchtowers_by_id[facility_id] = facility
+	return true
+
+
+func fortress_for_army(army_id: StringName) -> Dictionary:
+	for facility_value in watchtowers_by_id.values():
+		var facility: Dictionary = Dictionary(facility_value)
+		if (
+			StringName(facility.get("facility_kind", &"")) == FACILITY_FORTRESS
+			and StringName(facility.get("garrison_army_id", &"")) == army_id
+			and StringName(facility.get("state", FACILITY_ACTIVE)) != FACILITY_DESTROYED
+		):
+			return facility.duplicate(true)
+	return {}
+
+
+func discover_minefield(facility_id: StringName, faction_id: StringName, specialist_id: StringName) -> bool:
+	var facility := Dictionary(watchtowers_by_id.get(facility_id, {}))
+	var specialist := Dictionary(specialists_by_id.get(specialist_id, {}))
+	if (
+		facility.is_empty()
+		or StringName(facility.get("facility_kind", &"")) != FACILITY_MINEFIELD
+		or faction_id == &""
+		or specialist.is_empty()
+		or not bool(specialist.get("alive", false))
+		or StringName(specialist.get("role", &"")) not in [SPECIALIST_SCOUT, SPECIALIST_ENGINEER]
+		or Vector2(specialist.get("world_position", Vector2.INF)).distance_to(Vector2(facility.get("world_position", Vector2.ZERO))) > float(scout_visibility_range)
+	):
+		return false
+	var discovered: Array = Array(facility.get("discovered_by_faction_ids", []))
+	if faction_id not in discovered:
+		discovered.append(faction_id)
+	facility.discovered_by_faction_ids = discovered
+	watchtowers_by_id[facility_id] = facility
+	return true
+
+
+func clear_discovered_minefield(facility_id: StringName, faction_id: StringName, engineer_id: StringName) -> bool:
+	var facility := Dictionary(watchtowers_by_id.get(facility_id, {}))
+	var engineer := Dictionary(specialists_by_id.get(engineer_id, {}))
+	if (
+		facility.is_empty()
+		or StringName(facility.get("facility_kind", &"")) != FACILITY_MINEFIELD
+		or faction_id not in Array(facility.get("discovered_by_faction_ids", []))
+		or engineer.is_empty()
+		or not bool(engineer.get("alive", false))
+		or StringName(engineer.get("role", &"")) != SPECIALIST_ENGINEER
+		or Vector2(engineer.get("world_position", Vector2.INF)).distance_to(Vector2(facility.get("world_position", Vector2.ZERO))) > float(scout_visibility_range)
+	):
+		return false
+	facility.mine_charges = 0
+	facility.durability = 0
+	facility.state = FACILITY_DESTROYED
+	watchtowers_by_id[facility_id] = facility
+	return true
+
+
+func absorb_fortress_casualties(facility_id: StringName, prevented_count: int) -> bool:
+	var facility := Dictionary(watchtowers_by_id.get(facility_id, {}))
+	if (
+		facility.is_empty()
+		or StringName(facility.get("facility_kind", &"")) != FACILITY_FORTRESS
+		or prevented_count <= 0
+	):
+		return false
+	facility.durability = maxi(int(facility.get("durability", 0)) - prevented_count * 10, 0)
+	facility.state = FACILITY_DESTROYED if int(facility.durability) <= 0 else FACILITY_DAMAGED
+	if StringName(facility.state) == FACILITY_DESTROYED:
+		facility.garrison_army_id = &""
+	watchtowers_by_id[facility_id] = facility
+	return true
+
+
 func _field_facility_config(facility_kind: StringName) -> Dictionary:
 	if facility_kind == FACILITY_WATCHTOWER:
 		return {
@@ -679,6 +794,8 @@ func _field_facility_config(facility_kind: StringName) -> Dictionary:
 			"max_durability": 100,
 			"visibility_range": int(watchtower_config.get("visibility_range", 360)),
 			"effect_range": int(watchtower_config.get("visibility_range", 360)),
+			"upgrade_food_cost": int(watchtower_config.get("upgrade_food_cost", 6)),
+			"upgrade_required_milliseconds": int(watchtower_config.get("upgrade_required_milliseconds", 7000)),
 		}
 	return Dictionary(Dictionary(watchtower_config.get("field_facilities", {})).get(facility_kind, {})).duplicate(true)
 
@@ -700,7 +817,10 @@ func preview_field_facility_repair(engineer_id: StringName, facility_id: StringN
 	var movement_plan := _plan_specialist_land_path(start_position, work_position)
 	if movement_plan.is_empty():
 		return {"valid": false, "error": "工程师无法到达受损设施"}
-	return {"valid": true, "engineer_id": engineer_id, "facility_id": facility_id, "facility_kind": StringName(facility.get("facility_kind", &"")), "food_cost": 3, "required_milliseconds": 4000, "travel_milliseconds": int(movement_plan.get("duration_milliseconds", 0)) if start_position.distance_to(work_position) > 0.01 else 0, "engineer_movement_plan": movement_plan.duplicate(true), "world_position": Vector2i(work_position)}
+	var facility_kind := StringName(facility.get("facility_kind", &""))
+	if facility_kind == FACILITY_MINEFIELD and StringName(facility.get("owner_faction_id", &"player")) != &"player":
+		return {"valid": false, "error": "敌方地雷不能维修，只能由工程师排除"}
+	return {"valid": true, "engineer_id": engineer_id, "facility_id": facility_id, "facility_kind": facility_kind, "food_cost": 3, "required_milliseconds": 4000, "restore_mine_charges": maxi(int(_field_facility_config(facility_kind).get("mine_charges", 0)), 0), "travel_milliseconds": int(movement_plan.get("duration_milliseconds", 0)) if start_position.distance_to(work_position) > 0.01 else 0, "engineer_movement_plan": movement_plan.duplicate(true), "world_position": Vector2i(work_position)}
 
 
 func begin_field_facility_repair(engineer_id: StringName, facility_id: StringName) -> Dictionary:
@@ -713,7 +833,7 @@ func begin_field_facility_repair(engineer_id: StringName, facility_id: StringNam
 	next_project_sequence += 1
 	var travel := int(preview.get("travel_milliseconds", 0))
 	var work_position := Vector2i(preview.get("world_position", Vector2i.ZERO))
-	var project := {"project_id": project_id, "project_kind": PROJECT_FACILITY_REPAIR, "engineer_id": engineer_id, "road_id": StringName(Dictionary(camps_by_id.get(StringName(facility.get("camp_id", &"")), {})).get("road_id", &"")), "source_point_id": StringName(engineer.get("current_point_id", &"")), "target_point_id": StringName(Dictionary(camps_by_id.get(StringName(facility.get("camp_id", &"")), {})).get("point_id", &"")), "facility_id": facility_id, "facility_kind": StringName(facility.get("facility_kind", &"")), "work_world_position": work_position, "route_world_points": [work_position], "road_kind": ROAD_NORMAL, "progress_milliseconds": 0, "travel_milliseconds": travel, "required_milliseconds": int(preview.get("required_milliseconds", 4000)), "segment_plans": [], "build_camp": false, "phase": &"TRAVELING" if travel > 0 else &"BUILDING"}
+	var project := {"project_id": project_id, "project_kind": PROJECT_FACILITY_REPAIR, "engineer_id": engineer_id, "road_id": StringName(Dictionary(camps_by_id.get(StringName(facility.get("camp_id", &"")), {})).get("road_id", &"")), "source_point_id": StringName(engineer.get("current_point_id", &"")), "target_point_id": StringName(Dictionary(camps_by_id.get(StringName(facility.get("camp_id", &"")), {})).get("point_id", &"")), "facility_id": facility_id, "facility_kind": StringName(facility.get("facility_kind", &"")), "work_world_position": work_position, "route_world_points": [work_position], "road_kind": ROAD_NORMAL, "progress_milliseconds": 0, "travel_milliseconds": travel, "required_milliseconds": int(preview.get("required_milliseconds", 4000)), "restore_mine_charges": int(preview.get("restore_mine_charges", 0)), "segment_plans": [], "build_camp": false, "phase": &"TRAVELING" if travel > 0 else &"BUILDING"}
 	projects_by_id[project_id] = project
 	engineer.project_id = project_id
 	engineer.target_point_id = StringName(project.target_point_id)
@@ -724,6 +844,88 @@ func begin_field_facility_repair(engineer_id: StringName, facility_id: StringNam
 	engineer.move_elapsed_milliseconds = 0
 	engineer.move_remaining_milliseconds = travel
 	engineer.phase = SPECIALIST_MOVING if travel > 0 else SPECIALIST_REPAIRING
+	specialists_by_id[engineer_id] = engineer
+	return project.duplicate(true)
+
+
+func preview_field_facility_upgrade(engineer_id: StringName, facility_id: StringName) -> Dictionary:
+	var engineer := Dictionary(specialists_by_id.get(engineer_id, {}))
+	var facility := Dictionary(watchtowers_by_id.get(facility_id, {}))
+	if engineer.is_empty() or not bool(engineer.get("alive", false)) or StringName(engineer.get("role", &"")) != SPECIALIST_ENGINEER or StringName(engineer.get("phase", &"")) not in [SPECIALIST_IDLE, SPECIALIST_BLOCKED] or StringName(engineer.get("project_id", &"")) != &"":
+		return {"valid": false, "error": "需要一名空闲且存活的工程师"}
+	if facility.is_empty() or StringName(facility.get("state", FACILITY_ACTIVE)) == FACILITY_DESTROYED:
+		return {"valid": false, "error": "设施不存在或已摧毁，必须先维修"}
+	if int(facility.get("level", 1)) >= 2:
+		return {"valid": false, "error": "该设施已达到当前最高等级"}
+	for project_value in projects_by_id.values():
+		var existing: Dictionary = Dictionary(project_value)
+		if StringName(existing.get("facility_id", &"")) == facility_id and StringName(existing.get("phase", &"")) != &"COMPLETE":
+			return {"valid": false, "error": "该设施已有维修或升级工程"}
+	var camp := Dictionary(camps_by_id.get(StringName(facility.get("camp_id", &"")), {}))
+	if camp.is_empty() or not bool(camp.get("connected", false)) or not is_route_open(StringName(camp.get("road_id", &""))):
+		return {"valid": false, "error": "设施所属驻点或补给道路已断开"}
+	var start_position := Vector2(engineer.get("world_position", Vector2.ZERO))
+	var work_position := Vector2(facility.get("world_position", Vector2.ZERO))
+	var movement_plan := _plan_specialist_land_path(start_position, work_position)
+	if movement_plan.is_empty():
+		return {"valid": false, "error": "工程师无法到达升级工地"}
+	var kind := StringName(facility.get("facility_kind", FACILITY_WATCHTOWER))
+	var config := _field_facility_config(kind)
+	return {
+		"valid": true,
+		"engineer_id": engineer_id,
+		"facility_id": facility_id,
+		"facility_kind": kind,
+		"food_cost": maxi(int(config.get("upgrade_food_cost", 6)), 0),
+		"required_milliseconds": maxi(int(config.get("upgrade_required_milliseconds", 7000)), 1),
+		"travel_milliseconds": int(movement_plan.get("duration_milliseconds", 0)) if start_position.distance_to(work_position) > 0.01 else 0,
+		"engineer_movement_plan": movement_plan.duplicate(true),
+		"world_position": Vector2i(work_position),
+		"target_level": 2,
+		"target_max_durability": ceili(float(int(facility.get("max_durability", 1))) * 1.5),
+		"target_effect_range": ceili(float(int(facility.get("effect_range", 1))) * 1.2),
+		"target_damage": int(facility.get("damage", 0)) + (1 if kind == FACILITY_ARROW_TOWER else 0),
+		"target_route_delay_milliseconds": int(facility.get("route_delay_milliseconds", 0)) + (2000 if kind == FACILITY_BARRICADE else 0),
+		"target_mine_charges": int(facility.get("mine_charges", 0)) + (1 if kind == FACILITY_MINEFIELD else 0),
+		"target_garrison_reduction_permille": mini(int(facility.get("garrison_casualty_reduction_permille", 0)) + (150 if kind == FACILITY_FORTRESS else 0), 750),
+	}
+
+
+func begin_field_facility_upgrade(engineer_id: StringName, facility_id: StringName) -> Dictionary:
+	var preview := preview_field_facility_upgrade(engineer_id, facility_id)
+	if not bool(preview.get("valid", false)):
+		return {}
+	var engineer := Dictionary(specialists_by_id[engineer_id])
+	var facility := Dictionary(watchtowers_by_id[facility_id])
+	var project_id := StringName("facility-upgrade.%06d" % next_project_sequence)
+	next_project_sequence += 1
+	var travel := int(preview.get("travel_milliseconds", 0))
+	var work_position := Vector2i(preview.get("world_position", Vector2i.ZERO))
+	var project := preview.duplicate(true)
+	project.erase("valid")
+	project.project_id = project_id
+	project.project_kind = PROJECT_FACILITY_UPGRADE
+	project.road_id = StringName(Dictionary(camps_by_id.get(StringName(facility.get("camp_id", &"")), {})).get("road_id", &""))
+	project.source_point_id = StringName(engineer.get("current_point_id", &""))
+	project.target_point_id = StringName(Dictionary(camps_by_id.get(StringName(facility.get("camp_id", &"")), {})).get("point_id", &""))
+	project.work_world_position = work_position
+	project.route_world_points = [work_position]
+	project.road_kind = ROAD_NORMAL
+	project.progress_milliseconds = 0
+	project.travel_milliseconds = travel
+	project.segment_plans = []
+	project.build_camp = false
+	project.phase = &"TRAVELING" if travel > 0 else &"BUILDING"
+	projects_by_id[project_id] = project
+	engineer.project_id = project_id
+	engineer.target_point_id = StringName(project.target_point_id)
+	engineer.target_world_position = work_position
+	engineer.move_start_position = Vector2i(engineer.get("world_position", work_position))
+	engineer.move_route_world_points = Array(Dictionary(preview.get("engineer_movement_plan", {})).get("points", [])).duplicate(true)
+	engineer.move_total_milliseconds = travel
+	engineer.move_elapsed_milliseconds = 0
+	engineer.move_remaining_milliseconds = travel
+	engineer.phase = SPECIALIST_MOVING if travel > 0 else SPECIALIST_BUILDING
 	specialists_by_id[engineer_id] = engineer
 	return project.duplicate(true)
 
@@ -1078,7 +1280,7 @@ static func _has_valid_references(roads: Dictionary, camps: Dictionary, watchtow
 			or int(tower.get("visibility_range", 0)) <= 0
 			or typeof(tower.get("complete", null)) != TYPE_BOOL
 			or not bool(tower.get("complete", false))
-			or facility_kind not in [FACILITY_WATCHTOWER, FACILITY_ARROW_TOWER, FACILITY_BARRICADE]
+			or facility_kind not in [FACILITY_WATCHTOWER, FACILITY_ARROW_TOWER, FACILITY_BARRICADE, FACILITY_FORTRESS, FACILITY_MINEFIELD]
 			or facility_state not in [FACILITY_ACTIVE, FACILITY_DAMAGED, FACILITY_DESTROYED]
 		):
 			return false
@@ -1093,6 +1295,29 @@ static func _has_valid_references(roads: Dictionary, camps: Dictionary, watchtow
 			or not tower.get("affected_patrol_ids", null) is Array
 		):
 			return false
+		if tower.has("level") and (not _is_snapshot_int(tower.get("level")) or int(tower.get("level", 0)) not in [1, 2]):
+			return false
+		if facility_kind == FACILITY_FORTRESS and (
+			not _is_snapshot_int(tower.get("garrison_casualty_reduction_permille", null))
+			or int(tower.get("garrison_casualty_reduction_permille", -1)) < 0
+			or int(tower.get("garrison_casualty_reduction_permille", 1001)) > 1000
+			or typeof(tower.get("garrison_army_id", null)) not in [TYPE_STRING, TYPE_STRING_NAME]
+		):
+			return false
+		if facility_kind == FACILITY_MINEFIELD and (
+			not _is_snapshot_int(tower.get("mine_charges", null))
+			or int(tower.get("mine_charges", -1)) < 0
+			or not _is_snapshot_int(tower.get("mine_damage", null))
+			or int(tower.get("mine_damage", 0)) <= 0
+			or not _is_snapshot_id(tower.get("owner_faction_id", null))
+			or not tower.get("discovered_by_faction_ids", null) is Array
+			or (int(tower.get("mine_charges", 0)) == 0) != (facility_state == FACILITY_DESTROYED)
+		):
+			return false
+		if facility_kind == FACILITY_MINEFIELD:
+			for faction_id_value in Array(tower.get("discovered_by_faction_ids", [])):
+				if not _is_snapshot_id(faction_id_value):
+					return false
 		# A complete project may retain its historical reservation for its own
 		# completed tower. Any live reservation sharing a completed ID is a
 		# collision and would otherwise make a later completion disappear. The
@@ -2072,7 +2297,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 			moving.world_position = Vector2i(moving.get("target_world_position", Vector2i.ZERO))
 			var active_project_id := StringName(moving.get("project_id", &""))
 			var active_project := Dictionary(projects_by_id.get(active_project_id, {}))
-			if StringName(active_project.get("phase", &"")) == &"TRAVELING" and StringName(active_project.get("project_kind", &"")) in [&"REPAIR", &"CONSTRUCTION", &"WATCHTOWER", PROJECT_FACILITY_REPAIR]:
+			if StringName(active_project.get("phase", &"")) == &"TRAVELING" and StringName(active_project.get("project_kind", &"")) in [&"REPAIR", &"CONSTRUCTION", &"WATCHTOWER", PROJECT_FACILITY_REPAIR, PROJECT_FACILITY_UPGRADE]:
 				active_project.phase = &"BUILDING"
 				projects_by_id[active_project_id] = active_project
 				project_arrival_work_milliseconds[active_project_id] = maxi(delta_milliseconds - move_remaining_before, 0)
@@ -2128,7 +2353,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 			_update_engineer_construction_position(engineer, project)
 			specialists_by_id[engineer_id] = engineer
 			opened_road_ids.append_array(_open_completed_construction_segments(project_id, project))
-		elif StringName(project.get("project_kind", &"")) in [&"WATCHTOWER", PROJECT_FACILITY_REPAIR]:
+		elif StringName(project.get("project_kind", &"")) in [&"WATCHTOWER", PROJECT_FACILITY_REPAIR, PROJECT_FACILITY_UPGRADE]:
 			engineer.world_position = Vector2i(project.get("work_world_position", engineer.get("world_position", Vector2i.ZERO)))
 			specialists_by_id[engineer_id] = engineer
 		var construction_trace := _timed_project_work_records(
@@ -2177,7 +2402,15 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 					continue
 				repaired_facility.durability = int(repaired_facility.get("max_durability", 1))
 				repaired_facility.state = FACILITY_ACTIVE
+				if StringName(repaired_facility.get("facility_kind", &"")) == FACILITY_MINEFIELD:
+					repaired_facility.mine_charges = maxi(int(project.get("restore_mine_charges", 0)), 1)
 				watchtowers_by_id[repaired_facility_id] = repaired_facility
+			elif StringName(project.get("project_kind", &"")) == PROJECT_FACILITY_UPGRADE:
+				if not _complete_field_facility_upgrade(project):
+					project.phase = &"INTERRUPTED"
+					project.interruption_reason = &"FACILITY_MISSING"
+					projects_by_id[project_id] = project
+					continue
 			engineer.phase = SPECIALIST_IDLE
 			if StringName(project.get("project_kind", &"")) != &"REPAIR":
 				engineer.current_point_id = StringName(project.get("target_point_id", &""))
@@ -2186,7 +2419,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 				# final physical road endpoint is already authoritative here, whereas
 				# resolving the not-yet-created camp would incorrectly place the
 				# engineer at the zero vector for one persistence frame.
-				engineer.world_position = Vector2i(project.get("work_world_position", _road_endpoint_position(StringName(project.get("road_id", &""))))) if StringName(project.get("project_kind", &"")) in [&"WATCHTOWER", PROJECT_FACILITY_REPAIR] else Vector2i(_road_endpoint_position(StringName(project.get("road_id", &""))))
+				engineer.world_position = Vector2i(project.get("work_world_position", _road_endpoint_position(StringName(project.get("road_id", &""))))) if StringName(project.get("project_kind", &"")) in [&"WATCHTOWER", PROJECT_FACILITY_REPAIR, PROJECT_FACILITY_UPGRADE] else Vector2i(_road_endpoint_position(StringName(project.get("road_id", &""))))
 			engineer.project_id = &""
 			specialists_by_id[engineer_id] = engineer
 			if bool(project.build_camp):
@@ -2364,13 +2597,21 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 	# Repair completion is provisional until the time-aware specialist contacts
 	# above are resolved. Only then may a convoy consume the post-repair remainder
 	# of this world step; an interrupted repair leaves its damaged road unavailable.
-	facility_events = _apply_field_facility_effects(delta_milliseconds)
+	facility_events = _apply_field_facility_effects(delta_milliseconds, patrol_movements)
 	supply_ready_to_unload = _advance_supply_transports(delta_milliseconds, repaired_road_open_offsets)
+	for facility_id_value in watchtowers_by_id.keys():
+		var facility := Dictionary(watchtowers_by_id[facility_id_value])
+		if StringName(facility.get("facility_kind", &"")) != FACILITY_MINEFIELD or StringName(facility.get("owner_faction_id", &"player")) == &"player":
+			continue
+		for specialist_id_value in specialists_by_id.keys():
+			if discover_minefield(StringName(facility_id_value), &"player", StringName(specialist_id_value)):
+				facility_events.append({"facility_id": StringName(facility_id_value), "facility_kind": FACILITY_MINEFIELD, "effect": &"MINE_DISCOVERED"})
+				break
 	_refresh_intel()
 	return {"success": true, "completed_project_ids": completed, "opened_road_ids": opened_road_ids, "arrived_invasion_ids": arrived_invasion_ids, "facility_events": facility_events, "engagements": engagements, "patrol_movements": patrol_movements, "ready_supply_transport_ids": supply_ready_to_unload, "world_milliseconds": world_milliseconds, "delta_milliseconds": delta_milliseconds}
 
 
-func _apply_field_facility_effects(delta_milliseconds: int) -> Array[Dictionary]:
+func _apply_field_facility_effects(delta_milliseconds: int, patrol_movements: Array = []) -> Array[Dictionary]:
 	var events: Array[Dictionary] = []
 	for tower_id_value in watchtowers_by_id.keys():
 		var tower_id := StringName(tower_id_value)
@@ -2415,7 +2656,40 @@ func _apply_field_facility_effects(delta_milliseconds: int) -> Array[Dictionary]
 				facility.durability = maxi(durability_before - maxi(int(facility.get("collision_damage", 45)), 0), 0)
 				facility.state = FACILITY_DESTROYED if int(facility.durability) <= 0 else FACILITY_DAMAGED
 				events.append({"facility_id": tower_id, "facility_kind": facility_kind, "patrol_id": patrol_id, "effect": &"DELAY", "amount": delay, "durability_after": int(facility.durability)})
+		elif facility_kind == FACILITY_MINEFIELD:
+			var charges := maxi(int(facility.get("mine_charges", 0)), 0)
+			if charges > 0:
+				for movement_value in patrol_movements:
+					var movement: Dictionary = Dictionary(movement_value)
+					var patrol_id := StringName(movement.get("patrol_id", &""))
+					if patrol_id == &"" or patrol_id in delayed_ids:
+						continue
+					var patrol := Dictionary(patrols_by_id.get(patrol_id, {}))
+					if not _patrol_can_receive_field_effect(patrol):
+						continue
+					var closest := Geometry2D.get_closest_point_to_segment(
+						facility_position,
+						Vector2(movement.get("from", facility_position)),
+						Vector2(movement.get("to", facility_position))
+					)
+					if closest.distance_to(facility_position) > float(facility.get("effect_range", 34)):
+						continue
+					var strength_before := int(patrol.get("strength", 0))
+					var damage := mini(maxi(int(facility.get("mine_damage", 1)), 1), strength_before)
+					patrol.strength = strength_before - damage
+					if int(patrol.strength) <= 0 and StringName(patrol.get("invasion_kind", &"")) != &"":
+						patrol.phase = INVASION_DEFEATED
+					patrols_by_id[patrol_id] = patrol
+					delayed_ids.append(patrol_id)
+					charges -= 1
+					events.append({"facility_id": tower_id, "facility_kind": facility_kind, "patrol_id": patrol_id, "effect": &"MINE_TRIGGER", "amount": damage, "charges_after": charges, "strength_after": int(patrol.strength)})
+					break
+			facility.mine_charges = charges
+			facility.durability = 1 if charges > 0 else 0
+			facility.state = FACILITY_ACTIVE if charges > 0 else FACILITY_DESTROYED
 		facility.affected_patrol_ids = Array(facility.get("affected_patrol_ids", [])) if facility_kind != FACILITY_BARRICADE else delayed_ids
+		if facility_kind == FACILITY_MINEFIELD:
+			facility.affected_patrol_ids = delayed_ids
 		watchtowers_by_id[tower_id] = facility
 	return events
 
@@ -2937,9 +3211,38 @@ func _create_completed_watchtower(project: Dictionary) -> void:
 		"damage": maxi(int(project.get("damage", 0)), 0),
 		"route_delay_milliseconds": maxi(int(project.get("route_delay_milliseconds", 0)), 0),
 		"collision_damage": maxi(int(project.get("collision_damage", 0)), 0),
+		"garrison_casualty_reduction_permille": clampi(int(project.get("garrison_casualty_reduction_permille", 0)), 0, 1000),
+		"garrison_army_id": &"",
+		"mine_charges": maxi(int(project.get("mine_charges", 0)), 0),
+		"mine_damage": maxi(int(project.get("mine_damage", 0)), 0),
+		"owner_faction_id": &"player",
+		"discovered_by_faction_ids": [&"player"],
+		"level": 1,
 		"affected_patrol_ids": [],
 		"complete": true,
 	}
+
+
+func _complete_field_facility_upgrade(project: Dictionary) -> bool:
+	var facility_id := StringName(project.get("facility_id", &""))
+	var facility := Dictionary(watchtowers_by_id.get(facility_id, {}))
+	if facility.is_empty() or int(facility.get("level", 1)) >= int(project.get("target_level", 2)):
+		return false
+	var old_max := maxi(int(facility.get("max_durability", 1)), 1)
+	var old_durability := clampi(int(facility.get("durability", 0)), 0, old_max)
+	var new_max := maxi(int(project.get("target_max_durability", old_max)), old_max)
+	# Upgrade construction keeps the original facility active. Completion changes
+	# capability without acting as a free repair: preserve its durability ratio.
+	facility.max_durability = new_max
+	facility.durability = clampi(roundi(float(old_durability * new_max) / float(old_max)), 0, new_max)
+	facility.level = int(project.get("target_level", 2))
+	facility.effect_range = maxi(int(project.get("target_effect_range", facility.get("effect_range", 1))), 1)
+	facility.damage = maxi(int(project.get("target_damage", facility.get("damage", 0))), 0)
+	facility.route_delay_milliseconds = maxi(int(project.get("target_route_delay_milliseconds", facility.get("route_delay_milliseconds", 0))), 0)
+	facility.mine_charges = maxi(int(project.get("target_mine_charges", facility.get("mine_charges", 0))), 0)
+	facility.garrison_casualty_reduction_permille = clampi(int(project.get("target_garrison_reduction_permille", facility.get("garrison_casualty_reduction_permille", 0))), 0, 1000)
+	watchtowers_by_id[facility_id] = facility
+	return true
 
 
 func _road_endpoint_position(road_id: StringName) -> Vector2:

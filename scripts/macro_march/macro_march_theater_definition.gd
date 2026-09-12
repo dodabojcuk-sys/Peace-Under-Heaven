@@ -20,10 +20,14 @@ const FOREST_GARRISON := &"forest_garrison"
 	"visibility_range": 360,
 	"food_cost": 6,
 	"required_milliseconds": 6000,
+	"upgrade_food_cost": 6,
+	"upgrade_required_milliseconds": 7000,
 	"requires_connected_camp": true,
 	"field_facilities": {
-		&"ARROW_TOWER": {"display_name": "外部箭塔", "food_cost": 8, "required_milliseconds": 8000, "max_durability": 120, "effect_range": 220, "attack_interval_milliseconds": 4000, "damage": 1},
-		&"BARRICADE": {"display_name": "外部拒马", "food_cost": 5, "required_milliseconds": 5000, "max_durability": 160, "effect_range": 42, "route_delay_milliseconds": 8000, "collision_damage": 45},
+		&"ARROW_TOWER": {"display_name": "外部箭塔", "food_cost": 8, "required_milliseconds": 8000, "max_durability": 120, "effect_range": 220, "attack_interval_milliseconds": 4000, "damage": 1, "upgrade_food_cost": 8, "upgrade_required_milliseconds": 8500},
+		&"BARRICADE": {"display_name": "外部拒马", "food_cost": 5, "required_milliseconds": 5000, "max_durability": 160, "effect_range": 42, "route_delay_milliseconds": 8000, "collision_damage": 45, "upgrade_food_cost": 6, "upgrade_required_milliseconds": 6500},
+		&"FORTRESS": {"display_name": "外部堡垒", "food_cost": 12, "required_milliseconds": 12000, "max_durability": 240, "effect_range": 70, "garrison_casualty_reduction_permille": 500, "upgrade_food_cost": 12, "upgrade_required_milliseconds": 12000},
+		&"MINEFIELD": {"display_name": "外部地雷", "food_cost": 7, "required_milliseconds": 6500, "max_durability": 1, "effect_range": 34, "mine_charges": 2, "mine_damage": 3, "upgrade_food_cost": 7, "upgrade_required_milliseconds": 7000},
 	},
 }
 @export var presentation_profile: Dictionary = {
@@ -106,6 +110,38 @@ const FOREST_GARRISON := &"forest_garrison"
 		"defender_armor_per_member": 0,
 	},
 }
+
+
+func get_location_capability(point_id: StringName) -> Dictionary:
+	if point_id == BLACKSTONE_CITY:
+		return {
+			"capability_id": &"LONG_TERM_CITY",
+			"allows_inner_city_actions": true,
+			"allows_long_term_construction": true,
+			"allows_garrison": true,
+			"allows_reissue_orders": true,
+			"allows_supply_transfer": true,
+			"allows_local_replenishment": true,
+		}
+	if point_id == SILVERFORD_CITY:
+		return {
+			"capability_id": &"RESOURCE_CITY",
+			"allows_inner_city_actions": false,
+			"allows_long_term_construction": false,
+			"allows_garrison": true,
+			"allows_reissue_orders": true,
+			"allows_supply_transfer": true,
+			"allows_local_replenishment": true,
+		}
+	return {
+		"capability_id": &"OCCUPIED_GARRISON" if point_id == REDCLIFF_CITY else &"GARRISON",
+		"allows_inner_city_actions": false,
+		"allows_long_term_construction": false,
+		"allows_garrison": true,
+		"allows_reissue_orders": true,
+		"allows_supply_transfer": false,
+		"allows_local_replenishment": false,
+	}
 
 
 # Greybox tactical water is data owned by the theatre, not a screen-space

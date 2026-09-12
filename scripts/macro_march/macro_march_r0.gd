@@ -106,7 +106,11 @@ var _side_road_button := Button.new()
 var _watchtower_button := Button.new()
 var _arrow_tower_button := Button.new()
 var _barricade_button := Button.new()
+var _fortress_button := Button.new()
+var _minefield_button := Button.new()
 var _facility_repair_button := Button.new()
+var _facility_upgrade_button := Button.new()
+var _fortress_garrison_button := Button.new()
 var _resume_project_button := Button.new()
 var _interrupted_project_selector := OptionButton.new()
 var _return_button := Button.new()
@@ -458,7 +462,7 @@ func _build_ui() -> void:
 	_formation_scroll.add_child(_formation_list)
 	_formation_scroll.add_child(_location_garrison_list)
 	add_child(_formation_scroll)
-	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _siege_battle_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _arrow_tower_button, _barricade_button, _facility_repair_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
+	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _siege_battle_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _arrow_tower_button, _barricade_button, _fortress_button, _minefield_button, _facility_repair_button, _facility_upgrade_button, _fortress_garrison_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
 	_interrupted_project_selector.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -478,8 +482,16 @@ func _build_ui() -> void:
 	_arrow_tower_button.visible = false
 	_barricade_button.text = "工程师建外部拒马"
 	_barricade_button.visible = false
+	_fortress_button.text = "工程师建外部堡垒"
+	_fortress_button.visible = false
+	_minefield_button.text = "工程师部署外部地雷"
+	_minefield_button.visible = false
 	_facility_repair_button.text = "维修所选外部设施 · 3 粮"
 	_facility_repair_button.visible = false
+	_facility_upgrade_button.text = "升级所选外部设施"
+	_facility_upgrade_button.visible = false
+	_fortress_garrison_button.text = "所选军队进驻堡垒"
+	_fortress_garrison_button.visible = false
 	_resume_project_button.text = "补派工程师接续所选工程"
 	_restore_default_route_button.text = "恢复默认路线"
 	_restore_default_route_button.visible = false
@@ -510,7 +522,11 @@ func _build_ui() -> void:
 	_watchtower_button.pressed.connect(_begin_watchtower_mode.bind(FieldTacticsState.FACILITY_WATCHTOWER))
 	_arrow_tower_button.pressed.connect(_begin_watchtower_mode.bind(FieldTacticsState.FACILITY_ARROW_TOWER))
 	_barricade_button.pressed.connect(_begin_watchtower_mode.bind(FieldTacticsState.FACILITY_BARRICADE))
+	_fortress_button.pressed.connect(_begin_watchtower_mode.bind(FieldTacticsState.FACILITY_FORTRESS))
+	_minefield_button.pressed.connect(_begin_watchtower_mode.bind(FieldTacticsState.FACILITY_MINEFIELD))
 	_facility_repair_button.pressed.connect(_repair_selected_field_facility)
+	_facility_upgrade_button.pressed.connect(_upgrade_selected_field_facility)
+	_fortress_garrison_button.pressed.connect(_toggle_selected_fortress_garrison)
 	_resume_project_button.pressed.connect(_resume_selected_interrupted_project)
 	_interrupted_project_selector.item_selected.connect(_select_interrupted_project)
 	_return_button.pressed.connect(func():
@@ -532,7 +548,7 @@ func _layout_ui() -> void:
 	var panel_rect := _side_panel_rect()
 	var action_height := 34.0
 	var action_gap := 4.0
-	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _siege_battle_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _arrow_tower_button, _barricade_button, _facility_repair_button, _resume_project_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button]
+	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _siege_battle_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _arrow_tower_button, _barricade_button, _fortress_button, _minefield_button, _facility_repair_button, _facility_upgrade_button, _fortress_garrison_button, _resume_project_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button]
 	var visible_action_buttons: Array[Button] = []
 	for button in action_buttons:
 		if button.visible:
@@ -957,10 +973,16 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	)
 	_arrow_tower_button.visible = _watchtower_button.visible
 	_barricade_button.visible = _watchtower_button.visible
+	_fortress_button.visible = _watchtower_button.visible
+	_minefield_button.visible = _watchtower_button.visible
 	_facility_repair_button.visible = false
+	_facility_upgrade_button.visible = false
+	_fortress_garrison_button.visible = false
 	_watchtower_button.disabled = not _watchtower_mode and _watchtower_button.visible == false
 	_arrow_tower_button.disabled = _watchtower_button.disabled
 	_barricade_button.disabled = _watchtower_button.disabled
+	_fortress_button.disabled = _watchtower_button.disabled
+	_minefield_button.disabled = _watchtower_button.disabled
 	_resume_project_button.visible = not _first_interrupted_project(projects).is_empty()
 	_resume_project_button.disabled = not _has_idle_engineer(specialists)
 	_restore_default_route_button.visible = not _engineering_mode and _selected_route_road_id != &""
@@ -982,11 +1004,24 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		var facility_maximum := int(selected_facility.get("max_durability", facility_durability))
 		_set_context_status("已选%s：%s · 耐久 %d/%d" % [selected_facility_name, str(selected_facility.get("state", FieldTacticsState.FACILITY_ACTIVE)), facility_durability, facility_maximum])
 		_detail_label.text = "%s属于外部战区，位置与战损会持续保存。\n%s\n不会继承战时实例同名设施的效果。" % [selected_facility_name, _field_facility_record_effect_copy(selected_facility)]
-		_facility_repair_button.visible = facility_durability < facility_maximum
+		var hostile_mine := selected_facility_kind == FieldTacticsState.FACILITY_MINEFIELD and StringName(selected_facility.get("owner_faction_id", &"player")) != &"player"
+		_facility_repair_button.visible = hostile_mine or facility_durability < facility_maximum
+		_facility_repair_button.text = "工程师排除已发现地雷" if hostile_mine else "维修所选外部设施 · 3 粮"
 		_facility_repair_button.disabled = not _has_idle_engineer(specialists)
+		_facility_upgrade_button.visible = int(selected_facility.get("level", 1)) < 2 and facility_durability > 0
+		var upgrade_engineer_id := _first_idle_engineer_id(specialists)
+		var upgrade_preview: Dictionary = _dispatch_adapter.preview_field_facility_upgrade(upgrade_engineer_id, _selected_field_facility_id) if _dispatch_adapter != null and upgrade_engineer_id != &"" else {}
+		_facility_upgrade_button.text = "升级至 2 级 · %d 粮 / %0.1f 秒" % [int(upgrade_preview.get("food_cost", 0)), float(upgrade_preview.get("required_milliseconds", 0)) / 1000.0] if bool(upgrade_preview.get("valid", false)) else "升级至 2 级 · 需要空闲工程师"
+		_facility_upgrade_button.disabled = not bool(upgrade_preview.get("valid", false))
+		_fortress_garrison_button.visible = selected_facility_kind == FieldTacticsState.FACILITY_FORTRESS
+		var fortress_army_id := StringName(selected_facility.get("garrison_army_id", &""))
+		_fortress_garrison_button.text = "撤出堡垒 · %s" % String(fortress_army_id) if fortress_army_id != &"" else "所选驻扎军队进驻堡垒"
+		_fortress_garrison_button.disabled = fortress_army_id == &"" and _selected_army_id == &""
 		_watchtower_button.visible = false
 		_arrow_tower_button.visible = false
 		_barricade_button.visible = false
+		_fortress_button.visible = false
+		_minefield_button.visible = false
 		return
 	if _scout_target_mode:
 		_confirm_button.visible = false
@@ -2888,6 +2923,10 @@ func _field_facility_display_name(facility_kind: StringName) -> String:
 		return "外部箭塔"
 	if facility_kind == FieldTacticsState.FACILITY_BARRICADE:
 		return "外部拒马"
+	if facility_kind == FieldTacticsState.FACILITY_FORTRESS:
+		return "外部堡垒"
+	if facility_kind == FieldTacticsState.FACILITY_MINEFIELD:
+		return "外部地雷"
 	return "瞭望塔"
 
 
@@ -2897,6 +2936,10 @@ func _field_facility_effect_copy(draft: Dictionary) -> String:
 		return "射程 %d · 每 %0.1f 秒对范围内真实敌军造成 %d 人损失。" % [int(draft.get("effect_range", 0)), float(draft.get("attack_interval_milliseconds", 0)) / 1000.0, int(draft.get("damage", 0))]
 	if kind == FieldTacticsState.FACILITY_BARRICADE:
 		return "接触半径 %d · 首次阻挡同一敌军 %0.1f 秒并承受碰撞损伤。" % [int(draft.get("effect_range", 0)), float(draft.get("route_delay_milliseconds", 0)) / 1000.0]
+	if kind == FieldTacticsState.FACILITY_FORTRESS:
+		return "防护范围 %d · 必须由真实驻扎军队进驻，才减少其 %d%% 交战伤亡。" % [int(draft.get("effect_range", 0)), int(draft.get("garrison_casualty_reduction_permille", 0)) / 10]
+	if kind == FieldTacticsState.FACILITY_MINEFIELD:
+		return "触发半径 %d · %d 次独立触发，每次对真实敌军造成 %d 人损失。" % [int(draft.get("effect_range", 0)), int(draft.get("mine_charges", 0)), int(draft.get("mine_damage", 0))]
 	return "完工后新增观察范围 %d。" % int(draft.get("visibility_range", 0))
 
 
@@ -2906,6 +2949,11 @@ func _field_facility_record_effect_copy(facility: Dictionary) -> String:
 		return "有效射程 %d；每 %0.1f 秒减少范围内真实敌军 %d 人。" % [int(facility.get("effect_range", 0)), float(facility.get("attack_interval_milliseconds", 0)) / 1000.0, int(facility.get("damage", 0))]
 	if kind == FieldTacticsState.FACILITY_BARRICADE:
 		return "接触半径 %d；每支敌军首次通过时延迟 %0.1f 秒。" % [int(facility.get("effect_range", 0)), float(facility.get("route_delay_milliseconds", 0)) / 1000.0]
+	if kind == FieldTacticsState.FACILITY_FORTRESS:
+		var army_id := StringName(facility.get("garrison_army_id", &""))
+		return "等级 %d；防护范围 %d；驻军 %s；仅保护该真实军队。" % [int(facility.get("level", 1)), int(facility.get("effect_range", 0)), String(army_id) if army_id != &"" else "无"]
+	if kind == FieldTacticsState.FACILITY_MINEFIELD:
+		return "等级 %d；剩余触发 %d；仅在敌军真实路线进入半径 %d 时消耗。" % [int(facility.get("level", 1)), int(facility.get("mine_charges", 0)), int(facility.get("effect_range", 0))]
 	return "观察范围 %d。" % int(facility.get("visibility_range", 0))
 
 
@@ -2919,13 +2967,54 @@ func _repair_selected_field_facility() -> void:
 		if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER and bool(specialist.get("alive", false)) and StringName(specialist.get("phase", &"")) in [FieldTacticsState.SPECIALIST_IDLE, FieldTacticsState.SPECIALIST_BLOCKED] and StringName(specialist.get("project_id", &"")) == &"":
 			engineer_id = StringName(specialist_id_value)
 			break
-	var result: Dictionary = _dispatch_adapter.begin_field_facility_repair(engineer_id, _selected_field_facility_id)
+	var facility := Dictionary(Dictionary(field.get("watchtowers_by_id", {})).get(_selected_field_facility_id, {}))
+	var hostile_mine := StringName(facility.get("facility_kind", &"")) == FieldTacticsState.FACILITY_MINEFIELD and StringName(facility.get("owner_faction_id", &"player")) != &"player"
+	var result: Dictionary = _dispatch_adapter.clear_discovered_field_mine(_selected_field_facility_id, engineer_id) if hostile_mine else _dispatch_adapter.begin_field_facility_repair(engineer_id, _selected_field_facility_id)
 	if not bool(result.get("success", false)):
 		_set_status_error(str(result.get("error", "外部设施维修未能开始")))
 		return
 	_selected_field_facility_id = &""
-	_status_label.text = "维修工程已开始；设施保持受损状态，直到工程师到场并完成施工。"
+	_status_label.text = "已排除所选地雷；消耗状态已保存。" if hostile_mine else "维修工程已开始；设施保持受损状态，直到工程师到场并完成施工。"
 	refresh()
+
+
+func _upgrade_selected_field_facility() -> void:
+	if _dispatch_adapter == null or _selected_field_facility_id == &"":
+		return
+	var field := _dispatch_adapter.get_field_tactics_read_model()
+	var engineer_id := _first_idle_engineer_id(Dictionary(field.get("specialists_by_id", {})))
+	var result: Dictionary = _dispatch_adapter.begin_field_facility_upgrade(engineer_id, _selected_field_facility_id)
+	if not bool(result.get("success", false)):
+		_set_status_error(str(result.get("error", "外部设施升级未能开始")))
+		return
+	_set_context_status("设施升级已开工；施工期间保留原等级能力，完工不免费修满耐久。")
+	refresh()
+
+
+func _toggle_selected_fortress_garrison() -> void:
+	if _dispatch_adapter == null or _selected_field_facility_id == &"":
+		return
+	var field := _dispatch_adapter.get_field_tactics_read_model()
+	var facility := Dictionary(Dictionary(field.get("watchtowers_by_id", {})).get(_selected_field_facility_id, {}))
+	var assigned_id := StringName(facility.get("garrison_army_id", &""))
+	var result: Dictionary
+	if assigned_id != &"":
+		result = _dispatch_adapter.release_field_fortress_garrison(_selected_field_facility_id, assigned_id)
+	else:
+		result = _dispatch_adapter.assign_field_fortress_garrison(_selected_field_facility_id, _selected_army_id)
+	if not bool(result.get("success", false)):
+		_set_status_error(str(result.get("error", "堡垒驻军命令未能提交")))
+		return
+	_set_context_status("堡垒驻军状态已更新并保存。")
+	refresh()
+
+
+func _first_idle_engineer_id(specialists: Dictionary) -> StringName:
+	for specialist_id_value in specialists.keys():
+		var specialist := Dictionary(specialists[specialist_id_value])
+		if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER and bool(specialist.get("alive", false)) and StringName(specialist.get("phase", &"")) in [FieldTacticsState.SPECIALIST_IDLE, FieldTacticsState.SPECIALIST_BLOCKED] and StringName(specialist.get("project_id", &"")) == &"":
+			return StringName(specialist_id_value)
+	return &""
 
 
 func _resume_selected_interrupted_project() -> void:

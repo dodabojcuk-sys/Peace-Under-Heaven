@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-12 - Post-war recovery and expanded external defense
+
+- Added one persisted aggregate population authority connecting exclusive city
+  workforce, training reservations, garrison/external military, specialists,
+  battle-created wounded, permanent fallen and recoverable treatment.
+- Made formal defense, expedition, encounter and macro-siege losses update that
+  same ledger once; treatment pays food and advances on city time before the
+  surviving formations can be dispatched again.
+- Centralized Blackstone, Silverford and occupied/garrison point capabilities so
+  capture does not grant an inner city or long-term construction by accident.
+- Added persistent fortress and minefield projects plus real level-two facility
+  upgrades. Fortresses require an existing stationed army; mines use actual
+  route crossings, finite charges, faction discovery and engineer clearing.
+- Upgraded V5 campaign persistence to schema 13 with deterministic V12 recovery
+  migration, active treatment/project recovery and cross-authority population
+  and fortress references.
+- Added a continuous defense-recovery-counterattack regression and isolated
+  1152x648 GUI evidence. Human unaccelerated player acceptance remains open.
+
 ## 2026-09-12 - Sourced Blackstone invasion and persistent defense line
 
 - Added one configured, persisted Redcliff-to-Blackstone invasion with a

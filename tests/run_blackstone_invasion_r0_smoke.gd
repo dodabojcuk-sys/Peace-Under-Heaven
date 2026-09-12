@@ -91,6 +91,7 @@ func _run() -> void:
 	)
 	var legacy_v11: Dictionary = city.export_v5_campaign_snapshot()
 	legacy_v11.schema_version = 11
+	legacy_v11.erase("population_recovery")
 	for key in ["source_patrol_id", "source_force_name", "source_point_id", "source_route_name"]:
 		Dictionary(legacy_v11.expedition_attempt).erase(key)
 	var migrated_v11: Dictionary = V5CampaignSnapshot.validate_structure(legacy_v11, city.get_unit_definition_ids())
@@ -122,10 +123,54 @@ func _run() -> void:
 	_check(
 		entered and battle_result != null and battle_result.outcome == BattleOutcome.Value.VICTORY
 		and returned and city.get_formal_battle_scene() == null
+		and int(summary.get("wounded_added", -1)) + int(summary.get("fallen_added", -1)) == battle_result.casualty_count
+		and bool(city.get_population_recovery_read_model().get("accounted", false))
 		and StringName(resolved_invasion.get("phase", &"")) == FieldTacticsState.INVASION_RESOLVED
 		and int(resolved_invasion.get("strength", -1)) == 0
 		and StringName(resolved_invasion.get("resolution_outcome", &"")) == &"VICTORY",
 		"同一来源敌军进入正式守城、经真实部署和推进获胜后结算一次，并回到黑石常态内城"
+	)
+	var recovery_before: Dictionary = city.get_population_recovery_read_model()
+	var treatment_result: Dictionary = {}
+	var treated_wounded_remaining := int(recovery_before.get("wounded", 0))
+	if int(recovery_before.get("wounded", 0)) > 0:
+		treatment_result = city.begin_wounded_treatment()
+		var treatment := Dictionary(city.get_population_recovery_read_model().get("treatment", {}))
+		city.advance_city_time(float(int(treatment.get("required_milliseconds", 0))) / 1000.0)
+		treated_wounded_remaining = int(city.get_population_recovery_read_model().get("wounded", -1))
+	var counterattack_formations: Array[StringName] = _available_formation_ids(city)
+	var route_north: Dictionary = city.plan_field_path(&"blackstone_city", &"northwatch_garrison")
+	var north_order: Dictionary = city.commit_macro_march_from_city(counterattack_formations, &"northwatch_garrison", StringName(route_north.get("route_id", &"")), Array(route_north.get("points", [])))
+	var counter_army := Dictionary(north_order.get("army", {}))
+	var counter_macro := Dictionary(counter_army.get("macro_march", {}))
+	city.advance_macro_march_time(StringName(counter_army.get("army_id", &"")), StringName(counter_macro.get("order_id", &"")), 0, int(counter_macro.get("total_millis", 0)))
+	var route_redcliff: Dictionary = city.plan_field_path(&"northwatch_garrison", &"redcliff_city")
+	var attack_order: Dictionary = city.commit_macro_march_from_station(StringName(counter_army.get("army_id", &"")), &"redcliff_city", StringName(route_redcliff.get("route_id", &"")), Array(route_redcliff.get("points", [])))
+	counter_army = Dictionary(attack_order.get("army", {}))
+	counter_macro = Dictionary(counter_army.get("macro_march", {}))
+	city.advance_macro_march_time(StringName(counter_army.get("army_id", &"")), StringName(counter_macro.get("order_id", &"")), 0, int(counter_macro.get("total_millis", 0)))
+	var counter_army_id := StringName(counter_army.get("army_id", &""))
+	var siege_entered: bool = city.enter_macro_siege_wartime(counter_army_id, &"redcliff_city")
+	await process_frame
+	await process_frame
+	var siege_battle := city.get_formal_battle_scene() as C0BattleGraybox
+	var siege_result: BattleResult
+	var siege_summary: Dictionary = {}
+	if siege_entered and siege_battle != null and siege_battle.start_battle(true):
+		siege_result = siege_battle.step_battle_for_test(BattleSession.MAX_BATTLE_TICKS)
+		if siege_result != null:
+			siege_battle._show_pending_result(siege_result)
+			siege_summary = siege_battle.confirm_pending_result()
+	var redcliff := Dictionary(Dictionary(city.get_macro_march_read_model().war_loop).cities_by_id.get(&"redcliff_city", {}))
+	print("BLACKSTONE_COUNTERATTACK_TRACE treated_remaining=%d army=%s outcome=%s controller=%s" % [treated_wounded_remaining, String(counter_army_id), String(siege_summary.get("outcome", &"")), String(redcliff.get("military_controller_faction_id", &""))])
+	_check(
+		(int(recovery_before.get("wounded", 0)) == 0 or (bool(treatment_result.get("success", false)) and treated_wounded_remaining == 0))
+		and bool(north_order.get("success", false)) and bool(attack_order.get("success", false))
+		and siege_result != null and siege_result.outcome == BattleOutcome.Value.VICTORY
+		and not siege_summary.is_empty()
+		and StringName(redcliff.get("military_controller_faction_id", &"")) == &"player"
+		and bool(city.get_population_recovery_read_model().get("accounted", false)),
+		"同一正常战役在守城后支付治疗成本、重用幸存编队反攻，并通过原围城事务占领赤崖"
 	)
 	city.get_parent().queue_free()
 	await process_frame

@@ -52,6 +52,12 @@ var governance_issue_detail: Label
 var governance_catalog_button: Button
 var governance_wood_button: Button
 var governance_food_button: Button
+var governance_population_summary: Label
+var governance_production_minus: Button
+var governance_production_plus: Button
+var governance_construction_minus: Button
+var governance_construction_plus: Button
+var governance_treatment_button: Button
 var _governance_workspace_was_visible := false
 
 
@@ -155,12 +161,16 @@ func _refresh_read_model() -> void:
 	]
 	var garrison: Dictionary = construction_controller.get_garrison_snapshot()
 	var queue: Dictionary = construction_controller.get_training_queue_snapshot()
-	army_status.text = "驻军 / 训练\n驻军 %d · 可派 %d · 指挥上限 %d\n队列 %d · 建造中 %d 项" % [
+	var population: Dictionary = construction_controller.get_population_recovery_read_model()
+	army_status.text = "人口 %d · 可用 %d · 伤员 %d\n驻军 %d · 可派 %d/%d\n外派 %d · 训练 %d" % [
+		int(population.get("total_living", 0)),
+		int(population.get("available", 0)),
+		int(population.get("wounded", 0)),
 		int(garrison.get("total_count", 0)),
 		int(garrison.get("dispatchable_count", 0)),
 		int(garrison.get("effective_command_limit", 0)),
+		maxi(int(population.get("military", 0)) - int(garrison.get("total_count", 0)), 0),
 		int(queue.get("queued_count", 0)),
-		construction_controller.get_construction_in_progress_count(),
 	]
 	_refresh_governance_workspace(wood, food)
 	for label in [time_summary, daily_report, alert_summary]:
@@ -285,15 +295,15 @@ func _install_governance_workspace() -> void:
 
 	var margin := MarginContainer.new()
 	margin.name = "GovernanceMargin"
-	margin.add_theme_constant_override("margin_left", 14)
-	margin.add_theme_constant_override("margin_top", 14)
-	margin.add_theme_constant_override("margin_right", 14)
-	margin.add_theme_constant_override("margin_bottom", 14)
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 10)
 	governance_workspace.add_child(margin)
 
 	var content := VBoxContainer.new()
 	content.name = "GovernanceContent"
-	content.add_theme_constant_override("separation", 8)
+	content.add_theme_constant_override("separation", 6)
 	margin.add_child(content)
 
 	governance_title = Label.new()
@@ -323,12 +333,51 @@ func _install_governance_workspace() -> void:
 	governance_wood_button = _make_governance_button("补充木材 · 伐木场")
 	governance_wood_button.name = "GovernanceWoodButton"
 	governance_wood_button.pressed.connect(_start_governance_definition.bind(&"logging_camp"))
-	content.add_child(governance_wood_button)
 
 	governance_food_button = _make_governance_button("稳定粮食 · 农田")
 	governance_food_button.name = "GovernanceFoodButton"
 	governance_food_button.pressed.connect(_start_governance_definition.bind(&"farm"))
-	content.add_child(governance_food_button)
+	var production_shortcuts := HBoxContainer.new()
+	production_shortcuts.name = "ProductionShortcuts"
+	production_shortcuts.add_theme_constant_override("separation", 6)
+	production_shortcuts.add_child(governance_wood_button)
+	production_shortcuts.add_child(governance_food_button)
+	content.add_child(production_shortcuts)
+
+	governance_population_summary = Label.new()
+	governance_population_summary.name = "PopulationRecoverySummary"
+	governance_population_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	governance_population_summary.add_theme_color_override("font_color", MUTED_TEXT)
+	content.add_child(governance_population_summary)
+
+	var production_row := HBoxContainer.new()
+	production_row.add_child(_make_row_label("生产岗位"))
+	governance_production_minus = _make_small_action("−")
+	governance_production_minus.name = "ProductionWorkerMinus"
+	governance_production_minus.pressed.connect(_adjust_workforce.bind(&"production", -1))
+	production_row.add_child(governance_production_minus)
+	governance_production_plus = _make_small_action("+")
+	governance_production_plus.name = "ProductionWorkerPlus"
+	governance_production_plus.pressed.connect(_adjust_workforce.bind(&"production", 1))
+	production_row.add_child(governance_production_plus)
+	content.add_child(production_row)
+
+	var construction_row := HBoxContainer.new()
+	construction_row.add_child(_make_row_label("施工岗位"))
+	governance_construction_minus = _make_small_action("−")
+	governance_construction_minus.name = "ConstructionWorkerMinus"
+	governance_construction_minus.pressed.connect(_adjust_workforce.bind(&"construction", -1))
+	construction_row.add_child(governance_construction_minus)
+	governance_construction_plus = _make_small_action("+")
+	governance_construction_plus.name = "ConstructionWorkerPlus"
+	governance_construction_plus.pressed.connect(_adjust_workforce.bind(&"construction", 1))
+	construction_row.add_child(governance_construction_plus)
+	content.add_child(construction_row)
+
+	governance_treatment_button = _make_governance_button("治疗伤员")
+	governance_treatment_button.name = "WoundedTreatmentButton"
+	governance_treatment_button.pressed.connect(_begin_wounded_treatment)
+	content.add_child(governance_treatment_button)
 
 
 func _make_governance_button(copy: String) -> Button:
@@ -339,6 +388,29 @@ func _make_governance_button(copy: String) -> Button:
 	button.focus_mode = Control.FOCUS_ALL
 	_apply_button_tokens(button)
 	return button
+
+
+func _make_row_label(copy: String) -> Label:
+	var label := Label.new()
+	label.text = copy
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.add_theme_color_override("font_color", TEXT)
+	return label
+
+
+func _make_small_action(copy: String) -> Button:
+	var button := _make_governance_button(copy)
+	button.custom_minimum_size = Vector2(44.0, 32.0)
+	button.size_flags_horizontal = Control.SIZE_SHRINK_END
+	return button
+
+
+func _adjust_workforce(channel: StringName, delta: int) -> void:
+	construction_controller.adjust_city_workforce(channel, delta)
+
+
+func _begin_wounded_treatment() -> void:
+	construction_controller.begin_wounded_treatment()
 
 
 func _start_governance_definition(definition_id: StringName) -> void:
@@ -360,7 +432,7 @@ func _layout_governance_workspace(
 	governance_workspace.position = Vector2(width - right_width - edge, rail_top + 140.0)
 	governance_workspace.size = Vector2(
 		right_width,
-		minf(260.0, height - rail_top - 154.0)
+		minf(430.0, height - rail_top - 154.0)
 	)
 
 
@@ -390,6 +462,28 @@ func _refresh_governance_workspace(
 		food,
 		food_capacity,
 	]
+	var population: Dictionary = construction_controller.get_population_recovery_read_model()
+	var treatment: Dictionary = Dictionary(population.get("treatment", {}))
+	var treatment_active := StringName(treatment.get("phase", &"")) == &"ACTIVE"
+	governance_population_summary.text = (
+		"人口 %d · 可用 %d · 生产 %d · 施工 %d\n驻军与外派 %d · 伤员 %d · 阵亡累计 %d%s"
+		% [
+			int(population.get("total_living", 0)),
+			int(population.get("available", 0)),
+			int(population.get("production_workers", 0)),
+			int(population.get("construction_workers", 0)),
+			int(population.get("military", 0)),
+			int(population.get("wounded", 0)),
+			int(population.get("fallen", 0)),
+			" · 治疗中 %d/%d" % [int(treatment.get("progress_milliseconds", 0)), int(treatment.get("required_milliseconds", 0))] if treatment_active else "",
+		]
+	)
+	governance_production_minus.disabled = int(population.get("production_workers", 0)) <= 0
+	governance_construction_minus.disabled = int(population.get("construction_workers", 0)) <= 0
+	governance_production_plus.disabled = int(population.get("available", 0)) <= 0
+	governance_construction_plus.disabled = int(population.get("available", 0)) <= 0
+	governance_treatment_button.disabled = int(population.get("wounded", 0)) <= 0 or treatment_active
+	governance_treatment_button.text = "治疗进行中" if treatment_active else "治疗伤员 · 每批最多 6 人"
 	governance_issue_detail.visible = not issues.is_empty()
 	governance_issue_detail.text = "\n".join(issues)
 	var show_workspace: bool = (

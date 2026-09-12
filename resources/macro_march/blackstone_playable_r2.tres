@@ -16,7 +16,9 @@ watchtower_config = {
 "effect_range": 220,
 "food_cost": 8,
 "max_durability": 120,
-"required_milliseconds": 8000
+"required_milliseconds": 8000,
+"upgrade_food_cost": 8,
+"upgrade_required_milliseconds": 8500
 },
 &"BARRICADE": {
 "collision_damage": 45,
@@ -25,12 +27,37 @@ watchtower_config = {
 "food_cost": 5,
 "max_durability": 160,
 "required_milliseconds": 5000,
-"route_delay_milliseconds": 8000
+"route_delay_milliseconds": 8000,
+"upgrade_food_cost": 6,
+"upgrade_required_milliseconds": 6500
+},
+&"FORTRESS": {
+"display_name": "外部堡垒",
+"effect_range": 70,
+"food_cost": 12,
+"garrison_casualty_reduction_permille": 500,
+"max_durability": 240,
+"required_milliseconds": 12000,
+"upgrade_food_cost": 12,
+"upgrade_required_milliseconds": 12000
+},
+&"MINEFIELD": {
+"display_name": "外部地雷",
+"effect_range": 34,
+"food_cost": 7,
+"max_durability": 1,
+"mine_charges": 2,
+"mine_damage": 3,
+"required_milliseconds": 6500,
+"upgrade_food_cost": 7,
+"upgrade_required_milliseconds": 7000
 }
 },
 "food_cost": 6,
 "required_milliseconds": 6000,
 "requires_connected_camp": true,
+"upgrade_food_cost": 6,
+"upgrade_required_milliseconds": 7000,
 "visibility_range": 360
 }
 world_bounds = Rect2i(0, 0, 1500, 980)
