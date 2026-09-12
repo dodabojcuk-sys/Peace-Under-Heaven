@@ -41,10 +41,12 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	var battle := city.get_formal_battle_scene() as C0BattleGraybox
-	_check(battle != null and battle.start_battle(true), "战时实例激活原军队而非新建部队")
+	_check(battle != null and battle.start_battle(false), "战时实例激活原军队而非新建部队")
 	if battle == null:
 		_finish(scene)
 		return
+	for squad in battle.coordinator.active_session.squads:
+		_check(BattlefieldSpace.command(battle.coordinator.active_session, int(squad.squad_id), "ATTACK", [], &"FRONT_GATE").is_empty(), "通过空间进攻命令接近目标城门")
 	var result: BattleResult = battle.step_battle_for_test(BattleSession.MAX_BATTLE_TICKS)
 	_check(result != null and result.outcome == BattleOutcome.Value.VICTORY, "真实战斗刻达到围城胜利")
 	if result != null:

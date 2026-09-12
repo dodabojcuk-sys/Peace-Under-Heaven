@@ -14,11 +14,11 @@ func _run() -> void:
 	_require(DirAccess.make_dir_recursive_absolute(save_directory) == OK, "建立隔离宏观围城存档目录")
 	var outputs: Array[Dictionary] = []
 	if failures.is_empty():
-		for mode in ["A", "B", "C", "D", "E"]:
+		for mode in ["A", "B", "C", "D", "E", "F"]:
 			outputs.append(_run_worker(mode, save_directory))
 	for index in outputs.size():
 		var result: Dictionary = outputs[index]
-		var mode: String = ["A", "B", "C", "D", "E"][index]
+		var mode: String = ["A", "B", "C", "D", "E", "F"][index]
 		_require(int(result.get("exit_code", -1)) == 0, "独立进程 %s 成功退出：%s" % [mode, str(result.get("output", ""))])
 		_require(str(result.get("output", "")).contains("MACRO_SIEGE_WARTIME_DISK_WORKER_%s PASS" % mode), "独立进程 %s 输出完整成功标记" % mode)
 	_finish()
@@ -42,7 +42,7 @@ func _require(condition: bool, description: String) -> void:
 
 func _finish() -> void:
 	if failures.is_empty():
-		print("MACRO_SIEGE_WARTIME_PERSISTENCE PASS assertions=11")
+		print("MACRO_SIEGE_WARTIME_PERSISTENCE PASS assertions=13")
 		quit(0)
 		return
 	quit(1)

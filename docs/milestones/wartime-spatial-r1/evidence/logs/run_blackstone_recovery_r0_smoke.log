@@ -1,0 +1,13 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 正常开局只有一份人口真值，四类岗位、驻军与可用人口守恒
+PASS: 调岗立即改变正式生产效率，人员不会同时留在可用池
+PASS: 训练从可用人口预留人员并支付现有兵种粮食成本
+PASS: 日边界只把已训练人员移入原驻军，不复制人口
+PASS: 同一批战损在结算时区分伤员与阵亡，阵亡减少总人口且不能进入治疗
+PASS: 治疗支付自身成本并沿统一城市时间推进，暂停前状态可保存
+PASS: 治疗中读档保留精确进度；完成只让伤员回到原驻军，阵亡不复活
+PASS: 人口守恒被篡改的存档在应用前拒绝且全部权威零写入
+PASS: 常态内城正式经营入口显示人口分配、伤员与治疗操作
+BLACKSTONE_RECOVERY_R0_SMOKE PASS assertions=9

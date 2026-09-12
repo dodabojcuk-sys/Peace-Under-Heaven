@@ -1,0 +1,30 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+PASS: 主场景可以加载
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 创建类型化 BattleRequest
+PASS: 请求从 RESERVED 开始
+PASS: 请求冻结双方快照
+PASS: 20 人默认拆成最多三个非空小队
+PASS: 余数按小队编号依次分配为 7/7/6
+PASS: 可逆默认路线为正门/侧门/正门
+PASS: 预留不提前扣总兵力但从可用兵力排除
+PASS: 预留不污染 placement 或 occupied cells
+PASS: 活动事务期间拒绝第二次预留
+PASS: 活动预留期间拒绝城市状态修改
+PASS: 战斗开始前可以取消
+PASS: 战前取消完整释放兵力
+PASS: 取消事务记录 CANCELLED
+PASS: 重复取消不产生第二次变化
+PASS: 取消后可以建立新事务
+PASS: 事务 ID 单调且不复用
+PASS: 不足三人时只创建非空小队
+PASS: RESERVED 可以进入 ACTIVE
+PASS: 请求和城市预留同步为 ACTIVE
+PASS: 战斗开始后不能伪装成战前取消
+PASS: 真实 finalize 后 ACTIVE 可以进入 RESULT_PENDING
+PASS: 结果 pending 生命周期明确
+PASS: 重复生命周期迁移被拒绝
+PASS: 敌军快照冻结当前日期、人数和工事
+PASS: 敌军按正门 40% / 侧门 60% 整数分配
+C0A_BATTLE_TRANSACTION_SMOKE PASS

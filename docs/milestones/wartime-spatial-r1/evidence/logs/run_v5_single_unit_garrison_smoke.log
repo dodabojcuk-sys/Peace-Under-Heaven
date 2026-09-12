@@ -1,0 +1,31 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+PASS: 正式主场景可以加载
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: V5 当前只公开一个稳定步兵 definition ID
+PASS: V5 查询复用既有 UnitRole，不复制兵种数值
+PASS: 未知兵种 ID 不产生空定义或伪造选项
+PASS: 驻军读模型包含稳定 roster 版本、城市、兵种及三个永久编队身份
+PASS: 初始 roster 投影总数、预留、未预留和可派数一致
+PASS: 驻军读模型深拷贝，调用者不能改写城市真值
+PASS: 旧 infantry_count 写入口兼容到唯一驻军源
+PASS: 负数兼容写入被拒绝且不产生部分变化
+PASS: 驻军源可以建立合法兵种数量
+PASS: 驻军返回／补充在容量内原子增加
+PASS: 驻军增加超过容量时零写入
+PASS: 驻军扣损在现有数量内原子减少
+PASS: 驻军过量扣损被拒绝且零写入
+PASS: 可派查询同时服从驻军总数、容量和将领指挥上限
+PASS: 战斗协调器绑定唯一城市权威
+PASS: 战斗预留不能超过容量约束后的权威可派数量
+PASS: 容量阻断失败不产生预留或驻军部分写入
+PASS: 可以从驻军预留 12 人
+PASS: 预留不扣总驻军，只减少未预留和可派数量
+PASS: 战斗预留没有复制或提前扣除驻军
+PASS: 战前取消释放驻军预留
+PASS: 取消后总驻军不变，可派数恢复到指挥上限
+PASS: 城市侧栏真实显示驻军与可派上限
+PASS: 现有征募流程仍可下达一批步兵
+PASS: 城市战略日结算完成训练
+PASS: 训练完成写回同一驻军源，不复制 infantry_count
+V5_SINGLE_UNIT_GARRISON_SMOKE PASS

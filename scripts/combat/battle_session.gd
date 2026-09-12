@@ -79,12 +79,13 @@ const SUPPORT_DOMAIN_PROTECT_BASIS_POINTS := 9000
 ## Schema 7 records the immutable squad that physically carries out each
 ## battle-local facility task. Schema 8 adds battle-local official command
 ## receipts and timed effects while the shared energy remains city-owned.
-const SNAPSHOT_SCHEMA_VERSION := 8
+## Schema 9 adds authoritative spatial positions and tasks for formal wartime sources.
+const SNAPSHOT_SCHEMA_VERSION := 9
 const SNAPSHOT_KEYS := [
 	"schema_version", "current_tick", "next_order_id", "squads", "routes",
 	"pending_orders", "accepted_orders", "retreat_was_ordered",
 	"forced_retreat_requested", "mission_objective_state", "wartime_facility_state",
-	"official_support_state",
+	"official_support_state", "spatial_state",
 ]
 
 var request: BattleRequest
@@ -104,6 +105,7 @@ var mission_definition: MissionDefinition
 var mission_objective_state: Dictionary = {}
 var wartime_facility_state: Dictionary = {}
 var official_support_state: Dictionary = {}
+var spatial_state: Dictionary = {}
 ## Presentation-only facts for the most recently committed simulation tick.
 ## They are intentionally not saved: route HP is the durable authority, and a
 ## restored battle must not replay a historical volley as a fresh event.
@@ -178,6 +180,7 @@ func initialize(request_value: BattleRequest) -> bool:
 		}
 	_initialize_wartime_facilities()
 	_initialize_mission_objective_state()
+	spatial_state = BattlefieldSpace.initialize(self) if request.source_id in [BattleRequest.SOURCE_MACRO_SIEGE, BattleRequest.SOURCE_WARTIME_DEFENSE] else {}
 	return true
 
 
@@ -201,6 +204,10 @@ func issue_order(
 		command
 	)
 	next_order_id += 1
+	if BattlefieldSpace.enabled(self):
+		BattlefieldSpace.interrupt_work(self, squad_id)
+		var task: Dictionary = spatial_state.tasks[str(squad_id)]
+		task.kind = "AUTO" if command == BattleOrder.Command.ADVANCE else ("RETREAT" if command == BattleOrder.Command.RETREAT else "HOLD")
 	pending_orders.append(order)
 	accepted_orders.append(order)
 	if command == BattleOrder.Command.RETREAT:
@@ -217,7 +224,12 @@ func issue_official_support(kind: StringName, squad_id: int, route_id: StringNam
 	var squad := get_squad_state(squad_id)
 	if squad.is_empty() or int(squad.get("total_hp", 0)) <= 0 or bool(squad.get("exited", false)):
 		return {}
-	var squad_route := StringName(squad.get("route_id", &""))
+	if BattlefieldSpace.enabled(self) and kind == SUPPORT_HEAL:
+		var position: Array = spatial_state.units[str(squad_id)]
+		var station := BattlefieldSpace.point(100 if BattlefieldSpace.defense(self) else 0, BattlefieldSpace.route_y(BattlefieldSpace.route_at(position)))
+		if BattlefieldSpace.distance(position, station) > BattlefieldSpace.MEDICAL_RANGE or not BattlefieldSpace.visible(self, position, station):
+			return {}
+	var squad_route := BattlefieldSpace.route_at(spatial_state.units[str(squad_id)]) if BattlefieldSpace.enabled(self) else StringName(squad.get("route_id", &""))
 	if route_id == &"":
 		route_id = squad_route
 	if route_id not in [CommittedForceSnapshot.FRONT_ROUTE, CommittedForceSnapshot.SIDE_ROUTE]:
@@ -285,6 +297,10 @@ func step_tick() -> bool:
 	_advance_protect_target_repair()
 	var damage_intents := _build_damage_intents()
 	_apply_damage_intents(damage_intents)
+	if BattlefieldSpace.enabled(self):
+		for squad in squads:
+			if int(squad.total_hp) <= 0 or bool(squad.exited):
+				BattlefieldSpace.interrupt_work(self, int(squad.squad_id))
 	_check_outcome()
 	# The expiry tick still receives the eighth configured combat application;
 	# removal happens only after that authoritative tick is fully committed.
@@ -466,6 +482,7 @@ func get_snapshot() -> Dictionary:
 		"mission_objective_state": mission_objective_state.duplicate(true),
 		"wartime_facility_state": wartime_facility_state.duplicate(true),
 		"official_support_state": official_support_state.duplicate(true),
+		"spatial_state": spatial_state.duplicate(true),
 	}
 
 
@@ -476,6 +493,8 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		return false
 	var source_schema_version := int(snapshot.schema_version)
 	var normalized_snapshot := snapshot.duplicate(true)
+	if source_schema_version >= 9 and (typeof(snapshot.get("spatial_state")) != TYPE_DICTIONARY or not BattlefieldSpace.valid(self, Dictionary(snapshot.get("spatial_state", {})), Array(snapshot.accepted_orders))):
+		return false
 	if source_schema_version < 8:
 		normalized_snapshot["official_support_state"] = {"next_command_id": 1, "effects": [], "receipts": []}
 	if source_schema_version <= 3:
@@ -616,6 +635,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 				legacy_record.durability = maximum
 				wartime_facility_state.facilities[index] = legacy_record
 	official_support_state = Dictionary(normalized_snapshot.official_support_state).duplicate(true)
+	spatial_state = Dictionary(snapshot.spatial_state).duplicate(true) if source_schema_version >= 9 else (BattlefieldSpace.initialize(self, true) if request.source_id in [BattleRequest.SOURCE_MACRO_SIEGE, BattleRequest.SOURCE_WARTIME_DEFENSE] else {})
 	return true
 
 
@@ -670,6 +690,8 @@ func get_state_digest() -> String:
 	if not wartime_facility_state.is_empty():
 		parts.append(str(wartime_facility_state))
 	parts.append(str(official_support_state))
+	if not spatial_state.is_empty():
+		parts.append(str(spatial_state))
 	parts.append(get_orders_digest())
 	return "|".join(parts)
 
@@ -775,7 +797,7 @@ func _advance_wartime_facilities() -> void:
 		var record: Dictionary = Dictionary(facilities[index])
 		var phase := StringName(record.get("phase", &""))
 		if phase in [FACILITY_PHASE_CONSTRUCTING, FACILITY_PHASE_REPAIRING]:
-			if not _is_construction_squad_available(record):
+			if not _is_construction_squad_available(record) or (BattlefieldSpace.enabled(self) and not BattlefieldSpace.work_reachable(self, int(record.construction_squad_id), BattlefieldSpace.work_point(self, record))):
 				record.phase = FACILITY_PHASE_INTERRUPTED
 				facilities[index] = record
 				last_tick_facility_events.append({
@@ -785,6 +807,8 @@ func _advance_wartime_facilities() -> void:
 					"squad_id": int(record.construction_squad_id),
 					"tick": current_tick,
 				})
+				continue
+			if BattlefieldSpace.enabled(self) and not BattlefieldSpace.work_ready(self, record):
 				continue
 			record.progress_ticks = mini(
 				int(record.get("progress_ticks", 0)) + 1,
@@ -852,7 +876,7 @@ func can_begin_wartime_facility_repair(
 			if repair_squad_id > 0
 			else _get_available_construction_squad_id()
 		)
-		return _is_committed_squad_available(selected_repair_squad_id)
+		return _is_committed_squad_available(selected_repair_squad_id) and (not BattlefieldSpace.enabled(self) or BattlefieldSpace.work_reachable(self, selected_repair_squad_id, BattlefieldSpace.work_point(self, record)))
 	return false
 
 
@@ -875,6 +899,14 @@ func begin_wartime_facility_repair(
 			if repair_squad_id > 0
 			else _get_available_construction_squad_id()
 		)
+		if BattlefieldSpace.enabled(self):
+			BattlefieldSpace.interrupt_work(self, replacement_squad_id)
+			for other in facilities:
+				if int(other.construction_squad_id) == replacement_squad_id and other.phase in [FACILITY_PHASE_CONSTRUCTING, FACILITY_PHASE_REPAIRING]:
+					other.phase = FACILITY_PHASE_INTERRUPTED
+			for squad in squads:
+				if int(squad.squad_id) == replacement_squad_id:
+					squad.active_order = BattleOrder.Command.HOLD
 		record.construction_squad_id = replacement_squad_id
 		record.phase = FACILITY_PHASE_REPAIRING
 		record.progress_ticks = 0
@@ -903,9 +935,18 @@ func can_begin_protect_target_repair() -> bool:
 	)
 
 
-func begin_protect_target_repair() -> bool:
+func begin_protect_target_repair(repair_squad_id := 0) -> bool:
 	if not can_begin_protect_target_repair():
 		return false
+	if BattlefieldSpace.enabled(self):
+		var crew_id := repair_squad_id if repair_squad_id > 0 else _get_available_construction_squad_id()
+		if not _has_commandable_squad(crew_id):
+			return false
+		var target := BattlefieldSpace.point(84, BattlefieldSpace.route_y(BattlefieldSpace.route_at(spatial_state.units[str(crew_id)])))
+		if not BattlefieldSpace.work_reachable(self, crew_id, target):
+			return false
+		BattlefieldSpace.interrupt_work(self, crew_id)
+		spatial_state.gate_crew = crew_id
 	var missing_hp := (
 		int(mission_objective_state.protect_target_max_hp)
 		- int(mission_objective_state.protect_target_hp)
@@ -990,9 +1031,11 @@ func _has_matching_snapshot_value_types(value: Dictionary, expected: Dictionary)
 
 func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 	var schema_version = snapshot.get("schema_version", null)
-	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, 2, 3, 4, 5, 6, 7, SNAPSHOT_SCHEMA_VERSION]:
+	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, 2, 3, 4, 5, 6, 7, 8, SNAPSHOT_SCHEMA_VERSION]:
 		return false
 	var expected_keys: Array = SNAPSHOT_KEYS.duplicate()
+	if int(schema_version) < 9:
+		expected_keys.erase("spatial_state")
 	if int(schema_version) == 1:
 		expected_keys.erase("wartime_facility_state")
 	if int(schema_version) < 8:
@@ -1047,7 +1090,7 @@ func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 				)
 			)
 			or (
-				int(schema_version) in [7, SNAPSHOT_SCHEMA_VERSION]
+				int(schema_version) in [7, 8, SNAPSHOT_SCHEMA_VERSION]
 				and _has_valid_wartime_facility_state(
 					Dictionary(snapshot.get("wartime_facility_state", {}))
 				)
@@ -1340,6 +1383,8 @@ func _expire_official_supports() -> void:
 
 
 func _support_basis_points(kind: StringName, squad_id: int, route_id: StringName) -> int:
+	if BattlefieldSpace.enabled(self) and spatial_state.units.has(str(squad_id)):
+		route_id = BattlefieldSpace.route_at(spatial_state.units[str(squad_id)])
 	var multiplier := BASIS_POINTS
 	for effect_value in Array(official_support_state.get("effects", [])):
 		var effect: Dictionary = Dictionary(effect_value)
@@ -1352,6 +1397,8 @@ func _support_basis_points(kind: StringName, squad_id: int, route_id: StringName
 			(effect_kind == SUPPORT_DOMAIN and StringName(effect.get("route_id", &"")) == route_id)
 			or (effect_kind != SUPPORT_DOMAIN and int(effect.get("squad_id", 0)) == squad_id)
 		)
+		if BattlefieldSpace.enabled(self) and effect_kind == SUPPORT_DOMAIN and spatial_state.units.has(str(squad_id)):
+			applies = applies and absi(int(spatial_state.units[str(squad_id)][1]) - BattlefieldSpace.route_y(StringName(effect.route_id)) * DISTANCE_SCALE) <= 8 * DISTANCE_SCALE
 		if not applies:
 			continue
 		if kind == SUPPORT_MOVE and effect_kind == SUPPORT_MOVE:
@@ -1370,6 +1417,9 @@ func _support_basis_points(kind: StringName, squad_id: int, route_id: StringName
 
 
 func _update_positions() -> void:
+	if BattlefieldSpace.enabled(self):
+		BattlefieldSpace.move(self)
+		return
 	var advance_per_tick := _positive_integer_divide(
 		request.committed_force.move_speed_fixed,
 		4
@@ -1401,6 +1451,8 @@ func _update_positions() -> void:
 
 
 func _advance_mission_enemy_positions() -> void:
+	if BattlefieldSpace.enabled(self):
+		return
 	if (
 		mission_definition == null
 		or mission_definition.objective_type != MissionDefinition.OBJECTIVE_PROTECT
@@ -1430,6 +1482,8 @@ func _advance_mission_enemy_positions() -> void:
 
 
 func _build_damage_intents() -> Dictionary:
+	if BattlefieldSpace.enabled(self):
+		return BattlefieldSpace.damage(self)
 	var gate_damage := {
 		CommittedForceSnapshot.FRONT_ROUTE: 0,
 		CommittedForceSnapshot.SIDE_ROUTE: 0,
@@ -1744,6 +1798,8 @@ func _apply_damage_intents(intents: Dictionary) -> void:
 				0
 			)
 	_apply_wartime_facility_damage(Dictionary(intents.get("facility_damage", {})))
+	if BattlefieldSpace.enabled(self) and BattlefieldSpace.defense(self):
+		mission_objective_state.protect_target_hp = maxi(int(mission_objective_state.protect_target_hp) - int(intents.get("protect_damage", 0)), 0)
 	_apply_mission_objective_damage()
 
 
@@ -1762,6 +1818,7 @@ func _apply_wartime_facility_damage(damage_by_id: Dictionary) -> void:
 		var was_in_progress := StringName(record.get("phase", &"")) in [
 			FACILITY_PHASE_CONSTRUCTING,
 			FACILITY_PHASE_REPAIRING,
+			FACILITY_PHASE_INTERRUPTED,
 		]
 		var was_triggered_trap := (
 			StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_SPIKE_TRAP
@@ -1774,6 +1831,9 @@ func _apply_wartime_facility_damage(damage_by_id: Dictionary) -> void:
 			if int(record.durability) == 0
 			else FACILITY_PHASE_INTERRUPTED if was_in_progress else FACILITY_PHASE_DAMAGED
 		)
+		if record.phase == FACILITY_PHASE_DESTROYED:
+			record.required_ticks = int(FACILITY_BUILD_TICKS.get(StringName(record.kind), 0))
+			record.progress_ticks = mini(int(record.progress_ticks), int(record.required_ticks))
 		facilities[index] = record
 		## The trigger already emitted its player-facing event before this shared
 		## lifecycle writer consumes the trap. Do not turn one arrival into a
@@ -1925,6 +1985,14 @@ func _advance_protect_target_repair() -> void:
 		!= PROTECT_TARGET_REPAIRING
 	):
 		return
+	if BattlefieldSpace.enabled(self):
+		var crew := int(spatial_state.gate_crew)
+		if not _has_commandable_squad(crew):
+			BattlefieldSpace.cancel_gate_work(self)
+			return
+		var task := BattlefieldSpace.job(self, crew)
+		if task.is_empty() or BattlefieldSpace.distance(spatial_state.units[str(crew)], task.target) > BattlefieldSpace.WORK_RANGE:
+			return
 	var required := int(mission_objective_state.get("protect_target_repair_required_ticks", 0))
 	var progress := mini(
 		int(mission_objective_state.get("protect_target_repair_progress_ticks", 0)) + 1,
@@ -1973,6 +2041,8 @@ func _update_mission_search_progress() -> void:
 
 
 func _apply_mission_objective_damage() -> void:
+	if BattlefieldSpace.enabled(self):
+		return
 	if mission_definition == null:
 		return
 	mission_objective_state.remaining_enemy_count = (

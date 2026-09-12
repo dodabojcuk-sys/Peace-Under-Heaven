@@ -1,5 +1,23 @@
 # 当前状态
 
+## Wartime spatial battle R1 (2026-09-12)
+
+Macro siege and sourced Blackstone defense now use a real corridor battlefield:
+closed gates block travel, formations deploy and receive map commands, crews
+travel to work, and attacks/support read actual positions. Existing armies,
+HP, resources, shared energy and one-time results remain authoritative. Session
+schema 9 restores positions/tasks/work/effects and migrates old active progress
+without restarting the battle. Settled invasions retain their resolved state
+when city time resumes.
+
+Both formal attack/defense journeys, independent-process recovery, terminal
+frame-rate consistency and 33 relevant regression runners pass. Engine-GUI
+recordings and screenshots are archived; human normal-speed acceptance remains
+OPEN. This section supersedes route-only wartime presentation below, which is
+historical. Legacy first-war/noticeboard C0 missions remain separate.
+See [design](docs/design/WARTIME_SPATIAL_BATTLE_R1.md) and
+[coverage/evidence](docs/milestones/wartime-spatial-r1/VERIFICATION.md).
+
 ## War specialists and active official support R0
 
 The Blackstone war map now exposes one compact formal menu for medical,

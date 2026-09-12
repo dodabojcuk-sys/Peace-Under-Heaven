@@ -1,0 +1,24 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+PASS: 建立纵向闭环隔离存档目录
+PASS: 正式城市场景可加载
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 玩家正式入口建立唯一训练订单
+PASS: 训练下单只扣城市粮食且尚未写驻军
+PASS: 边界容量故障使时间停在最后可表示毫秒且结算、驻军和队列零写入
+PASS: 解除阻断后同一订单只在城市战略日边界完成一次
+PASS: 派遣预留使用权威可派查询且不提前扣驻军
+PASS: 确认派遣一次性创建 ArmyState 并保持世界兵力守恒
+PASS: Army 只由整数城市战略时间从 MARCHING 推进到 ARRIVED
+PASS: 到达 Army 经唯一入口进入 SETTLEMENT_PENDING
+PASS: 遭遇协调器绑定唯一城市权威
+PASS: ArmyState 只读构造请求并复用唯一 BattleSession
+PASS: BattleSession 产生真实、一致的 terminal facts
+PASS: 城市权威入口一次性把胜利幸存者写为返乡军队
+PASS: 战果写回后 Army 幸存与伤亡继续守恒
+PASS: 相同 terminal result 重放幂等且零二次写入
+PASS: 完整闭环状态经 V5 writer 发布为第一代
+PASS: 新运行时精确恢复训练、城市、驻军、Army 与战果 ledger
+PASS: 恢复后的 returning Army、result ID 与世界兵力不重复结算
+PASS: 纵向闭环存档不含 Node、像素坐标、camera 或 UI 状态
+V5_VERTICAL_LOOP_SMOKE PASS

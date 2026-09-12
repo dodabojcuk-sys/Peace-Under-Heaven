@@ -2748,7 +2748,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 		var patrol_id := StringName(patrol_id_value)
 		var patrol := Dictionary(patrols_by_id[patrol_id])
 		if int(patrol.get("strength", 0)) <= 0:
-			if StringName(patrol.get("invasion_kind", &"")) != &"" and StringName(patrol.get("phase", &"")) not in [INVASION_HANDED_OFF, INVASION_DEFEATED]:
+			if StringName(patrol.get("invasion_kind", &"")) != &"" and StringName(patrol.get("phase", &"")) not in [INVASION_HANDED_OFF, INVASION_DEFEATED, INVASION_RESOLVED]:
 				patrol.phase = INVASION_DEFEATED
 				patrols_by_id[patrol_id] = patrol
 			continue

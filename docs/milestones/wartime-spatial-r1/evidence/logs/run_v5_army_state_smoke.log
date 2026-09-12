@@ -1,0 +1,31 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+PASS: 正式城市场景可加载
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: V4 窄适配层只读真实城市驻军和权威可派数
+PASS: 旧黑石堡原型入口已由只读投影的宏观军令界面替换
+PASS: 权威可派 10 人时适配层拒绝预留 12 人且零写入
+PASS: 预留分配稳定事务 ID，不提前扣驻军且减少可派投影
+PASS: 错误事务不能取消或改写派遣预留
+PASS: 正式取消只释放预留，驻军总数保持不变
+PASS: 确认期驻军故障回滚 registry 序列且保留可取消预留
+PASS: 故障回滚后的预留仍可通过正式事务取消
+PASS: 确认命令创建稳定 ArmyState 并原子进入 MARCHING
+PASS: 驻军只扣一次且城市加 active army 保持总兵力守恒
+PASS: 重复确认不能二次扣兵或创建第二支军队
+PASS: V5 单 active 政策拒绝第二支活动军队且零写入
+PASS: 权威持久模型是 armies_by_id 集合，不固化 singleton
+PASS: ArmyState 不持久 Node、像素坐标、UI 或表现状态
+PASS: V4 表现投影只从 stable route/node ID 和整数进度派生
+PASS: 表现投影深拷贝，不能旁路修改 ArmyState
+PASS: 场景重进适配器可从同一持久集合重建相同 ArmyState
+PASS: 城市战略时间按整数毫秒推进在途军队
+PASS: 相同 expected progress 的重复帧被防重入且零写入
+PASS: 抵达由整数进度触发一次 ARRIVED 状态转换
+PASS: 重复 frame、信号或重进不能二次抵达
+PASS: 抵达只可一次进入 SETTLEMENT_PENDING
+PASS: 到达和等待结算期间总兵力仍守恒
+PASS: 首个已取消记录可保留为 CLOSED 审计事实
+PASS: 集合可保留多个 CLOSED 记录，不退化为 singleton
+PASS: 解除 V5 policy 后同一 schema 可容纳两支 active army
+V5_ARMY_STATE_SMOKE PASS

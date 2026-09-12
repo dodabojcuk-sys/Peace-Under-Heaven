@@ -1,5 +1,19 @@
 # Product Successor Decisions
 
+## Wartime spatial battlefield ownership
+
+- Use one versioned integer corridor graph in the existing BattleSession for
+  macro siege and sourced defense. Cross-route travel and range are spatial;
+  source-route identifiers continue to describe the original committed force.
+- Reuse damage/resource/energy/result transactions. Scene nodes never become
+  authoritative state, and temporary works never become persistent buildings.
+- Keep medical station radius and full-corridor domains explicit. Do not imply
+  a circular field when the authored effect covers an entire corridor.
+- Migrate old scalar progress deterministically without restoring HP, gates or
+  completed work; retain terminal snapshots without replaying combat.
+- Preserve legacy two-route fixtures as historical references. They cannot
+  constrain the current spatial runtime. See WARTIME_SPATIAL_BATTLE_R1.md.
+
 ## Blackstone first-invasion ownership
 
 - The first Blackstone invasion is authored in the playable theatre resource

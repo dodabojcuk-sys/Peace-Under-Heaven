@@ -1,0 +1,23 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 胜利写回用例进入 ACTIVE 战斗
+PASS: 真实演算形成待确认胜利
+PASS: 结果页使用全屏 STOP 遮挡防止点击穿透
+PASS: 首次胜利确认一次性应用木材 30、粮食 20
+PASS: 伤亡与奖励在确认时一起写入城市权威状态
+PASS: 确认后事务从 RESULT_PENDING 原子进入 APPLIED
+PASS: 首通幂等键写入唯一城市权威账本
+PASS: 重复确认返回同一摘要且不重复修改兵力或资源
+PASS: 返回城市在至少一个输入保护帧前拒绝恢复
+PASS: 异步达到保护帧后返回成功且重复返回幂等
+PASS: 返回后恢复城市画面、Camera2D 与输入并隐藏战斗 UI
+PASS: 历史重打可以创建新的唯一事务
+PASS: 历史重打事务进入 ACTIVE
+PASS: 历史重打由真实 BattleSession 进入 RESULT_PENDING
+PASS: 历史重打胜利不重复领取首通奖励
+PASS: 非法事务用例建立合法预留
+PASS: 非法事务用例进入 ACTIVE
+PASS: 非法事务用例进入 RESULT_PENDING
+PASS: 非法 transaction ID 被拒绝且不产生部分写入
+C0D_RESULT_WRITEBACK_SMOKE PASS

@@ -1,0 +1,12 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 主城、资源城和占领驻点从同一地点能力表获得建设、补给与内城权限
+PASS: 正常开局不补资源即可在第 4 日预警前，以真实工程师、配置粮食成本和施工进度完成有意义的基础防线
+PASS: 堡垒只绑定同一 ArmyRegistry 的真实驻扎军队，并把避免的伤亡转成自身耐久损失
+PASS: 地雷只在真实路线穿越时触发一次；消耗与伤害不会因重复推进重播
+MINE_DISCOVERY_TRACE hidden=true discovered=true visible=true cleared=true cold=true
+PASS: 敌方地雷在侦察前不进入玩家读模型；现场发现、排除与消耗态均可恢复
+PASS: 升级进行中保留旧能力；读档续建只结算一次，并按旧耐久比例提升真实参数
+PASS: 地雷消耗、真实堡垒驻军、设施等级与在场状态精确恢复
+FIELD_DEFENSE_EXPANSION_R0_SMOKE PASS assertions=7
