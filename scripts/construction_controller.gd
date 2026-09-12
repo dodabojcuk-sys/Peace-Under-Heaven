@@ -101,9 +101,11 @@ const POPULATION_RECOVERY_STATE = preload(
 	"res://scripts/state/population_recovery_state.gd"
 )
 const CITY_GOVERNANCE_STATE = preload("res://scripts/state/city_governance_state.gd")
+const CITY_STRATEGY_STATE = preload("res://scripts/state/city_strategy_state.gd")
 const CITY_GOVERNANCE_RULES: CityGovernanceRules = preload(
 	"res://resources/war/blackstone_city_governance_r0.tres"
 )
+const CITY_STRATEGY_RULES: CityStrategyRules = preload("res://resources/war/blackstone_city_strategy_r0.tres")
 const RECOVERY_RULES: CampaignRecoveryRules = preload(
 	"res://resources/war/blackstone_recovery_r0.tres"
 )
@@ -431,6 +433,7 @@ var _last_training_failure_id: StringName = &""
 var _army_registry: ArmyRegistry = ARMY_REGISTRY.new()
 var _population_recovery: PopulationRecoveryState = POPULATION_RECOVERY_STATE.new()
 var _city_governance: CityGovernanceState = CITY_GOVERNANCE_STATE.new()
+var _city_strategy: CityStrategyState = CITY_STRATEGY_STATE.new()
 var _army_dispatch_adapter: V5ArmyDispatchAdapter
 var _active_army_dispatch_reservation: Dictionary = {}
 var _next_army_dispatch_transaction_sequence := 1
@@ -517,6 +520,7 @@ var _field_supply_fault_for_test: StringName = &""
 var _field_reinforcement_fault_for_test: StringName = &""
 var _field_watchtower_fault_for_test: StringName = &""
 var _wartime_session_checkpoint_fault_for_test: StringName = &""
+var _city_strategy_fault_for_test: StringName = &""
 
 
 func _ready() -> void:
@@ -525,6 +529,8 @@ func _ready() -> void:
 		_population_recovery.initialize_fresh(RECOVERY_RULES, _garrison_state.get_total_count())
 	if _city_governance.last_applied_day <= 0:
 		_city_governance.initialize_fresh(CITY_GOVERNANCE_RULES)
+	if _city_strategy.unlocked_official_ids.is_empty() and _city_strategy.campaign_energy <= 0:
+		_city_strategy.initialize_fresh(CITY_STRATEGY_RULES)
 	_register_definition(ROAD_DEFINITION)
 	_register_definition(LOGGING_CAMP_DEFINITION)
 	_register_definition(FARM_DEFINITION)
@@ -3730,6 +3736,11 @@ func _advance_day_boundary(
 		last_daily_report += "（容量封顶）"
 	if not allow_battle_settlement:
 		_update_first_war_state_for_current_day()
+	var strategy_before := _city_strategy.get_snapshot()
+	if _city_strategy.expire_support_for_day(current_day) and not _persist_city_strategy_checkpoint():
+		# Keep the durable record retryable. Effect queries also check the city
+		# day, so a failed expiry save cannot extend the expired bonus.
+		_city_strategy.restore_snapshot(strategy_before)
 	_refresh_city_ui()
 	city_state_changed.emit()
 	return true
@@ -4305,10 +4316,13 @@ func get_workforce_modifier_permille(channel: StringName) -> int:
 		1000
 	)
 	if channel == &"production":
-		return floori(float(clampi(
+		var result := floori(float(clampi(
 			floori(float(_population_recovery.production_workers * 1000) / float(RECOVERY_RULES.production_workers_for_full_output)),
 			0, 1000
 		) * health_modifier) / 1000.0)
+		if _is_city_support_active(&"PRODUCTION"):
+			result += CITY_STRATEGY_RULES.production_support_permille
+		return result
 	if channel == &"construction":
 		return floori(float(clampi(
 			floori(float(_population_recovery.construction_workers * 1000) / float(RECOVERY_RULES.construction_workers_for_full_speed)),
@@ -4454,6 +4468,8 @@ func get_city_medical_capacity() -> int:
 		var capability := definition.get_capability(&"medical_capacity") if definition != null else null
 		if capability != null:
 			capacity += capability.amount
+	if _is_city_support_active(&"MEDICAL"):
+		capacity += CITY_STRATEGY_RULES.medical_support_capacity
 	return capacity
 
 
@@ -4478,6 +4494,172 @@ func get_city_governance_read_model() -> Dictionary:
 	elif get_city_season_id() == &"AUTUMN":
 		snapshot.active_issue = "入冬预警：检查粮储与住房"
 	return snapshot
+
+
+func get_city_strategy_read_model() -> Dictionary:
+	var snapshot := _city_strategy.get_snapshot()
+	snapshot.active_support_effective = (
+		StringName(_city_strategy.active_support.get("phase", &"")) == CityStrategyState.SUPPORT_ACTIVE
+		and current_day < int(_city_strategy.active_support.get("expires_day", 0))
+	)
+	snapshot.official_names = {&"official.steward": "司仓主簿", &"official.physician": "医政官", &"official.strategist": "守御参军"}
+	snapshot.equipment_names = {&"equipment.spear_kit": "长枪制式", &"equipment.padded_armor": "绵甲制式", &"equipment.marching_kit": "轻行装具", &"equipment.general.bronze_sword": "青铜佩剑", &"equipment.general.lamellar": "将领札甲", &"equipment.general.riding_boots": "骑行战靴"}
+	snapshot.equipment_costs = CITY_STRATEGY_RULES.equipment_costs.duplicate(true)
+	snapshot.selected_general_id = selected_general_id
+	var offers := CITY_STRATEGY_RULES.trade_offers.duplicate(true)
+	for offer_id_value in offers.keys():
+		var offer: Dictionary = offers[offer_id_value]
+		var spend_available := _nation_state.get_resource(StringName(offer.spend_id))
+		var gain_available := _nation_state.get_resource(StringName(offer.gain_id))
+		var gain_capacity := get_resource_capacity(StringName(offer.gain_id))
+		var already_used := _city_strategy.trade_day == current_day and StringName(offer_id_value) in _city_strategy.used_trade_offer_ids
+		offer.spend_available = spend_available
+		offer.gain_available = gain_available
+		offer.gain_capacity = gain_capacity
+		offer.can_execute = not already_used and spend_available >= int(offer.spend) and gain_available + int(offer.gain) <= gain_capacity and not is_city_action_locked_for_battle()
+		offer.blocked_reason = "今日已交易" if already_used else ("付出资源不足" if spend_available < int(offer.spend) else ("目标仓储容量不足" if gain_available + int(offer.gain) > gain_capacity else ""))
+		offers[offer_id_value] = offer
+	snapshot.trade_offers = offers
+	return snapshot
+
+
+func _is_city_support_active(support_type: StringName) -> bool:
+	return (
+		StringName(_city_strategy.active_support.get("phase", &"")) == CityStrategyState.SUPPORT_ACTIVE
+		and StringName(_city_strategy.active_support.get("support_type", &"")) == support_type
+		and current_day < int(_city_strategy.active_support.get("expires_day", 0))
+	)
+
+
+func _persist_city_strategy_checkpoint() -> bool:
+	if _city_strategy_fault_for_test == &"CHECKPOINT_SAVE_FAILED":
+		_city_strategy_fault_for_test = &""
+		return false
+	return bool(_persist_macro_march_checkpoint().get("success", false))
+
+
+func _rollback_city_strategy_change(strategy_before: Dictionary, resources_before: Dictionary = {}) -> void:
+	_city_strategy.restore_snapshot(strategy_before)
+	if not resources_before.is_empty() and not _replace_national_resources(resources_before, &"city_strategy_checkpoint_rollback"):
+		push_error("City strategy resource rollback failed")
+	_refresh_city_ui()
+
+
+func appoint_city_official(official_id: StringName) -> Dictionary:
+	var before := _city_strategy.get_snapshot()
+	if is_city_action_locked_for_battle() or not _city_strategy.appoint(official_id):
+		return {"success": false, "error": "该文官尚未获得，或战斗事务正在锁定城市"}
+	if not _persist_city_strategy_checkpoint():
+		_rollback_city_strategy_change(before)
+		return {"success": false, "error": "任命存档失败，选择已回滚"}
+	_refresh_city_ui()
+	return {"success": true, "strategy": get_city_strategy_read_model()}
+
+
+func activate_city_official_support() -> Dictionary:
+	if is_city_action_locked_for_battle():
+		return {"success": false, "error": "战斗事务处理中不能启用新的城市支援"}
+	var before := _city_strategy.get_snapshot()
+	var support := _city_strategy.begin_support(_city_strategy.appointed_official_id, current_day, CITY_STRATEGY_RULES)
+	if support.is_empty() or not _persist_city_strategy_checkpoint():
+		_city_strategy.restore_snapshot(before)
+		return {"success": false, "error": "关卡能量不足、已有支援生效，或存档失败"}
+	_refresh_city_ui()
+	return {"success": true, "support": support}
+
+
+func craft_city_equipment(equipment_id: StringName) -> Dictionary:
+	if is_city_action_locked_for_battle() or _city_strategy.owned_equipment_ids.has(equipment_id):
+		return {"success": false, "error": "战斗事务处理中不能制造，或装备已经拥有"}
+	var costs: Dictionary = Dictionary(CITY_STRATEGY_RULES.equipment_costs.get(equipment_id, {}))
+	if costs.is_empty():
+		return {"success": false, "error": "未知装备"}
+	var before := _city_strategy.get_snapshot()
+	var resources_before := _nation_state.get_shared_resources()
+	var entries: Array[Dictionary] = []
+	for resource_id in costs:
+		entries.append({"resource_id": StringName(resource_id), "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": int(costs[resource_id])})
+	var local_commit := func() -> Dictionary: return {"success": _city_strategy.own_equipment(equipment_id)}
+	if not _commit_national_resources(entries, &"equipment_crafting", local_commit):
+		_city_strategy.restore_snapshot(before)
+		return {"success": false, "error": "材料不足或装备事务未提交"}
+	if not _persist_city_strategy_checkpoint():
+		_rollback_city_strategy_change(before, resources_before)
+		return {"success": false, "error": "装备存档失败，材料与物品已回滚"}
+	_refresh_city_ui()
+	return {"success": true, "strategy": get_city_strategy_read_model()}
+
+
+func equip_city_troops(equipment_id: StringName) -> Dictionary:
+	var before := _city_strategy.get_snapshot()
+	if is_city_action_locked_for_battle() or not _city_strategy.equip_troops(equipment_id):
+		return {"success": false, "error": "只能在城市整备已拥有的制式装备"}
+	if not _persist_city_strategy_checkpoint():
+		_rollback_city_strategy_change(before)
+		return {"success": false, "error": "装配存档失败，原装配已恢复"}
+	_refresh_city_ui()
+	return {"success": true, "strategy": get_city_strategy_read_model()}
+
+
+func unequip_city_troops(equipment_id: StringName) -> Dictionary:
+	var before := _city_strategy.get_snapshot()
+	if is_city_action_locked_for_battle() or not _city_strategy.unequip_troops(equipment_id):
+		return {"success": false, "error": "只能在城市卸下当前已装配的制式装备"}
+	if not _persist_city_strategy_checkpoint():
+		_rollback_city_strategy_change(before)
+		return {"success": false, "error": "卸装存档失败，原装配已恢复"}
+	_refresh_city_ui()
+	return {"success": true, "strategy": get_city_strategy_read_model()}
+
+
+func equip_city_general(equipment_id: StringName) -> Dictionary:
+	var before := _city_strategy.get_snapshot()
+	if is_city_action_locked_for_battle() or selected_general_id == &"" or not _city_strategy.equip_general(selected_general_id, equipment_id):
+		return {"success": false, "error": "请先在城市选择将领，并使用已拥有且未被占用的将领装备"}
+	if not _persist_city_strategy_checkpoint():
+		_rollback_city_strategy_change(before)
+		return {"success": false, "error": "将领装配存档失败，原装配已恢复"}
+	_refresh_city_ui()
+	return {"success": true, "strategy": get_city_strategy_read_model()}
+
+
+func unequip_city_general(equipment_id: StringName) -> Dictionary:
+	var before := _city_strategy.get_snapshot()
+	if is_city_action_locked_for_battle() or selected_general_id == &"" or not _city_strategy.unequip_general(selected_general_id, equipment_id):
+		return {"success": false, "error": "只能在城市卸下当前将领已装配的装备"}
+	if not _persist_city_strategy_checkpoint():
+		_rollback_city_strategy_change(before)
+		return {"success": false, "error": "将领卸装存档失败，原装配已恢复"}
+	_refresh_city_ui()
+	return {"success": true, "strategy": get_city_strategy_read_model()}
+
+
+func execute_city_trade(offer_id: StringName) -> Dictionary:
+	if is_city_action_locked_for_battle():
+		return {"success": false, "error": "战斗事务处理中不能交易"}
+	var offer: Dictionary = Dictionary(CITY_STRATEGY_RULES.trade_offers.get(offer_id, {}))
+	if offer.is_empty() or (_city_strategy.trade_day == current_day and offer_id in _city_strategy.used_trade_offer_ids):
+		return {"success": false, "error": "交易不存在或今日已经执行"}
+	var gain_id := StringName(offer.gain_id)
+	if _nation_state.get_resource(gain_id) + int(offer.gain) > get_resource_capacity(gain_id):
+		return {"success": false, "error": "目标仓储容量不足"}
+	var before := _city_strategy.get_snapshot()
+	var resources_before := _nation_state.get_shared_resources()
+	var local_commit := func() -> Dictionary:
+		var receipt := _city_strategy.record_trade(offer_id, current_day)
+		return {"success": not receipt.is_empty(), "receipt": receipt}
+	var entries: Array[Dictionary] = [
+		{"resource_id": StringName(offer.spend_id), "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": int(offer.spend)},
+		{"resource_id": gain_id, "operation": NationState.RESOURCE_OPERATION_ADD, "amount": int(offer.gain)},
+	]
+	if not _commit_national_resources(entries, &"city_trade", local_commit):
+		_city_strategy.restore_snapshot(before)
+		return {"success": false, "error": "资源、容量或交易条件不满足"}
+	if not _persist_city_strategy_checkpoint():
+		_rollback_city_strategy_change(before, resources_before)
+		return {"success": false, "error": "交易存档失败，资源与回执已回滚"}
+	_refresh_city_ui()
+	return {"success": true, "strategy": get_city_strategy_read_model()}
 
 
 func resolve_city_governance_event() -> Dictionary:
@@ -4708,6 +4890,7 @@ func export_v5_campaign_snapshot() -> Dictionary:
 		"war_loop": _war_loop_state.get_snapshot(),
 		"population_recovery": _population_recovery.get_snapshot(),
 		"city_governance": _city_governance.get_snapshot(),
+		"city_strategy": _city_strategy.get_snapshot(),
 	}
 	var validation := validate_v5_campaign_snapshot(snapshot)
 	if not bool(validation.valid):
@@ -4798,6 +4981,9 @@ func validate_v5_campaign_snapshot(
 	var governance_probe := CityGovernanceState.new()
 	if not governance_probe.restore_snapshot(candidate.city_governance):
 		return {"valid": false, "error_id": &"INVALID_CITY_GOVERNANCE", "error": "城市治理状态无法恢复"}
+	var strategy_probe := CityStrategyState.new()
+	if not strategy_probe.restore_snapshot(candidate.city_strategy):
+		return {"valid": false, "error_id": &"INVALID_CITY_STRATEGY", "error": "城市战略支持状态无法恢复"}
 	var candidate_military := 0
 	for count_value in Dictionary(Dictionary(candidate.garrison).get("unit_counts_by_definition_id", {})).values():
 		candidate_military += int(count_value)
@@ -5377,6 +5563,8 @@ func _apply_validated_v5_campaign_snapshot(
 			"error_id": &"CITY_GOVERNANCE_APPLY_FAILED",
 			"error": "城市治理状态恢复失败",
 		}
+	if not _city_strategy.restore_snapshot(snapshot.city_strategy):
+		return {"success": false, "error_id": &"CITY_STRATEGY_APPLY_FAILED", "error": "城市战略支持状态恢复失败"}
 	if not _population_recovery.invariant_matches(_current_military_population(), _current_alive_specialists()):
 		return {
 			"success": false,
@@ -6932,8 +7120,13 @@ func _validate_macro_march_route(source_point_id: StringName, target_point_id: S
 	)
 
 
-func _macro_march_route_duration(route_id: StringName) -> int:
-	return _war_loop_state.field_tactics.runtime_route_duration_milliseconds(route_id)
+func get_macro_march_route_duration(route_id: StringName) -> int:
+	var duration := _war_loop_state.field_tactics.runtime_route_duration_milliseconds(route_id)
+	if StringName(_city_strategy.troop_equipment_by_slot.get(&"mobility", &"")) == &"equipment.marching_kit":
+		duration = ceili(float(duration) / (1.0 + float(CITY_STRATEGY_RULES.equipment_effect_permille) / 1000.0))
+	if _city_strategy.general_has_equipment(selected_general_id, &"equipment.general.riding_boots"):
+		duration = ceili(float(duration) / (1.0 + float(CITY_STRATEGY_RULES.general_equipment_effect_permille) / 1000.0))
+	return duration
 
 
 func commit_macro_march_from_city(
@@ -6968,7 +7161,7 @@ func commit_macro_march_from_city(
 		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足：需要 %d，当前 %d" % [food_cost, food])
 	var garrison_before := _garrison_state.get_persistence_snapshot()
 	var registry_before := _army_registry.get_snapshot()
-	var duration := _macro_march_route_duration(route_id)
+	var duration := get_macro_march_route_duration(route_id)
 	var local_commit := func() -> Dictionary:
 		var army := _army_registry.create_macro_march(
 			&"player", &"blackstone_city", &"blackstone_city", target_point_id,
@@ -7021,7 +7214,7 @@ func commit_macro_march_from_station(
 	if food < food_cost:
 		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足：需要 %d，当前 %d" % [food_cost, food])
 	var registry_before := _army_registry.get_snapshot()
-	var duration := _macro_march_route_duration(route_id)
+	var duration := get_macro_march_route_duration(route_id)
 	var local_commit := func() -> Dictionary:
 		var issued := _army_registry.issue_stationed_macro_march(
 			army_id, target_point_id, route_id, route_world_points, food_cost, duration, route_segments
@@ -7260,6 +7453,10 @@ func set_field_watchtower_fault_for_test(fault_id: StringName) -> void:
 
 func set_wartime_session_checkpoint_fault_for_test(fault_id: StringName) -> void:
 	_wartime_session_checkpoint_fault_for_test = fault_id
+
+
+func set_city_strategy_fault_for_test(fault_id: StringName) -> void:
+	_city_strategy_fault_for_test = fault_id
 
 
 func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dictionary:
@@ -10499,14 +10696,25 @@ func get_infantry_attack_multiplier() -> float:
 	var formation := get_tech_definition(&"tech.formation_drill")
 	if formation != null and has_tech(formation.tech_id):
 		multiplier *= 1.0 + formation.effect_amount
+	if StringName(_city_strategy.troop_equipment_by_slot.get(&"attack", &"")) == &"equipment.spear_kit":
+		multiplier *= 1.0 + float(CITY_STRATEGY_RULES.equipment_effect_permille) / 1000.0
+	if _city_strategy.general_has_equipment(selected_general_id, &"equipment.general.bronze_sword"):
+		multiplier *= 1.0 + float(CITY_STRATEGY_RULES.general_equipment_effect_permille) / 1000.0
 	return multiplier
 
 
 func get_infantry_defense_multiplier() -> float:
+	var multiplier := 1.0
 	var general := get_selected_general()
 	if general != null and general.modifier_type == &"infantry_defense":
-		return 1.0 + general.modifier_amount
-	return 1.0
+		multiplier *= 1.0 + general.modifier_amount
+	if StringName(_city_strategy.troop_equipment_by_slot.get(&"defense", &"")) == &"equipment.padded_armor":
+		multiplier *= 1.0 + float(CITY_STRATEGY_RULES.equipment_effect_permille) / 1000.0
+	if _city_strategy.general_has_equipment(selected_general_id, &"equipment.general.lamellar"):
+		multiplier *= 1.0 + float(CITY_STRATEGY_RULES.general_equipment_effect_permille) / 1000.0
+	if _is_city_support_active(&"DEFENSE"):
+		multiplier *= 1.0 + float(CITY_STRATEGY_RULES.defense_support_permille) / 1000.0
+	return multiplier
 
 
 func emergency_mobilization() -> bool:
@@ -10733,6 +10941,8 @@ func restart_first_map() -> bool:
 	_population_recovery.initialize_fresh(RECOVERY_RULES, _garrison_state.get_total_count())
 	_city_governance = CITY_GOVERNANCE_STATE.new()
 	_city_governance.initialize_fresh(CITY_GOVERNANCE_RULES)
+	_city_strategy = CITY_STRATEGY_STATE.new()
+	_city_strategy.initialize_fresh(CITY_STRATEGY_RULES)
 	_active_army_dispatch_reservation = {}
 	_next_army_dispatch_transaction_sequence = 1
 	_active_army_encounter = {}

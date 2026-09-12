@@ -4,8 +4,9 @@
 
 This checkpoint connects aggregate population staffing, daily food, health,
 disease, seasons, housing and one basic security intervention to the existing
-regular-city authority. It does not implement individual residents, civil
-official abilities, equipment or trade, and it is not player acceptance.
+regular-city authority. At this historical checkpoint it did not implement
+individual residents, civil-official abilities, equipment or trade; later
+strategy work is recorded separately. This checkpoint is not player acceptance.
 
 ## Player-visible flow
 
@@ -54,5 +55,6 @@ native macOS mouse input and do not establish normal-speed player feel.
 - `city-governance-pressure-action-1280x720.png`
 - `city-governance-resolved-1280x720.png`
 
-Player acceptance remains **OPEN**. Civil officials, equipment and trade remain
-the next functional gaps.
+Player acceptance remains **OPEN**. Civil officials, equipment and trade were
+the next functional gaps at this checkpoint and are covered by the later City
+Strategy R0 verification rather than retroactively claimed here.

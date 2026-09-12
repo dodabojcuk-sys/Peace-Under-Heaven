@@ -2143,9 +2143,12 @@ func _update_direct_march_preview() -> void:
 		_direct_dispatch_error = str(planned.get("error", "没有可通行道路"))
 		return
 	var preview := _direct_dispatch_command_preview()
+	var planned_duration := int(planned.get("duration_milliseconds", 0))
+	if _dispatch_adapter != null and _dispatch_adapter.has_method("get_macro_march_route_duration"):
+		planned_duration = int(_dispatch_adapter.get_macro_march_route_duration(StringName(planned.get("route_id", &""))))
 	_direct_dispatch_preview = _ui_route_draft({
 		"road_id": StringName(planned.get("route_id", &"")), "target_point_id": target_id,
-		"route_world_points": Array(planned.get("points", [])).duplicate(true), "duration_milliseconds": int(planned.get("duration_milliseconds", 0)),
+		"route_world_points": Array(planned.get("points", [])).duplicate(true), "duration_milliseconds": planned_duration,
 	})
 	_direct_dispatch_preview.food_cost = int(preview.get("food_cost", 0))
 	if int(preview.get("food_shortage", 0)) > 0:
@@ -3255,12 +3258,15 @@ func _choose_runtime_route(model: Dictionary, source_id: StringName, target_id: 
 	var planned := _dispatch_adapter.plan_field_path(source_id, target_id, [], _selected_route_road_id)
 	if not bool(planned.get("valid", false)) or Array(planned.get("points", [])).size() < 2:
 		return {"valid": false, "error": str(planned.get("error", "没有连通的已完工道路路径"))}
+	var planned_duration := int(planned.get("duration_milliseconds", 0))
+	if _dispatch_adapter.has_method("get_macro_march_route_duration"):
+		planned_duration = int(_dispatch_adapter.get_macro_march_route_duration(StringName(planned.get("route_id", &""))))
 	return {"valid": true, "route": {
 		"road_id": StringName(planned.get("route_id", &"")),
 		"target_point_id": target_id,
 		"route_world_points": Array(planned.get("points", [])).duplicate(true),
 		"segment_ids": Array(planned.get("segments", [])).duplicate(true),
-		"duration_milliseconds": int(planned.get("duration_milliseconds", 0)),
+		"duration_milliseconds": planned_duration,
 	}}
 
 

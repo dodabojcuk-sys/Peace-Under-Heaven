@@ -72,12 +72,13 @@ func _run() -> void:
 	var legacy: Dictionary = snapshot.duplicate(true)
 	legacy.schema_version = 13
 	legacy.erase("city_governance")
+	legacy.erase("city_strategy")
 	legacy.population_recovery.schema_version = 1
 	legacy.population_recovery.available += int(legacy.population_recovery.medical_workers) + int(legacy.population_recovery.governance_workers)
 	legacy.population_recovery.erase("medical_workers")
 	legacy.population_recovery.erase("governance_workers")
 	var legacy_validation: Dictionary = restored.validate_v5_campaign_snapshot(legacy)
-	_check(bool(legacy_validation.valid) and int(legacy_validation.snapshot.schema_version) == 14 and int(legacy_validation.snapshot.city_governance.diseased_count) == 0, "V13 旧档只补保守治理默认值，不补资源、居民或有利事件")
+	_check(bool(legacy_validation.valid) and int(legacy_validation.snapshot.schema_version) == 15 and int(legacy_validation.snapshot.city_governance.diseased_count) == 0 and Array(legacy_validation.snapshot.city_strategy.unlocked_official_ids).is_empty(), "V13 旧档只补保守治理与空战略默认值，不补资源、居民、文官或有利事件")
 	var malformed_legacy: Dictionary = legacy.duplicate(true)
 	malformed_legacy.population_recovery.available = "20"
 	var malformed_legacy_validation: Dictionary = restored.validate_v5_campaign_snapshot(malformed_legacy)

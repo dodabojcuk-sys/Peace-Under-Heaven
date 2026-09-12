@@ -64,12 +64,17 @@ var governance_order_plus: Button
 var governance_treatment_button: Button
 var governance_event_button: Button
 var _governance_workspace_was_visible := false
+var strategy_workspace: PanelContainer
+var strategy_content: VBoxContainer
+var strategy_feedback: Label
+var _strategy_workspace_open := false
 
 
 func _ready() -> void:
 	_apply_visual_tokens()
 	_apply_static_copy()
 	_install_governance_workspace()
+	_install_strategy_workspace()
 	_layout_for_viewport()
 	get_viewport().size_changed.connect(_layout_for_viewport)
 	construction_controller.city_state_changed.connect(_refresh_read_model)
@@ -178,6 +183,7 @@ func _refresh_read_model() -> void:
 		int(queue.get("queued_count", 0)),
 	]
 	_refresh_governance_workspace(wood, food)
+	_refresh_strategy_workspace()
 	for label in [time_summary, daily_report, alert_summary]:
 		label.add_theme_color_override("font_color", MUTED_TEXT)
 	_schedule_layout_refresh()
@@ -285,6 +291,7 @@ func _layout_for_viewport() -> void:
 	detail_panel.size = Vector2(right_width, minf(610.0, height - rail_top - 144.0))
 	_layout_detail(right_width)
 	_layout_governance_workspace(width, height, right_width, edge, rail_top)
+	_layout_strategy_workspace(width, height, right_width, edge, rail_top)
 	_refresh_governance_workspace()
 
 
@@ -417,6 +424,153 @@ func _install_governance_workspace() -> void:
 	governance_event_button.name = "GovernanceEventButton"
 	governance_event_button.pressed.connect(_resolve_governance_event)
 	content.add_child(governance_event_button)
+	var strategy_button := _make_governance_button("战略支持 · 文官 / 装备 / 贸易")
+	strategy_button.name = "CityStrategyEntryButton"
+	strategy_button.pressed.connect(_open_strategy_workspace)
+	content.add_child(strategy_button)
+
+
+func _install_strategy_workspace() -> void:
+	strategy_workspace = PanelContainer.new()
+	strategy_workspace.name = "CityStrategyWorkspace"
+	strategy_workspace.mouse_filter = Control.MOUSE_FILTER_STOP
+	strategy_workspace.add_theme_stylebox_override("panel", _panel_style())
+	strategy_workspace.visible = false
+	add_child(strategy_workspace)
+	var margin := MarginContainer.new()
+	margin.name = "StrategyMargin"
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	strategy_workspace.add_child(margin)
+	var scroll := ScrollContainer.new()
+	scroll.name = "StrategyScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	margin.add_child(scroll)
+	strategy_content = VBoxContainer.new()
+	strategy_content.name = "StrategyContent"
+	strategy_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	strategy_content.add_theme_constant_override("separation", 5)
+	scroll.add_child(strategy_content)
+
+
+func _open_strategy_workspace() -> void:
+	_strategy_workspace_open = true
+	_refresh_strategy_workspace()
+	_refresh_governance_workspace()
+
+
+func _close_strategy_workspace() -> void:
+	_strategy_workspace_open = false
+	_refresh_strategy_workspace()
+	_refresh_governance_workspace()
+
+
+func _strategy_action(method: StringName, argument: StringName = &"") -> void:
+	var result: Dictionary = construction_controller.call(method, argument) if argument != &"" else construction_controller.call(method)
+	strategy_feedback.text = "已完成" if bool(result.get("success", false)) else str(result.get("error", "操作失败"))
+	_refresh_strategy_workspace.call_deferred(false)
+
+
+func _refresh_strategy_workspace(clear_feedback := false) -> void:
+	if not is_instance_valid(strategy_workspace):
+		return
+	strategy_workspace.visible = _strategy_workspace_open
+	if not _strategy_workspace_open:
+		return
+	var preserved_feedback := "" if clear_feedback or not is_instance_valid(strategy_feedback) else strategy_feedback.text
+	for child in strategy_content.get_children():
+		strategy_content.remove_child(child)
+		child.queue_free()
+	var title_row := HBoxContainer.new()
+	var title := _make_row_label("战略支持")
+	title.add_theme_color_override("font_color", ACCENT)
+	title_row.add_child(title)
+	var close := _make_small_action("返回")
+	close.name = "CityStrategyCloseButton"
+	close.pressed.connect(_close_strategy_workspace)
+	title_row.add_child(close)
+	strategy_content.add_child(title_row)
+	strategy_feedback = Label.new()
+	strategy_feedback.name = "CityStrategyFeedback"
+	strategy_feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	strategy_feedback.add_theme_color_override("font_color", WARNING)
+	strategy_feedback.text = preserved_feedback
+	strategy_content.add_child(strategy_feedback)
+	var model: Dictionary = construction_controller.get_city_strategy_read_model()
+	var active: Dictionary = Dictionary(model.get("active_support", {}))
+	var support_copy := "无支援生效"
+	if StringName(active.get("phase", &"")) == &"ACTIVE" and bool(model.get("active_support_effective", false)):
+		var support_names := {&"PRODUCTION": "生产", &"MEDICAL": "医疗", &"DEFENSE": "防御"}
+		support_copy = "%s支援 · 至第 %d 日" % [str(support_names.get(StringName(active.get("support_type", &"")), "城市")), int(active.get("expires_day", 0))]
+	elif StringName(active.get("phase", &"")) == &"ACTIVE":
+		support_copy = "支援已到期 · 等待保存重试"
+	var overview := _make_row_label("关卡能量 %d/3 · %s" % [int(model.get("campaign_energy", 0)), support_copy])
+	overview.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	strategy_content.add_child(overview)
+	strategy_content.add_child(_strategy_section_label("文官任命与支援"))
+	var official_names: Dictionary = Dictionary(model.get("official_names", {}))
+	for official_id_value in Array(model.get("unlocked_official_ids", [])):
+		var official_id := StringName(official_id_value)
+		var appointed := official_id == StringName(model.get("appointed_official_id", &""))
+		var button := _make_governance_button(("已任命 · " if appointed else "任命 · ") + str(official_names.get(official_id, official_id)))
+		button.name = "Official_%s" % String(official_id).replace(".", "_")
+		button.disabled = appointed
+		button.pressed.connect(_strategy_action.bind(&"appoint_city_official", official_id))
+		strategy_content.add_child(button)
+	var support_button := _make_governance_button("启用当前文官支援 · 消耗 1 能量")
+	support_button.name = "ActivateOfficialSupportButton"
+	support_button.disabled = int(model.get("campaign_energy", 0)) <= 0 or StringName(active.get("phase", &"")) == &"ACTIVE"
+	support_button.pressed.connect(_strategy_action.bind(&"activate_city_official_support", &""))
+	strategy_content.add_child(support_button)
+	strategy_content.add_child(_strategy_section_label("制式装备 · 城内整备"))
+	var equipment_names: Dictionary = Dictionary(model.get("equipment_names", {}))
+	var equipment_costs: Dictionary = Dictionary(model.get("equipment_costs", {}))
+	var owned: Array = Array(model.get("owned_equipment_ids", []))
+	var slots: Dictionary = Dictionary(model.get("troop_equipment_by_slot", {}))
+	var general_loadouts: Dictionary = Dictionary(model.get("general_equipment_by_general_id", {}))
+	var selected_general_id := StringName(model.get("selected_general_id", &""))
+	var general_section_added := false
+	for equipment_id_value in CityStrategyState.EQUIPMENT_IDS:
+		var equipment_id := StringName(equipment_id_value)
+		var owned_item := equipment_id in owned
+		var is_general_item := equipment_id in CityStrategyState.GENERAL_EQUIPMENT_IDS
+		if is_general_item and not general_section_added:
+			strategy_content.add_child(_strategy_section_label("将领装备 · 六槽（首版三件）"))
+			general_section_added = true
+		var equipped := equipment_id in slots.values() or equipment_id in Dictionary(general_loadouts.get(selected_general_id, {})).values()
+		var copy := ("卸下 · " if equipped else ("装配 · " if owned_item else "制造 · ")) + str(equipment_names.get(equipment_id, equipment_id))
+		if not owned_item:
+			copy += " · 木材 %d" % int(Dictionary(equipment_costs.get(equipment_id, {})).get(&"wood", 0))
+		var equipment_button := _make_governance_button(copy)
+		equipment_button.name = "Equipment_%s" % String(equipment_id).replace(".", "_")
+		var method := &"craft_city_equipment"
+		if equipped:
+			method = &"unequip_city_general" if is_general_item else &"unequip_city_troops"
+		elif owned_item:
+			method = &"equip_city_general" if is_general_item else &"equip_city_troops"
+		equipment_button.disabled = is_general_item and owned_item and selected_general_id == &""
+		equipment_button.pressed.connect(_strategy_action.bind(method, equipment_id))
+		strategy_content.add_child(equipment_button)
+	strategy_content.add_child(_strategy_section_label("当日贸易 · 预览后一次成交"))
+	var offers: Dictionary = Dictionary(model.get("trade_offers", {}))
+	for offer_id_value in offers.keys():
+		var offer_id := StringName(offer_id_value)
+		var offer: Dictionary = offers[offer_id]
+		var resource_names := {&"wood": "木材", &"food": "粮食"}
+		var trade_button := _make_governance_button("%d %s → %d %s · 库存 %d/%d" % [int(offer.spend), str(resource_names.get(StringName(offer.spend_id), offer.spend_id)), int(offer.gain), str(resource_names.get(StringName(offer.gain_id), offer.gain_id)), int(offer.get("gain_available", 0)), int(offer.get("gain_capacity", 0))])
+		trade_button.name = "Trade_%s" % String(offer_id).replace(".", "_")
+		trade_button.disabled = not bool(offer.get("can_execute", false))
+		trade_button.tooltip_text = str(offer.get("blocked_reason", ""))
+		trade_button.pressed.connect(_strategy_action.bind(&"execute_city_trade", offer_id))
+		strategy_content.add_child(trade_button)
+
+
+func _strategy_section_label(copy: String) -> Label:
+	var label := _make_row_label(copy)
+	label.add_theme_color_override("font_color", ACCENT)
+	return label
 
 
 func _make_governance_button(copy: String) -> Button:
@@ -477,6 +631,19 @@ func _layout_governance_workspace(
 		right_width,
 		minf(430.0, height - rail_top - 154.0)
 	)
+
+
+func _layout_strategy_workspace(
+	width: float,
+	height: float,
+	right_width: float,
+	edge: float,
+	rail_top: float
+) -> void:
+	if not is_instance_valid(strategy_workspace):
+		return
+	strategy_workspace.position = Vector2(width - right_width - edge, rail_top + 140.0)
+	strategy_workspace.size = Vector2(right_width, minf(480.0, height - rail_top - 154.0))
 
 
 func _refresh_governance_workspace(
@@ -547,6 +714,8 @@ func _refresh_governance_workspace(
 	governance_issue_detail.visible = not issues.is_empty()
 	governance_issue_detail.text = "\n".join(issues)
 	var show_workspace: bool = (
+		not _strategy_workspace_open
+		and
 		not construction_controller.is_placing()
 		and not construction_controller.is_choosing_template()
 		and not detail_panel.visible

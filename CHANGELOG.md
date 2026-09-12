@@ -1,5 +1,28 @@
 # Changelog
 
+## 2026-09-12 - Player-usable city strategy support
+
+- Added a separate scrollable city strategy workspace with visible controls for
+  official appointment, timed support, deterministic equipment crafting and
+  loadout, and capacity-aware one-click trade.
+- Made production and medical support affect their existing city authorities,
+  while defense support and attack/protection gear freeze into formal battle
+  requests. Mobility gear now uses the same route-duration rule for preview,
+  publication, and persisted in-flight orders.
+- Added six stable general-equipment slots with three authored R0 items, unique
+  ownership checks, reversible equip/unequip checkpoints, and formal
+  attack/defense/mobility effects. The remaining three slots intentionally have
+  no placeholder items.
+- Added once-per-city-day trade receipts and atomic rollback for appointment,
+  support, crafting, loadout and trade checkpoint failures. Expired support can
+  be retried after a save failure without extending its gameplay effect.
+- Upgraded campaign persistence to schema 15. Legacy campaigns receive an empty
+  strategy record and never receive unearned officials, energy, items or trade
+  proceeds.
+- Added targeted logic, three-process cold recovery, three-resolution graphical
+  UI, campaign-route, invasion/recovery, siege-victory and Field R2 verification.
+  Native-pointer player acceptance remains open.
+
 ## 2026-09-12 - Post-war recovery and expanded external defense
 
 - Added one persisted aggregate population authority connecting exclusive city

@@ -5,7 +5,8 @@ extends RefCounted
 const MACRO_MARCH_THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
 const POPULATION_RECOVERY_STATE = preload("res://scripts/state/population_recovery_state.gd")
 const CITY_GOVERNANCE_STATE = preload("res://scripts/state/city_governance_state.gd")
-const SCHEMA_VERSION := 14
+const CITY_STRATEGY_STATE = preload("res://scripts/state/city_strategy_state.gd")
+const SCHEMA_VERSION := 15
 const SNAPSHOT_KIND := &"campaign_authoritative"
 const CITY_ID := "blackstone_city"
 const LEGACY_SILVERFORD_REINFORCEMENT_TOTAL := 4
@@ -26,6 +27,13 @@ const ROOT_KEYS := [
 	"war_loop",
 	"population_recovery",
 	"city_governance",
+	"city_strategy",
+]
+const V14_ROOT_KEYS := [
+	"schema_version", "snapshot_kind", "city_id", "city", "placements",
+	"next_placement_id", "garrison", "training_queue", "army_registry",
+	"settlement_ledger", "mainline_level", "build_slot", "expedition_attempt",
+	"war_loop", "population_recovery", "city_governance",
 ]
 const V13_ROOT_KEYS := [
 	"schema_version", "snapshot_kind", "city_id", "city", "placements",
@@ -227,6 +235,7 @@ static func validate_structure(
 	var source_version := int(snapshot.get("schema_version", 0))
 	if (
 		(source_version == SCHEMA_VERSION and not _has_exact_keys(snapshot, ROOT_KEYS))
+		or (source_version == 14 and not _has_exact_keys(snapshot, V14_ROOT_KEYS))
 		or (source_version == 13 and not _has_exact_keys(snapshot, V13_ROOT_KEYS))
 		or (source_version in [7, 8, 9, 10, 11, 12] and not _has_exact_keys(snapshot, V12_ROOT_KEYS))
 		or (source_version == 6 and not _has_exact_keys(snapshot, V6_ROOT_KEYS))
@@ -237,7 +246,7 @@ static func validate_structure(
 		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段不完整或含未知字段")
 	if (
 		typeof(snapshot.schema_version) != TYPE_INT
-		or int(snapshot.schema_version) not in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, SCHEMA_VERSION]
+		or int(snapshot.schema_version) not in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, SCHEMA_VERSION]
 		or typeof(snapshot.snapshot_kind) != TYPE_STRING_NAME
 		or StringName(snapshot.snapshot_kind) != SNAPSHOT_KIND
 		or typeof(snapshot.city_id) != TYPE_STRING
@@ -257,6 +266,7 @@ static func validate_structure(
 			source_version == SCHEMA_VERSION
 			and typeof(snapshot.get("city_governance", null)) != TYPE_DICTIONARY
 		)
+		or (source_version == SCHEMA_VERSION and typeof(snapshot.get("city_strategy", null)) != TYPE_DICTIONARY)
 	):
 		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段类型或身份错误")
 	if not _is_persistence_value(snapshot):
@@ -328,6 +338,9 @@ static func validate_structure(
 		if not bool(migration.valid):
 			return migration
 		normalized = migration.snapshot
+	if int(normalized.schema_version) == 14:
+		normalized.city_strategy = CITY_STRATEGY_STATE.empty_legacy_snapshot()
+		normalized.schema_version = SCHEMA_VERSION
 	if typeof(normalized.get("war_loop", null)) != TYPE_DICTIONARY:
 		return _failure(&"INVALID_WAR_LOOP", "WarLoop 快照字段非法")
 	# WarLoop owns its nested R1 -> R2 migration.  Normalize it here so the
@@ -396,6 +409,9 @@ static func validate_structure(
 	)
 	if not bool(governance_result.get("valid", false)):
 		return _failure(&"INVALID_CITY_GOVERNANCE", "城市治理状态校验失败")
+	var strategy_result := CITY_STRATEGY_STATE.validate_snapshot(Dictionary(normalized.city_strategy))
+	if not bool(strategy_result.get("valid", false)):
+		return _failure(&"INVALID_CITY_STRATEGY", "城市战略支持状态校验失败")
 	var army_result := ArmyRegistry.validate_snapshot(
 		normalized.army_registry,
 		allowed_unit_definition_ids,
@@ -834,7 +850,7 @@ static func _migrate_v13_city_governance(snapshot: Dictionary) -> Dictionary:
 		"active_event": CITY_GOVERNANCE_STATE.empty_event(),
 		"resolved_event_ids": {},
 	}
-	normalized.schema_version = SCHEMA_VERSION
+	normalized.schema_version = 14
 	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
 
 

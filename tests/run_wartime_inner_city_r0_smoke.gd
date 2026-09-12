@@ -91,11 +91,10 @@ func _run() -> void:
 	)
 	var legacy: Dictionary = snapshot.duplicate(true)
 	legacy.schema_version = 7
-	legacy.expedition_attempt.erase("wartime_facility_plan")
-	legacy.expedition_attempt.erase("battle_session_snapshot")
-	legacy.expedition_attempt.erase("terminal_result_snapshot")
-	legacy.expedition_attempt.erase("source_id")
-	legacy.expedition_attempt.erase("mission_id")
+	legacy.erase("population_recovery")
+	legacy.erase("city_governance")
+	legacy.erase("city_strategy")
+	legacy.expedition_attempt = _only_attempt_keys(legacy.expedition_attempt, V5CampaignSnapshot.V7_EXPEDITION_ATTEMPT_KEYS)
 	var legacy_validation: Dictionary = city.validate_v5_campaign_snapshot(legacy)
 	_check(
 		bool(legacy_validation.get("valid", false))
@@ -104,9 +103,13 @@ func _run() -> void:
 	)
 	var legacy_v9: Dictionary = snapshot.duplicate(true)
 	legacy_v9.schema_version = 9
-	legacy_v9.expedition_attempt.erase("source_id")
-	legacy_v9.expedition_attempt.erase("mission_id")
-	legacy_v9.expedition_attempt.erase("terminal_result_snapshot")
+	legacy_v9.erase("population_recovery")
+	legacy_v9.erase("city_governance")
+	legacy_v9.erase("city_strategy")
+	var v9_keys: Array = V5CampaignSnapshot.V10_EXPEDITION_ATTEMPT_KEYS.duplicate()
+	v9_keys.pop_back()
+	v9_keys.pop_back()
+	legacy_v9.expedition_attempt = _only_attempt_keys(legacy_v9.expedition_attempt, v9_keys)
 	var legacy_v9_validation: Dictionary = city.validate_v5_campaign_snapshot(legacy_v9)
 	_check(
 		bool(legacy_v9_validation.get("valid", false))
@@ -116,8 +119,11 @@ func _run() -> void:
 	)
 	var legacy_v10_pending: Dictionary = snapshot.duplicate(true)
 	legacy_v10_pending.schema_version = 10
+	legacy_v10_pending.erase("population_recovery")
+	legacy_v10_pending.erase("city_governance")
+	legacy_v10_pending.erase("city_strategy")
 	legacy_v10_pending.expedition_attempt.phase = BattleRequest.PHASE_RESULT_PENDING
-	legacy_v10_pending.expedition_attempt.erase("terminal_result_snapshot")
+	legacy_v10_pending.expedition_attempt = _only_attempt_keys(legacy_v10_pending.expedition_attempt, V5CampaignSnapshot.V10_EXPEDITION_ATTEMPT_KEYS)
 	var legacy_v10_pending_validation: Dictionary = city.validate_v5_campaign_snapshot(legacy_v10_pending)
 	_check(
 		bool(legacy_v10_pending_validation.get("valid", false))
@@ -379,6 +385,14 @@ func _check(condition: bool, description: String) -> void:
 	else:
 		failures.append(description)
 		push_error("FAIL: %s" % description)
+
+
+func _only_attempt_keys(attempt: Dictionary, allowed_keys: Array) -> Dictionary:
+	var result := {}
+	for key in allowed_keys:
+		if attempt.has(key):
+			result[key] = attempt[key]
+	return result
 
 
 func _finish() -> void:

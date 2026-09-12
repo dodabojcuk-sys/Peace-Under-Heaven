@@ -93,6 +93,7 @@ func _run() -> void:
 	legacy_v11.schema_version = 11
 	legacy_v11.erase("population_recovery")
 	legacy_v11.erase("city_governance")
+	legacy_v11.erase("city_strategy")
 	for key in ["source_patrol_id", "source_force_name", "source_point_id", "source_route_name"]:
 		Dictionary(legacy_v11.expedition_attempt).erase(key)
 	var migrated_v11: Dictionary = V5CampaignSnapshot.validate_structure(legacy_v11, city.get_unit_definition_ids())
