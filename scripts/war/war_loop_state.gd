@@ -203,6 +203,32 @@ func get_siege(city_id: StringName) -> Dictionary:
 	return Dictionary(parallel_sieges_by_city.get(city_id, {})).duplicate(true)
 
 
+## Field medics stabilize only partial HP of currently living attackers. The
+## ceiling is the existing survivor count, so this cannot recreate a casualty
+## or bypass the city wounded/recovery owner.
+func heal_siege_attacker(city_id: StringName, amount: int) -> Dictionary:
+	var siege := get_siege(city_id)
+	if siege.is_empty() or amount <= 0 or _wartime_handoff_blocks_field_mutation(siege):
+		return {}
+	var hp_per_member := maxi(int(siege.get("attacker_hp_per_member", 1)), 1)
+	var current_hp := maxi(int(siege.get("attacker_total_hp", 0)), 0)
+	var living_members := _alive_members(current_hp, hp_per_member)
+	var maximum_hp := living_members * hp_per_member
+	var healed := mini(amount, maxi(maximum_hp - current_hp, 0))
+	if healed <= 0:
+		return {}
+	siege.attacker_total_hp = current_hp + healed
+	_write_siege(city_id, siege)
+	return {"city_id": city_id, "healed_hp": healed, "attacker_total_hp": int(siege.attacker_total_hp)}
+
+
+func _wartime_handoff_blocks_field_mutation(siege: Dictionary) -> bool:
+	var handoff := Dictionary(siege.get("wartime_handoff", {}))
+	return StringName(handoff.get("phase", &"")) in [
+		WARTIME_HANDOFF_RESERVED, WARTIME_HANDOFF_ACTIVE, WARTIME_HANDOFF_RESULT_PENDING,
+	]
+
+
 func advance_siege_at(city_id: StringName, rules: WarLoopRules) -> Dictionary:
 	if city_id == &"":
 		return {}

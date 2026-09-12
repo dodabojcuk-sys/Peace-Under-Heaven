@@ -86,6 +86,13 @@ func begin_support(official_id: StringName, current_day: int, rules: CityStrateg
 	return active_support.duplicate(true)
 
 
+func spend_campaign_energy(amount: int = 1) -> bool:
+	if amount <= 0 or campaign_energy < amount:
+		return false
+	campaign_energy -= amount
+	return true
+
+
 func expire_support_for_day(current_day: int) -> bool:
 	if StringName(active_support.phase) != SUPPORT_ACTIVE or current_day < int(active_support.expires_day):
 		return false

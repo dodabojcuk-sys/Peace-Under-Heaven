@@ -1,0 +1,25 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+CITY_STRATEGY_WORKER_A_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+STRATEGY_A energy=2 receipts=1 army=army.player.000001 duration=13605 helmet_quality=FINE iron_xp=200 bronze_owned=false
+
+CITY_STRATEGY_WORKER_B_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+STRATEGY_B restored_energy=2 support=ACTIVE receipts=1 armies=1 day=2
+
+CITY_STRATEGY_WORKER_C_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+STRATEGY_C day=2 energy=2 support=IDLE receipts=1 armies=1
+
+PASS: 独立进程恢复文官持续效果、装备成长与来源消耗、交易回执及在途军令
+PASS: 冷恢复不补能量、不重复交易，效果按城市日历到期
+PASS: 跨进程链在保存前真实完成培养、升阶与来源消耗
+CITY_STRATEGY_R0_PERSISTENCE_SMOKE PASS
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED

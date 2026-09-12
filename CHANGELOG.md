@@ -1,5 +1,21 @@
 # Changelog
 
+## 2026-09-12 - War specialists and active official support R0
+
+- Added formal field actions for medic, saboteur, thief and sniper specialists,
+  reusing the existing population, position/path, world-clock, resource and V5
+  authorities. Actions now affect living siege HP, durable hostile facilities,
+  finite enemy stock or visible patrol strength rather than UI-only counters.
+- Added one fog-gated authored hostile lookout to the playable Blackstone
+  theatre and a compact war-specialist map menu with real target/status copy.
+- Added physician healing plus strategist movement, attack, protection and
+  route-domain commands to active C0 battles. Shared campaign energy and the
+  `BattleSession` effect commit atomically and roll back together on a failed
+  checkpoint.
+- Upgraded battle-session snapshots to schema 8 for support receipts and timed
+  effects while retaining prior-session migration. Added focused, three-process
+  V5 and Metal engine-GUI verification. Human player-feel acceptance stays open.
+
 ## 2026-09-12 - Six-slot equipment growth and strategy closeout
 
 - Authored helmet, gloves and accessory content plus a complete six-slot

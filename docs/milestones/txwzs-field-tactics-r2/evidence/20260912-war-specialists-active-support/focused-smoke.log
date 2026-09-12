@@ -1,0 +1,23 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 破坏员经正式事务前往已发现敌方设施并修改同一耐久事实
+PASS: 盗取未侦察城市时拒绝且不泄露或扣减真实库存
+PASS: 侦察兵通过正式移动建立敌城持久侦察事实
+PASS: 敌城交接战时实例后，战区盗取预检拒绝同源并发且不扣库存
+PASS: 盗取在黑石粮仓无容量时由权威预检拒绝且不扣敌方库存
+PASS: 盗取货物返城时仓满则保留同一货物等待，不丢失或提前完成
+PASS: 盗取从敌城真实库存扣除、携带返回后才向国家资源单次入账
+PASS: 狙击只作用于当前可见且未交接的真实巡逻兵力
+PASS: 医疗官只修复存活成员受损生命，不越过人数边界复活阵亡者
+PASS: 专员任务结果和稳定身份通过正式 V5 恢复且不重复结算
+PASS: 战中支援关键保存失败时共享能量和 BattleSession 效果共同回滚
+PASS: 战中医疗命令通过正式协调器原子消耗共享能量并治疗合法存活目标
+PASS: 战中命令回执和持续效果进入 BattleSession 快照恢复
+PASS: 同目标同类战中效果不叠加，也不浪费第二点能量
+PASS: 军谋官移动、攻击与防护命令均经正式入口消耗同一份关卡能量
+PASS: 移动、攻击与防护效果从正式战斗快照恢复并进入权威倍率计算
+PASS: 战中文官临时效果完整覆盖配置的前七个战斗刻
+PASS: 战中文官临时效果按保存的战斗刻到期，不残留或误改永久属性
+PASS: 领域支援通过正式命令消耗共享能量，并按实际路线范围从快照恢复
+WAR_SPECIALISTS_AND_SUPPORT_R0_SMOKE PASS assertions=19

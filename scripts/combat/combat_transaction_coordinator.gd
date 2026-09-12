@@ -393,6 +393,30 @@ func issue_order(
 	return active_session.issue_order(squad_id, command)
 
 
+func issue_official_support(kind: StringName, squad_id: int, route_id: StringName = &"") -> Dictionary:
+	if (
+		_city_controller == null
+		or active_session == null
+		or active_request == null
+		or active_request.phase != BattleRequest.PHASE_ACTIVE
+		or not _city_controller.has_method("commit_battle_official_support")
+	):
+		return {"success": false, "error": "当前战斗不能使用文官支援"}
+	return _city_controller.commit_battle_official_support(
+		self, kind, squad_id, route_id
+	)
+
+
+func get_battle_source_context() -> Dictionary:
+	return {
+		"macro_siege": _macro_siege_mode,
+		"prepared_expedition": _adopted_expedition,
+		"army_id": _army_id,
+		"city_id": _macro_siege_city_id,
+		"transaction_id": active_request.transaction_id if active_request != null else &"",
+	}
+
+
 func confirm_result(payload: BattleResult = null) -> Dictionary:
 	last_result_error_id = &""
 	if (

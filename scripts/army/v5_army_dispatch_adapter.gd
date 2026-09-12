@@ -113,6 +113,11 @@ func get_field_tactics_read_model() -> Dictionary:
 	return city.get_field_tactics_read_model() if city != null else {}
 
 
+func get_field_specialist_rules_model() -> Dictionary:
+	var city := _get_city()
+	return city.get_field_specialist_rules_model() if city != null else {}
+
+
 func preview_field_supply_transport(source_point_id: StringName) -> Dictionary:
 	var city := _get_city()
 	return city.preview_field_supply_transport(source_point_id) if city != null else {}
@@ -161,6 +166,16 @@ func preview_field_specialist_move(specialist_id: StringName, target_point_id: S
 func order_field_specialist_move(specialist_id: StringName, target_point_id: StringName) -> Dictionary:
 	var city := _get_city()
 	return city.order_field_specialist_move(specialist_id, target_point_id) if city != null else {}
+
+
+func preview_field_specialist_action(specialist_id: StringName, action_kind: StringName, target_id: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.preview_field_specialist_action(specialist_id, action_kind, target_id) if city != null else {}
+
+
+func begin_field_specialist_action(specialist_id: StringName, action_kind: StringName, target_id: StringName) -> Dictionary:
+	var city := _get_city()
+	return city.begin_field_specialist_action(specialist_id, action_kind, target_id) if city != null else {}
 
 
 func preview_field_road_project(

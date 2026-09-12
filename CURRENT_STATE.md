@@ -1,5 +1,30 @@
 # 当前状态
 
+## War specialists and active official support R0
+
+The Blackstone war map now exposes one compact formal menu for medical,
+sabotage, theft and sniper specialists beside the existing engineer and scout
+entries. All six roles use the existing aggregate population allocation,
+specialist position/path, world clock, resource transaction and V5 state. The
+new actions heal only partial HP of living siege members, damage one discovered
+hostile facility, move finite scouted enemy-city food home before deposit, or
+damage one visible non-handoff patrol. Returned stolen cargo waits if storage
+capacity changes in transit. Costs, durations and effect amounts are
+centralized; the map shows role, target, progress and final state from the same
+field record.
+
+Active C0 battles now expose physician healing and strategist movement, attack,
+protection and route-domain support. Commands consume the existing shared
+campaign energy, persist command receipts/effects in `BattleSession`, feed the
+authoritative movement/damage calculations and expire after exactly eight
+battle ticks. A failed checkpoint restores both energy and session state. A
+three-process V5 runner proves a field action in transit, a completed
+non-replayed result and an active battle effect/energy balance across process
+restarts. Focused logic and Metal engine-GUI checks pass; native-pointer
+usability and balance acceptance remain `OPEN`. See
+`docs/design/WAR_SPECIALISTS_AND_ACTIVE_SUPPORT_R0.md` and
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260912-war-specialists-active-support/VERIFICATION.md`.
+
 ## 黑石战略支持 R0：六槽装备成长与功能收口（2026-09-12）
 
 常态内城的治理入口现在可以打开独立、可滚动的“战略支持”详情。新战役确定性提供司仓主簿、医政官和守御参军，以及只在整场战役重开时重置的 3 点共享能量。玩家可通过可见按钮完成任命和一次限时支援：生产支援进入正式建筑产出计算，医疗支援增加真实医疗容量，防御支援冻结进正式战斗请求；离开界面、进入 C0 或读档都不会补回能量。支援到期保存失败时，过期效果不会继续生效，持久记录保留为可重试状态。

@@ -114,6 +114,15 @@ points = {
 "defender_hp_per_member": 100,
 "display_name": "赤崖城",
 "gate_hp": 240,
+"initial_hostile_facility": {
+"effect_range": 190,
+"facility_id": &"facility.redcliff.lookout.001",
+"facility_kind": &"WATCHTOWER",
+"max_durability": 120,
+"owner_faction_id": &"border_rebels",
+"visibility_range": 240,
+"world_position": Vector2i(1125, 255)
+},
 "military_controller_faction_id": &"border_rebels",
 "point_id": &"redcliff_city",
 "point_kind": &"ENEMY_CITY",

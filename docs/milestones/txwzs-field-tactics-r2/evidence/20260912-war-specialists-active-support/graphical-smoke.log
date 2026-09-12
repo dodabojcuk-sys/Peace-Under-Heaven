@@ -1,0 +1,11 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+Metal 3.2 - Forward+ - Using Device #0: Apple - Apple M4 (Apple9)
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 地图正式入口显示四种战争专员
+PASS: 可见菜单经正式事务获得并选中破坏员
+PASS: 地图点击把已知敌方设施提交为真实破坏目标
+PASS: 正式出征进入活动 BattleSession
+PASS: 战斗界面显示当前文官和共享关卡能量
+PASS: 可见战中菜单单次提交疾行命令并扣除一份能量
+WAR_SPECIALISTS_SUPPORT_GRAPHICAL_SMOKE PASS assertions=6

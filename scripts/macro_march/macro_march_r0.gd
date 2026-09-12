@@ -102,6 +102,7 @@ var _retreat_button := Button.new()
 var _siege_battle_button := Button.new()
 var _scout_button := Button.new()
 var _engineer_button := Button.new()
+var _action_specialist_menu := MenuButton.new()
 var _side_road_button := Button.new()
 var _watchtower_button := Button.new()
 var _arrow_tower_button := Button.new()
@@ -462,7 +463,7 @@ func _build_ui() -> void:
 	_formation_scroll.add_child(_formation_list)
 	_formation_scroll.add_child(_location_garrison_list)
 	add_child(_formation_scroll)
-	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _siege_battle_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _arrow_tower_button, _barricade_button, _fortress_button, _minefield_button, _facility_repair_button, _facility_upgrade_button, _fortress_garrison_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
+	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _siege_battle_button, _scout_button, _engineer_button, _action_specialist_menu, _side_road_button, _watchtower_button, _arrow_tower_button, _barricade_button, _fortress_button, _minefield_button, _facility_repair_button, _facility_upgrade_button, _fortress_garrison_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
 	_interrupted_project_selector.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -475,6 +476,12 @@ func _build_ui() -> void:
 	_siege_battle_button.visible = false
 	_scout_button.text = "派遣侦察兵（4 粮）"
 	_engineer_button.text = "派遣工程师（8 粮）"
+	_action_specialist_menu.text = "战争专员"
+	var action_specialist_popup := _action_specialist_menu.get_popup()
+	action_specialist_popup.add_item("医疗官", 0)
+	action_specialist_popup.add_item("破坏员", 1)
+	action_specialist_popup.add_item("斥候盗手", 2)
+	action_specialist_popup.add_item("狙击手", 3)
 	_side_road_button.text = "工程师拖线修路"
 	_watchtower_button.text = "工程师建瞭望塔"
 	_watchtower_button.visible = false
@@ -518,6 +525,7 @@ func _build_ui() -> void:
 	_siege_battle_button.pressed.connect(_enter_siege_battle)
 	_scout_button.pressed.connect(_dispatch_scout)
 	_engineer_button.pressed.connect(_dispatch_engineer)
+	action_specialist_popup.id_pressed.connect(_on_action_specialist_menu_selected)
 	_side_road_button.pressed.connect(_build_side_road)
 	_watchtower_button.pressed.connect(_begin_watchtower_mode.bind(FieldTacticsState.FACILITY_WATCHTOWER))
 	_arrow_tower_button.pressed.connect(_begin_watchtower_mode.bind(FieldTacticsState.FACILITY_ARROW_TOWER))
@@ -548,7 +556,7 @@ func _layout_ui() -> void:
 	var panel_rect := _side_panel_rect()
 	var action_height := 34.0
 	var action_gap := 4.0
-	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _siege_battle_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _arrow_tower_button, _barricade_button, _fortress_button, _minefield_button, _facility_repair_button, _facility_upgrade_button, _fortress_garrison_button, _resume_project_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button]
+	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _siege_battle_button, _scout_button, _engineer_button, _action_specialist_menu, _side_road_button, _watchtower_button, _arrow_tower_button, _barricade_button, _fortress_button, _minefield_button, _facility_repair_button, _facility_upgrade_button, _fortress_garrison_button, _resume_project_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button]
 	var visible_action_buttons: Array[Button] = []
 	for button in action_buttons:
 		if button.visible:
@@ -946,6 +954,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	_supply_transport_button.visible = false
 	_stationed_reinforcement_button.visible = false
 	_siege_battle_button.visible = false
+	_action_specialist_menu.visible = false
 	_refresh_location_garrison_controls(model, {})
 	var field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
 	if not _reinforcement_feedback_text.is_empty() and (
@@ -1130,6 +1139,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			_specialist_status_label.text = "银渡城先选择一支驻军再补员；长按我方地点仍可直接选择派遣对象。"
 			return
 	var selected_specialist := Dictionary(specialists.get(_selected_specialist_id, {}))
+	_configure_action_specialist_buttons(specialists)
 	# Replanning keeps the last valid draft as a safe fallback until mouse-up,
 	# but its confirmation cannot remain actionable while the live gesture is
 	# resolving a replacement route. The live preview owns both map and panel.
@@ -1164,12 +1174,22 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		var specialist_phase := _specialist_phase_label(selected_specialist)
 		var current_name := _point_display_name(model, StringName(selected_specialist.get("current_point_id", &"")), "野外")
 		var target_name := _point_display_name(model, StringName(selected_specialist.get("target_point_id", &"")), current_name)
+		var action_kind := StringName(selected_specialist.get("action_kind", FieldTacticsState.ACTION_NONE))
+		var action_target_id := StringName(selected_specialist.get("action_target_id", &""))
+		var action_copy := "\n任务：在地图选择合法目标；提交费用 2 粮。"
+		if action_kind != FieldTacticsState.ACTION_NONE:
+			action_copy = "\n任务：%s → %s\n进度：%d/%d 毫秒" % [
+				_specialist_action_label(action_kind),
+				_specialist_action_target_label(model, field, action_kind, action_target_id),
+				int(selected_specialist.get("action_progress_milliseconds", 0)),
+				int(selected_specialist.get("action_required_milliseconds", 0)),
+			]
 		var specialist_location := _selected_location(model, {}, selected_specialist)
 		if not specialist_location.is_empty():
 			_location_details_button.visible = true
 			_location_details_button.text = "查看所在地点：%s" % str(specialist_location.get("display_name", "地点"))
 		_set_context_status("已选%s：%s" % [specialist_role, specialist_phase])
-		_detail_label.text = "当前选择：%s\n状态：%s\n当前位置：%s\n任务目标：%s" % [specialist_role, specialist_phase, current_name, target_name]
+		_detail_label.text = "当前选择：%s\n状态：%s\n当前位置：%s\n移动目标：%s%s" % [specialist_role, specialist_phase, current_name, target_name, action_copy]
 		return
 	var source_id := _source_point_id(model, army)
 	var source := _point_from_model(model, source_id)
@@ -1180,6 +1200,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		str(_point_from_model(model, StringName(_draft_route.get("target_point_id", &""))).get("display_name", _draft_route.get("target_point_id", &""))),
 		]
 	if _watchtower_mode or not _watchtower_draft.is_empty():
+		_action_specialist_menu.visible = false
 		var facility_name := str(_watchtower_draft.get("facility_name", _field_facility_display_name(_field_facility_kind)))
 		_confirm_button.visible = true
 		_confirm_button.text = "开工建%s" % facility_name
@@ -1214,6 +1235,7 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 			]
 		return
 	if _engineering_mode or not _engineering_draft.is_empty():
+		_action_specialist_menu.visible = false
 		var draft_kind := StringName(_engineering_draft.get("road_kind", FieldTacticsState.ROAD_NORMAL))
 		var draft_contains_bridge := bool(_engineering_draft.get("contains_bridge", false))
 		var draft_kind_label := ("加固路" if draft_kind == FieldTacticsState.ROAD_REINFORCED else "普通路") + ("（含桥梁）" if draft_contains_bridge else "")
@@ -1777,6 +1799,9 @@ func _on_gui_input(event: InputEvent) -> void:
 				_status_label.text = "请从施工起点开始规划。"
 				return
 			_begin_draw_interaction(event.position, _engineering_source_point_id)
+			accept_event()
+			return
+		if _try_begin_selected_specialist_action(event.position):
 			accept_event()
 			return
 		var command_army := _selected_army(_model())
@@ -2796,10 +2821,37 @@ func _refresh_selected_specialist_status(specialists: Dictionary, model: Diction
 
 
 func _specialist_role_label(specialist: Dictionary) -> String:
-	return "侦察兵" if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else "工程师"
+	match StringName(specialist.get("role", &"")):
+		FieldTacticsState.SPECIALIST_SCOUT:
+			return "侦察兵"
+		FieldTacticsState.SPECIALIST_ENGINEER:
+			return "工程师"
+		FieldTacticsState.SPECIALIST_MEDIC:
+			return "医疗官"
+		FieldTacticsState.SPECIALIST_SABOTEUR:
+			return "破坏员"
+		FieldTacticsState.SPECIALIST_THIEF:
+			return "斥候盗手"
+		FieldTacticsState.SPECIALIST_SNIPER:
+			return "狙击手"
+		_:
+			return "专员"
 
 
 func _specialist_phase_label(specialist: Dictionary) -> String:
+	var action_stage := StringName(specialist.get("action_stage", FieldTacticsState.ACTION_NONE))
+	if action_stage == FieldTacticsState.ACTION_TRAVELING:
+		return "前往任务目标"
+	if action_stage == FieldTacticsState.ACTION_WORKING:
+		return "执行任务"
+	if action_stage == FieldTacticsState.ACTION_RETURNING:
+		return "携带战利品返回"
+	if action_stage == FieldTacticsState.ACTION_READY_DEPOSIT:
+		return "等待战利品入库"
+	if action_stage == FieldTacticsState.ACTION_COMPLETED:
+		return "任务完成"
+	if action_stage == FieldTacticsState.ACTION_INTERRUPTED:
+		return "任务中断"
 	match StringName(specialist.get("phase", &"")):
 		FieldTacticsState.SPECIALIST_MOVING:
 			return "在途"
@@ -2815,6 +2867,34 @@ func _specialist_phase_label(specialist: Dictionary) -> String:
 			return "待命"
 
 
+func _specialist_action_label(action_kind: StringName) -> String:
+	return {
+		FieldTacticsState.ACTION_MEDICAL: "战地医疗",
+		FieldTacticsState.ACTION_SABOTAGE: "设施破坏",
+		FieldTacticsState.ACTION_THEFT: "盗取粮草",
+		FieldTacticsState.ACTION_SNIPER: "定点狙击",
+	}.get(action_kind, "专员任务")
+
+
+func _specialist_action_target_label(model: Dictionary, field: Dictionary, action_kind: StringName, target_id: StringName) -> String:
+	if target_id == &"":
+		return "未选择"
+	if action_kind == FieldTacticsState.ACTION_MEDICAL:
+		for army_value in Array(model.get("armies", [])):
+			var army: Dictionary = Dictionary(army_value)
+			if StringName(army.get("army_id", &"")) == target_id:
+				return _army_garrison_name(army)
+	if action_kind == FieldTacticsState.ACTION_SABOTAGE:
+		var facility := Dictionary(Dictionary(field.get("watchtowers_by_id", {})).get(target_id, {}))
+		if not facility.is_empty():
+			return _field_facility_display_name(StringName(facility.get("facility_kind", FieldTacticsState.FACILITY_WATCHTOWER)))
+	if action_kind == FieldTacticsState.ACTION_SNIPER:
+		var patrol := Dictionary(Dictionary(field.get("visible_patrols_by_id", {})).get(target_id, {}))
+		if not patrol.is_empty():
+			return str(patrol.get("display_name", "已发现敌军"))
+	return _point_display_name(model, target_id, String(target_id))
+
+
 func _dispatch_engineer() -> void:
 	if _dispatch_adapter == null:
 		return
@@ -2822,6 +2902,108 @@ func _dispatch_engineer() -> void:
 	var result := _dispatch_adapter.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
 	_status_label.text = "工程师已从黑石城出发。" if bool(result.get("success", false)) else str(result.get("error", "工程师派遣失败"))
 	refresh()
+
+
+func _configure_action_specialist_buttons(specialists: Dictionary) -> void:
+	var dispatch_costs: Dictionary = Dictionary(
+		_dispatch_adapter.get_field_specialist_rules_model().get("dispatch_food_costs", {})
+	) if _dispatch_adapter != null else {}
+	var rows := [
+		{"role": FieldTacticsState.SPECIALIST_MEDIC, "name": "医疗官"},
+		{"role": FieldTacticsState.SPECIALIST_SABOTEUR, "name": "破坏员"},
+		{"role": FieldTacticsState.SPECIALIST_THIEF, "name": "斥候盗手"},
+		{"role": FieldTacticsState.SPECIALIST_SNIPER, "name": "狙击手"},
+	]
+	var popup := _action_specialist_menu.get_popup()
+	var available_count := 0
+	for index in rows.size():
+		var row_value = rows[index]
+		var row: Dictionary = row_value
+		var idle_id := _idle_specialist_id(specialists, StringName(row.role))
+		var alive_count := _count_available_specialists(specialists, StringName(row.role))
+		var available := idle_id != &"" or alive_count == 0
+		popup.set_item_disabled(index, not available)
+		popup.set_item_text(index, "选择%s执行任务" % str(row.name) if idle_id != &"" else ("派遣%s（%d 粮）" % [str(row.name), int(dispatch_costs.get(StringName(row.role), 0))]))
+		available_count += 1 if available else 0
+	_action_specialist_menu.visible = available_count > 0
+	_action_specialist_menu.disabled = available_count == 0
+
+
+func _on_action_specialist_menu_selected(item_id: int) -> void:
+	var roles: Array[StringName] = [
+		FieldTacticsState.SPECIALIST_MEDIC, FieldTacticsState.SPECIALIST_SABOTEUR,
+		FieldTacticsState.SPECIALIST_THIEF, FieldTacticsState.SPECIALIST_SNIPER,
+	]
+	if item_id < 0 or item_id >= roles.size():
+		return
+	_dispatch_or_select_action_specialist(roles[item_id])
+
+
+func _dispatch_or_select_action_specialist(role: StringName) -> void:
+	if _dispatch_adapter == null:
+		return
+	_cancel_direct_dispatch("")
+	var field := _dispatch_adapter.get_field_tactics_read_model()
+	var specialist_id := _idle_specialist_id(Dictionary(field.get("specialists_by_id", {})), role)
+	if specialist_id == &"":
+		var dispatch := _dispatch_adapter.dispatch_field_specialist(role)
+		if not bool(dispatch.get("success", false)):
+			_set_status_error(str(dispatch.get("error", "专员派遣失败")))
+			refresh()
+			return
+		specialist_id = StringName(Dictionary(dispatch.get("specialist", {})).get("specialist_id", &""))
+	_selected_specialist_id = specialist_id
+	_selected_scout_id = &""
+	_selected_army_id = &""
+	_selected_field_facility_id = &""
+	_location_detail_mode = false
+	_selected_point_id = &""
+	_clear_status_error()
+	_set_context_status("已选择%s；请在地图上选择合法任务目标。" % _specialist_role_label({"role": role}))
+	refresh()
+
+
+func _try_begin_selected_specialist_action(screen_position: Vector2) -> bool:
+	if _dispatch_adapter == null or _selected_specialist_id == &"":
+		return false
+	var field := _dispatch_adapter.get_field_tactics_read_model()
+	var specialist := Dictionary(Dictionary(field.get("specialists_by_id", {})).get(_selected_specialist_id, {}))
+	if specialist.is_empty() or not bool(specialist.get("alive", false)):
+		return false
+	var role := StringName(specialist.get("role", &""))
+	var action_kind := &""
+	var target_id := &""
+	match role:
+		FieldTacticsState.SPECIALIST_MEDIC:
+			action_kind = FieldTacticsState.ACTION_MEDICAL
+			target_id = _army_id_at_screen(_model(), screen_position)
+		FieldTacticsState.SPECIALIST_SABOTEUR:
+			action_kind = FieldTacticsState.ACTION_SABOTAGE
+			target_id = _field_facility_id_at_screen(field, screen_position)
+		FieldTacticsState.SPECIALIST_THIEF:
+			action_kind = FieldTacticsState.ACTION_THEFT
+			target_id = _point_id_at_screen(screen_position)
+		FieldTacticsState.SPECIALIST_SNIPER:
+			action_kind = FieldTacticsState.ACTION_SNIPER
+			target_id = _patrol_id_at_screen(field, screen_position)
+		_:
+			return false
+	if target_id == &"":
+		return false
+	var preview := _dispatch_adapter.preview_field_specialist_action(_selected_specialist_id, action_kind, target_id)
+	if not bool(preview.get("valid", false)):
+		_set_status_error(str(preview.get("error", "该目标不符合任务条件")))
+		refresh()
+		return true
+	var result := _dispatch_adapter.begin_field_specialist_action(_selected_specialist_id, action_kind, target_id)
+	if not bool(result.get("success", false)):
+		_set_status_error(str(result.get("error", "专员任务未能提交")))
+		refresh()
+		return true
+	_clear_status_error()
+	_set_context_status("%s已出发；任务将按世界时间推进并保存。" % _specialist_role_label(specialist))
+	refresh()
+	return true
 
 
 func _build_side_road() -> void:
@@ -3066,6 +3248,18 @@ func _field_facility_id_at_screen(field: Dictionary, screen_position: Vector2) -
 		var facility := Dictionary(field.watchtowers_by_id[facility_id_value])
 		if _world_to_screen(Vector2(facility.get("world_position", Vector2.ZERO))).distance_to(screen_position) <= 22.0:
 			return StringName(facility_id_value)
+	return &""
+
+
+func _patrol_id_at_screen(field: Dictionary, screen_position: Vector2) -> StringName:
+	var patrol_ids: Array = Dictionary(field.get("visible_patrols_by_id", {})).keys()
+	patrol_ids.sort()
+	for patrol_id_value in patrol_ids:
+		var patrol := Dictionary(Dictionary(field.get("visible_patrols_by_id", {})).get(patrol_id_value, {}))
+		if StringName(patrol.get("fog_state", &"")) != FieldTacticsState.FOG_VISIBLE:
+			continue
+		if _world_to_screen(Vector2(patrol.get("last_known_world_position", Vector2.ZERO))).distance_to(screen_position) <= 22.0:
+			return StringName(patrol_id_value)
 	return &""
 
 
@@ -3598,10 +3792,10 @@ func _draw_map_canvas(canvas: Control) -> void:
 		var specialist: Dictionary = specialist_value
 		if not bool(specialist.get("alive", false)):
 			continue
-		var specialist_color := Color("73d7ed") if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else Color("f2b86e")
+		var specialist_color := _specialist_role_color(StringName(specialist.get("role", &"")))
 		var specialist_position := _world_to_screen(Vector2(specialist.get("world_position", Vector2.ZERO)))
 		canvas.draw_circle(specialist_position, 10.0, specialist_color)
-		canvas.draw_string(ThemeDB.fallback_font, specialist_position + Vector2(-5, 5), "侦" if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT else "工", HORIZONTAL_ALIGNMENT_CENTER, 12, 12, Color("1d2a30"))
+		canvas.draw_string(ThemeDB.fallback_font, specialist_position + Vector2(-5, 5), _specialist_role_glyph(StringName(specialist.get("role", &""))), HORIZONTAL_ALIGNMENT_CENTER, 12, 12, Color("1d2a30"))
 	for project_value in Dictionary(field.get("projects_by_id", {})).values():
 		var project: Dictionary = project_value
 		var project_phase := StringName(project.get("phase", &""))
@@ -3974,12 +4168,33 @@ func _draw_selected_specialist_overlay(canvas: Control, field: Dictionary) -> vo
 	if specialist.is_empty() or not bool(specialist.get("alive", false)):
 		return
 	var screen := _world_to_screen(Vector2(specialist.get("world_position", Vector2.ZERO)))
-	var scout := StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT
-	var accent := Color("73d7ed") if scout else Color("f2b86e")
+	var accent := _specialist_role_color(StringName(specialist.get("role", &"")))
 	canvas.draw_arc(screen, 19.0, 0.0, TAU, 28, accent, 3.0, true)
 	canvas.draw_arc(screen, 23.0, 0.0, TAU, 28, Color("fff4d3", 0.88), 1.5, true)
 	var label := "已选·%s·%s" % [_specialist_role_label(specialist), _specialist_phase_label(specialist)]
 	canvas.draw_string(ThemeDB.fallback_font, screen + Vector2(-58, -31), label, HORIZONTAL_ALIGNMENT_CENTER, 116, 12, Color("fff4d3"))
+
+
+func _specialist_role_glyph(role: StringName) -> String:
+	return {
+		FieldTacticsState.SPECIALIST_SCOUT: "侦",
+		FieldTacticsState.SPECIALIST_ENGINEER: "工",
+		FieldTacticsState.SPECIALIST_MEDIC: "医",
+		FieldTacticsState.SPECIALIST_SABOTEUR: "破",
+		FieldTacticsState.SPECIALIST_THIEF: "盗",
+		FieldTacticsState.SPECIALIST_SNIPER: "狙",
+	}.get(role, "专")
+
+
+func _specialist_role_color(role: StringName) -> Color:
+	return {
+		FieldTacticsState.SPECIALIST_SCOUT: Color("73d7ed"),
+		FieldTacticsState.SPECIALIST_ENGINEER: Color("f2b86e"),
+		FieldTacticsState.SPECIALIST_MEDIC: Color("8ed081"),
+		FieldTacticsState.SPECIALIST_SABOTEUR: Color("e07a5f"),
+		FieldTacticsState.SPECIALIST_THIEF: Color("b39ddb"),
+		FieldTacticsState.SPECIALIST_SNIPER: Color("d7c36f"),
+	}.get(role, Color("d8d8d8"))
 
 
 func _draw_engineering_draft_overlay(canvas: Control, rect: Rect2) -> void:
