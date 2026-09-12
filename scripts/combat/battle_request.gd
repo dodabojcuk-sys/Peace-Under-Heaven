@@ -7,6 +7,8 @@ const PHASE_ACTIVE := &"ACTIVE"
 const PHASE_RESULT_PENDING := &"RESULT_PENDING"
 const PHASE_APPLIED := &"APPLIED"
 const PHASE_CANCELLED := &"CANCELLED"
+const SOURCE_MACRO_SIEGE := &"MACRO_SIEGE"
+const SOURCE_WARTIME_DEFENSE := &"WARTIME_DEFENSE"
 
 var transaction_id: StringName
 var level_id: StringName
@@ -22,6 +24,10 @@ var first_clear_key: StringName
 var reward_wood: int
 var reward_food: int
 var mission_definition: MissionDefinition
+var wartime_facility_plan: Dictionary
+## Runtime-only bridge facts for a macro siege. They are serialized by the
+## owning WarLoop handoff, never by a second request ledger.
+var macro_siege_start_state: Dictionary = {}
 
 
 func _init(
@@ -37,7 +43,8 @@ func _init(
 	first_clear_key_value: StringName = &"first_map.main_assault.v0",
 	reward_wood_value := 30,
 	reward_food_value := 20,
-	mission_definition_value: MissionDefinition = null
+	mission_definition_value: MissionDefinition = null,
+	wartime_facility_plan_value: Dictionary = {}
 ) -> void:
 	transaction_id = transaction_id_value
 	level_id = level_id_value
@@ -53,6 +60,11 @@ func _init(
 	reward_wood = reward_wood_value
 	reward_food = reward_food_value
 	mission_definition = mission_definition_value
+	wartime_facility_plan = (
+		wartime_facility_plan_value.duplicate(true)
+		if not wartime_facility_plan_value.is_empty()
+		else WartimeFacilityPlan.empty_snapshot()
+	)
 
 
 func is_valid() -> bool:
@@ -66,10 +78,16 @@ func is_valid() -> bool:
 		and enemy_force.transaction_id == transaction_id
 		and committed_food_cost >= 0
 		and city_defense_snapshot >= 0
-		and source_id in [&"FIRST_WAR", MissionDefinition.SOURCE_NOTICEBOARD]
+		and source_id in [
+			&"FIRST_WAR",
+			MissionDefinition.SOURCE_NOTICEBOARD,
+			SOURCE_MACRO_SIEGE,
+			SOURCE_WARTIME_DEFENSE,
+		]
 		and first_clear_key != &""
 		and reward_wood >= 0
 		and reward_food >= 0
+		and bool(WartimeFacilityPlan.validate_snapshot(wartime_facility_plan).valid)
 		and (
 			source_id != MissionDefinition.SOURCE_NOTICEBOARD
 			or (
@@ -88,7 +106,10 @@ func is_noticeboard_mission() -> bool:
 	)
 
 
-static func from_expedition_attempt(attempt: Dictionary) -> BattleRequest:
+static func from_expedition_attempt(
+	attempt: Dictionary,
+	mission_definition_value: MissionDefinition = null
+) -> BattleRequest:
 	if attempt.is_empty():
 		return null
 	var committed := CommittedForceSnapshot.from_dictionary(
@@ -108,10 +129,12 @@ static func from_expedition_attempt(attempt: Dictionary) -> BattleRequest:
 		true,
 		int(attempt.get("food_cost", 0)),
 		int(attempt.get("city_defense_snapshot", 0)),
-		&"FIRST_WAR",
+		StringName(attempt.get("source_id", &"FIRST_WAR")),
 		StringName(attempt.get("first_clear_key", &"")),
 		int(attempt.get("reward_wood", 0)),
-		int(attempt.get("reward_food", 0))
+		int(attempt.get("reward_food", 0)),
+		mission_definition_value,
+		Dictionary(attempt.get("wartime_facility_plan", WartimeFacilityPlan.empty_snapshot()))
 	)
 	request.phase = StringName(attempt.get("phase", PHASE_RESERVED))
 	return request if request.is_valid() else null

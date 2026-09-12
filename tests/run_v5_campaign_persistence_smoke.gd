@@ -40,10 +40,10 @@ func _run() -> void:
 	var migrated: Dictionary = source.migrate_v1_snapshot_to_v5(v1_active)
 	_check(
 		migrated.success
-			and migrated.snapshot.schema_version == 6
+			and migrated.snapshot.schema_version == V5CampaignSnapshot.SCHEMA_VERSION
 			and migrated.snapshot.snapshot_kind
 				== &"campaign_authoritative",
-		"有效 V1 只读输入确定性迁移为 schema 6、默认北向并补齐永久 roster"
+		"有效 V1 只读输入确定性迁移为当前 schema、默认北向并补齐永久 roster"
 	)
 	var v2_active: Dictionary = migrated.snapshot
 	_check(
@@ -266,6 +266,7 @@ func _run() -> void:
 			historical_order_id
 		].complete_day
 	)
+	completed_training.population_recovery.training_reserved = 0
 	var near_limit_queue_snapshot: Dictionary = (
 		completed_training.training_queue.duplicate(true)
 	)
@@ -543,6 +544,7 @@ func _run() -> void:
 	closed_army.army_registry.armies_by_id[
 		historical_army_id
 	].units_by_definition_id = {}
+	closed_army.population_recovery.available += 10
 	var near_limit_registry_snapshot: Dictionary = (
 		closed_army.army_registry.duplicate(true)
 	)

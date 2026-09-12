@@ -31,13 +31,13 @@ theme = ExtResource("3_inner_city_theme")
 [node name="TopBar" type="ColorRect" parent="UI/RootPanel"]
 layout_mode = 0
 anchor_right = 1.0
-offset_bottom = 102.0
+offset_bottom = 110.0
 color = Color(0.145, 0.155, 0.155, 1)
 
 [node name="Title" type="Label" parent="UI/RootPanel"]
 offset_left = 24.0
 offset_top = 12.0
-offset_right = 840.0
+offset_right = 700.0
 offset_bottom = 44.0
 theme_override_colors/font_color = Color(0.93, 0.82, 0.55, 1)
 theme_override_font_sizes/font_size = 24
@@ -56,28 +56,30 @@ custom_minimum_size = Vector2(140, 44)
 
 [node name="StatusLabel" type="Label" parent="UI/RootPanel"]
 offset_left = 24.0
-offset_top = 48.0
-offset_right = 430.0
-offset_bottom = 76.0
+offset_top = 56.0
+offset_right = 560.0
+offset_bottom = 100.0
 theme_override_colors/font_color = Color(0.88, 0.89, 0.86, 1)
 theme_override_font_sizes/font_size = 15
 theme_type_variation = &"SecondaryLabel"
 text = "战前部署"
+autowrap_mode = 2
 
 [node name="Instruction" type="Label" parent="UI/RootPanel"]
-offset_left = 442.0
-offset_top = 48.0
+offset_left = 568.0
+offset_top = 56.0
 anchor_right = 1.0
 offset_right = -24.0
-offset_bottom = 92.0
+offset_bottom = 100.0
 theme_override_colors/font_color = Color(0.74, 0.77, 0.74, 1)
 text = "目标：突破两处城门并击溃守军"
 theme_type_variation = &"SecondaryLabel"
 horizontal_alignment = 2
+autowrap_mode = 2
 
 [node name="Battlefield" type="Panel" parent="UI/RootPanel"]
 offset_left = 24.0
-offset_top = 112.0
+offset_top = 120.0
 anchor_right = 1.0
 anchor_bottom = 1.0
 offset_right = -24.0
@@ -116,14 +118,16 @@ offset_bottom = 74.0
 color = Color(0.5529, 0.502, 0.3725, 0.28)
 
 [node name="RouteName" type="Label" parent="UI/RootPanel/FrontLane"]
-offset_left = -140.0
-offset_top = 22.0
+offset_left = -156.0
+offset_top = 8.0
 offset_right = -16.0
-offset_bottom = 48.0
+offset_bottom = 64.0
 theme_override_colors/font_color = Color(0.88, 0.88, 0.82, 1)
 theme_override_font_sizes/font_size = 16
 text = "正门路线"
 horizontal_alignment = 2
+vertical_alignment = 1
+autowrap_mode = 2
 
 [node name="StateLabel" type="Label" parent="UI/RootPanel/FrontLane"]
 anchor_left = 0.32
@@ -185,14 +189,16 @@ offset_bottom = 75.0
 color = Color(0.6627, 0.6039, 0.451, 0.24)
 
 [node name="RouteName" type="Label" parent="UI/RootPanel/SideLane"]
-offset_left = -140.0
-offset_top = 22.0
+offset_left = -156.0
+offset_top = 8.0
 offset_right = -16.0
-offset_bottom = 48.0
+offset_bottom = 64.0
 theme_override_colors/font_color = Color(0.88, 0.88, 0.82, 1)
 theme_override_font_sizes/font_size = 16
 text = "侧门路线"
 horizontal_alignment = 2
+vertical_alignment = 1
+autowrap_mode = 2
 
 [node name="StateLabel" type="Label" parent="UI/RootPanel/SideLane"]
 anchor_left = 0.32
@@ -343,14 +349,121 @@ horizontal_alignment = 1
 vertical_alignment = 1
 
 [node name="StartButton" type="Button" parent="UI/RootPanel"]
-anchor_top = 1.0
-anchor_bottom = 1.0
-offset_left = 476.0
-offset_top = -246.0
-offset_right = 676.0
-offset_bottom = -206.0
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -376.0
+offset_top = 14.0
+offset_right = -176.0
+offset_bottom = 54.0
 text = "开始战斗"
 custom_minimum_size = Vector2(200, 44)
+theme_type_variation = &"PrimaryButton"
+
+[node name="WartimePlanPanel" type="Panel" parent="UI/RootPanel"]
+visible = false
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -194.0
+offset_right = 452.0
+offset_bottom = -62.0
+theme_type_variation = &"CommandPanel"
+
+[node name="WartimeRepairButton" type="Button" parent="UI/RootPanel"]
+visible = false
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -112.0
+offset_right = 204.0
+offset_bottom = -72.0
+text = "维修战时工事"
+theme_type_variation = &"PrimaryButton"
+
+[node name="WartimeRepairTargetButton" type="Button" parent="UI/RootPanel"]
+visible = false
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 212.0
+offset_top = -112.0
+offset_right = 452.0
+offset_bottom = -72.0
+text = "切换维修目标"
+
+[node name="WartimeGateRepairButton" type="Button" parent="UI/RootPanel"]
+visible = false
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -194.0
+offset_right = 452.0
+offset_bottom = -154.0
+text = "维修城门"
+theme_type_variation = &"PrimaryButton"
+
+[node name="WartimeFacilityStatusLabel" type="Label" parent="UI/RootPanel"]
+visible = false
+anchor_top = 1.0
+anchor_bottom = 1.0
+offset_left = 24.0
+offset_top = -148.0
+offset_right = 452.0
+offset_bottom = -116.0
+theme_override_colors/font_color = Color(0.78, 0.81, 0.76, 1)
+theme_override_font_sizes/font_size = 13
+theme_type_variation = &"SecondaryLabel"
+autowrap_mode = 2
+text = "当前路线工事"
+
+[node name="Title" type="Label" parent="UI/RootPanel/WartimePlanPanel"]
+offset_left = 14.0
+offset_top = 8.0
+offset_right = 412.0
+offset_bottom = 30.0
+theme_override_colors/font_color = Color(0.92, 0.82, 0.56, 1)
+text = "战时工事（仅本次战斗）"
+
+[node name="WatchButton" type="Button" parent="UI/RootPanel/WartimePlanPanel"]
+offset_left = 14.0
+offset_top = 38.0
+offset_right = 146.0
+offset_bottom = 78.0
+text = "瞭望台 · 木材 6"
+
+[node name="RamButton" type="Button" parent="UI/RootPanel/WartimePlanPanel"]
+offset_left = 154.0
+offset_top = 38.0
+offset_right = 286.0
+offset_bottom = 78.0
+text = "攻城槌 · 木材 8"
+
+[node name="ArrowTowerButton" type="Button" parent="UI/RootPanel/WartimePlanPanel"]
+offset_left = 294.0
+offset_top = 38.0
+offset_right = 414.0
+offset_bottom = 78.0
+text = "箭塔 · 木材 10"
+
+[node name="BarricadeButton" type="Button" parent="UI/RootPanel/WartimePlanPanel"]
+offset_left = 14.0
+offset_top = 82.0
+offset_right = 146.0
+offset_bottom = 122.0
+text = "拒马 · 木材 5"
+
+[node name="SpikeTrapButton" type="Button" parent="UI/RootPanel/WartimePlanPanel"]
+offset_left = 154.0
+offset_top = 82.0
+offset_right = 286.0
+offset_bottom = 122.0
+text = "刺钉陷阱 · 木材 4"
+
+[node name="ConfirmButton" type="Button" parent="UI/RootPanel/WartimePlanPanel"]
+offset_left = 294.0
+offset_top = 82.0
+offset_right = 414.0
+offset_bottom = 122.0
+text = "确认工事"
 theme_type_variation = &"PrimaryButton"
 
 [node name="SquadControls" type="HBoxContainer" parent="UI/RootPanel"]

@@ -52,13 +52,29 @@ var governance_issue_detail: Label
 var governance_catalog_button: Button
 var governance_wood_button: Button
 var governance_food_button: Button
+var governance_population_summary: Label
+var governance_production_minus: Button
+var governance_production_plus: Button
+var governance_construction_minus: Button
+var governance_construction_plus: Button
+var governance_medical_minus: Button
+var governance_medical_plus: Button
+var governance_order_minus: Button
+var governance_order_plus: Button
+var governance_treatment_button: Button
+var governance_event_button: Button
 var _governance_workspace_was_visible := false
+var strategy_workspace: PanelContainer
+var strategy_content: VBoxContainer
+var strategy_feedback: Label
+var _strategy_workspace_open := false
 
 
 func _ready() -> void:
 	_apply_visual_tokens()
 	_apply_static_copy()
 	_install_governance_workspace()
+	_install_strategy_workspace()
 	_layout_for_viewport()
 	get_viewport().size_changed.connect(_layout_for_viewport)
 	construction_controller.city_state_changed.connect(_refresh_read_model)
@@ -155,14 +171,19 @@ func _refresh_read_model() -> void:
 	]
 	var garrison: Dictionary = construction_controller.get_garrison_snapshot()
 	var queue: Dictionary = construction_controller.get_training_queue_snapshot()
-	army_status.text = "驻军 / 训练\n驻军 %d · 可派 %d · 指挥上限 %d\n队列 %d · 建造中 %d 项" % [
+	var population: Dictionary = construction_controller.get_population_recovery_read_model()
+	army_status.text = "人口 %d · 可用 %d · 伤员 %d\n驻军 %d · 可派 %d/%d\n外派 %d · 训练 %d" % [
+		int(population.get("total_living", 0)),
+		int(population.get("available", 0)),
+		int(population.get("wounded", 0)),
 		int(garrison.get("total_count", 0)),
 		int(garrison.get("dispatchable_count", 0)),
 		int(garrison.get("effective_command_limit", 0)),
+		maxi(int(population.get("military", 0)) - int(garrison.get("total_count", 0)), 0),
 		int(queue.get("queued_count", 0)),
-		construction_controller.get_construction_in_progress_count(),
 	]
 	_refresh_governance_workspace(wood, food)
+	_refresh_strategy_workspace()
 	for label in [time_summary, daily_report, alert_summary]:
 		label.add_theme_color_override("font_color", MUTED_TEXT)
 	_schedule_layout_refresh()
@@ -270,6 +291,7 @@ func _layout_for_viewport() -> void:
 	detail_panel.size = Vector2(right_width, minf(610.0, height - rail_top - 144.0))
 	_layout_detail(right_width)
 	_layout_governance_workspace(width, height, right_width, edge, rail_top)
+	_layout_strategy_workspace(width, height, right_width, edge, rail_top)
 	_refresh_governance_workspace()
 
 
@@ -285,15 +307,15 @@ func _install_governance_workspace() -> void:
 
 	var margin := MarginContainer.new()
 	margin.name = "GovernanceMargin"
-	margin.add_theme_constant_override("margin_left", 14)
-	margin.add_theme_constant_override("margin_top", 14)
-	margin.add_theme_constant_override("margin_right", 14)
-	margin.add_theme_constant_override("margin_bottom", 14)
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 6)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 6)
 	governance_workspace.add_child(margin)
 
 	var content := VBoxContainer.new()
 	content.name = "GovernanceContent"
-	content.add_theme_constant_override("separation", 8)
+	content.add_theme_constant_override("separation", 3)
 	margin.add_child(content)
 
 	governance_title = Label.new()
@@ -323,22 +345,323 @@ func _install_governance_workspace() -> void:
 	governance_wood_button = _make_governance_button("补充木材 · 伐木场")
 	governance_wood_button.name = "GovernanceWoodButton"
 	governance_wood_button.pressed.connect(_start_governance_definition.bind(&"logging_camp"))
-	content.add_child(governance_wood_button)
 
 	governance_food_button = _make_governance_button("稳定粮食 · 农田")
 	governance_food_button.name = "GovernanceFoodButton"
 	governance_food_button.pressed.connect(_start_governance_definition.bind(&"farm"))
-	content.add_child(governance_food_button)
+	var production_shortcuts := HBoxContainer.new()
+	production_shortcuts.name = "ProductionShortcuts"
+	production_shortcuts.add_theme_constant_override("separation", 6)
+	production_shortcuts.add_child(governance_wood_button)
+	production_shortcuts.add_child(governance_food_button)
+	content.add_child(production_shortcuts)
+
+	governance_population_summary = Label.new()
+	governance_population_summary.name = "PopulationRecoverySummary"
+	governance_population_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	governance_population_summary.add_theme_color_override("font_color", MUTED_TEXT)
+	content.add_child(governance_population_summary)
+
+	var production_row := HBoxContainer.new()
+	production_row.add_child(_make_row_label("生产岗位"))
+	governance_production_minus = _make_small_action("−")
+	governance_production_minus.name = "ProductionWorkerMinus"
+	governance_production_minus.pressed.connect(_adjust_workforce.bind(&"production", -1))
+	production_row.add_child(governance_production_minus)
+	governance_production_plus = _make_small_action("+")
+	governance_production_plus.name = "ProductionWorkerPlus"
+	governance_production_plus.pressed.connect(_adjust_workforce.bind(&"production", 1))
+	production_row.add_child(governance_production_plus)
+	production_row.add_child(_make_row_label("施工"))
+	governance_construction_minus = _make_small_action("−")
+	governance_construction_minus.name = "ConstructionWorkerMinus"
+	governance_construction_minus.pressed.connect(_adjust_workforce.bind(&"construction", -1))
+	production_row.add_child(governance_construction_minus)
+	governance_construction_plus = _make_small_action("+")
+	governance_construction_plus.name = "ConstructionWorkerPlus"
+	governance_construction_plus.pressed.connect(_adjust_workforce.bind(&"construction", 1))
+	production_row.add_child(governance_construction_plus)
+	content.add_child(production_row)
+
+	var care_row := HBoxContainer.new()
+	care_row.add_child(_make_row_label("医疗岗位"))
+	governance_medical_minus = _make_small_action("−")
+	governance_medical_minus.name = "MedicalWorkerMinus"
+	governance_medical_minus.pressed.connect(_adjust_workforce.bind(&"medical", -1))
+	care_row.add_child(governance_medical_minus)
+	governance_medical_plus = _make_small_action("+")
+	governance_medical_plus.name = "MedicalWorkerPlus"
+	governance_medical_plus.pressed.connect(_adjust_workforce.bind(&"medical", 1))
+	care_row.add_child(governance_medical_plus)
+	care_row.add_child(_make_row_label("治理"))
+	governance_order_minus = _make_small_action("−")
+	governance_order_minus.name = "GovernanceWorkerMinus"
+	governance_order_minus.pressed.connect(_adjust_workforce.bind(&"governance", -1))
+	care_row.add_child(governance_order_minus)
+	governance_order_plus = _make_small_action("+")
+	governance_order_plus.name = "GovernanceWorkerPlus"
+	governance_order_plus.pressed.connect(_adjust_workforce.bind(&"governance", 1))
+	care_row.add_child(governance_order_plus)
+	content.add_child(care_row)
+
+	var wellbeing_buildings := HBoxContainer.new()
+	wellbeing_buildings.name = "WellbeingBuildingShortcuts"
+	var housing_button := _make_governance_button("建设民居")
+	housing_button.name = "GovernanceHousingButton"
+	housing_button.pressed.connect(_start_governance_definition.bind(&"building.housing.t1"))
+	wellbeing_buildings.add_child(housing_button)
+	var clinic_button := _make_governance_button("建设医舍")
+	clinic_button.name = "GovernanceClinicButton"
+	clinic_button.pressed.connect(_start_governance_definition.bind(&"building.clinic.t1"))
+	wellbeing_buildings.add_child(clinic_button)
+	content.add_child(wellbeing_buildings)
+
+	governance_treatment_button = _make_governance_button("治疗伤员")
+	governance_treatment_button.name = "WoundedTreatmentButton"
+	governance_treatment_button.pressed.connect(_begin_wounded_treatment)
+	content.add_child(governance_treatment_button)
+	governance_event_button = _make_governance_button("安排治安处置")
+	governance_event_button.name = "GovernanceEventButton"
+	governance_event_button.pressed.connect(_resolve_governance_event)
+	content.add_child(governance_event_button)
+	var strategy_button := _make_governance_button("战略支持 · 文官 / 装备 / 贸易")
+	strategy_button.name = "CityStrategyEntryButton"
+	strategy_button.pressed.connect(_open_strategy_workspace)
+	content.add_child(strategy_button)
+
+
+func _install_strategy_workspace() -> void:
+	strategy_workspace = PanelContainer.new()
+	strategy_workspace.name = "CityStrategyWorkspace"
+	strategy_workspace.mouse_filter = Control.MOUSE_FILTER_STOP
+	strategy_workspace.add_theme_stylebox_override("panel", _panel_style())
+	strategy_workspace.visible = false
+	add_child(strategy_workspace)
+	var margin := MarginContainer.new()
+	margin.name = "StrategyMargin"
+	margin.add_theme_constant_override("margin_left", 12)
+	margin.add_theme_constant_override("margin_top", 8)
+	margin.add_theme_constant_override("margin_right", 12)
+	margin.add_theme_constant_override("margin_bottom", 8)
+	strategy_workspace.add_child(margin)
+	var scroll := ScrollContainer.new()
+	scroll.name = "StrategyScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	margin.add_child(scroll)
+	strategy_content = VBoxContainer.new()
+	strategy_content.name = "StrategyContent"
+	strategy_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	strategy_content.add_theme_constant_override("separation", 5)
+	scroll.add_child(strategy_content)
+
+
+func _open_strategy_workspace() -> void:
+	_strategy_workspace_open = true
+	_refresh_strategy_workspace()
+	_refresh_governance_workspace()
+
+
+func _close_strategy_workspace() -> void:
+	_strategy_workspace_open = false
+	_refresh_strategy_workspace()
+	_refresh_governance_workspace()
+
+
+func _strategy_action(method: StringName, argument: StringName = &"") -> void:
+	var result: Dictionary = construction_controller.call(method, argument) if argument != &"" else construction_controller.call(method)
+	var success_copy: String = str({
+		&"appoint_city_official": "文官任命已更新",
+		&"activate_city_official_support": "文官支援已启用",
+		&"craft_city_equipment": "装备制造完成，尚未自动装配",
+		&"equip_city_troops": "制式装备已装配",
+		&"unequip_city_troops": "制式装备已卸下",
+		&"equip_city_general": "将领装备已装配",
+		&"unequip_city_general": "将领装备已卸下",
+		&"train_city_equipment": "装备培养完成",
+		&"rank_up_city_equipment": "装备升阶完成",
+		&"execute_city_trade": "交易完成并已生成回执",
+	}.get(method, "操作完成"))
+	strategy_feedback.text = success_copy if bool(result.get("success", false)) else str(result.get("error", "操作失败"))
+	_refresh_strategy_workspace.call_deferred(false)
+
+
+func _strategy_inherit_action(target_id: StringName, source_id: StringName) -> void:
+	var result: Dictionary = construction_controller.inherit_city_equipment_experience(target_id, source_id)
+	strategy_feedback.text = "经验继承完成，来源装备已消耗" if bool(result.get("success", false)) else str(result.get("error", "继承失败"))
+	_refresh_strategy_workspace.call_deferred(false)
+
+
+func _refresh_strategy_workspace(clear_feedback := false) -> void:
+	if not is_instance_valid(strategy_workspace):
+		return
+	strategy_workspace.visible = _strategy_workspace_open
+	if not _strategy_workspace_open:
+		return
+	var preserved_feedback := "" if clear_feedback or not is_instance_valid(strategy_feedback) else strategy_feedback.text
+	for child in strategy_content.get_children():
+		strategy_content.remove_child(child)
+		child.queue_free()
+	var title_row := HBoxContainer.new()
+	var title := _make_row_label("战略支持")
+	title.add_theme_color_override("font_color", ACCENT)
+	title_row.add_child(title)
+	var close := _make_small_action("返回")
+	close.name = "CityStrategyCloseButton"
+	close.pressed.connect(_close_strategy_workspace)
+	title_row.add_child(close)
+	strategy_content.add_child(title_row)
+	strategy_feedback = Label.new()
+	strategy_feedback.name = "CityStrategyFeedback"
+	strategy_feedback.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	strategy_feedback.add_theme_color_override("font_color", WARNING)
+	strategy_feedback.text = preserved_feedback
+	strategy_content.add_child(strategy_feedback)
+	var model: Dictionary = construction_controller.get_city_strategy_read_model()
+	var active: Dictionary = Dictionary(model.get("active_support", {}))
+	var support_copy := "无支援生效"
+	if StringName(active.get("phase", &"")) == &"ACTIVE" and bool(model.get("active_support_effective", false)):
+		var support_names := {&"PRODUCTION": "生产", &"MEDICAL": "医疗", &"DEFENSE": "防御"}
+		support_copy = "%s支援生效中 · 剩余 %d 日（第 %d 日边界结束）" % [str(support_names.get(StringName(active.get("support_type", &"")), "城市")), maxi(int(active.get("expires_day", 0)) - construction_controller.current_day, 0), int(active.get("expires_day", 0))]
+	elif StringName(active.get("phase", &"")) == &"ACTIVE":
+		support_copy = "支援已到期 · 等待保存重试"
+	var overview := _make_row_label("关卡能量 %d/3 · %s" % [int(model.get("campaign_energy", 0)), support_copy])
+	overview.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	strategy_content.add_child(overview)
+	strategy_content.add_child(_strategy_section_label("文官任命与支援"))
+	var official_names: Dictionary = Dictionary(model.get("official_names", {}))
+	var support_descriptions: Dictionary = Dictionary(model.get("support_descriptions", {}))
+	for official_id_value in Array(model.get("unlocked_official_ids", [])):
+		var official_id := StringName(official_id_value)
+		var appointed := official_id == StringName(model.get("appointed_official_id", &""))
+		var button := _make_governance_button(("已任命 · " if appointed else "任命 · ") + str(official_names.get(official_id, official_id)))
+		button.name = "Official_%s" % String(official_id).replace(".", "_")
+		button.disabled = appointed
+		button.pressed.connect(_strategy_action.bind(&"appoint_city_official", official_id))
+		strategy_content.add_child(button)
+		var description := _make_row_label("  %s" % str(support_descriptions.get(official_id, "")))
+		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		strategy_content.add_child(description)
+	var support_button := _make_governance_button("启用当前文官支援 · 消耗 1 能量")
+	support_button.name = "ActivateOfficialSupportButton"
+	support_button.disabled = int(model.get("campaign_energy", 0)) <= 0 or StringName(active.get("phase", &"")) == &"ACTIVE"
+	support_button.pressed.connect(_strategy_action.bind(&"activate_city_official_support", &""))
+	strategy_content.add_child(support_button)
+	strategy_content.add_child(_strategy_section_label("编队制式装备 · 制造与装配分开"))
+	var equipment_names: Dictionary = Dictionary(model.get("equipment_names", {}))
+	var equipment_costs: Dictionary = Dictionary(model.get("equipment_costs", {}))
+	var owned: Array = Array(model.get("owned_equipment_ids", []))
+	var slots: Dictionary = Dictionary(model.get("troop_equipment_by_slot", {}))
+	var general_loadouts: Dictionary = Dictionary(model.get("general_equipment_by_general_id", {}))
+	var growth_models: Dictionary = Dictionary(model.get("equipment_growth_models", {}))
+	var rank_costs: Dictionary = Dictionary(model.get("equipment_rank_costs", {}))
+	var quality_names: Dictionary = Dictionary(model.get("quality_names", {}))
+	var slot_names: Dictionary = Dictionary(model.get("general_slot_names", {}))
+	var selected_general_id := StringName(model.get("selected_general_id", &""))
+	var general_section_added := false
+	for equipment_id_value in CityStrategyState.EQUIPMENT_IDS:
+		var equipment_id := StringName(equipment_id_value)
+		var owned_item := equipment_id in owned
+		var is_general_item := equipment_id in CityStrategyState.GENERAL_EQUIPMENT_IDS
+		if is_general_item and not general_section_added:
+			strategy_content.add_child(_strategy_section_label("将领装备 · %s · 六槽" % str(model.get("selected_general_name", "未选择将领"))))
+			var loadout: Dictionary = Dictionary(general_loadouts.get(selected_general_id, CityStrategyState.empty_general_loadout()))
+			for slot in CityStrategyState.GENERAL_SLOTS:
+				var equipped_name := str(equipment_names.get(StringName(loadout.get(slot, &"")), "空"))
+				strategy_content.add_child(_make_row_label("%s：%s" % [str(slot_names.get(slot, slot)), equipped_name]))
+			general_section_added = true
+		var equipped := equipment_id in slots.values() or equipment_id in Dictionary(general_loadouts.get(selected_general_id, {})).values()
+		var copy := ("卸下 · " if equipped else ("装配 · " if owned_item else "制造 · ")) + str(equipment_names.get(equipment_id, equipment_id))
+		if not owned_item:
+			copy += " · 木材 %d · 制造后需另行装配" % int(Dictionary(equipment_costs.get(equipment_id, {})).get(&"wood", 0))
+		var equipment_button := _make_governance_button(copy)
+		equipment_button.name = "Equipment_%s" % String(equipment_id).replace(".", "_")
+		var method := &"craft_city_equipment"
+		if equipped:
+			method = &"unequip_city_general" if is_general_item else &"unequip_city_troops"
+		elif owned_item:
+			method = &"equip_city_general" if is_general_item else &"equip_city_troops"
+		equipment_button.disabled = is_general_item and owned_item and selected_general_id == &""
+		equipment_button.pressed.connect(_strategy_action.bind(method, equipment_id))
+		strategy_content.add_child(equipment_button)
+		if is_general_item and owned_item:
+			var growth: Dictionary = Dictionary(growth_models.get(equipment_id, {}))
+			var growth_copy := "%s · Lv.%d/%d · 累计经验 %d · 当前加成 %s" % [
+				str(quality_names.get(StringName(growth.get("quality_id", &"COMMON")), "常备")), int(growth.get("level", 1)), int(growth.get("level_cap", 3)), int(growth.get("experience", 0)), str(float(int(growth.get("effect_permille", 0))) / 10.0) + "%",
+			]
+			strategy_content.add_child(_make_row_label(growth_copy))
+			var train := _make_governance_button("培养 · 木材 4 → 经验 +100")
+			train.name = "Train_%s" % String(equipment_id).replace(".", "_")
+			train.pressed.connect(_strategy_action.bind(&"train_city_equipment", equipment_id))
+			strategy_content.add_child(train)
+			var rank_cost: Dictionary = Dictionary(rank_costs.get(StringName(growth.get("quality_id", &"COMMON")), {}))
+			var rank := _make_governance_button("升阶 · 木材 %d · 保留累计经验" % int(rank_cost.get(&"wood", 0)))
+			rank.name = "Rank_%s" % String(equipment_id).replace(".", "_")
+			rank.disabled = not bool(growth.get("can_rank_up", false))
+			rank.pressed.connect(_strategy_action.bind(&"rank_up_city_equipment", equipment_id))
+			strategy_content.add_child(rank)
+	if &"equipment.general.bronze_sword" in owned and &"equipment.general.iron_sword" in owned:
+		var bronze_growth: Dictionary = Dictionary(growth_models.get(&"equipment.general.bronze_sword", {}))
+		var inherit := _make_governance_button("继承预览 · 青铜佩剑 → 精铁长剑 · 来源将消失")
+		inherit.name = "InheritBronzeSwordToIronSword"
+		inherit.disabled = bool(bronze_growth.get("assigned", false))
+		inherit.tooltip_text = "已装配的来源装备必须先卸下" if inherit.disabled else "目标获得来源累计经验与基础经验；超出当前等级上限的经验会保留"
+		inherit.pressed.connect(_strategy_inherit_action.bind(&"equipment.general.iron_sword", &"equipment.general.bronze_sword"))
+		strategy_content.add_child(inherit)
+	strategy_content.add_child(_strategy_section_label("当日贸易 · 预览后一次成交"))
+	var offers: Dictionary = Dictionary(model.get("trade_offers", {}))
+	for offer_id_value in offers.keys():
+		var offer_id := StringName(offer_id_value)
+		var offer: Dictionary = offers[offer_id]
+		var resource_names := {&"wood": "木材", &"food": "粮食"}
+		var trade_button := _make_governance_button("%d %s → %d %s · 成交后 %d/%d · %s" % [int(offer.spend), str(resource_names.get(StringName(offer.spend_id), offer.spend_id)), int(offer.gain), str(resource_names.get(StringName(offer.gain_id), offer.gain_id)), int(offer.get("gain_available", 0)) + int(offer.gain), int(offer.get("gain_capacity", 0)), "今日可交易" if bool(offer.get("can_execute", false)) else str(offer.get("blocked_reason", "不可交易"))])
+		trade_button.name = "Trade_%s" % String(offer_id).replace(".", "_")
+		trade_button.disabled = not bool(offer.get("can_execute", false))
+		trade_button.tooltip_text = str(offer.get("blocked_reason", ""))
+		trade_button.pressed.connect(_strategy_action.bind(&"execute_city_trade", offer_id))
+		strategy_content.add_child(trade_button)
+
+
+func _strategy_section_label(copy: String) -> Label:
+	var label := _make_row_label(copy)
+	label.add_theme_color_override("font_color", ACCENT)
+	return label
 
 
 func _make_governance_button(copy: String) -> Button:
 	var button := Button.new()
 	button.text = copy
-	button.custom_minimum_size = Vector2(0.0, 34.0)
+	button.custom_minimum_size = Vector2(0.0, 28.0)
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.focus_mode = Control.FOCUS_ALL
 	_apply_button_tokens(button)
 	return button
+
+
+func _make_row_label(copy: String) -> Label:
+	var label := Label.new()
+	label.text = copy
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.add_theme_color_override("font_color", TEXT)
+	return label
+
+
+func _make_small_action(copy: String) -> Button:
+	var button := _make_governance_button(copy)
+	button.custom_minimum_size = Vector2(38.0, 26.0)
+	button.size_flags_horizontal = Control.SIZE_SHRINK_END
+	return button
+
+
+func _adjust_workforce(channel: StringName, delta: int) -> void:
+	construction_controller.adjust_city_workforce(channel, delta)
+
+
+func _begin_wounded_treatment() -> void:
+	construction_controller.begin_wounded_treatment()
+
+
+func _resolve_governance_event() -> void:
+	construction_controller.resolve_city_governance_event()
 
 
 func _start_governance_definition(definition_id: StringName) -> void:
@@ -360,8 +683,22 @@ func _layout_governance_workspace(
 	governance_workspace.position = Vector2(width - right_width - edge, rail_top + 140.0)
 	governance_workspace.size = Vector2(
 		right_width,
-		minf(260.0, height - rail_top - 154.0)
+		minf(430.0, height - rail_top - 154.0)
 	)
+
+
+func _layout_strategy_workspace(
+	width: float,
+	height: float,
+	right_width: float,
+	edge: float,
+	rail_top: float
+) -> void:
+	if not is_instance_valid(strategy_workspace):
+		return
+	var strategy_width := minf(maxf(right_width, 430.0), width - edge * 2.0)
+	strategy_workspace.position = Vector2(width - strategy_width - edge, rail_top + 112.0)
+	strategy_workspace.size = Vector2(strategy_width, minf(520.0, height - rail_top - 126.0))
 
 
 func _refresh_governance_workspace(
@@ -390,9 +727,50 @@ func _refresh_governance_workspace(
 		food,
 		food_capacity,
 	]
+	var population: Dictionary = construction_controller.get_population_recovery_read_model()
+	var governance: Dictionary = construction_controller.get_city_governance_read_model()
+	var treatment: Dictionary = Dictionary(population.get("treatment", {}))
+	var treatment_active := StringName(treatment.get("phase", &"")) == &"ACTIVE"
+	governance_population_summary.text = (
+		"人口 %d · 可用 %d · 生产 %d · 施工 %d · 医疗 %d · 治理 %d\n驻军与外派 %d · 伤员 %d · 患病 %d · 阵亡累计 %d%s\n%s季 · 健康 %d%% · 住房 %d/%d · 治安 %d"
+		% [
+			int(population.get("total_living", 0)),
+			int(population.get("available", 0)),
+			int(population.get("production_workers", 0)),
+			int(population.get("construction_workers", 0)),
+			int(population.get("medical_workers", 0)),
+			int(population.get("governance_workers", 0)),
+			int(population.get("military", 0)),
+			int(population.get("wounded", 0)),
+			int(governance.get("diseased_count", 0)),
+			int(population.get("fallen", 0)),
+			" · 治疗中 %d/%d" % [int(treatment.get("progress_milliseconds", 0)), int(treatment.get("required_milliseconds", 0))] if treatment_active else "",
+			str(governance.get("season_name", "")),
+			floori(float(int(governance.get("health_permille", 0))) / 10.0),
+			int(population.get("total_living", 0)),
+			int(governance.get("housing_capacity", 0)),
+			int(governance.get("security", 0)),
+		]
+	)
+	governance_production_minus.disabled = int(population.get("production_workers", 0)) <= 0
+	governance_construction_minus.disabled = int(population.get("construction_workers", 0)) <= 0
+	governance_production_plus.disabled = int(population.get("available", 0)) <= 0
+	governance_construction_plus.disabled = int(population.get("available", 0)) <= 0
+	governance_medical_minus.disabled = int(population.get("medical_workers", 0)) <= 0
+	governance_medical_plus.disabled = int(population.get("available", 0)) <= 0
+	governance_order_minus.disabled = int(population.get("governance_workers", 0)) <= 0
+	governance_order_plus.disabled = int(population.get("available", 0)) <= 0
+	governance_treatment_button.disabled = int(population.get("wounded", 0)) <= 0 or treatment_active
+	governance_treatment_button.text = "治疗进行中" if treatment_active else "治疗伤员 · 每批最多 6 人"
+	governance_event_button.visible = StringName(Dictionary(governance.get("active_event", {})).get("phase", &"")) == &"ACTIVE"
+	governance_event_button.disabled = int(population.get("governance_workers", 0)) < 2
+	if not str(governance.get("active_issue", "")).is_empty():
+		issues.push_front(str(governance.active_issue))
 	governance_issue_detail.visible = not issues.is_empty()
 	governance_issue_detail.text = "\n".join(issues)
 	var show_workspace: bool = (
+		not _strategy_workspace_open
+		and
 		not construction_controller.is_placing()
 		and not construction_controller.is_choosing_template()
 		and not detail_panel.visible

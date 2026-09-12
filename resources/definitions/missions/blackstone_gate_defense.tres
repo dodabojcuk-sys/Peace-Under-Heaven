@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="MissionDefinition" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/content/mission_definition.gd" id="1_mission"]
+
+[resource]
+script = ExtResource("1_mission")
+mission_id = &"wartime_defense.blackstone_gate.v0"
+title = "黑石城门防守"
+description = "敌军沿两条已知路线逼近城门；守住城门并击退来袭部队。"
+objective_type = &"PROTECT_AND_ELIMINATE"
+objective_text = "保护黑石城门，并消灭全部来袭敌军"
+risk_label = "战时内城 · 守城"
+layout_id = &"blackstone_gate_defense_v0"
+source = &"WARTIME_DEFENSE"
+committed_count = 20
+player_route_pattern = Array[StringName]([&"FRONT_GATE", &"SIDE_GATE", &"FRONT_GATE"])
+front_route_name = "北门城墙"
+side_route_name = "东门壕沟"
+front_enemy_count = 9
+side_enemy_count = 7
+front_distance_units = 28
+side_distance_units = 32
+protect_target_name = "黑石城门"
+protect_target_hp = 540
+protect_damage_per_enemy = 2
+reward_wood = 0
+reward_food = 0
+first_clear_key = &"wartime_defense.blackstone_gate.v0.first_clear"

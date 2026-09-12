@@ -21,6 +21,7 @@ const DEBUG_PLAYER_COUNT := 50
 @onready var status_label: Label = $UI/RootPanel/StatusLabel
 @onready var title_label: Label = $UI/RootPanel/Title
 @onready var instruction_label: Label = $UI/RootPanel/Instruction
+@onready var direction_label: Label = $UI/RootPanel/Battlefield/DirectionLabel
 @onready var front_state_label: Label = (
 	$UI/RootPanel/FrontLane/StateLabel
 )
@@ -48,6 +49,36 @@ const DEBUG_PLAYER_COUNT := 50
 )
 @onready var side_gate: ColorRect = $UI/RootPanel/SideLane/SideGate
 @onready var start_button: Button = $UI/RootPanel/StartButton
+@onready var battlefield_panel: Panel = $UI/RootPanel/Battlefield
+@onready var wartime_plan_panel: Panel = $UI/RootPanel/WartimePlanPanel
+@onready var wartime_watch_button: Button = (
+	$UI/RootPanel/WartimePlanPanel/WatchButton
+)
+@onready var wartime_ram_button: Button = (
+	$UI/RootPanel/WartimePlanPanel/RamButton
+)
+@onready var wartime_arrow_tower_button: Button = (
+	$UI/RootPanel/WartimePlanPanel/ArrowTowerButton
+)
+@onready var wartime_barricade_button: Button = (
+	$UI/RootPanel/WartimePlanPanel/BarricadeButton
+)
+@onready var wartime_spike_trap_button: Button = (
+	$UI/RootPanel/WartimePlanPanel/SpikeTrapButton
+)
+@onready var wartime_plan_confirm_button: Button = (
+	$UI/RootPanel/WartimePlanPanel/ConfirmButton
+)
+@onready var wartime_repair_button: Button = $UI/RootPanel/WartimeRepairButton
+@onready var wartime_repair_target_button: Button = (
+	$UI/RootPanel/WartimeRepairTargetButton
+)
+@onready var wartime_gate_repair_button: Button = (
+	$UI/RootPanel/WartimeGateRepairButton
+)
+@onready var wartime_facility_status_label: Label = (
+	$UI/RootPanel/WartimeFacilityStatusLabel
+)
 @onready var exit_button: Button = $UI/RootPanel/ExitButton
 @onready var squad_controls: HBoxContainer = (
 	$UI/RootPanel/SquadControls
@@ -125,6 +156,9 @@ var formal_committed_count := 0
 var prepared_expedition_request: BattleRequest
 var noticeboard_mission_mode := false
 var mission_definition: MissionDefinition
+var macro_siege_mode := false
+var macro_siege_army_id: StringName = &""
+var macro_siege_city_id: StringName = &""
 var _squad_ui: Dictionary = {}
 var _squad_markers: Dictionary = {}
 var _confirmed_summary: Dictionary = {}
@@ -134,11 +168,33 @@ var _resume_timer_after_exit_cancel := false
 var _selected_squad_id := -1
 var _presentation_snapshot: Dictionary = {}
 var _recent_actions: Array[String] = []
+var _pending_wartime_facility_plan: Dictionary = {}
+var _selected_repair_facility_id: StringName = &""
+var _battle_context: Dictionary = {}
 
 
 func _ready() -> void:
 	tick_timer.timeout.connect(_on_tick_timeout)
 	start_button.pressed.connect(_start_battle_from_ui)
+	wartime_watch_button.pressed.connect(
+		_toggle_wartime_facility.bind(WartimeFacilityPlan.KIND_WATCH_PLATFORM)
+	)
+	wartime_ram_button.pressed.connect(
+		_toggle_wartime_facility.bind(WartimeFacilityPlan.KIND_SIEGE_RAM)
+	)
+	wartime_arrow_tower_button.pressed.connect(
+		_toggle_wartime_facility.bind(WartimeFacilityPlan.KIND_ARROW_TOWER)
+	)
+	wartime_barricade_button.pressed.connect(
+		_toggle_wartime_facility.bind(WartimeFacilityPlan.KIND_BARRICADE)
+	)
+	wartime_spike_trap_button.pressed.connect(
+		_toggle_wartime_facility.bind(WartimeFacilityPlan.KIND_SPIKE_TRAP)
+	)
+	wartime_plan_confirm_button.pressed.connect(_confirm_wartime_facility_plan)
+	wartime_repair_button.pressed.connect(_repair_damaged_wartime_facility)
+	wartime_repair_target_button.pressed.connect(_cycle_wartime_repair_target)
+	wartime_gate_repair_button.pressed.connect(_repair_protect_target)
 	exit_button.pressed.connect(request_exit_or_return)
 	exit_cancel_button.pressed.connect(cancel_exit_confirmation)
 	exit_confirm_button.pressed.connect(confirm_exit_as_retreat)
@@ -158,9 +214,14 @@ func _ready() -> void:
 	else:
 		_create_city_fixture()
 	_create_battle_request()
+	if request != null:
+		_battle_context = _build_battle_context()
+		_pending_wartime_facility_plan = request.wartime_facility_plan.duplicate(true)
+		_resume_active_battle_if_available()
 	_create_squad_controls()
 	_apply_northern_visual_palette()
-	_append_recent_action("选择小队，安排战前路线")
+	_append_source_context_feedback()
+	_append_recent_action("选择小队，核对部署路线与有效命令")
 	_refresh_battle_ui()
 	call_deferred("_grab_initial_focus")
 
@@ -237,6 +298,23 @@ func configure_noticeboard_mission(
 	)
 
 
+## The macro army has already paid its departure cost and reached a real siege.
+## This entry only names that existing source; request construction remains in
+## ConstructionController so reopening cannot synthesize a second army.
+func configure_macro_siege(
+	city_scene_value: Node2D,
+	city_controller_value: Node,
+	army_id: StringName,
+	city_id: StringName
+) -> void:
+	formal_city_mode = true
+	macro_siege_mode = true
+	city_scene = city_scene_value
+	city_controller = city_controller_value
+	macro_siege_army_id = army_id
+	macro_siege_city_id = city_id
+
+
 func _start_battle_from_ui() -> void:
 	start_battle(true)
 
@@ -251,7 +329,11 @@ func start_battle(apply_deployment_plan := false) -> bool:
 		return false
 	if coordinator.active_session == null and coordinator.create_session() == null:
 		return false
+	if not _checkpoint_active_battle_session():
+		status_label.text = "战时实例检查点保存失败；请检查存档后重试"
+		return false
 	start_button.disabled = true
+	wartime_plan_panel.visible = false
 	for squad_id in _squad_ui:
 		_squad_ui[squad_id].route_button.disabled = true
 	if (
@@ -262,6 +344,10 @@ func start_battle(apply_deployment_plan := false) -> bool:
 		_append_recent_action("正门集中部署已同步推进，命令将在下一战斗刻生效")
 	else:
 		_append_recent_action("战斗开始，小队命令将在下一战斗刻生效")
+	if WartimeFacilityPlan.has_kind(
+		request.wartime_facility_plan, WartimeFacilityPlan.KIND_ARROW_TOWER
+	):
+		_append_recent_action("战时工事开始施工；完工后才提供观察、破门或箭塔火力")
 	tick_timer.start()
 	_refresh_battle_ui()
 	return true
@@ -369,9 +455,33 @@ func set_squad_route(
 	squad_id: int,
 	route_id: StringName
 ) -> bool:
-	if _uses_prepared_expedition():
+	if request == null or request.phase != BattleRequest.PHASE_RESERVED:
 		return false
-	if not coordinator.set_squad_route(squad_id, route_id):
+	if _uses_prepared_expedition():
+		if not _can_edit_defense_deployment() or city_controller == null:
+			return false
+		var updated: Dictionary = city_controller.update_wartime_defense_deployment(
+			request.transaction_id, squad_id, route_id
+		)
+		if not bool(updated.get("success", false)):
+			var error_text := str(updated.get("error", "守城部署保存失败"))
+			_append_recent_action(error_text)
+			status_label.text = error_text
+			_refresh_battle_ui()
+			return false
+		var committed := CommittedForceSnapshot.from_dictionary(
+			Dictionary(updated.get("committed_force_snapshot", {}))
+		)
+		if committed == null:
+			var snapshot_error := "守城部署快照无效，未改变当前部署"
+			_append_recent_action(snapshot_error)
+			status_label.text = snapshot_error
+			_refresh_battle_ui()
+			return false
+		request.committed_force = committed
+		if coordinator.active_request != null:
+			coordinator.active_request.committed_force = committed
+	elif not coordinator.set_squad_route(squad_id, route_id):
 		return false
 	_append_recent_action(
 		"%s改为部署至%s"
@@ -441,25 +551,11 @@ func confirm_pending_result() -> Dictionary:
 		confirm_button.grab_focus()
 		return {}
 	_confirmed_summary = summary.duplicate(true)
-	result_label.text = (
-		"%s\n幸存 %d｜伤亡 %d\n%s\n木材 +%d｜粮食 +%d%s%s"
-		% [
-			_outcome_id_text(StringName(summary.outcome)),
-			int(summary.survivor_count),
-			int(summary.casualty_count),
-			(
-				"粮草已于出征确认时扣除 %d"
-				% int(summary.get("actual_food_cost", 0))
-				if _uses_prepared_expedition()
-				else "粮草 -%d" % int(summary.get("actual_food_cost", 0))
-			),
-			int(summary.accepted_wood_reward),
-			int(summary.accepted_food_reward),
-			"\n首通奖励已结算"
-				if bool(summary.first_clear_granted)
-				else "",
-			_formation_result_text(summary),
-		]
+	result_label.text = _confirmed_result_text(summary)
+	return_button.text = (
+		"返回黑石战区"
+		if request.source_id == BattleRequest.SOURCE_MACRO_SIEGE
+		else "返回黑石城"
 	)
 	return_button.visible = true
 	return_button.disabled = false
@@ -614,6 +710,13 @@ func _restore_city_presentation() -> void:
 
 
 func _create_battle_request() -> void:
+	if macro_siege_mode:
+		request = coordinator.create_macro_siege_request(
+			macro_siege_army_id, macro_siege_city_id
+		)
+		if request == null:
+			push_error("C0 macro siege coordinator rejected the existing siege")
+		return
 	if prepared_expedition_request != null:
 		if coordinator.has_method("adopt_expedition_request"):
 			if coordinator.adopt_expedition_request(prepared_expedition_request):
@@ -642,12 +745,12 @@ func _create_squad_controls() -> void:
 		var squad_id := int(squad_snapshot.squad_id)
 		var panel := VBoxContainer.new()
 		panel.name = "Squad%d" % squad_id
-		panel.custom_minimum_size = Vector2(134.0, 148.0)
+		panel.custom_minimum_size = Vector2(134.0, 130.0)
 		squad_controls.add_child(panel)
 
 		var select_button := Button.new()
 		select_button.name = "SelectButton"
-		select_button.custom_minimum_size = Vector2(0.0, 44.0)
+		select_button.custom_minimum_size = Vector2(0.0, 36.0)
 		select_button.text = str(
 			squad_snapshot.get(
 				"display_name",
@@ -661,16 +764,16 @@ func _create_squad_controls() -> void:
 		status.name = "Status"
 		status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		status.custom_minimum_size = Vector2(130.0, 48.0)
+		status.custom_minimum_size = Vector2(130.0, 38.0)
 		panel.add_child(status)
 
 		var route_button := Button.new()
 		route_button.name = "RouteButton"
-		route_button.custom_minimum_size = Vector2(0.0, 44.0)
+		route_button.custom_minimum_size = Vector2(0.0, 36.0)
 		route_button.pressed.connect(_on_route_button_pressed.bind(squad_id))
-		if _uses_prepared_expedition():
+		if _is_route_deployment_locked():
 			route_button.disabled = true
-			route_button.tooltip_text = "正式出征的部署已在确认时锁定"
+			route_button.tooltip_text = "此战斗的原始部署已冻结"
 		panel.add_child(route_button)
 
 		_squad_ui[squad_id] = {
@@ -694,9 +797,9 @@ func _create_squad_controls() -> void:
 
 func _on_route_button_pressed(squad_id: int) -> void:
 	if (
-		_uses_prepared_expedition()
-		or request == null
+		request == null
 		or request.phase != BattleRequest.PHASE_RESERVED
+		or _is_route_deployment_locked()
 	):
 		return
 	for squad in request.committed_force.squads:
@@ -737,7 +840,24 @@ func _on_tick_timeout() -> void:
 
 
 func _advance_one_tick() -> BattleResult:
+	var prior_session_snapshot: Dictionary = (
+		coordinator.active_session.get_snapshot()
+		if coordinator.active_session != null
+		else {}
+	)
 	var battle_result := coordinator.advance_battle_tick()
+	if battle_result == null and coordinator.active_session != null:
+		if not _checkpoint_active_battle_session():
+			coordinator.active_session.restore_snapshot(prior_session_snapshot)
+			status_label.text = "战时实例检查点保存失败；本战斗刻未提交"
+			_refresh_battle_ui()
+			return null
+	if battle_result != null and city_controller != null and city_controller.has_method("clear_active_battle_session_checkpoint"):
+		city_controller.clear_active_battle_session_checkpoint(request.transaction_id)
+	if battle_result == null and coordinator.active_session != null:
+		_append_wartime_facility_feedback(
+			coordinator.active_session.get_last_tick_facility_events()
+		)
 	_refresh_battle_ui()
 	if battle_result != null:
 		tick_timer.stop()
@@ -745,39 +865,219 @@ func _advance_one_tick() -> BattleResult:
 	return battle_result
 
 
+func _append_wartime_facility_feedback(events: Array[Dictionary]) -> void:
+	for event in events:
+		var kind := StringName(event.get("kind", &""))
+		var route_name := _get_route_name(StringName(event.get("route_id", &"")))
+		if StringName(event.get("event", &"")) == &"CONSTRUCTION_COMPLETED":
+			_append_recent_action("%s已在%s完工并投入战斗" % [_get_facility_name(kind), route_name])
+		elif StringName(event.get("event", &"")) == &"REPAIR_STARTED":
+			_append_recent_action(
+				"%s由%s开始在%s维修" % [
+					_get_facility_name(kind),
+					_get_committed_squad_name(int(event.get("squad_id", 0))),
+					route_name,
+				]
+			)
+		elif StringName(event.get("event", &"")) == &"REPAIR_COMPLETED":
+			_append_recent_action("%s已在%s维修完成并恢复作用" % [_get_facility_name(kind), route_name])
+		elif StringName(event.get("event", &"")) == &"DAMAGED":
+			_append_recent_action("%s在%s受损，防御效果下降" % [_get_facility_name(kind), route_name])
+		elif StringName(event.get("event", &"")) == &"CONSTRUCTION_INTERRUPTED":
+			_append_recent_action("%s在%s施工受阻，需维修后才能投入战斗" % [_get_facility_name(kind), route_name])
+		elif StringName(event.get("event", &"")) == &"CONSTRUCTION_CREW_LOST":
+			_append_recent_action(
+				"%s在%s失去施工分队（%s），请由可用部队维修后继续" % [
+					_get_facility_name(kind),
+					route_name,
+					_get_committed_squad_name(int(event.get("squad_id", 0))),
+				]
+			)
+		elif StringName(event.get("event", &"")) == &"DESTROYED":
+			_append_recent_action("%s在%s被摧毁，已停止作用" % [_get_facility_name(kind), route_name])
+		elif StringName(event.get("event", &"")) == &"TRAP_TRIGGERED":
+			_append_recent_action("刺钉陷阱在%s触发：敌军受创 %d，陷阱已耗尽" % [route_name, int(event.get("damage", 0))])
+		elif StringName(event.get("event", &"")) == &"GATE_DAMAGED":
+			_append_recent_action("攻城槌完成%s破门：城门受损 %d" % [route_name, int(event.get("damage", 0))])
+		elif StringName(event.get("event", &"")) == &"GATE_REPAIR_STARTED":
+			_append_recent_action("工程队开始维修城门")
+		elif StringName(event.get("event", &"")) == &"GATE_REPAIR_COMPLETED":
+			_append_recent_action("城门维修完成，防线已恢复")
+		elif kind == WartimeFacilityPlan.KIND_ARROW_TOWER:
+			_append_recent_action("箭塔齐射%s：敌军受创 %d" % [route_name, int(event.get("damage", 0))])
+
+
+func _get_facility_name(kind: StringName) -> String:
+	match kind:
+		WartimeFacilityPlan.KIND_WATCH_PLATFORM:
+			return "瞭望台"
+		WartimeFacilityPlan.KIND_SIEGE_RAM:
+			return "攻城槌"
+		WartimeFacilityPlan.KIND_ARROW_TOWER:
+			return "箭塔"
+		WartimeFacilityPlan.KIND_BARRICADE:
+			return "拒马"
+		WartimeFacilityPlan.KIND_SPIKE_TRAP:
+			return "刺钉陷阱"
+	return "战时工事"
+
+
+func _resume_active_battle_if_available() -> void:
+	if (
+		request == null
+		or request.phase not in [
+			BattleRequest.PHASE_ACTIVE,
+			BattleRequest.PHASE_RESULT_PENDING,
+		]
+		or coordinator.active_session != null
+	):
+		return
+	if (
+		macro_siege_mode
+		and request.phase == BattleRequest.PHASE_RESULT_PENDING
+		and city_controller != null
+		and city_controller.has_method("get_macro_siege_battle_result_authority_snapshot")
+	):
+		var pending_session_snapshot: Dictionary = city_controller.get_macro_siege_battle_session_snapshot(
+			macro_siege_city_id, request.transaction_id
+		)
+		var pending_authority_snapshot: Dictionary = city_controller.get_macro_siege_battle_result_authority_snapshot(
+			macro_siege_city_id, request.transaction_id
+		)
+		if not coordinator.resume_macro_siege_result_pending(
+			pending_session_snapshot, pending_authority_snapshot
+		):
+			push_error("C0 failed to reconstruct pending macro battle result")
+			return
+		_show_pending_result(coordinator.active_session.result)
+		_append_recent_action("已恢复待确认的战果；尚未回写战区")
+		return
+	if (
+		not macro_siege_mode
+		and request.phase == BattleRequest.PHASE_RESULT_PENDING
+		and city_controller != null
+		and city_controller.has_method("get_expedition_attempt")
+	):
+		var pending_attempt: Dictionary = city_controller.get_expedition_attempt()
+		var pending_session_snapshot: Dictionary = Dictionary(
+			pending_attempt.get("battle_session_snapshot", {})
+		)
+		var pending_authority_snapshot: Dictionary = Dictionary(
+			pending_attempt.get("terminal_result_snapshot", {})
+		)
+		if not coordinator.resume_durable_result_pending(
+			pending_session_snapshot,
+			pending_authority_snapshot
+		):
+			push_error("C0 failed to reconstruct pending prepared battle result")
+			return
+		_show_pending_result(coordinator.active_session.result)
+		_append_recent_action("已恢复待确认的战果；尚未回写城市")
+		return
+	if coordinator.create_session() == null:
+		push_error("C0 failed to reconstruct active battle session")
+		return
+	var attempt: Dictionary = (
+		city_controller.get_expedition_attempt()
+		if city_controller != null and city_controller.has_method("get_expedition_attempt")
+		else {}
+	)
+	var snapshot: Dictionary = (
+		city_controller.get_macro_siege_battle_session_snapshot(
+			macro_siege_city_id, request.transaction_id
+		)
+		if macro_siege_mode and city_controller != null
+		and city_controller.has_method("get_macro_siege_battle_session_snapshot")
+		else Dictionary(attempt.get("battle_session_snapshot", {}))
+	)
+	if not snapshot.is_empty() and not coordinator.active_session.restore_snapshot(snapshot):
+		push_error("C0 active battle session snapshot rejected")
+		return
+	tick_timer.start()
+	_append_recent_action(
+		"已恢复第 %d 战斗刻" % coordinator.active_session.current_tick
+	)
+
+
+func _checkpoint_active_battle_session() -> bool:
+	if (
+		macro_siege_mode
+		and city_controller != null
+		and request != null
+		and coordinator.active_session != null
+		and city_controller.has_method("checkpoint_macro_siege_battle_session")
+	):
+		var macro_result: Dictionary = city_controller.checkpoint_macro_siege_battle_session(
+			macro_siege_army_id,
+			macro_siege_city_id,
+			request.transaction_id,
+			coordinator.active_session.get_snapshot()
+		)
+		return bool(macro_result.get("success", false))
+	if (
+		not _uses_prepared_expedition()
+		or city_controller == null
+		or request == null
+		or coordinator.active_session == null
+		or not city_controller.has_method("checkpoint_active_battle_session")
+	):
+		return true
+	var result: Dictionary = city_controller.checkpoint_active_battle_session(
+		request.transaction_id,
+		coordinator.active_session.get_snapshot()
+	)
+	return bool(result.get("success", false))
+
+
 func _refresh_battle_ui() -> void:
 	if request == null:
 		status_label.text = "战斗请求创建失败"
 		_refresh_exit_ui()
 		return
+	var presentation_mission := (
+		mission_definition
+		if mission_definition != null
+		else request.mission_definition
+	)
 	var next_snapshot := BattlePresentationModel.build_snapshot(
 		request,
 		coordinator.active_session,
-		mission_definition,
-		_selected_squad_id
+		presentation_mission,
+		_selected_squad_id,
+		_battle_context
 	)
 	_capture_presentation_changes(_presentation_snapshot, next_snapshot)
 	_presentation_snapshot = next_snapshot
 	title_label.text = str(next_snapshot.title)
 	status_label.text = (
-		"战前部署 · 参战 %d 人 · 粮草已锁定 %d"
+		"%s · 战前部署 · 参战 %d 人 · %s"
 		% [
+			_source_identity_text(),
 			request.committed_force.get_committed_total(),
-			request.committed_food_cost,
+			(
+				"守城无出征粮草消耗"
+				if request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE
+				else (
+					"出征粮已扣 %d · 本场不再扣粮"
+					% int(_battle_context.get("departure_food_cost", 0))
+					if macro_siege_mode
+					else "粮草已锁定 %d" % request.committed_food_cost
+				)
+			),
 		]
 		if request.phase == BattleRequest.PHASE_RESERVED
-		else "%s · %.1f 秒" % [
+		else "%s · %s · %.1f 秒" % [
+			_source_identity_text(),
 			str(next_snapshot.phase_text),
 			float(next_snapshot.elapsed_seconds),
 		]
 	)
 	var objective_text := str(next_snapshot.objective_text)
-	if mission_definition == null:
-		objective_text = "突破任一城门并击溃该路线守军"
 	instruction_label.text = "目标：%s｜%s" % [
 		objective_text,
 		str(next_snapshot.objective.progress_text),
 	]
+	direction_label.text = _direction_text()
 	var routes: Array = next_snapshot.routes
 	_refresh_route_ui(
 		routes[0],
@@ -804,13 +1104,9 @@ func _refresh_battle_ui() -> void:
 			int(state.initial_members),
 			str(state.state_text),
 		]
-		_squad_ui[squad_id].route_button.text = (
-			"%s（部署已锁定）" % str(state.route_name)
-			if _uses_prepared_expedition()
-			else str(state.route_name)
-		)
+		_squad_ui[squad_id].route_button.text = _squad_route_button_text(state)
 		_squad_ui[squad_id].route_button.visible = request.phase == BattleRequest.PHASE_RESERVED
-		_squad_ui[squad_id].route_button.disabled = _uses_prepared_expedition()
+		_squad_ui[squad_id].route_button.disabled = _is_route_deployment_locked()
 		_squad_ui[squad_id].select_button.text = (
 			"▶ %s" % str(state.name)
 			if bool(state.selected)
@@ -820,8 +1116,535 @@ func _refresh_battle_ui() -> void:
 	_refresh_selected_squad(next_snapshot)
 	_refresh_mission_objects(next_snapshot.objective)
 	start_button.visible = request.phase == BattleRequest.PHASE_RESERVED
+	_refresh_wartime_plan_ui()
+	_refresh_wartime_repair_ui()
+	_refresh_wartime_gate_repair_ui()
+	_refresh_wartime_facility_status_ui()
+	_refresh_wartime_action_layout()
 	_refresh_recent_actions()
 	_refresh_exit_ui()
+
+
+func _refresh_wartime_plan_ui() -> void:
+	if request == null:
+		wartime_plan_panel.visible = false
+		return
+	var can_edit := _can_edit_wartime_facilities()
+	wartime_plan_panel.visible = can_edit
+	if not can_edit:
+		return
+	var saved_plan: Dictionary = request.wartime_facility_plan
+	var is_committed := not Array(saved_plan.get("facilities", [])).is_empty()
+	var pending_plan: Dictionary = (
+		saved_plan if is_committed else _pending_wartime_facility_plan
+	)
+	var selected_route := _selected_deployment_route()
+	var has_watch := WartimeFacilityPlan.has_kind(
+		pending_plan, WartimeFacilityPlan.KIND_WATCH_PLATFORM, selected_route
+	)
+	var has_ram := WartimeFacilityPlan.has_kind(
+		pending_plan, WartimeFacilityPlan.KIND_SIEGE_RAM, selected_route
+	)
+	var has_arrow_tower := WartimeFacilityPlan.has_kind(
+		pending_plan, WartimeFacilityPlan.KIND_ARROW_TOWER, selected_route
+	)
+	var has_barricade := WartimeFacilityPlan.has_kind(
+		pending_plan, WartimeFacilityPlan.KIND_BARRICADE, selected_route
+	)
+	var has_spike_trap := WartimeFacilityPlan.has_kind(
+		pending_plan, WartimeFacilityPlan.KIND_SPIKE_TRAP, selected_route
+	)
+	var is_defense := request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE
+	var can_watch := WartimeFacilityPlan.is_available_for_source(
+		WartimeFacilityPlan.KIND_WATCH_PLATFORM, request.source_id
+	)
+	var can_ram := WartimeFacilityPlan.is_available_for_source(
+		WartimeFacilityPlan.KIND_SIEGE_RAM, request.source_id
+	)
+	var can_arrow_tower := WartimeFacilityPlan.is_available_for_source(
+		WartimeFacilityPlan.KIND_ARROW_TOWER, request.source_id
+	)
+	var can_barricade := WartimeFacilityPlan.is_available_for_source(
+		WartimeFacilityPlan.KIND_BARRICADE, request.source_id
+	)
+	var can_spike_trap := WartimeFacilityPlan.is_available_for_source(
+		WartimeFacilityPlan.KIND_SPIKE_TRAP, request.source_id
+	)
+	wartime_watch_button.visible = can_watch
+	wartime_watch_button.text = (
+		"瞭望台 · 已选" if has_watch else "瞭望台 · 木材 6"
+	)
+	wartime_ram_button.visible = can_ram
+	wartime_ram_button.text = "攻城槌 · 已选" if has_ram else "攻城槌 · 木材 8"
+	wartime_arrow_tower_button.text = (
+		"箭塔 · 已选" if has_arrow_tower else "箭塔 · 木材 10"
+	)
+	wartime_arrow_tower_button.visible = can_arrow_tower
+	wartime_barricade_button.text = (
+		"拒马 · 已选" if has_barricade else "拒马 · 木材 5"
+	)
+	wartime_barricade_button.visible = can_barricade
+	wartime_spike_trap_button.visible = can_spike_trap
+	wartime_spike_trap_button.text = (
+		"刺钉陷阱 · 已选" if has_spike_trap else "刺钉陷阱 · 木材 4"
+	)
+	wartime_watch_button.disabled = is_committed or not can_watch
+	wartime_ram_button.disabled = is_committed or not can_ram
+	wartime_arrow_tower_button.disabled = is_committed or not can_arrow_tower
+	wartime_barricade_button.disabled = is_committed or not can_barricade
+	wartime_spike_trap_button.disabled = is_committed or not can_spike_trap
+	wartime_plan_confirm_button.visible = not is_committed
+	wartime_plan_confirm_button.disabled = (
+		Array(pending_plan.get("facilities", [])).is_empty()
+	)
+	if is_committed:
+		wartime_plan_panel.get_node("Title").text = "围城战时工事已确认（仅本次战斗）" if macro_siege_mode else ("守城布防已确认（仅本次战斗）" if is_defense else "战时工事已确认（仅本次战斗）")
+	else:
+		var target_route_name := _get_route_name(_selected_deployment_route())
+		wartime_plan_panel.get_node("Title").text = (
+			"围城战时工事（部署至%s）" % target_route_name
+			if macro_siege_mode
+			else (
+				"守城布防（部署至%s）" % target_route_name
+				if is_defense
+				else "战时工事（部署至%s）" % target_route_name
+			)
+		)
+
+
+## Plan, repair and focused-status controls belong in the left-bottom action
+## rail.  Keeping an explicit gap above it prevents their durable feedback
+## from covering a route, while leaving the battle canvas and route geometry
+## unchanged for simulation and marker placement.
+func _refresh_wartime_action_layout() -> void:
+	var needs_action_rail := (
+		wartime_plan_panel.visible
+		or wartime_repair_button.visible
+		or wartime_repair_target_button.visible
+		or wartime_gate_repair_button.visible
+		or wartime_facility_status_label.visible
+	)
+	var planning_with_squads := wartime_plan_panel.visible
+	battlefield_panel.offset_bottom = -302.0 if planning_with_squads else (-218.0 if needs_action_rail else -202.0)
+	if planning_with_squads:
+		wartime_plan_panel.offset_top = -294.0
+		wartime_plan_panel.offset_bottom = -162.0
+		squad_controls.offset_top = -154.0
+		squad_controls.offset_bottom = -16.0
+		$UI/RootPanel/SelectedSquadPanel.offset_top = -294.0
+	else:
+		wartime_plan_panel.offset_top = -194.0
+		wartime_plan_panel.offset_bottom = -62.0
+		squad_controls.offset_top = -188.0
+		squad_controls.offset_bottom = -24.0
+		$UI/RootPanel/SelectedSquadPanel.offset_top = -188.0
+
+
+func _toggle_wartime_facility(kind: StringName) -> void:
+	if (
+		request == null
+		or request.phase != BattleRequest.PHASE_RESERVED
+		or not _can_edit_wartime_facilities()
+		or not Array(request.wartime_facility_plan.get("facilities", [])).is_empty()
+	):
+		return
+	if not WartimeFacilityPlan.is_available_for_source(kind, request.source_id):
+		status_label.text = "该工事不能用于本次战斗"
+		return
+	var facilities: Array = Array(
+		_pending_wartime_facility_plan.get("facilities", [])
+	).duplicate(true)
+	var remaining: Array[Dictionary] = []
+	var removed := false
+	for facility_value in facilities:
+		var facility: Dictionary = facility_value
+		if (
+			StringName(facility.get("kind", &"")) == kind
+			and StringName(facility.get("route_id", &"")) == _selected_deployment_route()
+		):
+			removed = true
+			continue
+		remaining.append(facility)
+	if not removed:
+		remaining.append(WartimeFacilityPlan.make_facility(
+			kind, _selected_deployment_route(), _selected_squad_id
+		))
+	_pending_wartime_facility_plan = {
+		"schema_version": WartimeFacilityPlan.SCHEMA_VERSION,
+		"facilities": remaining,
+	}
+	_refresh_battle_ui()
+
+
+## A facility protects or observes one actual battle route.  Bind a new plan
+## to the selected squad's frozen deployment instead of silently pinning every
+## plan to the front route.  The request remains the source of truth and is
+## revalidated by the controller when the plan is confirmed.
+func _selected_deployment_route() -> StringName:
+	if request != null:
+		for squad in request.committed_force.squads:
+			if int(squad.squad_id) == _selected_squad_id:
+				var route_id := StringName(squad.route_id)
+				if route_id in [
+					CommittedForceSnapshot.FRONT_ROUTE,
+					CommittedForceSnapshot.SIDE_ROUTE,
+				]:
+					return route_id
+	return CommittedForceSnapshot.FRONT_ROUTE
+
+
+func _get_committed_squad_name(squad_id: int) -> String:
+	if request != null:
+		for squad in request.committed_force.squads:
+			if int(squad.squad_id) == squad_id:
+				var display_name := str(squad.display_name)
+				if not display_name.is_empty():
+					return display_name
+	return BattlePresentationModel.squad_name(squad_id)
+
+
+func _confirm_wartime_facility_plan() -> void:
+	if (
+		city_controller == null
+		or request == null
+		or not _can_edit_wartime_facilities()
+	):
+		return
+	var result: Dictionary = {}
+	if macro_siege_mode:
+		if not city_controller.has_method("commit_macro_siege_wartime_facility_plan"):
+			return
+		result = city_controller.commit_macro_siege_wartime_facility_plan(
+			macro_siege_army_id,
+			macro_siege_city_id,
+			request.transaction_id,
+			_pending_wartime_facility_plan
+		)
+	else:
+		if not city_controller.has_method("commit_wartime_facility_plan"):
+			return
+		result = city_controller.commit_wartime_facility_plan(
+			request.transaction_id,
+			_pending_wartime_facility_plan
+		)
+	if not bool(result.get("success", false)):
+		status_label.text = str(result.get("error", "战时工事确认失败"))
+		_append_recent_action(status_label.text)
+		_refresh_recent_actions()
+		return
+	request.wartime_facility_plan = Dictionary(result.plan).duplicate(true)
+	_pending_wartime_facility_plan = request.wartime_facility_plan.duplicate(true)
+	_append_recent_action(
+		"战时工事已确认，由%s施工；资源已一次性扣除" % [
+			_get_committed_squad_name(_selected_squad_id),
+		]
+	)
+	_refresh_battle_ui()
+
+
+func _refresh_wartime_repair_ui() -> void:
+	wartime_repair_button.visible = false
+	wartime_repair_target_button.visible = false
+	if request == null or request.phase != BattleRequest.PHASE_ACTIVE or coordinator.active_session == null:
+		_selected_repair_facility_id = &""
+		return
+	var repairable := _repairable_facilities_on_selected_route()
+	if repairable.is_empty():
+		_selected_repair_facility_id = &""
+		return
+	if not repairable.any(
+		func(candidate: Dictionary) -> bool:
+			return StringName(candidate.get("facility_id", &"")) == _selected_repair_facility_id
+	):
+		_selected_repair_facility_id = StringName(repairable[0].get("facility_id", &""))
+	var record := _selected_repairable_facility()
+	if record.is_empty():
+		return
+	var costs := WartimeFacilityPlan.get_repair_costs(StringName(record.get("kind", &"")))
+	var wood_cost := int(costs.get(&"wood", 0))
+	wartime_repair_button.text = "维修%s（%s）· 木材 %d" % [
+		_get_facility_name(StringName(record.get("kind", &""))),
+		_get_route_name(StringName(record.get("route_id", &""))),
+		wood_cost,
+	]
+	wartime_repair_button.visible = true
+	wartime_repair_button.disabled = wood_cost <= 0
+	if repairable.size() > 1:
+		wartime_repair_target_button.text = "切换维修：%s（%d/%d）" % [
+			_get_facility_name(StringName(record.get("kind", &""))),
+			repairable.find(record) + 1,
+			repairable.size(),
+		]
+		wartime_repair_target_button.visible = true
+
+
+func _refresh_wartime_gate_repair_ui() -> void:
+	wartime_gate_repair_button.visible = false
+	if (
+		request == null
+		or request.phase != BattleRequest.PHASE_ACTIVE
+		or coordinator.active_session == null
+		or request.source_id != BattleRequest.SOURCE_WARTIME_DEFENSE
+	):
+		return
+	var objective := coordinator.active_session.get_mission_objective_state()
+	if StringName(objective.get("objective_type", &"")) != MissionDefinition.OBJECTIVE_PROTECT:
+		return
+	var hp := int(objective.get("protect_target_hp", 0))
+	var max_hp := int(objective.get("protect_target_max_hp", 0))
+	if hp <= 0 or hp >= max_hp:
+		return
+	var phase := StringName(objective.get("protect_target_repair_phase", &""))
+	if phase == BattleSession.PROTECT_TARGET_REPAIRING:
+		wartime_gate_repair_button.text = "城门维修中 · %d/%d" % [
+			int(objective.get("protect_target_repair_progress_ticks", 0)),
+			int(objective.get("protect_target_repair_required_ticks", 0)),
+		]
+		wartime_gate_repair_button.disabled = true
+	else:
+		var restore_amount := mini(
+			BattleSession.PROTECT_TARGET_REPAIR_HP,
+			max_hp - hp
+		)
+		wartime_gate_repair_button.text = "维修城门 +%d · 木材 %d" % [
+			restore_amount,
+			BattleSession.PROTECT_TARGET_REPAIR_WOOD_COST,
+		]
+		wartime_gate_repair_button.disabled = (
+			not coordinator.active_session.can_begin_protect_target_repair()
+		)
+	wartime_gate_repair_button.visible = true
+
+
+## The active facility record is durable session state, not a transient action
+## message. Keep the focused route's construction, damage, and repair phase
+## visible while the plan buttons themselves are correctly hidden after start.
+func _refresh_wartime_facility_status_ui() -> void:
+	wartime_facility_status_label.visible = false
+	if request == null or request.phase != BattleRequest.PHASE_ACTIVE or coordinator.active_session == null:
+		return
+	var route_id := _selected_deployment_route()
+	var entries: Array[String] = []
+	for record_value in Array(coordinator.active_session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if StringName(record.get("route_id", &"")) != route_id:
+			continue
+		entries.append(_get_wartime_facility_status_text(record))
+	if entries.is_empty():
+		return
+	wartime_facility_status_label.text = "%s · %s" % [
+		_get_route_name(route_id),
+		"｜".join(entries),
+	]
+	wartime_facility_status_label.visible = true
+
+
+func _get_wartime_facility_status_text(record: Dictionary) -> String:
+	var name := _get_facility_name(StringName(record.get("kind", &"")))
+	var phase := StringName(record.get("phase", &""))
+	var progress := int(record.get("progress_ticks", 0))
+	var required := int(record.get("required_ticks", 0))
+	var durability := int(record.get("durability", 0))
+	var max_durability := int(record.get("max_durability", 0))
+	match phase:
+		BattleSession.FACILITY_PHASE_CONSTRUCTING:
+			return "%s：施工 %d/%d" % [name, progress, required]
+		BattleSession.FACILITY_PHASE_REPAIRING:
+			return "%s：维修 %d/%d" % [name, progress, required]
+		BattleSession.FACILITY_PHASE_DAMAGED:
+			if StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_BARRICADE:
+				var effects := coordinator.active_session.get_wartime_facility_state()
+				var barricade_effect := Dictionary(
+					Dictionary(effects.get("barricades_by_route", {})).get(
+						StringName(record.get("route_id", &"")), {}
+					)
+				)
+				var incoming_percent := float(
+					int(barricade_effect.get(
+						"incoming_damage_basis_points",
+						effects.get("barricade_incoming_damage_basis_points", BattleSession.BASIS_POINTS)
+					))
+				) / 100.0
+				var advance_percent := float(
+					int(barricade_effect.get(
+						"enemy_advance_basis_points",
+						effects.get("barricade_enemy_advance_basis_points", BattleSession.BASIS_POINTS)
+					))
+				) / 100.0
+				return "%s：受损 %d/%d · 伤害 %.0f%% · 推进 %.0f%%" % [
+					name, durability, max_durability, incoming_percent, advance_percent,
+				]
+			if StringName(record.get("kind", &"")) == WartimeFacilityPlan.KIND_ARROW_TOWER:
+				var effects := coordinator.active_session.get_wartime_facility_state()
+				var arrow_effect := Dictionary(
+					Dictionary(effects.get("arrow_towers_by_route", {})).get(
+						StringName(record.get("route_id", &"")), {}
+					)
+				)
+				var volley_damage := int(arrow_effect.get(
+					"damage_per_volley", effects.get("arrow_tower_damage_per_volley", 0)
+				))
+				return "%s：受损 %d/%d · 齐射 %d" % [
+					name, durability, max_durability, volley_damage,
+				]
+			return "%s：受损 %d/%d" % [name, durability, max_durability]
+		BattleSession.FACILITY_PHASE_INTERRUPTED:
+			return "%s：施工受阻 %d/%d · 耐久 %d/%d" % [
+				name, progress, required, durability, max_durability,
+			]
+		BattleSession.FACILITY_PHASE_DESTROYED:
+			return "%s：已摧毁" % name
+		BattleSession.FACILITY_PHASE_ACTIVE:
+			return "%s：完工" % name
+	return "%s：状态未知" % name
+
+
+func _repair_damaged_wartime_facility() -> void:
+	if (
+		request == null
+		or request.phase != BattleRequest.PHASE_ACTIVE
+		or coordinator.active_session == null
+		or city_controller == null
+		or not city_controller.has_method("commit_wartime_facility_repair_cost")
+	):
+		return
+	var target := _selected_repairable_facility()
+	var facility_id := StringName(target.get("facility_id", &""))
+	var facility_kind := StringName(target.get("kind", &""))
+	if facility_id == &"":
+		return
+	if not coordinator.active_session.can_begin_wartime_facility_repair(
+		facility_id, _selected_squad_id
+	):
+		var crew_error := "所选编队无法维修该工事"
+		_append_recent_action(crew_error)
+		_refresh_battle_ui()
+		status_label.text = crew_error
+		return
+	var before_session := coordinator.active_session.get_snapshot()
+	var cost_result: Dictionary = city_controller.commit_wartime_facility_repair_cost(
+		request.transaction_id, facility_kind
+	)
+	if not bool(cost_result.get("success", false)):
+		var cost_error := str(cost_result.get("error", "战时工事维修失败"))
+		_append_recent_action(cost_error)
+		_refresh_battle_ui()
+		status_label.text = cost_error
+		return
+	if (
+		not coordinator.active_session.begin_wartime_facility_repair(
+			facility_id, _selected_squad_id
+		)
+		or not _checkpoint_active_battle_session()
+	):
+		coordinator.active_session.restore_snapshot(before_session)
+		if city_controller.has_method("rollback_wartime_facility_repair_cost"):
+			city_controller.rollback_wartime_facility_repair_cost(Dictionary(cost_result.get("costs", {})))
+		var rollback_error := "战时工事维修保存失败，资源与状态已回滚"
+		_append_recent_action(rollback_error)
+		_refresh_battle_ui()
+		status_label.text = rollback_error
+		return
+	_append_recent_action(
+		"%s由%s开始维修" % [
+			_get_facility_name(facility_kind), _get_committed_squad_name(_selected_squad_id),
+		]
+	)
+	_refresh_battle_ui()
+
+
+func _repair_protect_target() -> void:
+	if (
+		request == null
+		or request.phase != BattleRequest.PHASE_ACTIVE
+		or coordinator.active_session == null
+		or city_controller == null
+		or not city_controller.has_method("commit_wartime_protect_target_repair_cost")
+		or not coordinator.active_session.can_begin_protect_target_repair()
+	):
+		return
+	var before_session := coordinator.active_session.get_snapshot()
+	var cost_result: Dictionary = city_controller.commit_wartime_protect_target_repair_cost(
+		request.transaction_id
+	)
+	if not bool(cost_result.get("success", false)):
+		var cost_error := str(cost_result.get("error", "城门维修失败"))
+		_append_recent_action(cost_error)
+		_refresh_battle_ui()
+		status_label.text = cost_error
+		return
+	if (
+		not coordinator.active_session.begin_protect_target_repair()
+		or not _checkpoint_active_battle_session()
+	):
+		coordinator.active_session.restore_snapshot(before_session)
+		if city_controller.has_method("rollback_wartime_protect_target_repair_cost"):
+			city_controller.rollback_wartime_protect_target_repair_cost(
+				Dictionary(cost_result.get("costs", {}))
+			)
+		var rollback_error := "城门维修保存失败，资源与状态已回滚"
+		_append_recent_action(rollback_error)
+		_refresh_battle_ui()
+		status_label.text = rollback_error
+		return
+	_append_recent_action("城门维修已开工")
+	_refresh_battle_ui()
+
+
+## The selected squad is the player's existing route focus during an active
+## C0 battle.  Reuse it for repair targeting so one generic button cannot
+## silently repair a work on another route.  A route may contain more than one
+## damaged work, so retain an explicit UI-local target rather than treating its
+## facility-array order as the player's choice.
+func _selected_repairable_facility() -> Dictionary:
+	for record in _repairable_facilities_on_selected_route():
+		if StringName(record.get("facility_id", &"")) == _selected_repair_facility_id:
+			return record
+	return {}
+
+
+func _repairable_facilities_on_selected_route() -> Array[Dictionary]:
+	var records: Array[Dictionary] = []
+	if coordinator.active_session == null:
+		return records
+	var target_route := _selected_deployment_route()
+	for record_value in Array(coordinator.active_session.get_wartime_facility_state().get("facilities", [])):
+		var record: Dictionary = Dictionary(record_value)
+		if (
+			StringName(record.get("route_id", &"")) == target_route
+			and StringName(record.get("phase", &"")) in [
+				BattleSession.FACILITY_PHASE_DAMAGED,
+				BattleSession.FACILITY_PHASE_DESTROYED,
+				BattleSession.FACILITY_PHASE_INTERRUPTED,
+			]
+		):
+			records.append(record)
+	return records
+
+
+func _cycle_wartime_repair_target() -> void:
+	var repairable := _repairable_facilities_on_selected_route()
+	if repairable.size() < 2:
+		return
+	var current_index := -1
+	for index in repairable.size():
+		if StringName(repairable[index].get("facility_id", &"")) == _selected_repair_facility_id:
+			current_index = index
+			break
+	var next_index := (current_index + 1) % repairable.size()
+	_selected_repair_facility_id = StringName(repairable[next_index].get("facility_id", &""))
+	_append_recent_action("维修目标切换为%s" % _get_facility_name(
+		StringName(repairable[next_index].get("kind", &""))
+	))
+	_refresh_battle_ui()
+
+
+func _can_edit_wartime_facilities() -> bool:
+	return (
+		request != null
+		and request.phase == BattleRequest.PHASE_RESERVED
+		and (_uses_prepared_expedition() or macro_siege_mode)
+	)
 
 
 func _refresh_exit_ui() -> void:
@@ -831,16 +1654,20 @@ func _refresh_exit_ui() -> void:
 		return
 	if request.phase == BattleRequest.PHASE_RESERVED:
 		exit_button.text = (
-			"出征已确认"
-			if _uses_prepared_expedition()
-			else "返回内城"
+			"守城已确认"
+			if request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE
+			else (
+				"出征已确认"
+				if _uses_prepared_expedition()
+				else ("返回战区（保留围城）" if macro_siege_mode else "返回内城")
+			)
 		)
 	elif request.phase == BattleRequest.PHASE_ACTIVE:
-		exit_button.text = "退出战斗"
+		exit_button.text = "撤退并返回战区" if macro_siege_mode else "撤离并返回内城"
 	elif request.phase == BattleRequest.PHASE_RESULT_PENDING:
 		exit_button.text = "请先确认战果"
 	elif request.phase == BattleRequest.PHASE_APPLIED:
-		exit_button.text = "返回内城"
+		exit_button.text = "返回黑石战区" if macro_siege_mode else "返回黑石城"
 	else:
 		exit_button.text = "正在返回"
 	exit_button.disabled = (
@@ -867,21 +1694,20 @@ func _refresh_route_ui(
 			objective.get("attacking_routes", [])
 		)
 	)
-	enemy_count_label.text = "敌军 %d\n%s" % [
-		int(route.enemy_count),
-		(
-			"已肃清"
-			if int(route.enemy_count) <= 0
-			else (
-				"攻击粮车"
-				if threatens_wagon
-				else (
-					"接战中"
-					if not Array(route.engaged_squad_ids).is_empty()
-					else "据守"
-				)
-			)
-		),
+	var enemy_count_known := bool(route.get("enemy_count_known", true))
+	var enemy_status := "已肃清"
+	if int(route.enemy_count) > 0:
+		if not enemy_count_known:
+			enemy_status = "瞭望台完工后显示兵力"
+		elif threatens_wagon:
+			enemy_status = "攻击粮车"
+		elif not Array(route.engaged_squad_ids).is_empty():
+			enemy_status = "接战中"
+		else:
+			enemy_status = "据守"
+	enemy_count_label.text = "%s\n%s" % [
+		("敌军 %d" % int(route.enemy_count)) if enemy_count_known else "敌情未明",
+		enemy_status,
 	]
 	enemy_marker.visible = int(route.enemy_count) > 0
 	gate.visible = bool(route.has_obstacle) and int(route.gate_hp) > 0
@@ -1118,11 +1944,22 @@ func _refresh_recent_actions() -> void:
 
 
 func _get_route_name(route_id: StringName) -> String:
-	if mission_definition != null:
+	var effective_mission := (
+		mission_definition
+		if mission_definition != null
+		else (request.mission_definition if request != null else null)
+	)
+	if effective_mission != null:
 		return (
-			mission_definition.front_route_name
+			effective_mission.front_route_name
 			if route_id == CommittedForceSnapshot.FRONT_ROUTE
-			else mission_definition.side_route_name
+			else effective_mission.side_route_name
+		)
+	if macro_siege_mode:
+		return (
+			"主攻线·%s" % str(_battle_context.get("approach_route_name", "外部攻城道路"))
+			if route_id == CommittedForceSnapshot.FRONT_ROUTE
+			else "预备线·无外部军令"
 		)
 	return (
 		"正门路线"
@@ -1141,17 +1978,14 @@ func _show_pending_result(battle_result: BattleResult) -> void:
 	return_button.visible = false
 	return_button.disabled = true
 	result_label.text = (
-		"%s\n第 %d 战斗刻｜幸存 %d｜伤亡 %d\n%s\n确认后写回城市%s"
+		"%s\n第 %d 战斗刻｜幸存 %d｜伤亡 %d\n%s\n%s%s"
 		% [
 			_outcome_text(battle_result.outcome),
 			battle_result.finished_tick,
 			battle_result.survivor_count,
 			battle_result.casualty_count,
-			(
-				"粮草已于出征确认时扣除"
-				if _uses_prepared_expedition()
-				else "确认后结算粮草与伤亡"
-			),
+			_prepared_cost_text(),
+			_pending_result_destination_text(battle_result),
 			_formation_result_text_from_result(battle_result),
 		]
 	)
@@ -1196,6 +2030,163 @@ func _apply_northern_visual_palette() -> void:
 
 func _uses_prepared_expedition() -> bool:
 	return prepared_expedition_request != null and not noticeboard_mission_mode
+
+
+func _build_battle_context() -> Dictionary:
+	if (
+		macro_siege_mode
+		and city_controller != null
+		and request != null
+		and city_controller.has_method("get_macro_siege_player_context")
+	):
+		return city_controller.get_macro_siege_player_context(
+			macro_siege_army_id, macro_siege_city_id, request.transaction_id
+		)
+	return {}
+
+
+func _source_identity_text() -> String:
+	if request == null:
+		return "战斗来源未知"
+	if request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		return "我方攻城 · 原军队 %s" % str(_battle_context.get("army_id", macro_siege_army_id))
+	if request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		return "黑石守军 · 保护黑石城门"
+	return "我方出征"
+
+
+func _append_source_context_feedback() -> void:
+	if request == null:
+		return
+	if request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		_append_recent_action(
+			"%s把原军队从%s送抵%s；C0 两线是城下接近方向，不是新的战区地图" % [
+				str(_battle_context.get("approach_route_name", "外部道路")),
+				str(_battle_context.get("source_point_name", "原驻点")),
+				str(_battle_context.get("target_city_name", "目标城")),
+			]
+		)
+		_append_recent_action("外部道路、桥、驻点与瞭望塔继续留在战区；本场攻城槌和箭塔仅属于本次战斗")
+	elif request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		_append_recent_action("敌军由北门城墙与东门壕沟推进；黑石城门失守会使本次城防归零")
+		_append_recent_action("守城可用瞭望台、箭塔、拒马和刺钉陷阱；均只属于本次防守")
+
+
+func _pending_result_destination_text(battle_result: BattleResult) -> String:
+	if request != null and request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		return (
+			"确认后写回战区：原军队驻扎%s，控制权更新一次"
+			% str(_battle_context.get("target_city_name", "目标城"))
+			if battle_result.outcome == BattleOutcome.Value.VICTORY
+			else "确认后写回战区：原军队按战果撤退或关闭，目标城不被占领"
+		)
+	if request != null and request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		return (
+			"确认后写回黑石城：城门守住，守军战损保留"
+			if battle_result.outcome == BattleOutcome.Value.VICTORY
+			else "确认后写回黑石城：城防按实际失守结果更新"
+		)
+	return "确认后写回城市"
+
+
+func _confirmed_result_text(summary: Dictionary) -> String:
+	var outcome := _outcome_id_text(StringName(summary.get("outcome", &"")))
+	var force_text := "幸存 %d｜伤亡 %d" % [
+		int(summary.get("survivor_count", 0)),
+		int(summary.get("casualty_count", 0)),
+	]
+	if request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		var disposition := (
+			"原军队已驻扎%s；目标城控制权已更新" % str(
+				_battle_context.get("target_city_name", "目标城")
+			)
+			if StringName(summary.get("outcome", &"")) == &"VICTORY"
+			else "原军队已按真实幸存状态进入返程或关闭；目标城未占领"
+		)
+		return "%s\n%s\n行军粮草未重复扣除｜%s%s" % [
+			outcome, force_text, disposition, _formation_result_text(summary),
+		]
+	if request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		var defense_text := (
+			"黑石城门守住；守军战损已保存"
+			if StringName(summary.get("outcome", &"")) == &"VICTORY"
+			else "黑石城门失守；城防按实际结果更新"
+		)
+		return "%s\n%s\n守城无出征粮草消耗｜%s%s" % [
+			outcome, force_text, defense_text, _formation_result_text(summary),
+		]
+	return "%s\n%s\n%s\n木材 +%d｜粮食 +%d%s%s" % [
+		outcome,
+		force_text,
+		_prepared_cost_text(int(summary.get("actual_food_cost", 0))),
+		int(summary.get("accepted_wood_reward", 0)),
+		int(summary.get("accepted_food_reward", 0)),
+		"\n首通奖励已结算" if bool(summary.get("first_clear_granted", false)) else "",
+		_formation_result_text(summary),
+	]
+
+
+func _direction_text() -> String:
+	if request == null:
+		return "战斗方向未建立"
+	if request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		return "我方攻城集结区  →  城门主攻线  →  %s守军" % str(
+			_battle_context.get("target_city_name", "目标城")
+		)
+	if request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		return "黑石守军 / 城门保护区  ←  敌军由北门与东门方向推进"
+	return "我方集结区 / 撤离区  ←  敌军据守方向"
+
+
+func _squad_route_button_text(state: Dictionary) -> String:
+	if request != null and request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		return (
+			"主攻线 · 外部军令锁定"
+			if StringName(state.get("route_id", &"")) == CommittedForceSnapshot.FRONT_ROUTE
+			else "预备线 · 外部军令锁定"
+		)
+	if _can_edit_defense_deployment():
+		return "%s · 可调整" % str(state.route_name)
+	if _uses_prepared_expedition():
+		return "%s · 已锁定" % str(state.route_name)
+	return str(state.route_name)
+
+
+func _can_edit_defense_deployment() -> bool:
+	return (
+		_uses_prepared_expedition()
+		and request != null
+		and request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE
+		and request.phase == BattleRequest.PHASE_RESERVED
+	)
+
+
+## Macro siege formation routes are already facts of the originating army and
+## its durable handoff.  Letting C0 edit only its in-memory request would make
+## a visible deployment disappear on reopen, so these sources are read-only.
+## Selecting a squad still chooses where a *new* route-bound facility is
+## planned; it does not rewrite the army's original order.
+func _is_route_deployment_locked() -> bool:
+	return (
+		macro_siege_mode
+		or (_uses_prepared_expedition() and not _can_edit_defense_deployment())
+	)
+
+
+## The defense source shares the durable battle transaction but has no
+## departure-food charge. Keep the result text sourced from that fact rather
+## than presenting it as the ordinary expedition economy.
+func _prepared_cost_text(actual_food_cost: int = -1) -> String:
+	if request != null and request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		return "守城无出征粮草消耗"
+	var cost := (
+		request.committed_food_cost
+		if actual_food_cost < 0 and request != null
+		else maxi(actual_food_cost, 0)
+	)
+	if _uses_prepared_expedition():
+		return "粮草已于出征确认时扣除 %d" % cost
+	return "粮草 -%d" % cost
 
 
 func _formation_result_text(summary: Dictionary) -> String:

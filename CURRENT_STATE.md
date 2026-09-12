@@ -1,44 +1,1252 @@
 # 当前状态
 
-## 当前有效状态：R1E 宏观军令审阅与源码同步（2026-09-06）
+## 黑石战略支持 R0：六槽装备成长与功能收口（2026-09-12）
 
-本段是本审阅快照的首要状态。它把来源工程、当前产品合同、已实现行为和下一轮
-建议分开；后文保留的 V5、successor、M0、M1A 和 R3B 内容都是历史证据，不能
-再作为本 R1E 审阅分支的“唯一可改分支”或“下一步只能 G4”指令。
+常态内城的治理入口现在可以打开独立、可滚动的“战略支持”详情。新战役确定性提供司仓主簿、医政官和守御参军，以及只在整场战役重开时重置的 3 点共享能量。玩家可通过可见按钮完成任命和一次限时支援：生产支援进入正式建筑产出计算，医疗支援增加真实医疗容量，防御支援冻结进正式战斗请求；离开界面、进入 C0 或读档都不会补回能量。支援到期保存失败时，过期效果不会继续生效，持久记录保留为可重试状态。
 
-- **来源工程：** `codex/txwzs-expedition-visual-r1e` at
-  `4c3e501c16d1a882b996a6a96b2473128312d12c`，相对 R1E 基线
-  `147430ed1d4fe584abcb423755da4455e5d5f95c` 含内部编队 ID 的玩家可见修复及
-  对应烟测。
-- **本轮性质：** 文档/源码审阅同步和可复现交付，不实现宏观军令、共享精力、
-  技能次数、按次越野、突围、占领或新 UI。`GAMEPLAY_SOURCE_CHANGED=NO`。
-- **有效产品合同：** 普通军队应以“来源据点 → 绘制到合法据点目标的路径 → 发出
-  后不可任意撤改 → 自动连续行军 → 到达或受阻就近驻扎”的任务调度；草稿可取消，
-  已发普通军令与应急逃跑必须分开。普通军队不以任意野地点击作为正常终点。将领和
-  军师分别共享精力池；技能还受尚未冻结的次数约束；`匿迹奔袭` 是单军队、单次
-  点到点行军的越野许可，不是限时或永久自由移动。
-- **当前原型边界：** R1E 出征会选取 1–3 个驻军编队、扣一次粮、保存不可变尝试，
-  然后进入 C0；C0 仍允许按小队反复发 `ADVANCE`、`HOLD`、`RETREAT`，并以一条
-  路线“城门为零 + 该路线守军为零 + 我方存活”即判胜。这不是宏观军令，也不是
-  破门后的占领、多城胜负或用户验收。
-- **下轮最小接线建议：** 以现有 `ArmyRegistry` 的来源/目标/路线/阶段和
-  `ConstructionController` 的资源、驻军、保存/恢复事务为基础，新增不可变
-  `MarchOrder` 领域任务及合法据点/路径草稿读模型；先只覆盖来源据点到合法目标、
-  发令锁定、自动推进与受阻就近驻扎。保留战斗、伤亡和一次性结算 owner，不迁移
-  V6 或把 `BattleOrder` 当战略军令。
+制式长枪、绵甲和轻行装具通过现有木材事务确定性制造并装配，分别进入正式攻防与道路耗时；已经发布的军令保存该次耗时，不受城内后续换装影响。将领的武器、头盔、护甲、护手、战靴和饰物六槽已有正式物品。将领装备保存稳定身份、品质与累计经验，等级从经验按品质上限推导；玩家可培养、满级升阶，并将未占用的同槽来源装备原子消耗给目标。超出当前上限的经验不会丢失，后续升阶后生效。新军令同时冻结装备身份与攻防、机动参数；活动军令引用的来源装备不能被继承消耗，围城接管也读取该份冻结参数。贸易仍提供两项有库存、容量和当日限额预览的一次成交。
 
-完整代码职责和差距见
-[`R1E_MACRO_COMMAND_REVIEW_20260906.md`](docs/milestones/txwzs-r1e/R1E_MACRO_COMMAND_REVIEW_20260906.md)。
+V5 战役根快照仍为 schema 15，嵌套战略状态升级到 schema 2；旧 schema 1 装备只补零经验的原品质记录，不补发物品、经验、品质、文官能量或贸易收益。定向成长事务 28 项、三进程冷恢复和三分辨率图形入口均已通过。此前 Macro March 三项地点详情失败的根因是测试只派旧版两支编队，在当前真实巡逻后会于占领前全灭；夹具改为与正式直攻路线一致地派出所有可用编队后，地点详情、占领城续令和工程驻点恢复 35 项全部通过，未放宽生产规则。证据见 `docs/milestones/field-tactics-r2/evidence/20260912-city-strategy-growth-r0/VERIFICATION.md`。真人连续体验仍为 **OPEN**，此前停滞问题仍为 **NOT REPRODUCED / NOT DIAGNOSED**。
 
-## R1E expedition reconciliation（历史工程证据，已由上述当前状态覆盖）
+## 黑石城市治理 R0（2026-09-12）
+
+常态内城现在有一条可恢复的粮食、健康、季节、居住和治安基础循环。居民继续使用聚合人口真值：可用、生产、施工、医疗、治理、训练预留和伤员互斥；驻军、外派军队与专员仍由原领域持有，仅进入同一人口守恒校验。银渡城有限待编兵源在正式补入军队的同一事务边界纳入总人口，不会同时留在地点库存和军队。
+
+城市日边界现在结算本城居民与黑石驻军口粮，外派军队不重复扣城市口粮。首日短缺先给出预警并降低健康；持续缺粮或居住压力才会产生聚合疾病和轻微盗窃事件。医疗恢复同时受实际医舍容量与医疗人员限制；治安行动需要治理人员和 2 粮，事件有稳定身份，读档不会重抽或重复扣费。民居和医舍复用既有城建放置、道路、施工和资源事务，完工后才分别提供住房和医疗容量，加载建筑不补发居民。
+
+季节沿用城市日历：秋季显示入冬预警，冬季降低 8 点有效住房容量。相关数值集中在 `blackstone_city_governance_r0.tres`，仍是可回滚的开发参数。定向实现检查、三进程恢复、三分辨率图形检查、正式战争路线 A/B 及入侵恢复链通过。图形证据使用引擎 GUI 按钮信号与受控加速日结算，不是真人正常速度验收；玩家验收保持 **OPEN**。文官、装备和贸易在后续“黑石战略支持 R0”检查点补入正式入口，此处描述仅代表治理检查点当时的范围。
+
+## 黑石首关：来源型来袭与外部防线（2026-09-12）
+
+黑石首场来袭已由关卡资源集中配置：第 4 日出现只含已知来源、目标和大致路线的预警，第 5 日同一支“赤崖先遣军”从赤崖出发，沿赤崖—北望—黑石的既有战区道路推进。精确兵力仍受现有侦察与迷雾约束。该敌军是 `FieldTacticsState` 中一次性持久参与者；关闭地图、保存重开或重复刷新不会重发，外部截击后的实际剩余人数会冻结进既有守城事务，已在外部消灭则不会再生成城门战。
+
+进入守城后，同一敌军转为 `HANDED_OFF` 并停止战区移动与外部设施结算，避免战区和 C0 双重攻击。守城胜利或失败经原结算路径回写该入侵记录；黑石主城沿用既有“不永久易手、但保留真实城防损伤与损失”的规则。保存模型升级到 schema 12，只给既有守城事务补空的来源字段，不为旧存档虚构敌军。
+
+外部工程现完成基础“观察＋火力＋阻挡”组合。瞭望塔继续贡献既有迷雾观察；外部箭塔按真实位置和射程伤害一支有效范围内的战区敌军；外部拒马对实际经过的同一巡逻只施加一次持久延误并承受耐久损伤。三者均需要真实工程师、驻点、连通道路、资源、施工时间和持久设施记录；受损设施可由空闲存活工程师沿可通行道路维修。它们与 C0 临时设施只有显示名称可能相近，身份、效果、耐久和生命周期完全分开。
+
+已验证：来源型预警、一次出发、路线抵达、剩余兵力交接、自然守城胜利、一次结算、schema 11→12 恢复、外部箭塔/拒马效果及工程师维修；并通过正式 GUI 建成道路、桥、驻点、瞭望塔、箭塔和拒马。既有工程路线、直接出兵路线和赤崖宏观围城接管回归继续通过。引擎 GUI、隔离存档、断言和截图属于实现证据；尚未完成真人不加速地连续玩完整场“准备—防守—恢复—反攻”，玩家体验验收保持 **OPEN**。
+
+## 战斗身份与连续可玩链（2026-09-12）
+
+宏观围城与战时守城现在分别显示自己的真实身份、目标、来源与去向，不再共用“北坡防御战／返回内城”等错误文案。赤崖攻城从外部战区可见入口进入时，会显示实际目标城、我方攻城身份、原军队、当前兵力、来源道路、城门耐久、胜利条件和撤退去向；确认战果后明确说明同一原军队驻扎或沿既有返程返回，并回到黑石战区。黑石守城则显示被保护的黑石城门、真实守军、北门／东门推进方向、保护条件与失守后果，只提供防守来源合法的临时工事和命令，确认后返回黑石城。
+
+C0 左下操作区已经重新分层：战时工事计划、三支小队的选择／人数／路线、当前小队命令与顶部开战按钮在 1152×648 下互不相交，较大视口继续保持间隔。外部道路、桥、驻点与瞭望塔仍由战区持久状态持有；C0 只解释原军队沿哪条既有道路抵达，当前没有规则支持的外部工程不被虚构为战斗加成。本场攻城槌／箭塔或守城瞭望台／箭塔／拒马／陷阱仍只活在同一 `BattleSession`。
+
+新增连续图形链分别覆盖：常态内城进入战区、可见围城入口、原军队推进、胜利确认、同军驻扎赤崖并返回战区；以及常态内城选择城门、可见守城入口、两路部署、本场工事自然受损、真实小队维修与推进、胜利确认、写回并返回常态内城。证据和边界见 `docs/milestones/field-tactics-r2/evidence/20260912-battle-identity-continuity/VERIFICATION.md`。这仍是引擎 GUI 与截图证据，不是原生鼠标手感或真实玩家体验验收；玩家验收保持 **OPEN**。五层来源关系与尚未连接项见 `docs/design/BATTLE_SOURCE_CONTINUITY_R0.md`。
+
+## 宏观围城接管 C0（2026-09-11，实施中）
+
+宏观军队抵达拒降敌城后，外城侧栏现在提供“进入战时围城”。该入口从原 `army_id`、原宏观 `order_id`、原编队快照、当前城门与守军构造 C0 请求；不会调用常态内城的出征流程，也不会再次扣粮、抽取黑石驻军或生成默认小队。`WarLoopState` schema 6 在同一围城记录内保存严格的 `wartime_handoff` 关系（事务 ID、阶段、不可变战时请求、活动会话快照、终局权威快照及终局精确 HP/城门状态），而军队、城市控制权、资源和围城事实仍由既有所有者持有。
+
+接管关联处于 RESERVED、ACTIVE 或 RESULT_PENDING 时，统一世界时间跳过**这一场**围城的自动推进，其他外城世界事务仍按原循环执行。首次交接立刻冻结日期、将领、科技、补给、编队、敌军与已受损 HP；重开不会借当前城市选择重新构造参战参数。C0 每个非终局刻通过既有检查点入口写回该关联；终局先保存同一份权威战果和实际双方剩余 HP/城门耐久，再允许唯一的宏观回写。重新进入可恢复活动会话或待确认战果，不会重演战斗、重扣兵力或复制结果。已实现撤退回写：按真实编队结果写回原军队，关闭原围城并建立既有合法返程，不新建城市军队；真实 C0 战斗刻的胜利回写会一次更新目标控制权，并让同一支原军队驻扎，重复确认只返回同一既有结果。正式 smoke 现覆盖原编队/粮食不重复、关联持久化、跨日/换将领/科技/补给后的冻结请求、部分 HP 接管、时钟跳过、活动实例重开、待回写结果重开、撤退、胜利、有幸存者战败与全灭回写；全灭链使用隔离回归战区的增强守军，经可见 C0 选择／前进、正常战斗刻和一次确认，验证同一原军队与围城关闭、原编队归零、赤崖不占领、无空壳军队且没有第二笔粮草。独立胜利链从正式围城入口进入 C0，逐支点击选择／前进并经正式战斗刻结算，确认原军队驻扎于赤崖城、控制权只更新一次且没有第二笔粮草；相反的正式战败链不下达推进命令，经过同一 C0 时钟的时间上限形成有幸存者的失败，确认后原军队进入既有返程、赤崖不占领且不再扣粮。独立 A→B→C→D 进程链覆盖活动接管保存、战斗恢复、待回写战果恢复、一次回写及回写后再次启动。schema 5 的既有活动接管会在首次重新打开 C0 时物化一次可恢复请求；旧的 RESULT_PENDING 接管则由已保存的权威伤亡结果确定性推导旧版会写回的**整人数 HP/城门**，不声称还原缺失的精确 HP，也不会重演战斗或发放第二次战果。新接管从创建时就保存冻结事实。战时设施施工、受损、维修及完整防守仍在同一阶段继续实现；当前不得把这些检查点称为完整战时攻防。
+
+## 战时内城 R0：可恢复的攻城工事实例（2026-09-11）
+
+黑石城门本体现在也具备正式、可恢复的战时维修入口：只有实际受损且尚未失守的 `PROTECT_AND_ELIMINATE` 目标可开工，C0 按钮显示本次恢复量和木材费用。确认后经既有 `ConstructionController` 资源事务一次扣 4 木材，`BattleSession` 才写入两战斗刻的 `REPAIRING` 状态；完成时最多恢复 120 点真实城门耐久。若检查点发布失败，同一边界回滚木材和会话状态。该维修不修改常态城防，不重复结算战果；独立 B→C 进程已验证维修中保存、冷恢复、剩余工期和一次耐久恢复。活动战斗会话升级到 schema 6：新格式严格校验保护目标、维修和施工受阻字段；schema 1–5 保守保留既有生命周期记录，不伪造历史施工。
+
+施工中的拒马、箭塔或瞭望台不再是不可破坏的占位物：敌军抵达同一路线时，会先中断该路线尚未完工的拒马、箭塔或瞭望台，记录可保存的 `INTERRUPTED` 状态，设施在此之前不提供减伤、火力或观察。每项正式确认的战时施工会冻结玩家当前选中的真实已承诺小队作为施工分队，Controller 在扣除建设资源前再次核验该小队属于本次冻结阵容；该分队撤退或失去行动能力时，工程同样进入中断态，不会凭空继续完工。维修同样绑定玩家当前选择的一支存活既有参战小队；无效选择会在资源事务前拒绝，仍不创建第二套工程师或兵员账本。维修也属于未完工的真实路线工作：敌军抵达时会先中断维修中的工事，不能在脚下无条件恢复防护；中断态、分队身份和耐久都由同一活动快照保存。该状态的维修与其他受损设施共享既有正式事务和两刻工期；完成后才恢复为 `ACTIVE`。同类工事现在按“类型＋实际路线”唯一：玩家可在前线、侧翼各部署一座瞭望台或箭塔，面板只对当前所选路线显示已选状态；两条路线的观察与箭塔伤害都在同一战斗刻分别投影和结算，恢复后保留相同工事身份。敌军到达后会在每个真实战斗刻从同一路线剩余的合法目标重新选择：拒马、箭塔失效后，下一次攻击明确转向瞭望台，而不会继续对已摧毁箭塔投射历史伤害或齐射。守城还新增路线专属的刺钉陷阱：正式面板选择并确认后施工两刻，敌军实际抵达该路线时只触发一次 80 点真实伤害，消耗自身记录；围城来源被权威拒绝使用，恢复也不会重播历史触发。定向战斗刻验证覆盖“抵达 → 中断未完工拒马 → 无提前防护 → 施工分队退出 → 恢复快照 → 正式维修 → 完工恢复”、双路线同类工事和一次性陷阱；独立 H→I 与 J→K 进程链分别从正式守城入口保存敌军施工受阻、施工分队损失，冷启动后确认仍无防护且不凭空续建。这是路线内工事生命周期完善，不等于已完成道路断开或完整战时防守战役。
+
+守城 C0 现在将战前工事计划、施工状态和维修控件置于专用左下操作区；战场面板与该区之间保留明确间隔，避免“施工受阻／维修中”等反馈压住侧门路线。图形 smoke 用实际 `Control` 屏幕矩形在 1152×648、1280×720 与 1920×1080 检查计划和战中维修控件均不与战场重叠；此修整不改变路线坐标、战斗刻、资源事务或 V5 快照。
+
+独立 L→M 进程链进一步覆盖“正式维修已开始 → 同路线敌军抵达中断 → 保存退出 → 新进程恢复”：恢复后保留同一施工分队、`INTERRUPTED` 阶段和无拒马防护投影，不会自动完成维修。该链与既有 H→I 的初始施工中断、J→K 的施工分队损失链分开，避免把同进程快照恢复误报为冷恢复证据。
+
+新增隔离图形 smoke 以正式黑石城入口进入守城 C0，使用可见路线、工事确认及城门维修按钮，记录计划、施工、受损、维修中与完成五个根视口截图。证据位于 `docs/milestones/field-tactics-r2/evidence/20260912-wartime-defense-gate-repair/`：维修前城门为 `9730/10000`，两战斗刻后为 `9850/10000`，截图与断言均确认不提前恢复。相同正式入口的后续截帧位于 `docs/milestones/field-tactics-r2/evidence/20260912-wartime-defense-construction-interruption/`，其中敌军在拒马完工前抵达时会显示“施工受阻 1/3 · 耐久 165/180”，且未生成拒马阻挡投影。两组证据都使用引擎 GUI 按钮信号和显式的测试战斗刻加速；前者还使用受控敌军到达以缩短空白行军。它们不冒充原生 macOS 鼠标或完整守城玩家验收；玩家验收保持 **OPEN**。
+
+瞭望台的观察反馈现在也遵守同一份持久战斗事实：守城界面在瞭望台完工前只把来敌显示为可见威胁，不显示精确人数；仅当该工事在实际部署路线完成后，才从活动 `BattleSession` 的观察投影显示这一路的真实剩余人数。它不写入敌军 HP、不增加情报账本，也不影响未部署路线。
+
+守城预备阶段的新瞭望台、箭塔和拒马不再一律暗中落在正门：它们绑定当前选中编队已经保存的前线／侧翼部署，计划标题会说明目标路线，确认后的设施记录沿用同一路线。这样侧翼部署改变的是实际观察、火力或阻挡目标，而不是仅改变按钮文案。
+
+预备守城的计划标题、路线卡和观察投影都从同一份冻结请求解析任务定义；例如侧翼会明确显示“东门壕沟”，不再因临时 C0 场景没有本地任务对象而退回到泛化路线名称。
+
+宏观围城接管后，原军队的路线属于已持久化的围城事实；C0 因此禁用会只在临时场景生效的路线改写。玩家仍可选择已有编队，决定新建工事绑定哪一条已冻结路线，既不重新派兵也不在重开时丢失部署。
+
+战时维修不再按设施数组顺序悄悄修理第一项。玩家当前选中的编队同时成为路线焦点；维修按钮只在该路线有受损/摧毁工事时出现，并用“工事（路线）”显示真实目标。资源事务、会话记录和检查点所有权仍分别由既有 Controller 与 `BattleSession` 保持。
+
+同一路线存在多个受损或摧毁工事时，C0 会显示“切换维修”入口。玩家可在不改变编队、军令或任何资源的情况下选择明确设施，再点击正式维修按钮；该选择只是当前场景的交互焦点，实际耐久、工期、扣费和保存仍完全由原有会话与 Controller 事务负责。
+
+拒马受损不再保留完好时的固定减伤：`BattleSession` 从同一条已保存的设施耐久推导下一次命中的实际通过伤害，耐久越低，军队或守护城门承受的伤害越接近无拒马状态。这个投影同时供攻城、守城目标和界面读取；维修恢复满耐久后才恢复完整减伤。定向 C0 smoke 已覆盖完工命中、受损后下一次真实命中与维修恢复，仍不代替完整独立守城战役的玩家验收。
+
+守城拒马还开始影响真实路线推进：完整拒马只允许所在路线敌军每刻前进 75%，其受损耐久用同一份保存记录连续衰减该延缓效果，摧毁后恢复正常推进。该规则只修改既有 `BattleSession` 的敌军位置推进，不冻结世界或建立第二套移动状态；守城 smoke 以有拒马的侧翼和无拒马的正门对照实际位置。
+
+战斗开始后，预备工事按钮会按规则隐藏；C0 现在改为在所选路线持续显示只读工事摘要，明确区分“施工 x/y”“完工”“受损耐久”“维修 x/y”和“已摧毁”。摘要及维修按钮均读取同一活动会话的保存记录，切换编队则切换路线焦点，不创建新的计划、资源事务或表现状态。
+
+受损拒马摘要额外显示当前会通过的敌军伤害与推进百分比；数值同样由保存耐久推导，不用“完好拒马”常量或 UI 私有缓存。玩家可以据此判断维修是否足以守住当前路线。
+
+守城箭塔也不再是无敌的固定火力：敌军抵近后会先消耗同路拒马；拒马不存在时，会攻击该路箭塔，箭塔受损后齐射按持久耐久等比降低，摧毁后停止射击。C0 摘要会显示“受损耐久／齐射”或“已摧毁”，正式维修完成才恢复满耐久和 24 点齐射。该次序仍由同一 `BattleSession` 战斗刻处理；箭塔在被摧毁的那一刻可完成一次符合该刻旧耐久的齐射，之后不会再生成历史或额外伤害。
+
+若同路拒马与箭塔均已失效，抵近敌军会继续损坏瞭望台；瞭望台一旦受损即停止该路线的精确敌情投影，维修完成才恢复。这样观察能力、设施耐久和敌军攻击仍由同一个会话快照决定，没有为迷雾另建可漂移的状态。
+
+守城独立 A→B 进程链现在同时保存侧翼瞭望台与拒马的施工中快照：冷启动恢复后，已经消费的真实恢复刻只允许按原工期完成瞭望台，拒马仍保留非零、未完工进度与原路线；不会从零重建或提前让后者生效。
+
+独立守城恢复链也已改用侧翼的正式部署和拒马计划：A 进程通过可见路线按钮切换部署、确认施工并保存；B 进程恢复同一侧翼在建工事；C 进程只消耗剩余维修刻。若该路线的敌军在维修完工同刻再次摧毁拒马，记录会保留真实 `DESTROYED` 状态而非伪造正耐久。
+
+黑石城门防守现在有独立的 `WARTIME_DEFENSE` 持久来源：它冻结真实城内编队，以 V5 schema 11 的显式来源与任务身份保存，不再把公告板“保护”任务冒充为可恢复防守。守城不重复扣出征粮，不改写普通主线压力；可在 C0 中确认临时工事，进入真实 `PROTECT_AND_ELIMINATE` 城门目标，并从 RESERVED/ACTIVE 守城快照恢复同一实例。敌军的位置已成为路线事实：沿两条路线推进、抵达城门后才伤害目标，V3 旧活动会话则保守升级为从路线起点重新推进。守城面板只提供瞭望台、箭塔和拒马，权威计划提交同样拒绝攻城槌；拒马完工后会分担城门承受的真实敌军伤害、消耗自身耐久并经正式按钮进入可保存维修。守城撤离已改由来源专属回写返回城市，不会把普通首战投影留在 `IN_BATTLE`；自然破门的失守会一次写回同一守城结果和真实城防，并在 V5 冷恢复后保留。RESULT_PENDING 现将最后活动会话检查点与不可变终局战果分开保存，重开恢复确认界面而不重打或重复结算；V10 缺少终局权威的历史待回写记录只保守回到最后活动检查点，不伪造战果。当前已验证来源建立、C0 施工入口、城门目标、敌军路线推进、守城专属工事限制、受损/维修冷恢复、待回写冷恢复、撤离与失守回写。`RESERVED` 的守城编队现在可在正式 C0 中通过可见路线按钮调整前线／侧翼部署：Controller 在同一冻结战斗事务中同步更新编队与 committed-force 路线、成功保存后才刷新界面；不新建出征、不改编队身份、不扣守城粮。启动战斗后立即重新锁定部署，其他正式出征仍维持原有锁定规则。完整胜利及更完整的失守后战役流程仍在继续实现，不能将此检查点称为完整守城。
+
+守城的 `RESERVED` 编队现在也可在正式 C0 的可见路线按钮中调整前线／侧翼部署：Controller 在同一冻结事务内同步更新编队与 committed-force 路线，持久化成功才刷新；没有新出征、编队改名或守城粮草扣除。启动后立即重新锁定。新增守城 smoke 还用三支真实黑石编队经过可见的选队与“前进”按钮清除两路敌军，并确认唯一守城胜利结果与完好城门。独立进程 F→G 进一步覆盖胜利待回写的保存、重启、一次确认与保存；该来源的胜利现在保留既有普通首战完成状态，不再被 V5 错误要求写成普通主线通关。它不等于完整防守战役或玩家体验验收。
+
+常态内城、R2 外城战区与 C0 战斗场景继续保持独立：常态城市仍拥有永久建筑、资源、训练与科技；外城仍拥有道路、工程、军令与遭遇；C0 只拥有一次战斗的临时模拟。正式出征进入 C0 后，玩家可在开战前选择瞭望台（木材 6）、攻城槌（木材 8）和箭塔（木材 10）。确认后由 `NationState` 通过 `ConstructionController` 一次扣除木材，计划只写入同一份 `expedition_attempt`；它不会生成永久城建或外城工程。工事进入战斗后先处于可保存的 `CONSTRUCTING`，瞭望台需 2 刻、攻城槌与箭塔需 4 刻完工，之后才分别提供观察、160 点真实城门伤害与每 4 刻（1 秒）24 点真实敌军伤害。箭塔只增加既有 `BattleSession` 的伤害意图，路线生命值仍由原有统一结算写入，因此恢复不会重复结算。
+
+V5 当前为 schema 11：活动战时实例保存战斗刻、小队血量/位置、路线、已接受和待执行命令、撤退与任务事实，不保存 Node、动画、相机或 UI 选择。非终局战斗刻经既有运行时发布入口形成检查点；RESULT_PENDING 同时保存不可变终局战果，新场景或 V5 恢复后会从同一刻或同一确认边界继续。V7/V8 旧档迁移为空工事/空会话快照，不赠送资源；没有旧会话事实的历史 ACTIVE 出征维持原有从 tick 0 重建行为，V10 缺失终局权威的待回写记录不会伪造结果而保守回到最后活动检查点。篡改位置、路线或身份的活动会话被严格拒绝，重复小队、错误数值类型、以及和已接受军令同 ID 但内容冲突的待执行命令同样会被拒绝，不能污染城市状态。宏观围城的 RESERVED 阶段现在也在同一 C0 工事面板中确认计划：费用经 NationState 的独立建设事务一次扣除，计划替换该围城唯一冻结请求后才允许激活；它不会建立常态城市出征或再次扣行军粮。宏观新计划只显示并接受实际参与攻城的攻城槌和箭塔：完工后分别一次写入真实城门耐久和既有敌军伤害意图。瞭望台、拒马的旧保存计划仍可按原结构恢复，避免历史请求被新 UI 规则拒绝，但不能再通过新提交扣资源取得无作用工事。独立 A→B→C→D→E 进程链从可见宏观工事面板确认攻城槌和箭塔，A 保存两者施工第 1/4 刻，B 冷启动读取相同施工态、完成后核对一次真实城门损伤，C 再次冷启动读取已完工工事并进入待回写；没有重新建计划或第二次扣木材。守城独立 A→B→C→D→E 进程链现已覆盖施工中、真实受损、维修中、维修完成、待回写战果重开、一次确认回写和结算后重开；这是实际隔离 V5 磁盘进程证据，但仍不等于完整防守玩法或玩家体验验收。
+
+这一 R0 是**攻城战时实例基础**，不是“完整防守内城”宣称：临时防御建筑、城内布防、修墙、敌方主动攻城和字段/遭遇入口仍待在同一事实所有权下继续实现。受损或摧毁的临时工事现在在活动 C0 侧栏有正式“维修”入口：资源先由 `ConstructionController` 的既有事务扣除，随后同一 `BattleSession` 记录才进入 `REPAIRING` 并立即保存；保存失败会同时回滚资源和会话状态，重复点击不会重复扣费。定向 C0 smoke 已注入既有检查点失败，直接比较维修前后的资源和会话快照；入口同样认可任何有效的并行宏观围城接管事务。独立 A→B→C→D→E 进程链已覆盖施工中保存、完工、真实受损、维修中冷恢复、维修完成、待回写和一次回写；它仍不代替独立防守流程，后者继续未完成。`tests/run_wartime_inner_city_r0_smoke.gd`、C0、正式出征因果和 V5 持久化回归已通过；它们是引擎/逻辑验证，不替代玩家体验验收。玩家验收保持 **OPEN**。
+
+## 黑石首关完整战役整合 R0（2026-09-11）
+
+黑石首关现在在战区内直接显示只读的双城目标：赤崖城与银渡城的实际控制权来自既有 `WarLoopState`，目标卡仅计算已控制/必占数量；双城完成后显示战役胜利和返回内城入口。它没有新增战役进度、结算或存档所有者。北侧主路仍可直接出兵通关；侦察、工程建路/驻点、瞭望塔、银渡驻军补员和运回有限粮草都是可选准备，不成为新的教程清单或胜利前置。
+
+工程路线已按正式入口走通：工程师从黑石城出发，通过可见工程草稿建设运行时驻点，跨河连接林间驻点；瞭望塔按“合法 A → 无效水域 B → 重新合法 A”清除旧草稿后开工，以既有观察范围揭示巡逻。军队经新道路占领银渡城，在地点详情对真实驻军补充 4 人并一次安排有限 20 粮运输，随后从银渡城续令赤崖城完成双城。中途 V5 快照会恢复到新场景继续同一军队的路线；运输在完成后额外推进两倍时长仍只入库一次。专门修复了工程驻点紧邻林间驻点时快捷选择条遮住地图目标的问题：已悬停的对象指向另一个合法地图点时即可锁定，松手仍以实际目标重校验，既不把条内普通松手误发令，也不让最近邻驻点无法续令。
+
+本批图形流程由 Godot 引擎 GUI 按下/长按/移动/松开和可见、未禁用的已连接侧栏按钮信号驱动；工程施工每帧通过 `ConstructionController` 的统一世界时间入口推进，测试以每帧 100 ms 加速而非宣称真人实时录像。13.5 秒 Movie Maker 录像、概览、工程草稿、陆路/桥梁施工、无效重选址、工程师到场和完工截图位于 `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-blackstone-campaign-r0/`。图形候选使用明确隔离的 V5 存档目录；旧瞭望塔 smoke 的空白场景夹具现在先恢复标准首图，防止它因缺少工程师/粮食前置而误报塔流程失败。原生 macOS 鼠标手感、数值平衡与玩家验收仍 **OPEN**；先前停滞调查继续 **NOT REPRODUCED / NOT DIAGNOSED**。
+
+## 外城建设 R0：工程驻点瞭望塔（2026-09-11）
+
+驻军就地补员 R0 已保持**功能阶段结项**；其旧完成截图仅作为历史证据，未拿来代表本轮瞭望塔候选。黑石战区新增一个受限的工程驻点瞭望塔样例：只允许空闲、存活工程师在**已完工且道路已通行**的我方工程驻点周围建设，每个驻点最多一座。建设半径、观察半径、粮食与工期由战区 Resource 的 `watchtower_config` 统一配置；普通占领城池不会因这一项获得新的建设能力。
+
+地图选中工程师后可进入“工程师建瞭望塔”，先点工程驻点，再点范围内合法陆地。预览显示到场时间、施工时间、粮食和新增观察范围；取消、查看和无效选址都不扣粮，只有“开工建瞭望塔”经现有资源事务一次提交。FieldTacticsState 保存瞭望塔项目和完成塔，ConstructionController 仍是世界时钟、资源事务与 V5 发布/回滚所有者。工程师先按实际陆地路径到场才施工；赴工或施工中损失都会中断项目，未完工项目没有视野收益。完工塔才作为现有迷雾系统的观察者，巡逻离开范围后仍按既有规则成为历史情报，不泄露当前敌情。
+
+瞭望塔 R0 已完成正确性收尾并标记为**功能阶段结项**：同一世界步中，接触发生在完工前会撤销塔、观察范围和完成事件；接触发生在完工后才保留完成塔。旧 Field 的 11、14、15 字段格式均可通过正式 V5 入口恢复且不会补发塔；新格式严格校验塔序号高水位、所属工程、驻点、锚点、观察范围及在建预留 ID。无效重选址会清除旧草稿、在新位置显示红色预览并禁用开工，其他在建塔也占用选址空间。完工检查点失败会回滚到施工态，恢复正常后只创建一座塔。
+
+定向验证覆盖合法到场/完工/新增视野、越界/水域/道路未连通/重复拒绝、在建占位、施工中接触前后顺序、完工检查点回滚/重试、11/14/15 字段旧档正式 V5 恢复及严格非法快照拒绝；独立 A/B/C 进程覆盖在途、完工与完成态恢复且不会重复造塔。图形 GUI 证据包含工程师选择、无效重选址、重新生成计划、到场施工和完工新增视野，保存在 `docs/milestones/field-tactics-r2/evidence/20260911-field-watchtower-r0-correctness/`，并有 3.37 秒的 Godot Movie Maker 连续 GUI 录像。地图按下/松开是引擎 GUI 事件；侧栏开工按钮为可见、未禁用的已连接动作信号，不冒充 macOS 系统鼠标录像。现有候选窗口和隔离存档没有关闭或覆盖；数值与视觉调优留待后续，玩家验收继续 **OPEN**。
+
+## 驻军就地补员 R0（2026-09-11）
+
+银渡城补给 R0 已标记为**功能阶段结项**：已占领银渡城的一次性 20 粮仍按真实道路运输、到达黑石城后才入库；此前旧维修项目缺少 `repair_initial_durability` 时只能恢复其已记录耐久的兼容性待办继续保留，未在本阶段扩大维修规则。
+
+本阶段新增一个独立、有限的试玩配置：银渡城在新开局中有 `initial_stationed_reinforcements = 4` 名待编步兵。它既不是敌方守军、黑石驻军或训练队列，也不会随刷新、反复占领或读档重新生成。`FieldTacticsState` 保存地点剩余兵源；`ArmyRegistry` 继续独占编队人数、军队汇总、`army_id` 与军令历史；`ConstructionController` 在预览和提交时重新核对银渡控制权、目标军队是否真实 `STATIONED`、目标军队归属为我方、容量和地点库存，并把扣地点兵源、按稳定 `formation_id` 顺序补编、V5 检查点发布放在同一回滚边界内。补员不创建军令、不转移编队、不扣粮。
+
+银渡地点详情现在要求玩家先明确选择一支实际驻军，再显示当地剩余兵源、该军队每个编队的当前/上限人数、预览分配及“补充 X 人”按钮。列表使用编队名称、人数和稳定的驻军序号区分同人数目标，不向玩家展示内部 `army_id`；多编队则以简短名称摘要加编队明细表达。成功后会持续显示“已补充 X 人、现有 Y/Z、当地兵源剩余 N”，直到玩家切换对象或开始下一次操作；耗尽库存是正常状态，显示“当地兵源已用尽”。在途、交战/非驻扎、非我方目标、敌方控制、满编、无兵源和错误地点均由同一权威预检给出原因。实际 GUI 地图点击用于打开银渡详情；Godot `SceneTree` 无法把合成系统鼠标交给原生侧栏 `Button`，因此驻军选择与补员动作在证据中准确标为“可见、未禁用的已连接按钮信号”，不是 macOS 物理鼠标证据。
+
+定向验证已经覆盖：真实 Controller 出征、占领银渡城、补 4 人、重复补员零写入、从银渡续令；稳定多编队分配；我方城池中的非我方驻军预览/提交双重拒绝且零副作用；错误军队/地点、保存故障全快照回滚；旧 Field 快照不补发兵源；以及独立 A/B/C Godot 进程的补员后、续令后和在途恢复。图形 GUI 证据额外覆盖两支同为 7 人的驻军选择、仅目标军队增长、未遮挡补员按钮及跨刷新保留的成功反馈。证据与日志位于 `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-stationed-reinforcement-r0/`。现有候选窗口与隔离存档未被关闭或覆盖；玩家验收继续 **OPEN**。
+
+## 银渡城有限粮草与运回入库 R0（2026-09-11）
+
+黑石战区的可试玩 Resource 现在只为已占领的银渡城配置一次性 **20 粮**。`FieldTacticsState` 是地点余粮和在途运输的唯一事实所有者；`ConstructionController` 继续是世界时钟所有者，并且只在货物抵达黑石城、仓储容量允许时，通过既有 `NationState` 资源事务把粮食加入共享库存。出发仅减少银渡库存，完成的运输以唯一运输 ID 标记，重开或额外推进不会再次入账。旧 Field 快照缺少这些字段时恢复为空库存，不会因为升级或读档重新获得这 20 粮。
+
+占领银渡城后，地点详情会显示余粮、最短可通行道路段数和预计耗时；可见的“运回黑石城（20 粮）”动作一次安排运输，没有额外确认。地图只投影真实运输位置和阶段：道路损坏时等待原路修复，黑石仓满时保留待卸货物；两种情况都不穿路、不瞬移、不计入驻军或生成兵员。退出战区的 UI 动作现与运输按钮明确区分，避免把视图返回误认为第二个运粮命令。
+
+已完成的定向覆盖包括：出发/抵达粮草守恒、重复点击、无路零写入、途中断路恢复、仓满待卸、Field 严格快照与旧快照兼容；独立 A/B/C 进程验证运输前、在途和完成后的保存恢复，以及完成态不重复入库。新增隔离 D 进程读取真实 V5 `save_sequence`：仓满后连续 12 次世界推进不新增保存代次，腾出容量后才产生入库代次，避免以已消费的内存标志冒充存档证据。运输恢复会逐点检查类型，并由有向道路 ID 重建完整折线；中间点类型错误或偏离道路均被拒绝且不污染当前状态。真实维修项目若在完工前按接触时间遭遇巡逻，会回退道路耐久/状态、工程进度和运输可用时间；大步与拆帧得到相同的受阻运输结果。入库后的攻城同步故障现在故意令实际编队同步调用失败，复用既有 `SIEGE_ARMY_SYNC_FAILED` 分支回滚资源、运输完成态和战区快照；关键保存失败也独立回滚，恢复正常后均只会入库一次。完成运输的地点详情现在持久显示“本批 20 粮已入库”，不会退回成“没有可运回粮草”或重复播放完成事件。图形 GUI 证据以真实地图按下/松开打开银渡详情，断言运输按钮可见、可用；Godot SceneTree 无法将合成系统鼠标分发到原生 `Button`，所以该按钮的连接动作信号覆盖被明确单列，不冒充 macOS 真实鼠标证据。没有关闭旧候选或创建新的长期候选。玩家验收保持 **OPEN**。详见 `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-silverford-supply-r0/VERIFICATION.md`。
+
+## 地点用途与实际驻军（2026-09-11）
+
+黑石战区现在把地点的**外观类型、运行时控制权和建设能力**分开呈现：黑石城是可返回内城建设与军备的主城；银渡城、赤崖城在被占领后保留城池轮廓并成为可驻军、续令的我方城池，但本阶段不开放内城建设；工程道路完工后生成的运行时工程驻点同样支持驻军、续令，且不获得城市建设能力。能力事实来自战区 Resource 与 Field 运行时投影，城市控制权仍由现有 WarLoop 城市状态提供，没有新增第二套地点、军令或存档所有者。
+
+轻点没有出征军队的黑石城现在会打开只读地点详情；已选中驻军或停留在同点的专员时，侧栏提供明确的“查看所在地点”动作。工程完工后的工程驻点同样适用。明确查看地点优先于旧专员详情，但不取消该专员的真实任务；快捷派遣成功则清除旧地点视图，立即显示新军队或专员的权威任务状态。侧栏仍显示名称、外观类型、控制方、用途、建设能力，以及**仅已抵达并驻扎在该点**的真实军队和人数；在途军队不会计入。点击驻军只定位/切换查看对象，不下令、不扣粮；后续长按地点、选择条和松手续令仍沿用既有正式操作。敌方控制的城池继续不能作为我方快捷派遣起点，占领后旗帜/控制投影和操作资格同步变化。
+
+定向 Macro March 回归现覆盖：敌城无副作用查看、占领后地点详情、驻军查看、从已占领城池经正式长按选择条续令、在途排除、工程驻点完工前后及保存重开。低模图形入口回归进一步覆盖：新局轻点黑石城、专员选择后查看敌城并回到其所在地、从旧地点视图快捷派遣后显示真实行军、以及工程师停留的完工驻点详情；所有只读查看都在暂停世界后比较完整快照。地图输入使用引擎 GUI 按下/松开；侧栏地点按钮断言为可见、在场景树中且未禁用，再覆盖其连接的动作信号。Macro March 35 项、Field R2 72 项，以及两个图形 GUI 入口检查均通过。图形测试使用独立临时 `user://` 与 V5 存档；没有操作或关闭旧候选窗口，也没有启动新的长期试玩候选。基础派兵结项、停滞调查 **NOT REPRODUCED / NOT DIAGNOSED** 与玩家验收 **OPEN** 保持不变。详见 `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-location-capabilities/VERIFICATION.md`。
+
+## 基础派兵结项与遭遇战可读性样例（2026-09-10）
+
+用户确认基础派兵功能完成，本阶段结项。基础派兵后续只处理回归缺陷；整体手感与战区品质仍待后续评价。此前报告的停滞问题保持 **NOT REPRODUCED / NOT DIAGNOSED**，本次没有将其标为已解决。
+
+Macro March 现在只读 FieldTacticsState 已成功提交的巡逻遭遇事实，首次观察到新事件时在接触坐标显示短暂的迎敌、碰撞和受击反馈，并播放一次短促提示音。它显示实际参战我军与巡逻的本次损失、双方剩余人数及军令后续状态；表现不计算伤亡、不暂停世界时间、不持有存档，也不会让任何军队进入一个长期的“交战中”阶段。
+
+`ConstructionController` 把巡逻与军队带时间轨迹的**首次**接触毫秒和坐标写入同一场已结算遭遇摘要。`ArmyRegistry` 仍是编队和军令事实所有者，`FieldTacticsState` 仍持有巡逻和遭遇摘要。地图刷新、暂停、倍速、重复推进与冷恢复只读取这些事实：不会重复扣兵或重播旧特效。屏幕外事件显示可点击定位通知，但不会自动移动镜头；可见性仍仅来自 `visible_patrols_by_id`。
+
+图形 GUI 事件回归从正式地图长按派兵开始，走到自然巡逻遭遇、短反馈、战果侧栏、屏幕外定位以及同进程快照恢复。证据位于 `docs/milestones/txwzs-field-tactics-r2/evidence/20260910-encounter-readability/`；它是引擎 GUI 输入与 Movie Maker 证据，不是 macOS 正常系统鼠标手感验收。玩家验收保持 **OPEN**。
+
+## 遭遇战正确性与连续证据补齐（2026-09-11）
+
+历史遭遇记录缺少剩余人数时，地图现在显示“未记录”；只有同次战报中完整的前值与损失才允许推导，绝不使用当前巡逻或军队兵力冒充历史结果。多军队遭遇同时保留总伤亡与每支参与军队的后续状态，因此一支全灭不会覆盖另一支存活军队的结果。
+
+遭遇摘要同时保存步内 `contact_milliseconds` 与可跨帧比较的 `contact_world_milliseconds`。`contact_world_position` 仍是工程道路损坏的权威输入，因此 Field R2 以大步、30 FPS、60 FPS 和不规则帧核对接触、伤亡和受损道路；连续几何在毫秒/整数坐标量化范围内一致，且伤亡和受损道路身份相同。
+
+工程 Route B 的驻点续令回归已经定位并修复。`current_point_id` 在驻扎快照中为空是既有模型事实，不是驻点丢失；真实证据应读取 `army_id`、`phase`、`target_node_id`、军令端点、路线和粮食事务。旧路线夹具绕过当前的“长按驻点 → 选择条锁定驻军 → 指向目标 → 松手”正式入口，因而把空 `current_point_id` 误报为失败。修复后的正式 GUI 路径在林间驻点将同一军队续令至银渡城，并在占领后从银渡城续令至赤崖城；每次成功只创建一个新 `order_id`、扣除预览的 4 粮。对原驻点松手的失败路径不改军令或粮食。
+
+同时修复了一个实际入口缺陷：战区定义中的 `ENEMY_CITY` 是地理/外观类型，不是永久的控制权。银渡城被占领后仍保留该类型，旧快捷派遣入口因此错误拒绝从它长按出发。入口现仅以运行时 `military_controller_faction_id` 判定是否为友方；仍被敌方控制的城池依旧不可作为出发点。`a00b3d3` 与 `0d63180` 均已定向对照：前者复现旧夹具失败，后者也含同一静态城池类型门槛和旧夹具，故两者都不能被当作此问题的绿色对照。证据、隔离存档日志和连续引擎 GUI Movie Maker 记录位于 `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-route-b-continuation/`。这仍是引擎 GUI 输入证据，不是 macOS 正常鼠标手感验收；基础派兵结项及停滞调查的 **NOT REPRODUCED / NOT DIAGNOSED** 结论不变，玩家验收保持 **OPEN**。
+
+新的 453 帧引擎 GUI Movie Maker 记录由正式按住派兵开始，让 `ConstructionController._process` 同步推进行军与巡逻、经过遭遇、反馈结束及后续状态。原来的“冷恢复”表述现已收紧为**同进程快照恢复**；独立 A/B Godot 进程另行验证保存、退出、重开后的战果保留与 `replay=false`。证据位于 `docs/milestones/txwzs-field-tactics-r2/evidence/20260911-encounter-correctness/`。基础派兵仍为结项，停滞调查仍为 **NOT REPRODUCED / NOT DIAGNOSED**，玩家验收仍 **OPEN**。
+
+## Direct-dispatch copy priority (2026-09-10)
+
+The direct-map gesture now owns the top status line and side detail for its
+full pre-commit lifetime. Before a row is chosen it explains that the player
+must slide into the strip; while a row is hovered it names the candidate and
+explains that leaving the strip locks it; after locking it shows the subject,
+source, target, authority duration and food cost, with `松手派遣` only for a
+valid preview. A live validation error takes priority over route copy and says
+that release cannot publish an order, project or resource transaction.
+
+The strip instruction moved into its own small callout outside all option
+rectangles, leaving each row exclusively for its subject label and its
+`候选`/`锁定` state. Cancelling or completing the gesture clears only this
+temporary presentation state and restores the ordinary overview on the next
+refresh; no selection, order, food, repair or multi-formation behavior was
+changed. The direct graphical contract now captures candidate, locked and
+invalid-preview states and asserts their top/side copy, as GUI-event/render
+evidence. Player acceptance remains **OPEN**; the earlier stall is still
+**NOT REPRODUCED / NOT DIAGNOSED**.
+
+The low-poly graphical fixture now emits a complete press/release pair for a
+map click. This keeps a selection click distinct from a held direct-dispatch
+gesture and prevents later engineering checks from inheriting an impossible
+pending hold state.
+
+## Direct-map hover and repair-intent repair (2026-09-10)
+
+The direct object strip now makes its two pre-commit states visible: a row is
+amber-highlighted and labelled `候选` while the pointer is still inside the
+strip, then changes to the persistent `锁定` state only after the pointer
+leaves for the map. The active row is therefore both reversible inside the
+strip and unambiguous after a subject has been chosen. The graphical contract
+captures both rendered states and verifies that the locked `formation_id` is
+also the exact formation transferred into the published macro order.
+
+An engineer release now resolves intent before it considers open-land planning.
+Releasing over a damaged road that fails repair preflight for food or
+reachability remains a failed repair: it preserves the persistent failure text
+through refresh and does not create a draft, project, specialist task or
+resource side effect. A valid damaged-road release still uses the existing
+repair transaction once, while a deliberate legal open-land release still
+creates the editable plan and waits for `开工`. Repair-project scaffolds now
+anchor on their engineer when no construction polyline exists, so the normal
+low-poly scene no longer reads an empty route as an invalid endpoint.
+
+The direct graphical contract has 14 independent checks. It is isolated
+Godot GUI-event/render evidence, including saved hover/locked screenshots;
+player-feel acceptance remains **OPEN**. The prior stall investigation remains
+**NOT REPRODUCED / NOT DIAGNOSED**.
+
+## Direct-map gesture boundary repair (2026-09-10)
+
+The direct object strip now treats movement inside the strip as hover only. It
+locks the last highlighted formation, stationed army or specialist only after
+the pointer leaves the strip for the map, so a diagonal path that crosses other
+rows cannot accidentally choose the first row it happens to touch. The final
+release position is rechecked as an in-map, non-strip target before any command
+entry is called.
+
+Focus loss clears the direct gesture alongside the legacy draw gesture; restoring
+the window requires a fresh press and hold. A map-inspected stationed army no
+longer suppresses the direct strip at its camp: only the explicit city formation
+selection retains the older multi-formation draft path. Failed direct previews
+now use the persistent Macro March status channel, and error rendering wins over
+a stale valid route. Specialist movement, new-scout dispatch and repair previews
+all use authoritative read-only reachability/cost checks before release; their
+existing controller entries revalidate again on commit.
+
+The graphical direct-dispatch test now naturally waits through scene frames,
+traverses several strip rows before leaving it, sends focus loss, verifies the
+failure message after a refresh, and stations then reissues a viewed army from
+the same camp. Macro March (30) and Field R2 (71) remain green. This is engine
+GUI-event evidence; player acceptance remains **OPEN** and the earlier stall is
+still **NOT REPRODUCED / NOT DIAGNOSED**.
+
+## Direct map dispatch gesture (2026-09-10)
+
+Macro March now supports a one-subject map command without taking over the
+existing multi-formation side-panel workflow: hold a friendly city/camp for
+0.5 seconds, slide through the compact object strip to lock one formation,
+stationed army or local specialist, then release over a valid target to issue
+the authority command immediately. The route target shows a direct destination
+arrow, its authoritative road preview, travel time and food cost; a scout or
+engineer shows the same source-to-target arrow and a release-to-execute label.
+Invalid release, early release, right-click and focus cancellation leave no
+army, specialist task, project, resource charge or stale direct route behind.
+
+New scouts are handled atomically: selecting `侦察兵` from Blackstone's object
+strip reserves nothing; only a valid target release creates and orders the
+specialist in one controller transaction. Existing specialists can move to a
+point or an engineer can release over a damaged road to start the existing
+repair entry. Releasing an engineer into open legal land instead starts an
+editable construction plan with no resource write; its map-side `开工` control
+remains the one explicit construction commit. The direct route constraint is
+local to the pending gesture and clears on every end state.
+
+The non-headless GUI-event contract drives actual map press, elapsed hold,
+object-strip motion, target motion and release. It verifies an invalid scout
+release costs nothing, valid scout dispatch and troop march each publish once,
+zoom preserves the authoritative target/road, and an engineer plan only spends
+when the visible map-side start control is clicked. Evidence is in
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260910-direct-map-dispatch/`.
+It is Godot GUI-event/render evidence, not desktop-system-input footage; player
+acceptance remains **OPEN**. The previously reported simulation stall remains
+**NOT REPRODUCED / NOT DIAGNOSED**.
+
+## Command feedback repair and candidate observation (2026-09-10)
+
+An unconfirmed Macro March confirmation failure now remains visible across the
+normal per-frame UI refresh. Cancelling a draft or hold clears that temporary
+error and preserves the selected city formation; only a deliberate second
+formation click deselects it. A successful retry clears the error, creates one
+army and charges the authority preview cost once. The status line now also
+distinguishes a paused world from a normally advancing order.
+
+The new standalone graphical GUI-event contract records failure, cancel,
+explicit second click and retry separately, then verifies pause/resume keeps
+the same order and does not duplicate food cost. It is run in its own isolated
+Godot process so prior graphical fixtures cannot supply a previously spent
+roster. Macro March (30), Field R2 (71), the graphical low-poly suite (18),
+and the new command-status contract pass.
+
+The existing `58be81e` candidate and its V5 store were observed read-only and
+left intact. Its process is alive and publishing generations, but the latest
+snapshot has no active macro army; another candidate owns the frontmost Godot
+window. No simulation or rendering stall was reproduced. The conclusion is
+**NOT REPRODUCED / NOT DIAGNOSED**, not a stall fix. Details and exact commands
+are in `docs/milestones/txwzs-field-tactics-r2/evidence/20260910-command-status-and-stall-observation/`.
+Player acceptance remains **OPEN**.
+
+## FIELD_TACTICS_R2 Blackstone sample-theatre candidate (2026-09-09)
+
+### Direct command and engineering planning (current worktree)
+
+Macro March now separates selection from planning with one shared 0.5-second
+UI-time hold gate. A selected city formation or stationed army may click a
+legal destination for the authority's shortest completed route, or hold at its
+source before drawing. Movement beyond eight screen pixels before activation
+cancels instead of becoming an accidental order. A normal drag is only a
+target/road-choice gesture: only a visible physical-road choice point can
+change the recorded `road_id` hard authority constraint; raw pointer samples
+never become an army route.
+An unfinished or damaged chosen road rejects rather than silently changing the
+route or charging food. The side panel provides an explicit restore-default
+action.
+
+Engineering remains the separate polyline interaction. Its selected engineer
+defaults to a legal friendly source, another friendly source can be pressed and
+held before drawing, and an uncommitted plan may continue from its endpoint or
+undo its final continuation stroke before confirmation. Committed bend samples
+and the live pointer endpoint are separate, so slow drawing and turns do not
+erase the existing line. New-camp preview and confirmation share the field
+authority's bounds and land validation. These UI-only edits neither reserve a
+camp nor charge food; the existing field preview and confirmation transaction
+remain authoritative.
+
+Right-click, focus loss, and leaving the battle clear transient pointer state.
+Graphical GUI-event evidence and its 4.77-second engine recording are in
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260910-command-engineering-interaction/`.
+This is engine GUI-event evidence, not desktop-system-mouse or player-feel
+acceptance. Macro March (30), Field R2 (71), graphical low-poly (18),
+cross-process R2 persistence, and both formal playthrough routes pass on the
+current worktree.
+
+When a player starts another long-press route while a valid march draft is
+already visible, the old route remains only as a cancel-safe fallback. The
+live candidate path and replan panel take visual priority and hide confirmation
+until release creates the replacement draft. Clicking a specialist from a
+stationed-army planning view clears the unconfirmed army route, road constraint
+and command subject, while leaving the specialist's real task untouched. The
+shared hold text and pointer progress ring now use the same 0.5-second wording
+for march and engineering. Graphical low-poly verification is now 18 checks;
+the refreshed Movie Maker evidence naturally waits through the hold instead of
+calling the map's process method directly. Player acceptance remains **OPEN**.
+
+### GUI specialist-selection overlay finish (current worktree)
+
+### Draft-confirmation panel priority repair (current worktree)
+
+An active engineering operation or valid engineering draft now owns the action
+panel even while its engineer remains selected on the map.  The plan and
+enabled `确认施工` control therefore remain visible after drawing is released.
+Clicking an enabled city formation is explicit command intent: it clears only
+the conflicting specialist *view* selection, so the city march plan and its
+enabled `确认并锁定军令` control appear normally without cancelling the
+specialist's actual field task or moving it.
+
+The graphical smoke uses map GUI events and real mouse press/release input on
+the confirmation controls to prove each draft creates exactly one authority
+transaction and one food deduction.  Its independent UI contracts now clear
+only temporary V5 generations between scenes, preventing previous fixture
+commands from leaking deployed formations into a later contract.  Candidate
+viewport evidence and exact commands are in
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-draft-confirmation-priority/`.
+These are engine-viewport/GUI-event records, not desktop-system-input video;
+player acceptance remains OPEN.
+
+Low-poly mode now treats the selected map subject as a single player-facing
+selection. A living selected scout or engineer is rendered on the transparent
+2D map canvas at its authoritative `world_position`: two hollow rings and a
+short `已选 · 角色 · 状态` label remain readable through the gate, camp, bridge,
+or tree meshes. The compact 3D pennant remains, but selected-specialist state
+suppresses the army's competing selected count/pennant; unselected armies
+retain one compact member count. The side panel uses the same selected
+specialist as the map and identifies role, actual phase, current location, and
+task target. A right-click clears this selection without publishing a command
+or resource transaction.
+
+When an army, scout, and engineer share one city anchor, repeated normal map
+clicks cycle scout, engineer, then army. This keeps all three reachable without
+adding a new interaction owner. The non-headless graphical smoke now sends GUI
+mouse events to select an in-flight army and both same-gate specialist roles,
+then compares whole-viewport image changes for selection and cancellation;
+private IDs and the absence of a `SelectionRing` mesh are supplementary state
+checks only. Engine-viewport captures are under
+`evidence/20260909-specialist-selection-overlay/`; they are GUI-event/render
+evidence, not normal desktop-system-input footage. Player acceptance remains
+OPEN.
+
+An explicit city-formation selection remains a deliberate route-drafting mode:
+its city-gate click begins that confirmed formation's draft instead of selecting
+a coincident specialist.
+
+### Targeted natural-material and selection-marker repair (current worktree)
+
+The seven selected Kenney GLBs import their source surfaces with
+`metallicFactor=1`. Blackstone now corrects this only in the cached runtime
+variants for those trees, grass and rocks: `metallic=0`, per-surface palette
+colour and roughness preserve the authored GLBs and their trunk/crown or rock
+facet separation. No global material property or source asset has changed.
+
+The render-only `SelectionRing` cylinder has been removed. Selection remains a
+single, readable expression: the established hollow 2D ring and status/count
+overlay, supplemented by a compact 3D pennant at the truthful army, engineer
+or scout location. This does not change actor positions,
+orders, strength, fog or input ownership. The corresponding graphical smoke
+now checks both the non-metallic natural variants and that no opaque selection
+disc is reintroduced. Current screenshot/validation evidence is being recorded
+under `evidence/20260909-blackstone-render-targeted-fixes/`; the prior
+30-frame measurement remains an initial sampling baseline, not a stable-FPS or
+performance-pass claim.
+
+### Low-poly sample and battle-report correction (current worktree checkpoint)
+
+### Low-poly ground, engineering-plan and command-readability repair (current worktree)
+
+### Formal-art material, grounding and command-readability finish (current worktree)
+
+The current art-finish worktree preserves the seven selected CC0 GLBs' source
+mesh partitions rather than flattening every imported instance through one
+`material_override`. Cached per-surface runtime variants keep source texture
+slots and render flags while separating trunks/crowns and rock facets in the
+Blackstone palette. Each instance is settled from its transformed visible-mesh
+bound, so the actual model contact—rather than an empty GLB root—is at the
+authoritative horizontal ground anchor. The graphical smoke now checks those
+visible meshes, material partitions, transformed bounds, plausible dimensions
+and renderer-side screen positions at all three review resolutions.
+
+The render-only theatre gained restrained forest/rock floor variation, shallow
+riverbank strips, denser tree groups, and a more legible tent/palisade/fire camp
+silhouette. Roads and bridges are visually broadened only in the presentation;
+the existing road geometry, passability, drawing transform, fog and save facts
+are unchanged. Selected armies and specialists now have an elevated command
+pennant plus the established 2D count/status overlay, making their truthful
+ground position identifiable through gates, camps, trees and bridge scenery
+without moving the army, exposing hidden units, or adding another input/sim
+owner. A fixed 1280×720 30-frame render baseline is recorded with draw calls,
+render objects and static memory; there is no prior matched measurement, so no
+performance-improvement claim is made. Candidate screenshots and the explicit
+engine-viewport/GUI-event boundary are in
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-blackstone-art-finish/`.
+
+The same final isolated recheck found that independent Macro March UI contracts
+could inherit a preceding contract's normal save publication inside one Godot
+process. The runner now restores its pristine production V5 snapshot for every
+new contract scene, matching the established Field scenario isolation approach.
+This is test-fixture repair only: campaign persistence, food transactions and
+army ownership remain unchanged. Macro March smoke again passes all 30
+assertions; its three-process persistence smoke also passes.
+
+The first formal Blackstone art-integration checkpoint now uses seven selected
+CC0 GLB assets (three trees, three rocks and riverbank grass) from Kenney
+Nature Kit 2.1 in the render-only miniature layer. Their precise source,
+license, archive/file checksums and use boundary are recorded in
+`assets/blackstone_art/ASSET_MANIFEST.md`; only those selected source files are
+present, not the complete upstream archive. Chinese frontier city gates, tents
+and the Ridge Watch tower remain lightweight authored assemblies around the
+same authoritative anchors, using the generated gatehouse image only as a
+non-runtime visual reference. The non-headless graphical smoke now validates
+actual imported asset instances and anchors at the existing three review sizes.
+The two R2 smoke failures reported against this checkpoint were caused by
+same-process test scenarios restoring each other's normal V5 publications,
+not empty transfer-path or ambush gameplay facts.  The fixture isolation repair
+is recorded in the accompanying verification evidence; the Field smoke and
+both formal routes now pass from one clean baseline per scenario.
+
+The low-poly map now derives the established oblique screen projection from a
+horizontal XZ ground plane. World north/south coordinates no longer change
+model height; base-ground mesh normals are calculated from the actual geometry,
+and bridge elevation is an explicit presentation offset. A render-only ground
+overscan fills the clipped overview viewport without changing Resource terrain,
+road availability, or input bounds. Camera3D anchor agreement remains at
+0--0.22 pixels across 1152x648, 1280x720 and 1920x1080.
+
+Engineering previews no longer disappear when the mouse is released: Macro
+March draws the persisted authority preview's individual road and bridge plans,
+including source and target markers, until confirm or cancel. Active project
+rendering now consumes actual segment durations and kinds instead of point
+count: completed roads remain in `roads_by_id`, normal-road work has a road
+surface, and bridge work alone has bridge deck/rail geometry. The player rail
+uses a material/segment summary rather than internal path-point counts. The
+default view is an all-theatre overview, with explicit overview reset and
+selection focus controls; off-screen labels are hidden rather than clamped to a
+misleading map edge. See
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-low-poly-readability-fix/`
+for inspected engine-viewport states and provenance.
+
+The graphical smoke has 12 assertions: existing projection, road transform,
+GUI route/engineering and mode-switch checks plus new horizontal-ground/normal
+and released-draft segmented-construction checks. This evidence uses Godot GUI
+events and engine viewport capture, not normal desktop input; the recording
+constraint remains an explicit media gap and is not player acceptance.
+
+The focused recheck is now consistent when each independent scenario restores
+the same clean V5 baseline: Field R2 smoke passes 69 assertions and the two
+formal routes pass from empty isolated stores.  The engineering route naturally
+records one forest ambush rather than inheriting Route A's already-resolved
+patrol.  See
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-blackstone-art-integration/VERIFICATION.md`
+for the command boundary and exact automated results.  This closes the two
+reported regression failures, not the separate player-acceptance/media gates.
+
+The Macro March screen now has a render-only low-poly miniature mode for the
+Blackstone sample theatre. An orthographic `Camera3D` inside a `SubViewport`
+reads the same 2D world positions and Field/Army read models as the established
+map; it does not own a second movement, combat, resource, clock, or save state.
+The legacy clipped 2D map remains selectable as a baseline. Built-in Godot
+primitive meshes presently provide the city-gate, camp, tree, rock, road,
+bridge, formation, specialist, patrol, and active-work silhouettes. This is an
+operational art-direction sample, not a claim that the whole campaign has final
+3D art.
+
+The former observation that a seven-member team was eliminated because its city
+row became `0` was incorrect. A city row is an available-garrison count: formal
+dispatch transfers the seven members into an active army snapshot. The panel
+now distinguishes `已出征（当前 7 人）` from city availability, displays the
+selected army's current survivors and latest engagement loss, and retains the
+original `黑石城 → 北望驻扎点` order direction while it is active. The exact
+survivor count after a particular encounter must still be read from that
+encounter's stored result; it must not be inferred from a city roster.
+
+Macro March smoke now has 30 assertions, including this formal dispatch/UI
+contract. A dedicated graphical smoke runs outside headless mode at 1152x648,
+1280x720 and 1920x1080: `Camera3D.unproject_position()` differs from the 2D
+anchor calculation by at most 0.22 pixels, and the actual road/bridge segment
+midpoint/facing error is 0. The same graphical process also drives Macro March
+route and engineering UI handlers and verifies animated army nodes plus a
+non-mutating 2D/3D switch. A separately launched low-poly viewport was visually
+inspected on the target Mac. Its custom canvas controls were not exposed as
+accessible desktop targets, so this is not normal-system-input media and no
+video is claimed for the new candidate. See
+`docs/design/BLACKSTONE_LOW_POLY_SAMPLE_R2.md` for the presentation boundary
+and `docs/milestones/txwzs-field-tactics-r2/evidence/20260909-low-poly-sample/`
+for the earlier isolated runtime still and its provenance. The corrected
+projection/interaction runner and its explicit normal-input media gap are
+recorded in
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-low-poly-projection-fix/`.
+The corrected candidate was then normally pushed as
+`12fa9edbc6c9ca03c172fc9cecc09d3b7a186773`. Its identified formal window and
+current engine-viewport route, march, engineering-preview, and construction
+states are recorded in
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-low-poly-candidate-12fa9ed/`.
+Those screenshots demonstrate the rendered candidate but are GUI-event/engine
+viewport evidence; normal-system-input video is still an explicit gap.
+
+The current R2 candidate separates the historical regression fixture from a
+new Resource-owned Blackstone sample theatre. The playable definition now owns
+its 1500x980 battlefield, seven named points, northern and lowland approaches,
+three river reaches, three forests, two rocky banks, a finite ridge patrol, and
+the two required enemy cities. Regression runners explicitly select the legacy
+fixture, so the new level does not invalidate their established geometry.
+
+Two isolated normal-resource routes now complete through the formal city,
+visible map input, Controller, resource, encounter, siege, and V5 authorities:
+
+- The northern route spends 12 food, runs for 39.40 world seconds, takes four
+  real formation casualties, and captures Redcliff and Silverford.
+- The scout/engineering route spends 36 food, runs for 79.40 world seconds,
+  takes three army casualties and no specialist loss, consumes one natural
+  forest ambush, and captures both cities. It uses the visible scout target,
+  remote engineering start, a generated road-bridge-road connection, the
+  authored Forest garrison, and reverse travel. It does not inject road damage
+  or force an engineer death.
+
+These observations establish a playable trade-off rather than a final balance:
+the main road is cheaper and faster but loses more troops, while the engineering
+route invests time and food to preserve one additional soldier and create a
+reusable central crossing. Fault injection, engineer replacement, broken-road
+camp transfer, repair, and cold recovery remain covered by the separate
+regression and disk suites.
+
+The map uses one invertible fixed-oblique projection for drawing, hit testing,
+minimap navigation, camera control, and line input. Water banks, forests, rocks,
+walled cities, faction banners, tent camps, road width, bridge planks, road
+damage, armies, and specialists are drawn inside the clipped battlefield while
+the action rail remains independent. Player copy uses place names and readable
+phases. Automated layout/input checks cover 1152x648, 1280x720, and 1920x1080.
+
+Construction workers now contribute timed movement records while advancing an
+active segment. Specialist/patrol contact, guard position, road opening, and
+project interruption are evaluated on the same world-time interval. If an
+unguarded engineer is contacted mid-step, later work is rolled back before the
+project is interrupted; a large step and equivalent split steps preserve the
+same death, progress, and unopened-road result.
+
+Current identified system-input evidence is under
+`docs/milestones/txwzs-field-tactics-r2/evidence/20260909-blackstone-sample-final/`.
+PID 64981 and window 12727 displayed
+`CITY · codex/txwzs-field-tactics-r2@8c35afa · DEBUG · DIRTY` while an isolated
+save was used. The 23.99-second H.264 window recording shows formation selection,
+route drawing, confirmation, and continuous movement to Northwatch. Stills show
+the map overview, snapped route draft, automatic march, arrival, engineering
+preview, and active road/bridge construction. This is real system-input evidence
+for the candidate window, not a recording of both complete campaigns and not
+player acceptance.
+
+Final focused verification covers Field R2 69 assertions, both formal
+playthrough routes, audited field persistence, Macro March 29 assertions and
+its disk chain, War Loop R1 16 assertions, formal scene 10, arrival and disk
+recovery, V5 army/campaign/encounter recovery, R1E 50 assertions, C0
+presentation, editor import, four scene starts, and `git diff --check`. Raw logs
+are under `/tmp/txwzs-r2-sample-final-logs/`.
+`run_blackstone_playable_mvp_smoke.gd` remains obsolete historical test debt and
+is not counted as a passing full-repository sweep. Final art, full-route normal-
+input media, player playtesting, and balance acceptance remain open.
+
+The sections below are chronological engineering checkpoints. Their open-item
+lists describe what was missing at that checkpoint and do not override the
+current conclusion above.
+
+## FIELD_TACTICS_R2 patrol encounter checkpoint (2026-09-08)
+
+The outer-city clock now advances a finite patrol on its resolved runtime-road
+polyline and resolves contact against the swept paths of specialists and
+armies. Army traces retain intermediate authored road vertices, so one large
+frame cannot let opposing movers pass through each other merely because their
+end positions are separated. Patrol strength is one shared fact: multiple
+armies joining the same contact settle it once rather than receiving cloned
+enemies or duplicated rewards.
+
+Casualties are written through `ArmyRegistry` to stable formation identities.
+One army can encounter the patrol while another siege continues, without
+mixing participants or stopping the unrelated battle. A nearby deployed army
+can guard a working specialist; a previously observed patrol entering an
+unexposed forest deployment grants one finite ambush opening, consumes that
+opening, exposes the force, and can damage only a nearby built road rather than
+a main road. Patrol strength, resolved participants, ambush consumption,
+exposure, damaged road, and exact formation losses survive formal V5 restore.
+
+Focused evidence is Field R2 **65 assertions**, audited field persistence PASS,
+Macro March R0 **27 assertions**, War Loop R1 **16 assertions**, War Loop formal
+scene **10 assertions**, and arrival persistence **3 assertions**. This is a
+recoverable engineering checkpoint. The two complete normal-resource routes,
+normal system-input media, final balance review, and player acceptance remain
+open.
+
+## FIELD_TACTICS_R2 temporary-route rebreak and clock checkpoint (2026-09-08)
+
+A blocked army now rechecks the physical segments of its temporary camp or
+resume route before every movement advance. A newly broken future segment is
+replanned from the army's exact temporary-route position when a reachable camp
+alternative exists; if the segment beneath the army is broken, the transfer
+enters an explicit persisted blocked phase and keeps its position, original
+order, formation ownership, and paid food transaction. Repair restores the
+same temporary task rather than teleporting or reissuing the army.
+
+Temporary physical segments persist their clipped geometry and endpoint facts,
+so availability, interpolation, replanning, reverse return, and cold recovery
+all use the same path. Crossing the camp-arrival or frozen-position boundary
+now returns unused milliseconds to the next legal phase. A formal `_process`
+comparison produces the same registry state at 30 FPS, 60 FPS, and irregular
+frame partitions after crossing the return boundary.
+
+The persistence runner no longer treats child exit code zero as sufficient.
+Every worker writes a mode-specific success marker; the parent requires both
+that marker and a zero exit code and prints captured child output on failure.
+This exposed and repaired five pre-existing worker parse errors which the old
+runner had misreported as PASS. A new N/O/P chain cold-restores a temporary
+route rebreak, repairs it, and continues to camp. Current focused results are
+Field R2 **58 assertions**, audited field persistence PASS, Macro March R0
+**27 assertions**, War Loop R1 **16 assertions**, editor import, and
+`git diff --check` PASS. Patrol/guard/ambush casualties and both complete R2
+routes remain open; this checkpoint is not player acceptance.
+
+## FIELD_TACTICS_R2 safe-camp transfer checkpoint (2026-09-08)
+
+Follow-up integrity repair: schema-5 registry migration now preserves an
+existing macro-order history, while only truly old records missing that field
+receive an empty default. `BLOCKED` validation distinguishes transfer-in-
+progress, waiting, and return-in-progress: moving states carry a valid
+temporary path and target but no false claim that the army has already
+arrived. Temporary movement now consumes the same accumulated millisecond
+remainder discipline as normal macro march, preventing per-frame rounding
+drift. If the original road repairs while an army is still travelling to camp,
+the transfer remains authoritative until arrival; only then does the reverse
+return path start.
+
+The isolated disk chain now includes a fourth process which cold-restores a
+return-in-progress army, completes its remaining return path, and verifies the
+original order advances. Field R2 smoke and the expanded persistence suite
+both pass with the historical Godot 4.5.1 binary.
+
+The start and completion edges now use that same contract: `TO_CAMP` starts
+with its target solely in the temporary task and an empty arrived-station
+field; completing `TO_RESUME` atomically clears blocked state and restores the
+original marching or retreat phase before the checkpoint is published. This
+prevents invalid transition snapshots from being persisted. Focused Field R2
+and the J/K/L/M isolated-disk chain pass after this repair.
+
+At that checkpoint, the then-uncommitted work extended `ArmyRegistry` schema 6
+with a temporary
+execution record alongside the immutable original macro order. A march blocked
+by a future damaged physical road can now use its exact ordered segment and
+progress to clip the road beneath the army, move through the open road graph
+to a deterministic friendly camp, wait there, then reverse that actual
+temporary geometry after repair before resuming the original order. The
+temporary route preserves the physical source segment, direction, current
+progress and resume progress; it neither reissues the order nor charges the
+original food transaction again. Authored friendly garrisons (other than the
+order's source) and completed runtime camps are both candidates.
+
+Macro March rendering and hit testing now consume the temporary route during
+transfer, waiting, and return, so the marker no longer stays at the frozen
+original-route position while the army is moving or waiting at a camp. The
+focused Field test contains a formal Controller scenario in which an army is
+part-way around the lowland curve, the following Northwatch--Reedbank segment
+is damaged, and the army returns along the curve to a constructed camp before
+repair and original-order continuation are checked.
+
+Validation uses the verified historical engine binary:
+`/Users/m4-zhi/Documents/codex-tools/godot/4.5.1-stable-standard/Godot.app/Contents/MacOS/Godot`
+(`4.5.1.stable.official.f62fdbde1`). Godot editor import, `blank_map` and
+Blackstone scene startup passed. Focused results are: Field R2 **55
+assertions**, the new three-process transfer/wait/return isolated-disk chain
+PASS, Macro March R0 **27 assertions**, War Loop R1 **16 assertions**, and
+`git diff --check` PASS. These are automated engineering checks. Normal system
+input media, player-facing visual review, transfer-route rebreak handling,
+patrol/guard/ambush casualties, and complete R2 routes remain outside this
+checkpoint; this is not player acceptance or R2 completion.
+
+## FIELD_TACTICS_R2 map and command UI checkpoint (2026-09-08)
+
+### Formal bridge-return, V5 canonicalization, and project-action repair
+
+The interrupted-project selector is now a real child of the Macro March view
+and no longer clears/recreates its options while the interrupted-project
+projection is unchanged. Construction, repair, and resume are explicit
+actions: the road tool always begins a new draft (or the selected repair), and
+a separate action resumes the specifically selected interrupted project.
+The seven-action rail remains inside the tested 648px viewport without
+overlap.
+
+V5 structural validation now initializes its temporary `WarLoopState` with the
+same Resource-owned theatre points, roads, water and bounds used by formal
+restore. Legacy moving specialists missing a stored route are therefore
+canonicalized before the strict postcondition comparison, rather than causing
+a successful application to roll back because its exported migrated path is
+newer than validation's expectation. Bridge shore checks also sample from the
+land side in both directions, so one formal generated bridge supports return
+travel without making normal water legal. Focused Godot 4.5.1 results: Field
+R2 52 assertions and Macro March 27 assertions. These are automated
+engineering checks; safe-camp transfer, patrol/guard/ambush casualties, both
+complete R2 routes, normal system-input media, and player acceptance remain
+open.
+
+### Formal bridge-use and deferred-recovery checkpoint
+
+The formal city → Controller construction path now has an
+end-to-end bridge-use regression: it completes a player-shaped road-bridge-
+road project, dispatches a later engineer, and confirms that the engineer's
+stored movement route contains the generated bridge endpoints before arriving
+at Reedbank. Specialist path search permits only an opened bridge's navigation
+points and shore connection; it does not make ordinary water traversable. A
+completed bridge is therefore preferred over a marginal shoreline detour while
+the stored movement duration remains based on real geometric distance.
+
+V5 restoration now installs the Resource-owned theatre facts before a missing
+specialist route is migrated. Field restoration defers that migration until
+`initialize_from_theater`, so water, bounds and open bridge state are the same
+facts used during normal play. The map also presents a selectable interrupted-
+project list and tries every eligible engineer for the chosen project rather
+than letting the first project or first unreachable engineer block all work.
+Focused results: Field 50 assertions, Macro March 27, three-process field
+persistence PASS, and R1 war 16 assertions. This has not completed army
+safe-camp transfer, encounter/guard/ambush casualties, complete routes, or
+normal system-input media.
+
+### Formal bridge-planning and expert-route checkpoint
+
+The formal map, Controller, and field construction entry now preserve the
+player's land-road material while treating water crossing as a property of
+only the physical segment plan. A normal cross-water draft therefore confirms
+as `NORMAL → BRIDGE → NORMAL`, keeps the existing one-time bridge project
+charge, and no longer turns both banks into bridge material. Construction
+water sampling now uses the same unit-coordinate resolution as specialist
+movement, so narrow water is not silently classified as dry land.
+
+Open bridges are part of the specialist path graph as their real bend points,
+not an endpoint-to-endpoint shortcut. Repair endpoint choice now uses that
+same specialist land/bridge path and actual geometric distance, rather than
+requiring an unrelated army-road route or comparing the clamped minimum travel
+time. A completed bridge can be used by an expert; an incomplete or damaged
+bridge remains unavailable. The focused Field suite passes 49 assertions,
+the Macro March suite 27, the isolated three-process persistence suite, and
+the R1 war suite 16. An interrupted project now retains its identity and
+completed work for a replacement engineer, and the formal map action routes
+that resume request through the Controller checkpoint/rollback path. Old
+in-flight specialist saves missing a path are replanned from their saved
+position or become explicitly blocked rather than crossing water in a line.
+These are automated engineering checks only: normal-input media, combined
+interruption recovery, safe-camp transfer, patrol guard/ambush casualties, and
+both complete R2 player routes remain open.
+
+### R2 on-site construction checkpoint
+
+An engineer now uses the existing persistent specialist record to travel from
+its actual world position to the confirmed construction start, then advances
+along completed land work. During a bridge segment the engineer stays on the
+reachable bank until that bridge opens; a newly created camp no longer creates
+a one-frame zero-coordinate persistence value at completion. Construction,
+repair, and macro-march cold-recovery suites now use isolated save roots so
+one scenario cannot alter another route's path choice. Field smoke passes 42
+assertions and the three separate cross-process chains pass. This is an
+engineering checkpoint only: interruption/reassignment, reachable broken-
+bridge stationing, patrol guard/ambush casualties, full routes and normal-
+input media remain open.
+
+Blocked macro orders now preserve the task phase that must resume. In
+particular, a damaged return route resumes as `RETREATING` after repair rather
+than silently changing to ordinary marching. ArmyRegistry schema 5 migrates
+old blocked records to the historical `MARCHING` behavior because those saves
+did not retain the interrupted task type. The R1 retreat regression confirms
+the new path; reachable-camp transfer and cold recovery of a blocked retreat
+remain open.
+
+Repair creation now selects only an endpoint reachable from the engineer's
+current point through the open road graph; it no longer unconditionally picks
+the road's far endpoint. If neither endpoint is reachable, confirmation fails
+without allocating a project. This prevents the bridge-repair path from
+visually or authoritatively crossing an unfinished span, but it is not yet the
+separate army safe-camp transfer required after a blocked march.
+
+Specialist travel now persists its actual land path and interpolates position
+along that path. A small visibility graph routes around greybox water while
+still allowing experts to cross roadless land; soldiers retain the separate
+road-only order model. Generated `junction.*` connection points resolve from
+their adjoining road endpoints, while unknown point IDs use an explicit
+invalid coordinate and are rejected at command entry. Field smoke passes 44
+assertions; interruption/reassignment and safe-camp transfer remain open.
+
+Specialist path candidates now remain inside the theatre bounds and test water
+at unit-coordinate resolution, closing the prior map-edge and narrow-water
+gaps. The theatre bounds flow through Controller, WarLoop and FieldTactics
+instead of being screen-owned. Open bridge endpoints are now exposed to the
+specialist path graph, but automatic bridge-segment endpoint normalization is
+still required before claiming a complete cross-water specialist route.
+
+### R2 input-safety follow-up
+
+The return action now belongs to the same six-slot command stack as the other
+visible actions; at 648px high it no longer overlaps the engineer action.
+Formation controls are updated only when the roster/availability projection
+changes, preserving their node identity across view frames. Macro smoke now
+checks every pair of visible right-column controls for overlap at three widths
+and confirms a roster-stable button survives two frames. It passes 27
+automated assertions; this does not replace actual system-input media.
+
+The formal outer-city map now has one camera transform for drawing, hit testing
+and route drafting. Wheel zoom is anchored to the cursor, middle-drag pans,
+the minimap recenters the camera, and edge movement while drawing keeps the
+same world-coordinate draft. The theatre bounds intentionally reserve visual
+space for scouting and future camps without rewriting persisted R0/R1 road
+coordinates.
+
+The right column is no longer positioned inside the formation loop. Formation
+selection is a scroll area and the command controls are bottom-anchored, so
+the active controls stay inside 1152×648, 1280×648 and 1920×648 windows. Map
+detail now identifies source, selected force, draft destination, estimated
+duration and a controller-owned read-only food preview; the view never
+calculates a second food rule or writes a resource transaction.
+
+The greybox now distinguishes terrain, water/shore, main roads, constructed
+roads, bridges, damage, camps, cities, flag-bearing armies and specialist role
+markers. This is readability work only. It does not claim a completed
+multi-segment graph, patrol/army encounters, normal-input media, a complete
+R2 play flow or player acceptance.
+
+Godot 4.5.1 Macro March smoke passes 26 assertions, including injected formal
+mouse events for zoom/pan/dragging, UI bounds at three widths, click separation
+and the read-only command preview. Those are automated UI checks, not a
+recorded normal-input run.
+
+Terrain bounds and forest facts now come from `MacroMarchTheaterDefinition`;
+the map no longer owns a second hard-coded terrain layout. The runtime road
+model is still single-road-per-order at this checkpoint, so multi-segment graph
+orders remain the next implementation step.
+
+The field authority can now resolve connected open roads into an ordered
+runtime path. A multi-road path has a stable directional path handle, retains
+each physical road ID for open/damaged checks, and computes the minimum travel
+time once across the merged geometry. This has not yet added explicit segment
+execution fields to `ArmyRegistry` or the required cross-process path test.
+
+Path planning now receives the player's drawn world points and scores all
+simple connected candidates against that intent rather than silently taking
+the first breadth-first result. The authority rejects a path whose directed
+road endpoints do not connect. Map duration copy now consumes the authoritative
+draft duration; it no longer reimplements the travel formula.
+
+Confirmed macro orders now retain the authority-validated ordered physical
+road segments alongside their immutable path geometry. Snapshot validation
+migrates existing single-road orders and legacy composite path handles into
+that explicit field before restore. The shared
+scheduler checks only the current and forward segments against road damage;
+damage on an already passed segment no longer blocks the order. Field smoke
+passes 38 automated assertions and Macro March smoke passes 27. These checks
+do not yet prove the required normal-input cross-process tactical playthrough
+or the remaining multi-part construction, encounter and safe-camp work.
+
+The isolated field persistence runner now starts a multi-road order in one
+Godot process, restores it while moving in the next process, advances through
+the remaining segment boundary, then cold-restores the stationed result a
+third time. It verifies the same stored road sequence and no second food
+transaction. This disk test does not cover a damaged multi-road bridge plan
+or real player input.
+
+Cross-water construction now derives a persisted sequential plan of physical
+road, bridge and road segments. Completed earlier segments enter the road graph
+while the later bridge or road remains absent, and the final camp is created
+only at full completion. The current resource charge is still the existing
+single project transaction; per-segment material accounting, bridge damage
+recovery and a normal-input construction journey remain open.
+
+Retreat orders now reverse the original validated physical road sequence and
+each direction while preserving the original route identity. This keeps the
+normal scheduler and damage checks on real roads instead of a synthetic
+`.return` ID. Each newly opened construction segment now emits an authoritative
+field event, so the controller publishes an immediate checkpoint even before
+the overall project completes. Automated Field/R1/Macro results are 40/16/27;
+these remain engineering checks rather than the two complete player routes.
+
+Runtime path planning now uses a weighted graph search instead of enumerating
+simple paths. Physical route length remains the base cost; the player's drawn
+line supplies a route-proximity penalty, so alternative routes remain
+selectable without a twelve-segment cutoff. The focused R2 runner includes a
+13-segment continuous path check. Larger-map interaction profiling and
+enemy/patrol encounter work remain pending.
+
+## FIELD_TACTICS_R2 engineering checkpoint (2026-09-07)
+
+### R2 formal-input and on-site-repair checkpoint
+
+Repair timing is now frame-partition invariant: when an engineer reaches a
+repair target part-way through a world advance, the remainder immediately
+counts toward the repair project. The focused runner compares whole snapshots
+from one long advance and split advances. The persistence runner separately
+cold-restores repair travel, an arrival step with work already accrued, and
+the restored open road.
+
+The outer-city theatre now owns a small greybox water region. A construction
+line crossing it is classified by authority as a bridge, with bridge duration
+and food cost; the map previews that classification and renders the water
+region. This is bridge recognition and a single bridge project, not yet the
+complete multi-segment bridge/road graph or a full blocked-army recovery loop.
+
+Completed field-road damage now drives the durable macro order directly:
+the shared march scheduler blocks an affected marching army at its current
+legal route position, records its temporary roadside station, and preserves
+the existing order. When the repair project opens that same road, the shared
+war advance resumes the blocked order without a second march-food transaction.
+The formal controller regression covers that sequence. Encounter damage,
+nearest-camp routing, and multi-segment graph routing remain open.
+
+The finite patrol now waits, moves between persisted route points, and exposes
+only a last observed coordinate after observers lose it. The R2 field runner
+proves both the movement and the non-tracking historical-intel boundary. This
+does not yet resolve a patrol-versus-army encounter, apply losses, or provide
+an ambush rule.
+
+Patrol advancement now consumes one whole world step across wait, movement,
+arrival and its next wait. The focused R2 runner compares one-step and split
+advances for patrol movement and a contact transition, preventing arrival-frame
+time from changing the tactical state.
+
+Siege details now resolve through the selected army's matching concurrent siege,
+instead of the legacy first-siege compatibility projection.
+
+The map now preserves a camp identity at engineering confirmation, so two
+engineers cannot reserve the same runtime camp while both projects are still
+in progress.  The visible-army hit target cycles on repeated mouse clicks at
+the same location, and historical dead specialists no longer suppress the
+replacement-dispatch controls.
+
+Damaged field roads now create a persisted repair project.  The assigned
+engineer travels to the road endpoint, the road remains blocked during the
+separate repair duration, and only completion restores the original road ID.
+Runtime roads validate in both directions, including their reversed polyline.
+Focused field smoke passes 29 assertions, Macro March passes 19, and the
+three-process field construction restore runner passes.  A damaged road can
+now be selected by map hit testing and sent through the visible repair action;
+the macro test labels that injected mouse/button sequence as automation. This
+is still not a complete R2 play flow: bridge classification, patrol/ambush
+settlement, road-damage auto-resume, full normal-input playthrough and real
+media remain open.
+
+### R2 concurrency and safe-projection follow-up
+
+The controller now owns one shared world clock for all macro armies, field
+projects and sieges. The map is presentation-only and no longer advances each
+visible army, so observing a second army cannot change time accumulation.
+Each order retains its own fractional-millisecond remainder. Parallel sieges
+are settled by explicit city identity; finishing, losing or retreating one
+siege no longer consumes the other city's record. The macro read model is now
+a safe projection (cities and player-visible siege facts only), rather than a
+path to hidden patrol data. Field restore also rejects dangling road, camp,
+project and specialist references before replacing live state.
+
+Focused parsing, R2 field smoke (20), R1 war smoke (15), and the independent
+field persistence chain pass after this change. This is still an engineering
+checkpoint: the normal map has not yet gained the required player-drawn
+engineering workflow, active patrol/ambush settlement, real system-input
+playthrough, screenshots or video. It is not a complete R2 delivery or player
+acceptance.
+
+The formal outer-city map now presents every active army, runtime roads,
+completed camps, and living specialist roles in the same projection. Main,
+field and damaged roads are visibly distinct; hidden patrol authority remains
+excluded. This is clarity work only: it does not turn the unfinished fixed
+engineering shortcut into the required player-drawn construction interaction.
+
+### R2 runtime-road command checkpoint
+
+Completed field roads now validate through the same controller path used by
+macro commands, including their persisted polyline and computed march time.
+Unfinished or damaged field roads are rejected before a food transaction. The
+map's engineering action selects a living idle engineer and accepts a player
+drawn route; its endpoint can be an existing point or a newly named runtime
+camp. Completed camps retain their actual endpoint coordinate and appear in
+the map's selectable point projection. R2 field smoke now has 22 assertions,
+including dynamic-road validation and a non-authored camp endpoint.
+
+This is a source-level checkpoint, not proof of the complete normal-input
+journey: selected-army command targeting, specialist continuous movement,
+bridge classification, repair arrival, patrol encounters and media remain
+open.
+
+### R2 selected-army command checkpoint
+
+The outer-city map now selects an army by its rendered marker and retains that
+`army_id` for route drafting, stationed follow-up and siege retreat. Selected
+markers are visibly highlighted. This removes the normal-map first-army
+default while retaining the compatibility projection used by older callers.
+The macro adapter now forwards an explicit siege city for retreat.
+
+### R2 key-event persistence checkpoint
+
+The world-advance transaction now snapshots before field mutation and publishes
+an immediate V5 checkpoint when an engineering project completes or a field
+engagement changes specialist state, even with no siege tick. A failed publish
+restores both army and war snapshots. Existing R2 smoke and the independent
+three-process engineering restore runner pass after this change.
+
+### R2 specialist position and fog checkpoint
+
+Specialists now persist start, target and current world coordinates, with
+distance-based movement duration and interpolation under the shared clock.
+Scout vision uses the persisted coordinate plus a finite range. Fog no longer
+converts a never-seen patrol into historical knowledge merely because the
+projection refreshed. The map renders specialists at their actual current
+position. R2 smoke now has 23 assertions, including continuous movement and
+the never-observed fog boundary.
+
+### R2 formal draft-contract checkpoint
+
+The map now normalizes every authoritative runtime road into a stable UI draft
+with `route_id`, `target_point_id` and `points`; confirmation no longer reads
+missing legacy route fields. Engineering drag release creates a cancellable
+draft and only its explicit confirmation spends resources or creates a project.
+The macro runner has 16 assertions, including automated formal map-draft and
+engineering-draft-to-controller coverage. This is automated UI wiring, not
+system-input media.
+
+### R2 continuation checkpoint
+
+Specialists now move over shared logical milliseconds rather than jumping to a
+target in one simulation call. A scout only gains enemy knowledge at arrival;
+contact with the finite patrol records a last report and marks the specialist
+lost. An engineer killed while building leaves its project interrupted, not
+silently completed. The formal outer-city UI exposes food-backed scout and
+engineer dispatch plus a visible side-road/camp construction action through
+the existing narrow dispatch adapter.
+
+`run_field_tactics_r2_smoke.gd` now passes 20 assertions. New
+`run_field_tactics_r2_persistence_smoke.gd` runs three independent processes:
+construction is saved mid-progress, restored and completed, then cold-restored
+with its road and camp intact. The remaining R2 gap is army-versus-patrol
+encounter/ambush settlement and its player-operable route/repair presentation;
+this is not reported as a completed playable battle loop.
+
+R2 introduces a persistent `FieldTacticsState` nested under the existing
+`WarLoopState`: static roads enter a runtime graph, while field roads, camps,
+specialists, construction projects, patrol facts, and player-facing last-known
+intel live in the same V5-published authority. `ConstructionController` still
+owns food/resource commits and the persistence checkpoint. An R1 war snapshot
+is normalized to the R2 nested representation before restore postconditions
+are checked, so migration does not change an otherwise valid old save into a
+false failure.
+
+`ArmyRegistry` no longer blocks macro orders globally: two distinct formation
+sets can issue independently, and snapshot validation rejects any formation
+identity shared by two non-closed macro armies. The macro map advances every
+active army, while existing R1 single-army read access remains as a compatibility
+projection. `get_field_tactics_read_model()` never exposes an unobserved
+patrol's location or strength.
+
+Focused `run_field_tactics_r2_smoke.gd` passes 19 assertions for independent
+orders, duplicate formation rejection, fog knowledge boundaries, specialist
+resource dispatch, construction/road/camp state, damage/repair, R1 migration,
+and formal V5 cold restore. `run_macro_march_r0_smoke.gd` (14),
+`run_war_loop_r1_smoke.gd` (15), and the three-process
+`run_v5_campaign_persistence_smoke.gd` also pass. This is a greybox engineering
+checkpoint: multi-city simultaneous siege/road encounters, enemy patrol combat
+resolution, system-input playthrough, screenshots, and recording remain open.
+It is not Founder acceptance or a completed tactical-release claim.
+
+## WAR_LOOP_BATCH_R1 formal-scene wiring checkpoint (2026-09-07)
+
+The `a5e7cc1` candidate had four confirmed formal-wiring defects despite the
+existing domain smokes: opening the outer-city view disabled the controller
+clock; a CLOSED macro army was mistaken for the current army; per-frame
+millisecond rounding varied siege outcomes; and enemy-city arrival lost its
+arrival flag after being replaced by a siege/surrender result, skipping the
+mandatory synchronous checkpoint.
+
+The outer-city view now hides/cancels city interaction without disabling the
+authoritative controller. Controller and macro-view frame deltas retain a
+sub-millisecond carry until whole logical milliseconds are available; pause
+does not bank time and speed is applied once. CLOSED armies remain historical
+records but are excluded from the commandable read model. Stationed follow-up
+orders also archive their completed predecessor. Enemy arrival preserves a
+separate commit fact so siege creation or immediate occupation is published
+before the method returns; a final-read failure reuses V5 latest-generation
+validation before deciding it was not durable.
+
+New focused evidence: `run_war_loop_formal_scene_smoke.gd` passes 10 assertions
+for the real formal entry, outer-city ticking, return/pause behavior, seven
+losses to CLOSED then reissue, and 30/60/irregular frame equivalence. The new
+three-process `run_war_loop_arrival_persistence_smoke.gd` passes 3 assertions
+for immediate Redcliff siege, first-city completion/Silverford surrender, and
+new-process double-city restore. This remains engineering and headless formal
+scene evidence, not real system-input media or Founder acceptance.
+
+The local source branch was then ordinarily pushed and read back as
+`origin/codex/txwzs-war-loop-r1` at `1fd2014afee19dd7465d308b74eb39ff24d39e92`.
+The remote review snapshot `df754e2c` remains a content-equivalent prior
+snapshot with different history; it was not merged. A fresh remote clone was
+started but its object transfer stalled after the ref query, so clone-based
+verification is `BLOCKED_NETWORK_AFTER_REF_VERIFY`; the remote SHA itself was
+verified and the local bundle remains available for independent review.
+
+## WAR_LOOP_BATCH_R1 deterministic/double-city/disk checkpoint (2026-09-07)
+
+Local candidate `f3249dc` now has a follow-up working checkpoint (not yet a
+remote-reviewed revision). `ArmyRegistry` schema 4 keeps immutable original
+macro orders in history when a retreat creates a separate reverse-route order;
+complete losses close the army rather than storing a zero-member active army.
+The war state rejects malformed nested city/siege fields, retains damaged gate
+and defender facts on failed siege, and gives simultaneous attacker/defender
+elimination to the attacker-failed branch.
+
+Redcliff and Silverford are now both required enemy cities: Redcliff retains
+its River Lords story ownership but begins under Border Rebels military control;
+Silverford remains configured for automatic surrender. The level clears only
+after both military controllers become player. The focused war-loop runner now
+has 15 assertions, including the reported timing, 7+7 formation, single-loss,
+mutual-destruction, gate persistence, immutable-return-order, malformed nested
+snapshot, and double-city conditions. A separate 3-assertion runner launched
+three isolated Godot processes against one V5 directory and recovered active
+siege tick 1 → tick 2 exactly once.
+
+This is an engineering/cold-recovery checkpoint only. A candidate `e0eec91`
+window was launched with a per-run isolated save and exact title identity, but
+the available desktop automation could only enumerate a pre-existing R1E Godot
+window, not the candidate window. No input was sent to either process and the
+identified candidate process was terminated normally. Real normal-input media,
+Founder acceptance, deployment, Meshy work, and any fog/engineer/siege-expansion
+work remain open. Remote source sync remains unverified until a later ordinary
+push and remote SHA check succeeds. The final authorized ordinary push on
+2026-09-07 used non-interactive HTTPS with a 10-second connect and 15-second
+low-speed bound; it failed with `Operation too slow` before any bytes arrived.
+No credential was read, no remote ref was created, and no force/merge/deploy
+operation was attempted. `SOURCE_SYNC=BLOCKED_NETWORK`.
+
+## WAR_LOOP_BATCH_R1 corrective checkpoint (2026-09-06)
+
+`a800a84` corrects the first verified WAR_LOOP defects: siege advancement is
+owned by `ConstructionController` rather than the macro presentation control,
+uses persisted sub-tick remainder instead of a forced tick per render update,
+does not double-drive from the modal, preserves formation identity during
+rear-first attrition, allows zero survivors, resolves simultaneous annihilation
+as failure, and persists damaged gate/guard facts after a failed siege.
+
+The existing Macro March and V5 persistence runners pass after this checkpoint.
+The required dedicated timing-equivalence, multi-required-city, and siege
+cross-process-disk cases remain open; normal-input evidence is also open.
+The review remote was configured as `origin` for the authorized repository,
+but two normal non-interactive push attempts timed out while connecting and
+produced no remote SHA. No force push, credential read, merge, or deployment
+was attempted.
+
+## WAR_LOOP_BATCH_R1 siege, occupation, and recovery candidate (2026-09-06)
+
+WAR_LOOP_BATCH_R1 is a local engineering candidate on
+`codex/txwzs-war-loop-r1`, based on `a5fda3dd`. It extends the outer-city
+theatre with Redcliff (required) and Silverford (optional) enemy cities. A
+macro army that reaches an enemy city first evaluates the persisted surrender
+configuration; a refusal enters deterministic gate-then-guard combat using
+the committed unit HP, attack, armor, city gate, and guard facts. This is a
+new durable war-loop authority, not a shortcut through the legacy C0 result
+writer.
+
+`ArmyRegistry` schema 3 adds SIEGING and RETREATING phases while retaining the
+same macro army and order. `V5CampaignSnapshot` schema 7 persists enemy
+military control, gate/guard facts, active siege tick, losses, and idempotent
+resolution IDs; V6 saves migrate to an empty WarLoop state and do not invent a
+campaign order. Occupation changes military control only; story ownership is
+retained. A required-city set makes Redcliff the single-city clear condition;
+the data model supports a future multi-city required set without treating
+optional Silverford as a victory requirement.
+
+Focused WAR_LOOP_R1 smoke passes 9 assertions (surrender, attack, cold
+restore, breach/guards/occupation, victory rule, casualties, and retreat).
+Existing Macro March R0 movement and three-process persistence smokes also
+pass. These are engineering checks, not a Founder acceptance. No verified
+normal-input screenshots or continuous player recording are provided in this
+candidate; no merge, push, deployment, 3D modelling, fog, or expanded strategy
+systems were performed.
+
+`WAR_LOOP_BATCH_R1=ENGINEERING_CANDIDATE_REAL_INPUT_MEDIA_NOT_PROVIDED`
+
+## Macro March R0 outer-city greybox (2026-09-06)
+
+Macro March R0 is a local engineering candidate on
+`codex/txwzs-macro-march-r0`. It introduces one replaceable theatre Resource
+with Blackstone City, Northwatch Garrison, Reedbank Garrison, two selectable
+Blackstone-to-Northwatch road paths, and one demonstrable blockable branch
+road. The normal city now enters the macro screen through `外城军令`; the
+legacy Blackstone MVP scene remains source-only and no longer receives the
+formal city entry or writes strategic army state.
+
+`ArmyRegistry` schema 2 holds the stable army, issued order, snapped road
+polyline, exact selected formation snapshots, fee, logical progress, and
+blocked/stationed phase. `GarrisonState` extracts exact selected formations
+instead of using the legacy aggregate tail-removal path. `ConstructionController`
+keeps the food transaction, rollback snapshot, registry mutation, and runtime
+save checkpoint as one boundary. The current expedition food formula is reused
+only as temporary macro-march balancing, not as a final supply design.
+
+Focused Macro March smoke passes 14 assertions. A three-process isolated-disk
+smoke passes: process A persists a blocked order, B restores it, resumes and
+arrives, and C cold-restores the stationed army. Existing V5 army and R1E
+focused suites also pass. This is not siege victory, enemy-city attack,
+occupation, energy/ability, 3D-art, Founder acceptance, merge, push, or
+deployment.
+
+The current desktop environment contains a separate user Godot window that
+could not be displaced safely by the available UI controller. The real
+candidate window was started and visually inspected during preflight, but real
+mouse-drawn draft/marching/blocked screenshots and a 45–90 second system-input
+video are **not provided**. No script/test state was relabelled as real-input
+media.
+
+`MACRO_MARCH_R0=ENGINEERING_PARTIAL_REAL_INPUT_MEDIA_NOT_PROVIDED`
+
+## R1E expedition reconciliation (2026-09-06)
 
 This section records the current expedition branch without re-labelling it as a
 full-game acceptance.
 
-- **Historical reconciliation baseline:** `147430ed1d4fe584abcb423755da4455e5d5f95c`
-  (Godot 4.5.1). The current reviewed source is the later
-  `4c3e501c16d1a882b996a6a96b2473128312d12c`; do not substitute this historical
-  baseline for the current source identity.
+- **Identity:** `codex/txwzs-expedition-visual-r1e` at
+  `147430ed1d4fe584abcb423755da4455e5d5f95c` (Godot 4.5.1).
 - **Engineering baseline:** the R1E causality smoke, C0 presentation smoke, and
   headless scene startup checks have passed. The focused R1E suite protects the
   city preparation, payment, persistence, retreat, victory, defeat, and reload
@@ -59,9 +1267,9 @@ full-game acceptance.
   permanent-general-death semantics, fog/disguise/mine system, weather, or
   full UI system was introduced here.
 
-At the time of this historical reconciliation, the suggested later gate was a
-normal-input siege victory followed by breach and occupation checks. It is not
-the current task and is not performed by this review snapshot.
+The next meaningful gate is to establish a normal-input route that can produce
+a real siege victory under the intended rules, then verify breach and
+occupation semantics without substituting a static result or a test-only win.
 
 ## TXWZS City Governance Interaction 001
 
@@ -718,3 +1926,36 @@ one 17.01-second continuous Godot recording are in `docs/m0/evidence/r0a/`.
 
 Founder live smoke remains pending. Do not push, merge, deploy, or start new
 gameplay from this result.
+
+## 2026-09-12 - Blackstone recovery and defense expansion R0
+
+Blackstone now has one formal aggregate population/recovery state under the
+existing campaign snapshot. A normal start accounts for available residents,
+production and construction workers, the garrison, external armies,
+specialists, training reservations and wounded. Training reserves people;
+formal battle settlement records wounded/fallen once; treatment pays existing
+food and advances on city time. Fallen are not recoverable.
+
+The field catalogue now includes fortresses and minefields beside roads,
+bridges, camps, watchtowers, arrow towers and barricades. A fortress protects
+one real stationed army and converts configured avoided casualties into durable
+facility damage. Minefields trigger on actual patrol movement segments, retain
+finite consumed charges and support faction-aware discovery and engineer
+clearing. Existing facilities can reach level two through a paid, interruptible,
+recoverable engineer project without changing identity or receiving a free
+repair.
+
+Blackstone, Silverford and occupied Redcliff now read one centralized location
+capability definition. Only Blackstone exposes long-term city construction;
+Silverford retains its resource-city supply/replenishment role; Redcliff remains
+a garrison/order point after occupation.
+
+Focused and affected regressions, editor import, isolated startup and the
+1152x648 graphical layout runner pass. The deterministic continuous runner
+covers sourced invasion, defense, treatment, re-dispatch, macro siege and
+Redcliff occupation without editing combat outcome or control. It uses formal
+time acceleration, so a single normal-speed human journey and player-feel
+acceptance remain `OPEN`.
+
+Disease, seasons, public-order depth, civilian officials, equipment and trade
+remain explicit functional-edition gaps.

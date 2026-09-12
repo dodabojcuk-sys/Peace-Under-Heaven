@@ -79,6 +79,38 @@ static func create_for_mission(
 	return snapshot
 
 
+static func create_for_mission_count(
+	transaction_id_value: StringName,
+	day_value: int,
+	mission: MissionDefinition,
+	enemy_count_value: int
+) -> EnemyForceSnapshot:
+	if enemy_count_value <= 0 or mission == null or not mission.is_valid():
+		return null
+	var snapshot := EnemyForceSnapshot.new()
+	snapshot.transaction_id = transaction_id_value
+	snapshot.snapshot_day = day_value
+	snapshot.enemy_count = enemy_count_value
+	snapshot.fortification_level = 0
+	var authored_total := maxi(mission.get_enemy_total(), 1)
+	var front_enemy := clampi(
+		roundi(float(enemy_count_value * mission.front_enemy_count) / float(authored_total)),
+		0,
+		enemy_count_value
+	)
+	snapshot.route_states = {
+		FRONT_ROUTE: {
+			"enemy_members": front_enemy,
+			"gate_hp": mission.front_gate_hp,
+		},
+		SIDE_ROUTE: {
+			"enemy_members": enemy_count_value - front_enemy,
+			"gate_hp": mission.side_gate_hp,
+		},
+	}
+	return snapshot
+
+
 func get_digest() -> String:
 	var front: Dictionary = route_states.get(FRONT_ROUTE, {})
 	var side: Dictionary = route_states.get(SIDE_ROUTE, {})

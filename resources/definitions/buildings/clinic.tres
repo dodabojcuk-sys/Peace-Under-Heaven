@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="BuildingDefinition" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/content/building_definition.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/content/building_capability.gd" id="2"]
+
+[sub_resource type="Resource" id="medical"]
+script = ExtResource("2")
+capability_type = &"medical_capacity"
+amount = 6
+
+[resource]
+script = ExtResource("1")
+definition_id = &"building.clinic.t1"
+display_name = "医舍"
+building_type = "医疗建筑"
+description = "提供 6 人疾病照护容量，并改善伤员治疗效率"
+build_days = 1
+footprint = Vector2i(2, 2)
+road_anchor_offsets = Array[Vector2i]([Vector2i(-1, 0), Vector2i(-1, 1), Vector2i(2, 0), Vector2i(2, 1), Vector2i(0, -1), Vector2i(1, -1), Vector2i(0, 2), Vector2i(1, 2)])
+requires_road = true
+wood_cost = 45
+food_cost = 4
+capabilities = Array[ExtResource("2")]([SubResource("medical")])
+body_color = Color(0.72, 0.68, 0.56, 1)
+outline_color = Color(0.32, 0.28, 0.22, 1)

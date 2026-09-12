@@ -50,8 +50,7 @@ The following are intentionally still open and were not introduced by this
 reconciliation:
 
 - shared-energy capacity, recovery, UI, and migration;
-- active ability timing, cost, interruption, and per-use off-road continuation
-  or escape handling (no `non-road expiry` mechanic);
+- active ability timing, cost, interruption, and non-road expiry;
 - replenishment economy and recovery;
 - permanent general death semantics;
 - main-road traversal effects;
@@ -99,11 +98,10 @@ not demonstrate a normal-input victory, gate breach, occupation, or Founder
 acceptance. A future real victory must be established through the intended
 player conditions rather than a static image or a test-only win fixture.
 
-## Historical handoff boundary
+## Handoff boundary
 
-This paragraph records the scope that followed the original reconciliation. It
-is historical evidence, not the current instruction. The current review task
-first aligns the macro-command contract and produces an independent review
-snapshot; it does not tune a win path, change siege conditions, or validate
-occupation. The existing single settlement and expedition ownership boundaries
-remain mandatory.
+The next engineering task is to reconcile the intended ordinary siege entry
+conditions with an actual winnable player path, then validate breach and
+occupation semantics. It must preserve the existing single settlement and
+expedition ownership boundaries. This reconciliation makes no remote change and
+does not authorize a GitHub push.

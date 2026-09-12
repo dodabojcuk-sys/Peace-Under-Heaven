@@ -1,0 +1,1394 @@
+extends SceneTree
+
+
+const THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
+const FIELD_TACTICS_STATE = preload("res://scripts/war/field_tactics_state.gd")
+const WAR_LOOP_STATE = preload("res://scripts/war/war_loop_state.gd")
+const ARMY_REGISTRY = preload("res://scripts/army/army_registry.gd")
+const CITY_SCENE: PackedScene = preload("res://scenes/blank_map.tscn")
+const WAR_LOOP_RULES: WarLoopRules = preload("res://resources/war/war_loop_r1_rules.tres")
+
+var failures: Array[String] = []
+var assertions := 0
+var _scenario_seed_snapshot: Dictionary = {}
+
+
+func _initialize() -> void:
+	THEATER.use_regression_definition_for_tests()
+	call_deferred("_run")
+
+
+func _run() -> void:
+	_run_parallel_army_contract()
+	_run_field_tactics_contract()
+	_run_r1_war_snapshot_migration()
+	await _capture_scenario_seed_snapshot()
+	await _run_formal_controller_contract()
+	await _run_damaged_road_resume_contract()
+	await _run_mid_segment_camp_transfer_contract()
+	await _run_temporary_rebreak_and_time_contract()
+	await _run_patrol_encounter_contract()
+	_finish()
+
+
+## The formal controller contracts are deliberately independent scenarios.
+## When an explicit V5 directory is supplied, each scene would otherwise load
+## the previous scenario's auto-published campaign and turn a later setup
+## failure into an unrelated empty route assertion.  Capture one fresh
+## canonical campaign, then restore it through the production V5 boundary for
+## every scenario.  Cross-process persistence remains covered by its worker.
+func _capture_scenario_seed_snapshot() -> void:
+	var seed_scene := CITY_SCENE.instantiate()
+	root.add_child(seed_scene)
+	await process_frame
+	await process_frame
+	var seed_city: Node = seed_scene.get_node("ConstructionController")
+	_scenario_seed_snapshot = seed_city.export_v5_campaign_snapshot()
+	if _scenario_seed_snapshot.is_empty():
+		failures.append("Field R2 正式场景无法导出独立测试基线快照")
+	seed_scene.queue_free()
+	await process_frame
+
+
+func _new_scenario_city() -> Dictionary:
+	var scene := CITY_SCENE.instantiate()
+	root.add_child(scene)
+	await process_frame
+	await process_frame
+	var city: Node = scene.get_node("ConstructionController")
+	if not _scenario_seed_snapshot.is_empty():
+		var restored: Dictionary = city.restore_v5_campaign_snapshot(_scenario_seed_snapshot)
+		if not bool(restored.get("success", false)):
+			failures.append("Field R2 正式场景无法恢复独立测试基线快照")
+	return {"scene": scene, "city": city}
+
+
+func _run_parallel_army_contract() -> void:
+	var registry: ArmyRegistry = ARMY_REGISTRY.new()
+	var left: Array = [{"formation_id": &"left", "definition_id": &"infantry", "display_name": "左队", "member_count": 6, "max_members": 6}]
+	var right: Array = [{"formation_id": &"right", "definition_id": &"infantry", "display_name": "右队", "member_count": 7, "max_members": 7}]
+	var first := registry.create_macro_march(&"player", &"blackstone_city", &"blackstone_city", &"northwatch_garrison", &"road.a", [Vector2i.ZERO, Vector2i.ONE], {&"infantry": 6}, left, 1, 100)
+	var second := registry.create_macro_march(&"player", &"blackstone_city", &"blackstone_city", &"reedbank_garrison", &"road.b", [Vector2i.ZERO, Vector2i(2, 1)], {&"infantry": 7}, right, 1, 100)
+	_check(not first.is_empty() and not second.is_empty() and registry.get_active_macro_armies().size() == 2, "两支不同编队可并行持有独立军令")
+	var duplicate_snapshot := registry.get_snapshot()
+	var duplicate_army: Dictionary = Dictionary(duplicate_snapshot.armies_by_id[second.army_id]).duplicate(true)
+	duplicate_army.macro_march.formation_snapshots = left.duplicate(true)
+	duplicate_army.units_by_definition_id = {&"infantry": 6}
+	duplicate_snapshot.armies_by_id[second.army_id] = duplicate_army
+	var duplicate_validation := ArmyRegistry.validate_snapshot(duplicate_snapshot, [&"infantry"], false)
+	_check(not bool(duplicate_validation.valid) and StringName(duplicate_validation.error_id) == &"DUPLICATE_MACRO_FORMATION", "快照拒绝同一编队同时属于两支军队")
+	var legacy_snapshot := registry.get_snapshot()
+	Dictionary(legacy_snapshot.armies_by_id[first.army_id]).macro_march.erase("route_segments")
+	var migrated_single_route := ArmyRegistry.validate_snapshot(legacy_snapshot, [&"infantry"], false)
+	var legacy_path_snapshot := registry.get_snapshot()
+	Dictionary(legacy_path_snapshot.armies_by_id[first.army_id]).macro_march.route_id = &"path.road.a:f|road.b:r"
+	Dictionary(legacy_path_snapshot.armies_by_id[first.army_id]).route_id = &"path.road.a:f|road.b:r"
+	Dictionary(legacy_path_snapshot.armies_by_id[first.army_id]).macro_march.erase("route_segments")
+	var migrated_path_route := ArmyRegistry.validate_snapshot(legacy_path_snapshot, [&"infantry"], false)
+	_check(
+		bool(migrated_single_route.get("valid", false))
+			and Array(Dictionary(Dictionary(migrated_single_route.snapshot).armies_by_id[first.army_id]).macro_march.get("route_segments", [])).size() == 1
+			and bool(migrated_path_route.get("valid", false))
+			and Array(Dictionary(Dictionary(migrated_path_route.snapshot).armies_by_id[first.army_id]).macro_march.get("route_segments", [])).size() == 2,
+		"旧单路与复合路径句柄快照恢复时迁移为显式有向段序列"
+	)
+
+
+func _run_field_tactics_contract() -> void:
+	var state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	state.initialize_from_theater(THEATER.get_points(), THEATER.get_routes())
+	var progress_path_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	progress_path_state.initialize_from_theater(
+		{&"start": {"world_position": Vector2i(0, 0)}, &"bend": {"world_position": Vector2i(100, 100)}, &"camp": {"world_position": Vector2i(0, 200)}}, {}
+	)
+	progress_path_state.roads_by_id = {
+		&"road.start.bend": {"road_id": &"road.start.bend", "source_point_id": &"start", "target_point_id": &"bend", "route_world_points": [Vector2i(0, 0), Vector2i(100, 0), Vector2i(100, 100)], "road_kind": FieldTacticsState.ROAD_NORMAL, "state": FieldTacticsState.ROAD_OPEN, "built": true},
+		&"road.start.camp": {"road_id": &"road.start.camp", "source_point_id": &"start", "target_point_id": &"camp", "route_world_points": [Vector2i(0, 0), Vector2i(0, 200)], "road_kind": FieldTacticsState.ROAD_NORMAL, "state": FieldTacticsState.ROAD_OPEN, "built": true},
+	}
+	var progress_path := progress_path_state.plan_runtime_path_from_progress([{"road_id": &"road.start.bend", "forward": true}], 1000, 500, &"camp")
+	var progress_points: Array = Array(progress_path.get("points", []))
+	_check(
+		bool(progress_path.get("valid", false)) and Vector2i(progress_path.get("current_position", Vector2i.ZERO)) == Vector2i(100, 0)
+			and progress_points.size() >= 3 and Vector2i(progress_points[0]) == Vector2i(100, 0) and Vector2i(progress_points[1]) == Vector2i(0, 0),
+		"临时路径从有向弯道路段中点沿原道路回退接入路网，不跳到或直切路口"
+	)
+	var bridge_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	bridge_state.initialize_from_theater(THEATER.get_points(), THEATER.get_routes(), [Rect2i(515, 350, 120, 145)])
+	var bridge_engineer := bridge_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"blackstone_city")
+	var bridge_project := bridge_state.begin_road_project(
+		StringName(bridge_engineer.specialist_id), &"blackstone_city", &"camp.site.bridge",
+		[Vector2i(150, 430), Vector2i(475, 420), Vector2i(710, 410)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var camp_validation_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	camp_validation_state.initialize_from_theater(THEATER.get_points(), THEATER.get_routes(), [Rect2i(515, 350, 120, 145)])
+	var camp_validation_engineer := camp_validation_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"blackstone_city")
+	var camp_validation_before: Dictionary = camp_validation_state.get_snapshot()
+	var outside_camp_preview := camp_validation_state.preview_road_project(
+		StringName(camp_validation_engineer.specialist_id), &"blackstone_city", &"", [Vector2i(150, 430), Vector2i(-300, 430)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var water_camp_preview := camp_validation_state.preview_road_project(
+		StringName(camp_validation_engineer.specialist_id), &"blackstone_city", &"", [Vector2i(150, 430), Vector2i(550, 425)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var rejected_camp_submit := camp_validation_state.begin_road_project(
+		StringName(camp_validation_engineer.specialist_id), &"blackstone_city", &"", [Vector2i(150, 430), Vector2i(550, 425)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	_check(
+		not bool(outside_camp_preview.get("valid", true))
+			and str(outside_camp_preview.get("error", "")).contains("战区范围")
+			and not bool(water_camp_preview.get("valid", true))
+			and str(water_camp_preview.get("error", "")).contains("可通行陆地")
+			and not bool(rejected_camp_submit.get("success", false))
+			and camp_validation_state.get_snapshot() == camp_validation_before,
+		"新驻点在越界或水域时由同一权威预览和正式提交拒绝，且不保留营地、道路或资源副作用"
+	)
+	_check(
+		StringName(bridge_project.get("road_kind", &"")) == FieldTacticsState.ROAD_NORMAL
+			and Array(bridge_project.get("segment_plans", [])).size() == 3
+			and StringName(Dictionary(Array(bridge_project.get("segment_plans", []))[0]).get("road_kind", &"")) == FieldTacticsState.ROAD_NORMAL
+			and StringName(Dictionary(Array(bridge_project.get("segment_plans", []))[1]).get("road_kind", &"")) == FieldTacticsState.ROAD_BRIDGE
+			and StringName(Dictionary(Array(bridge_project.get("segment_plans", []))[2]).get("road_kind", &"")) == FieldTacticsState.ROAD_NORMAL
+			and int(bridge_project.get("required_milliseconds", 0)) == 21000,
+		"战区 Resource 水域命中的工程线拆为道路、桥梁、道路的连续施工计划"
+	)
+	var reinforced_bridge_segments := bridge_state._build_construction_segment_plans(
+		&"project.reinforced", &"blackstone_city", &"camp.site.reinforced",
+		[Vector2i(150, 430), Vector2i(475, 420), Vector2i(710, 410)], FieldTacticsState.ROAD_REINFORCED, 99
+	)
+	_check(
+		reinforced_bridge_segments.size() == 3
+			and StringName(Dictionary(reinforced_bridge_segments.front()).get("road_kind", &"")) == FieldTacticsState.ROAD_REINFORCED
+			and StringName(Dictionary(reinforced_bridge_segments[1]).get("road_kind", &"")) == FieldTacticsState.ROAD_BRIDGE
+			and StringName(Dictionary(reinforced_bridge_segments.back()).get("road_kind", &"")) == FieldTacticsState.ROAD_REINFORCED,
+		"加固道路跨水时两岸保留加固材料，仅水域段成为桥梁"
+	)
+	var bridge_segments: Array = Array(bridge_project.get("segment_plans", []))
+	var bridge_first_advance := bridge_state.advance_world(5000)
+	var bridge_first_open := bridge_state.is_route_open(StringName(Dictionary(bridge_segments[0]).get("road_id", &"")))
+	var bridge_middle_closed := not bridge_state.is_route_open(StringName(Dictionary(bridge_segments[1]).get("road_id", &"")))
+	var bridge_engineer_position := Vector2i(Dictionary(bridge_state.specialists_by_id[StringName(bridge_engineer.specialist_id)]).get("world_position", Vector2i.ZERO))
+	var bridge_start_position := Vector2i(Array(Dictionary(bridge_segments[1]).get("route_world_points", []))[0])
+	bridge_state.advance_world(11000)
+	var bridge_middle_open := bridge_state.is_route_open(StringName(Dictionary(bridge_segments[1]).get("road_id", &"")))
+	var bridge_last_closed := not bridge_state.is_route_open(StringName(Dictionary(bridge_segments[2]).get("road_id", &"")))
+	bridge_state.advance_world(5000)
+	_check(
+		bridge_first_open and bridge_middle_closed and bridge_middle_open and bridge_last_closed
+			and bridge_engineer_position == bridge_start_position
+			and bridge_state.is_route_open(StringName(Dictionary(bridge_segments[2]).get("road_id", &""))),
+		"连续施工按道路、桥梁、道路顺序开放，未完成后段不会提前通军"
+	)
+	var first_bridge_plan: Dictionary = Dictionary(bridge_segments[0])
+	_check(
+		bridge_state._point_position(StringName(first_bridge_plan.get("target_point_id", &""))) == Vector2i(Array(first_bridge_plan.get("route_world_points", [])).back()),
+		"自动生成的桥头连接点解析为实际路段端点，而非世界原点"
+	)
+	_check(
+		Array(bridge_first_advance.get("opened_road_ids", [])).size() == 1
+			and StringName(Array(bridge_first_advance.get("opened_road_ids", []))[0]) == StringName(Dictionary(bridge_segments[0]).get("road_id", &"")),
+		"每个施工路段首次开放都会产生可发布的权威道路事件"
+	)
+	var travel_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	travel_state.initialize_from_theater(THEATER.get_points(), THEATER.get_routes())
+	travel_state.patrols_by_id.clear()
+	var traveling_engineer := travel_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"blackstone_city")
+	var travel_project := travel_state.begin_road_project(
+		StringName(traveling_engineer.specialist_id), &"northwatch_garrison", &"camp.site.travel",
+		[Vector2i(790, 170), Vector2i(860, 240)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var before_travel := Dictionary(travel_state.specialists_by_id[StringName(traveling_engineer.specialist_id)]).duplicate(true)
+	travel_state.advance_world(int(before_travel.get("move_remaining_milliseconds", 0)))
+	var arrived_for_work := Dictionary(travel_state.specialists_by_id[StringName(traveling_engineer.specialist_id)]).duplicate(true)
+	travel_state.advance_world(2500)
+	var working_engineer := Dictionary(travel_state.specialists_by_id[StringName(traveling_engineer.specialist_id)]).duplicate(true)
+	_check(
+		not travel_project.is_empty()
+			and StringName(before_travel.get("phase", &"")) == FieldTacticsState.SPECIALIST_MOVING
+			and StringName(arrived_for_work.get("phase", &"")) == FieldTacticsState.SPECIALIST_BUILDING
+			and Vector2i(arrived_for_work.get("world_position", Vector2i.ZERO)) == Vector2i(790, 170)
+			and Vector2i(working_engineer.get("world_position", Vector2i.ZERO)) != Vector2i(790, 170),
+		"工程师先到达施工起点，再沿当前陆地作业段推进实际位置"
+	)
+	var interrupted_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	interrupted_state.initialize_from_theater(
+		{&"resume.start": {"world_position": Vector2i(100, 100)}, &"resume.target": {"world_position": Vector2i(420, 100)}}, {}
+	)
+	var lost_engineer := interrupted_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"resume.start")
+	var interrupted_project := interrupted_state.begin_road_project(
+		StringName(lost_engineer.specialist_id), &"resume.start", &"resume.target",
+		[Vector2i(100, 100), Vector2i(420, 100)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var lost_engineer_state := Dictionary(interrupted_state.specialists_by_id[StringName(lost_engineer.specialist_id)])
+	lost_engineer_state.alive = false
+	lost_engineer_state.phase = FieldTacticsState.SPECIALIST_LOST
+	interrupted_state.specialists_by_id[StringName(lost_engineer.specialist_id)] = lost_engineer_state
+	interrupted_state.advance_world(1)
+	var replacement_engineer := interrupted_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"resume.start")
+	var resumed_project := interrupted_state.resume_interrupted_project(StringName(replacement_engineer.specialist_id), StringName(interrupted_project.project_id))
+	interrupted_state.advance_world(int(interrupted_project.required_milliseconds))
+	_check(
+		StringName(Dictionary(interrupted_state.projects_by_id[StringName(interrupted_project.project_id)]).get("engineer_id", &"")) == StringName(replacement_engineer.specialist_id)
+			and StringName(resumed_project.get("project_id", &"")) == StringName(interrupted_project.project_id)
+			and interrupted_state.is_route_open(StringName(interrupted_project.road_id))
+			and not interrupted_state.camps_by_id.is_empty(),
+		"工程师损失后可由新工程师接续原工程，不重建道路、营地或工程身份"
+	)
+	var land_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	land_state.initialize_from_theater(
+		{&"land.start": {"world_position": Vector2i(80, 300)}, &"land.target": {"world_position": Vector2i(720, 300)}},
+		{}, [Rect2i(300, 180, 190, 240)]
+	)
+	var land_engineer := land_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"land.start")
+	var land_move := land_state.order_specialist_move(StringName(land_engineer.specialist_id), &"land.target")
+	var land_route := Array(land_move.get("move_route_world_points", []))
+	land_state.advance_world(int(land_move.get("move_total_milliseconds", 0)) / 2)
+	var land_midpoint := Vector2i(Dictionary(land_state.specialists_by_id[StringName(land_engineer.specialist_id)]).get("world_position", Vector2i.ZERO))
+	var land_route_clear := land_route.size() > 2
+	for point_index in range(1, land_route.size()):
+		land_route_clear = land_route_clear and not land_state._route_crosses_water([land_route[point_index - 1], land_route[point_index]])
+	_check(
+		land_route_clear and not land_state._point_is_in_water(land_midpoint),
+		"专家移动保存并执行绕水陆地路径，位置不会沿直线穿过水域"
+	)
+	var legacy_specialist_snapshot := land_state.get_snapshot()
+	Dictionary(legacy_specialist_snapshot.specialists_by_id[StringName(land_engineer.specialist_id)]).erase("move_route_world_points")
+	var restored_land_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	restored_land_state.initialize_from_theater(
+		{&"land.start": {"world_position": Vector2i(80, 300)}, &"land.target": {"world_position": Vector2i(720, 300)}},
+		{}, [Rect2i(300, 180, 190, 240)]
+	)
+	var restored_land_valid := restored_land_state.restore_snapshot(legacy_specialist_snapshot)
+	restored_land_state.initialize_from_theater(
+		{&"land.start": {"world_position": Vector2i(80, 300)}, &"land.target": {"world_position": Vector2i(720, 300)}},
+		{}, [Rect2i(300, 180, 190, 240)]
+	)
+	var restored_land_specialist := Dictionary(restored_land_state.specialists_by_id.get(StringName(land_engineer.specialist_id), {}))
+	_check(
+		restored_land_valid and StringName(restored_land_specialist.get("phase", &"")) == FieldTacticsState.SPECIALIST_MOVING
+			and Array(restored_land_specialist.get("move_route_world_points", [])).size() > 2,
+		"旧在途专家存档缺少路径时从保存位置重规划，避免回退为穿水直线"
+	)
+	var bridge_crossing_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	bridge_crossing_state.initialize_from_theater(
+		{&"bridge.start": {"world_position": Vector2i(80, 300)}, &"bridge.target": {"world_position": Vector2i(720, 300)}},
+		{}, [Rect2i(300, -180, 190, 1040)]
+	)
+	bridge_crossing_state.roads_by_id[&"road.bridge.bent"] = {
+		"road_id": &"road.bridge.bent", "source_point_id": &"bridge.west", "target_point_id": &"bridge.east",
+		"route_world_points": [Vector2i(299, 300), Vector2i(350, 230), Vector2i(440, 230), Vector2i(490, 300)],
+		"road_kind": FieldTacticsState.ROAD_BRIDGE, "state": FieldTacticsState.ROAD_OPEN,
+		"durability": 100, "max_durability": 100, "built": true,
+	}
+	var bridge_crossing_engineer := bridge_crossing_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"bridge.start")
+	var bridge_crossing_move := bridge_crossing_state.order_specialist_move(StringName(bridge_crossing_engineer.specialist_id), &"bridge.target")
+	var bridge_crossing_route: Array = Array(bridge_crossing_move.get("move_route_world_points", []))
+	_check(
+		not bridge_crossing_move.is_empty() and bridge_crossing_route.has(Vector2i(350, 230)) and bridge_crossing_route.has(Vector2i(440, 230)),
+		"专家跨越已开放弯桥时保存桥梁折线，不以桥头直线缩短路径"
+	)
+	var repair_land_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	repair_land_state.initialize_from_theater(
+		{&"repair.start": {"world_position": Vector2i(100, 100)}, &"repair.site": {"world_position": Vector2i(420, 100)}, &"repair.end": {"world_position": Vector2i(560, 100)}}, {}
+	)
+	repair_land_state.roads_by_id[&"road.repair.land"] = {
+		"road_id": &"road.repair.land", "source_point_id": &"repair.site", "target_point_id": &"repair.end",
+		"route_world_points": [Vector2i(420, 100), Vector2i(560, 100)],
+		"road_kind": FieldTacticsState.ROAD_NORMAL, "state": FieldTacticsState.ROAD_DAMAGED,
+		"durability": 0, "max_durability": 70, "built": true,
+	}
+	var repair_land_engineer := repair_land_state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"repair.start")
+	var repair_land_project := repair_land_state.begin_road_repair(StringName(repair_land_engineer.specialist_id), &"road.repair.land")
+	_check(
+		not repair_land_project.is_empty() and StringName(repair_land_project.get("target_point_id", &"")) == &"repair.site"
+			and Array(Dictionary(repair_land_state.specialists_by_id[StringName(repair_land_engineer.specialist_id)]).get("move_route_world_points", [])).size() >= 2,
+		"维修端点按工程师实际陆地路径选择，不要求先存在军队道路连接"
+	)
+	_check(state.is_route_open(&"road.blackstone.northwatch.ridge"), "主路进入运行时路网且默认可通行")
+	var multi_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison")
+	var multi_route_id := StringName(multi_path.get("route_id", &""))
+	_check(
+		bool(multi_path.get("valid", false))
+			and Array(multi_path.get("segments", [])).size() >= 2
+			and bool(state.validate_runtime_route(&"blackstone_city", &"reedbank_garrison", multi_route_id, Array(multi_path.get("points", []))).get("valid", false))
+			and int(multi_path.get("duration_milliseconds", 0)) == state.runtime_route_duration_milliseconds(multi_route_id),
+		"运行时路网将连续主路解析为有序路段路径，预览与权威时长使用同一条路径"
+	)
+	var lowland_points: Array = Array(Dictionary(state.roads_by_id[&"road.blackstone.northwatch.lowland"]).get("route_world_points", [])).duplicate(true)
+	var ridge_points: Array = Array(Dictionary(state.roads_by_id[&"road.blackstone.northwatch.ridge"]).get("route_world_points", [])).duplicate(true)
+	var northwatch_reedbank_points: Array = Array(Dictionary(state.roads_by_id[&"road.northwatch.reedbank"]).get("route_world_points", [])).duplicate(true)
+	var lowland_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison", [], &"road.blackstone.northwatch.lowland")
+	var ridge_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison", [], &"road.blackstone.northwatch.ridge")
+	_check(
+		bool(lowland_path.get("valid", false))
+			and bool(ridge_path.get("valid", false))
+			and StringName(Dictionary(Array(lowland_path.get("segments", [])).front()).get("road_id", &"")) == &"road.blackstone.northwatch.lowland"
+			and StringName(Dictionary(Array(ridge_path.get("segments", [])).front()).get("road_id", &"")) == &"road.blackstone.northwatch.ridge",
+		"同一起终点的两条多段路线按明确道路身份选择对应道路序列"
+	)
+	var explicit_ridge_path := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison", [], &"road.blackstone.northwatch.ridge")
+	var original_ridge := Dictionary(state.roads_by_id[&"road.blackstone.northwatch.ridge"]).duplicate(true)
+	var damaged_ridge := original_ridge.duplicate(true)
+	damaged_ridge.state = FieldTacticsState.ROAD_DAMAGED
+	state.roads_by_id[&"road.blackstone.northwatch.ridge"] = damaged_ridge
+	var explicit_damaged_ridge := state.plan_runtime_path(&"blackstone_city", &"reedbank_garrison", [], &"road.blackstone.northwatch.ridge")
+	state.roads_by_id[&"road.blackstone.northwatch.ridge"] = original_ridge
+	_check(
+		bool(explicit_ridge_path.get("valid", false))
+			and StringName(Dictionary(Array(explicit_ridge_path.get("segments", [])).front()).get("road_id", &"")) == &"road.blackstone.northwatch.ridge"
+			and not bool(explicit_damaged_ridge.get("valid", false))
+			and str(explicit_damaged_ridge.get("error", "")).contains("指定道路"),
+		"显式道路选择是权威硬约束：指定道路受损时拒绝，不静默回退到另一条同端点道路"
+	)
+	var long_path_state: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	var previous_point_id: StringName = &"long.route.00"
+	for segment_index in range(13):
+		var next_point_id := StringName("long.route.%02d" % (segment_index + 1))
+		var road_id := StringName("road.long.%02d" % segment_index)
+		long_path_state.roads_by_id[road_id] = {
+			"road_id": road_id,
+			"source_point_id": previous_point_id,
+			"target_point_id": next_point_id,
+			"route_world_points": [Vector2i(segment_index * 10, 0), Vector2i((segment_index + 1) * 10, 0)],
+			"road_kind": FieldTacticsState.ROAD_NORMAL,
+			"state": FieldTacticsState.ROAD_OPEN,
+			"durability": 70,
+			"max_durability": 70,
+			"built": true,
+			"project_id": &"",
+		}
+		previous_point_id = next_point_id
+	var long_path := long_path_state.plan_runtime_path(&"long.route.00", &"long.route.13", [Vector2i(0, 0), Vector2i(130, 0)])
+	_check(
+		bool(long_path.get("valid", false)) and Array(long_path.get("segments", [])).size() == 13,
+		"图搜索可规划超过十二段的连续合法路线，而不枚举所有简单路径"
+	)
+	var lowland_segments: Array = Array(lowland_path.get("segments", [])).duplicate(true)
+	var lowland_path_points: Array = Array(lowland_path.get("points", [])).duplicate(true)
+	var lowland_duration := int(lowland_path.get("duration_milliseconds", 0))
+	var lowland_road: Dictionary = Dictionary(state.roads_by_id[&"road.blackstone.northwatch.lowland"])
+	lowland_road.state = FieldTacticsState.ROAD_DAMAGED
+	state.roads_by_id[&"road.blackstone.northwatch.lowland"] = lowland_road
+	var first_segment_blocked := state.first_unavailable_route_segment(
+		StringName(lowland_path.get("route_id", &"")), lowland_segments, lowland_path_points, 0, lowland_duration
+	)
+	var passed_segment_ignored := state.first_unavailable_route_segment(
+		StringName(lowland_path.get("route_id", &"")), lowland_segments, lowland_path_points, lowland_duration - 1, lowland_duration
+	)
+	lowland_road = Dictionary(state.roads_by_id[&"road.blackstone.northwatch.lowland"])
+	lowland_road.state = FieldTacticsState.ROAD_OPEN
+	state.roads_by_id[&"road.blackstone.northwatch.lowland"] = lowland_road
+	var northwatch_reedbank_road: Dictionary = Dictionary(state.roads_by_id[&"road.northwatch.reedbank"])
+	northwatch_reedbank_road.state = FieldTacticsState.ROAD_DAMAGED
+	state.roads_by_id[&"road.northwatch.reedbank"] = northwatch_reedbank_road
+	var forward_segment_blocked := state.first_unavailable_route_segment(
+		StringName(lowland_path.get("route_id", &"")), lowland_segments, lowland_path_points, lowland_duration - 1, lowland_duration
+	)
+	northwatch_reedbank_road = Dictionary(state.roads_by_id[&"road.northwatch.reedbank"])
+	northwatch_reedbank_road.state = FieldTacticsState.ROAD_OPEN
+	state.roads_by_id[&"road.northwatch.reedbank"] = northwatch_reedbank_road
+	_check(
+		first_segment_blocked == 0 and passed_segment_ignored == -1 and forward_segment_blocked == 1,
+		"跨段行军只因当前或前方受损道路受阻，已走过道路不会误停"
+	)
+	var disconnected_route := StringName("path.road.blackstone.northwatch.lowland:f|road.reedbank.silverford:f")
+	var disconnected := state.validate_runtime_route(&"blackstone_city", &"silverford_city", disconnected_route, [])
+	_check(
+		not bool(disconnected.get("valid", false)) and StringName(disconnected.get("error_id", &"")) == &"PATH_DISCONNECTED",
+		"权威确认拒绝两段开放但端点不相连的道路序列"
+	)
+	var patrol_partition_start: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	patrol_partition_start.initialize_from_theater(THEATER.get_points(), THEATER.get_routes())
+	var patrol_one_step: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	var patrol_split_step: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	patrol_one_step.restore_snapshot(patrol_partition_start.get_snapshot())
+	patrol_split_step.restore_snapshot(patrol_partition_start.get_snapshot())
+	patrol_one_step.advance_world(7000)
+	patrol_split_step.advance_world(2400)
+	patrol_split_step.advance_world(4000)
+	patrol_split_step.advance_world(600)
+	var contact_partition_start: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	contact_partition_start.initialize_from_theater(THEATER.get_points(), THEATER.get_routes())
+	contact_partition_start.dispatch_specialist(FieldTacticsState.SPECIALIST_SCOUT, &"northwatch_garrison")
+	var contact_one_step: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	var contact_split_step: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	contact_one_step.restore_snapshot(contact_partition_start.get_snapshot())
+	contact_split_step.restore_snapshot(contact_partition_start.get_snapshot())
+	contact_one_step.advance_world(2400)
+	contact_split_step.advance_world(1000)
+	contact_split_step.advance_world(1400)
+	_check(
+		Dictionary(patrol_one_step.get_snapshot().patrols_by_id) == Dictionary(patrol_split_step.get_snapshot().patrols_by_id)
+			and Dictionary(contact_one_step.get_snapshot().patrols_by_id) == Dictionary(contact_split_step.get_snapshot().patrols_by_id)
+			and Dictionary(contact_one_step.get_snapshot().specialists_by_id) == Dictionary(contact_split_step.get_snapshot().specialists_by_id)
+			and StringName(contact_one_step.observe_subject(&"patrol.ridge.001").get("fog_state", &"")) == StringName(contact_split_step.observe_subject(&"patrol.ridge.001").get("fog_state", &""))
+			and int(contact_one_step.observe_subject(&"patrol.ridge.001").get("known_strength", 0)) == int(contact_split_step.observe_subject(&"patrol.ridge.001").get("known_strength", 0)),
+		"巡逻等待、到站余量和接敌切换均满足单次推进与拆分推进一致"
+	)
+	var hidden := state.observe_subject(&"patrol.ridge.001")
+	_check(StringName(hidden.get("fog_state", &"")) == FieldTacticsState.FOG_UNOBSERVED and int(hidden.get("known_strength", 0)) == 0, "未侦察巡逻不泄露实时兵力")
+	var scout := state.dispatch_specialist(FieldTacticsState.SPECIALIST_SCOUT, &"blackstone_city")
+	state.order_specialist_move(StringName(scout.specialist_id), &"northwatch_garrison")
+	state.advance_world(450)
+	var scout_midway := Dictionary(state.specialists_by_id[scout.specialist_id])
+	_check(Vector2(scout_midway.get("world_position", Vector2.ZERO)).distance_to(Vector2(150, 430)) > 1.0 and StringName(state.observe_subject(&"patrol.ridge.001").get("fog_state", &"")) == FieldTacticsState.FOG_UNOBSERVED, "侦察兵按实际坐标连续移动，远离视野时不泄露巡逻")
+	state.advance_world(1349)
+	_check(StringName(Dictionary(state.specialists_by_id[scout.specialist_id]).get("current_point_id", &"")) == &"blackstone_city", "侦察兵在途期间不提前到达或揭示敌情")
+	state.advance_world(1)
+	var observed := state.observe_subject(&"patrol.ridge.001")
+	_check(StringName(observed.get("fog_state", &"")) == FieldTacticsState.FOG_OBSERVED and int(observed.get("known_strength", 0)) == 5 and not bool(Dictionary(state.specialists_by_id[scout.specialist_id]).get("alive", true)), "侦察兵到达实际位置后获得最后情报，并会在同一节点被巡逻击杀")
+	state.advance_world(1000)
+	var patrol_after_departure := Dictionary(state.patrols_by_id[&"patrol.ridge.001"])
+	var historical_intel := state.observe_subject(&"patrol.ridge.001")
+	_check(
+		Vector2(patrol_after_departure.get("world_position", Vector2.ZERO)).distance_to(Vector2(790, 170)) > 1.0
+			and StringName(historical_intel.get("fog_state", &"")) == FieldTacticsState.FOG_OBSERVED
+			and Vector2i(historical_intel.get("last_known_world_position", Vector2i.ZERO)) == Vector2i(790, 170),
+		"巡逻在等待后沿路线实际移动；失去观察后情报保留最后观察坐标而不追踪当前位置"
+	)
+	state.patrols_by_id.clear()
+	var engineer := state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"blackstone_city")
+	var project := state.begin_road_project(StringName(engineer.specialist_id), &"blackstone_city", &"reedbank_garrison", [Vector2i(150, 430), Vector2i(440, 570), Vector2i(850, 505)], FieldTacticsState.ROAD_NORMAL, true)
+	_check(not project.is_empty() and not state.is_route_open(StringName(project.road_id)), "工程确认后保留施工事务，未完成道路不能提前通军")
+	state.advance_world(int(project.required_milliseconds) - 1)
+	_check(not state.is_route_open(StringName(project.road_id)), "施工进度未满时动态道路仍不可通行")
+	state.advance_world(1)
+	var completed_road := Dictionary(state.roads_by_id.get(StringName(project.road_id), {}))
+	_check(state.is_route_open(StringName(project.road_id)) and not state.camps_by_id.is_empty(), "工程完成后道路与道路相连驻扎点同时成为正式运行时节点")
+	var runtime_route := state.validate_runtime_route(&"blackstone_city", &"reedbank_garrison", StringName(project.road_id), Array(project.route_world_points))
+	_check(bool(runtime_route.get("valid", false)) and state.runtime_route_duration_milliseconds(StringName(project.road_id)) >= 6000, "完工工程道路进入正式军令校验与行军时长计算")
+	_check(state.damage_road(StringName(project.road_id), 999) and not state.is_route_open(StringName(project.road_id)), "敌方造成的真实路损会改变通行状态")
+	var repair := state.begin_road_repair(StringName(engineer.specialist_id), StringName(project.road_id))
+	var repair_project := Dictionary(repair)
+	var repair_travel := int(Dictionary(state.specialists_by_id[StringName(engineer.specialist_id)]).get("move_total_milliseconds", 0))
+	_check(
+		not repair.is_empty()
+			and StringName(repair_project.get("target_point_id", &"")) == &"reedbank_garrison"
+			and not state.is_route_open(StringName(project.road_id)),
+		"受损道路只从工程师当前可达的桥头或道路端点建立维修事务，不能隔空立即修好"
+	)
+	var repair_start_snapshot := state.get_snapshot()
+	var one_step_repair: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	var split_step_repair: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	one_step_repair.restore_snapshot(repair_start_snapshot)
+	split_step_repair.restore_snapshot(repair_start_snapshot)
+	one_step_repair.advance_world(repair_travel + int(repair.required_milliseconds))
+	split_step_repair.advance_world(repair_travel)
+	split_step_repair.advance_world(int(repair.required_milliseconds))
+	_check(
+		Dictionary(one_step_repair.get_snapshot().roads_by_id) == Dictionary(split_step_repair.get_snapshot().roads_by_id)
+			and Dictionary(one_step_repair.get_snapshot().projects_by_id) == Dictionary(split_step_repair.get_snapshot().projects_by_id)
+			and Dictionary(one_step_repair.get_snapshot().specialists_by_id) == Dictionary(split_step_repair.get_snapshot().specialists_by_id)
+			and one_step_repair.is_route_open(StringName(project.road_id)),
+		"维修到场帧余量计入施工：一次推进与拆分推进得到相同道路和项目状态"
+	)
+	state.advance_world(repair_travel)
+	_check(not state.is_route_open(StringName(project.road_id)), "工程师到达维修点的同一时间步不跳过维修工期")
+	state.advance_world(int(repair.required_milliseconds) - 1)
+	_check(not state.is_route_open(StringName(project.road_id)), "维修进度未完成时道路继续阻断军队通行")
+	state.advance_world(1)
+	var reverse_points := Array(project.route_world_points).duplicate(true)
+	reverse_points.reverse()
+	_check(
+		state.is_route_open(StringName(project.road_id))
+			and bool(state.validate_runtime_route(&"reedbank_garrison", &"blackstone_city", StringName(project.road_id), reverse_points).get("valid", false)),
+		"工程师到场完成后恢复原道路身份，并允许同一路段反向往返"
+	)
+	state.order_specialist_move(StringName(engineer.specialist_id), &"blackstone_city")
+	state.advance_world(int(Dictionary(state.specialists_by_id[StringName(engineer.specialist_id)]).get("move_total_milliseconds", 0)))
+	var camp_project := state.begin_road_project(StringName(engineer.specialist_id), &"blackstone_city", &"camp.site.000001", [Vector2i(150, 430), Vector2i(355, 410), Vector2i(470, 355)], FieldTacticsState.ROAD_NORMAL, true)
+	state.advance_world(int(camp_project.get("required_milliseconds", 0)))
+	var runtime_points := state.get_runtime_points()
+	_check(not camp_project.is_empty() and runtime_points.has(&"camp.site.000001") and state.validate_runtime_route(&"blackstone_city", &"camp.site.000001", StringName(camp_project.get("road_id", &"")), Array(camp_project.get("route_world_points", []))).get("valid", false), "玩家指定的新工程驻点以运行时坐标进入可通军路网")
+	var concurrent_engineer := state.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"blackstone_city")
+	var first_concurrent := state.begin_road_project(StringName(engineer.specialist_id), &"blackstone_city", &"", [Vector2i(150, 430), Vector2i(275, 360)], FieldTacticsState.ROAD_NORMAL, true)
+	var second_concurrent := state.begin_road_project(StringName(concurrent_engineer.specialist_id), &"blackstone_city", &"", [Vector2i(150, 430), Vector2i(285, 510)], FieldTacticsState.ROAD_NORMAL, true)
+	_check(
+		not first_concurrent.is_empty() and not second_concurrent.is_empty()
+			and StringName(first_concurrent.target_point_id) != StringName(second_concurrent.target_point_id)
+			and StringName(first_concurrent.camp_id) != StringName(second_concurrent.camp_id)
+			and state.next_camp_sequence == 5,
+		"两名工程师在首项完工前确认工程时分别保留不同驻点编号"
+	)
+	var snapshot := state.get_snapshot()
+	var restored: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	_check(restored.restore_snapshot(snapshot) and restored.is_route_open(StringName(project.road_id)), "施工、驻点、道路与探索记录可随战役快照冷恢复")
+	var invalid := snapshot.duplicate(true)
+	invalid.next_project_sequence = 0
+	_check(not FieldTacticsState.new().restore_snapshot(invalid), "无效战术快照在写入前被拒绝")
+
+
+func _run_r1_war_snapshot_migration() -> void:
+	var legacy := {
+		"schema_version": 1,
+		"cities_by_id": {},
+		"required_city_ids": {},
+		"active_siege": {},
+		"completed_resolution_ids": {},
+		"next_siege_sequence": 1,
+	}
+	var state: WarLoopState = WAR_LOOP_STATE.new()
+	_check(state.restore_snapshot(legacy) and state.get_snapshot().has("field_tactics"), "R1 单攻城快照迁移为带战区状态的 R2 快照")
+	var parallel: WarLoopState = WAR_LOOP_STATE.new()
+	parallel.initialize_from_theater(THEATER.get_points(), THEATER.get_routes())
+	var silverford := parallel.get_city(&"silverford_city")
+	silverford.surrender_allowed = false
+	parallel.cities_by_id[&"silverford_city"] = silverford
+	var red_siege := parallel.begin_siege(&"army.red", &"macro.order.000101", &"redcliff_city", 12, 100, 8, 1, 10000, WAR_LOOP_RULES)
+	var silver_siege := parallel.begin_siege(&"army.silver", &"macro.order.000102", &"silverford_city", 12, 100, 8, 1, 10000, WAR_LOOP_RULES)
+	var parallel_ticks := parallel.advance_parallel_sieges(WAR_LOOP_RULES)
+	var parallel_snapshot := parallel.get_snapshot()
+	var parallel_restored: WarLoopState = WAR_LOOP_STATE.new()
+	_check(not red_siege.is_empty() and not silver_siege.is_empty() and parallel.get_active_sieges().size() == 2 and parallel_ticks.size() == 2 and parallel_restored.restore_snapshot(parallel_snapshot) and parallel_restored.get_active_sieges().size() == 2, "不同敌城可保留并推进独立攻城记录并冷恢复")
+
+
+func _run_formal_controller_contract() -> void:
+	var context := await _new_scenario_city()
+	var scene: Node = context.scene
+	var city: Node = context.city
+	city.set_process(false)
+	city.food = 120
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var ridge: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
+	var lowland: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.lowland")
+	var first: Dictionary = city.commit_macro_march_from_city([StringName(roster[0].formation_id)], &"northwatch_garrison", StringName(ridge.route_id), Array(ridge.points))
+	var second: Dictionary = city.commit_macro_march_from_city([StringName(roster[1].formation_id)], &"northwatch_garrison", StringName(lowland.route_id), Array(lowland.points))
+	_check(bool(first.get("success", false)) and bool(second.get("success", false)) and Array(city.get_macro_march_read_model().armies).size() == 2, "正式城市入口可对不同编队提交两支并行军令")
+	var duplicate: Dictionary = city.commit_macro_march_from_city([StringName(roster[0].formation_id)], &"northwatch_garrison", StringName(ridge.route_id), Array(ridge.points))
+	_check(not bool(duplicate.get("success", false)), "正式入口拒绝已经由第一支军队占用的编队")
+	var scout: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_SCOUT)
+	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	_check(bool(scout.get("success", false)) and bool(engineer.get("success", false)), "侦察兵和工程师通过正式城市资源事务派遣")
+	var project: Dictionary = city.begin_field_road_project(StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")), &"blackstone_city", &"reedbank_garrison", [Vector2i(150, 430), Vector2i(515, 425), Vector2i(635, 425), Vector2i(850, 505)], FieldTacticsState.ROAD_NORMAL, true)
+	var project_required_milliseconds := int(Dictionary(project.get("project", {})).get("required_milliseconds", 0))
+	city.advance_war_loop_time(project_required_milliseconds)
+	var field_model: Dictionary = city.get_field_tactics_read_model()
+	var formal_segments: Array = Array(Dictionary(project.get("project", {})).get("segment_plans", []))
+	_check(
+		bool(project.get("success", false)) and not Dictionary(field_model.projects_by_id).is_empty() and not Dictionary(field_model.camps_by_id).is_empty()
+			and formal_segments.size() >= 3
+			and StringName(Dictionary(formal_segments.front()).get("road_kind", &"")) == FieldTacticsState.ROAD_NORMAL
+			and StringName(Dictionary(formal_segments[1]).get("road_kind", &"")) == FieldTacticsState.ROAD_BRIDGE
+			and StringName(Dictionary(formal_segments.back()).get("road_kind", &"")) == FieldTacticsState.ROAD_NORMAL,
+		"正式 Controller 入口保留陆地材料，仅将跨水区段规划为桥梁"
+	)
+	var bridge_crossing_dispatch: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var bridge_crossing_specialist_id := StringName(Dictionary(bridge_crossing_dispatch.get("specialist", {})).get("specialist_id", &""))
+	var bridge_crossing_move: Dictionary = city.order_field_specialist_move(bridge_crossing_specialist_id, &"reedbank_garrison")
+	var generated_bridge_points: Array = Array(Dictionary(formal_segments[1]).get("route_world_points", []))
+	var bridge_crossing_route: Array = Array(Dictionary(bridge_crossing_move.get("specialist", {})).get("move_route_world_points", []))
+	city.advance_war_loop_time(int(Dictionary(bridge_crossing_move.get("specialist", {})).get("move_total_milliseconds", 0)))
+	var bridge_crossing_after: Dictionary = Dictionary(city.get_field_tactics_read_model().specialists_by_id.get(bridge_crossing_specialist_id, {}))
+	_check(
+		bool(bridge_crossing_dispatch.get("success", false)) and bool(bridge_crossing_move.get("success", false))
+			and bridge_crossing_route.has(generated_bridge_points.front()) and bridge_crossing_route.has(generated_bridge_points.back())
+			and Vector2i(bridge_crossing_after.get("world_position", Vector2i.ZERO)) == Vector2i(850, 505),
+		"正式工程生成的桥段、桥头和道路可被后续工程师实际跨越"
+	)
+	var bridge_return_move: Dictionary = city.order_field_specialist_move(bridge_crossing_specialist_id, &"blackstone_city")
+	var bridge_return_route: Array = Array(Dictionary(bridge_return_move.get("specialist", {})).get("move_route_world_points", []))
+	var legacy_specialist_snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	var legacy_war_loop: Dictionary = Dictionary(legacy_specialist_snapshot.war_loop)
+	var legacy_field: Dictionary = Dictionary(legacy_war_loop.field_tactics)
+	var legacy_specialists: Dictionary = Dictionary(legacy_field.specialists_by_id)
+	var legacy_specialist: Dictionary = Dictionary(legacy_specialists[bridge_crossing_specialist_id])
+	legacy_specialist.erase("move_route_world_points")
+	legacy_specialists[bridge_crossing_specialist_id] = legacy_specialist
+	legacy_field.specialists_by_id = legacy_specialists
+	legacy_war_loop.field_tactics = legacy_field
+	legacy_specialist_snapshot.war_loop = legacy_war_loop
+	var canonical_legacy_validation: Dictionary = city.validate_v5_campaign_snapshot(legacy_specialist_snapshot)
+	var legacy_restored_scene := CITY_SCENE.instantiate()
+	root.add_child(legacy_restored_scene)
+	await process_frame
+	var legacy_restored: Node = legacy_restored_scene.get_node("ConstructionController")
+	legacy_restored.set_process(false)
+	var legacy_restore_result: Dictionary = legacy_restored.restore_v5_campaign_snapshot(legacy_specialist_snapshot)
+	var legacy_restored_specialist: Dictionary = Dictionary(legacy_restored.get_field_tactics_read_model().specialists_by_id.get(bridge_crossing_specialist_id, {}))
+	_check(
+		bool(bridge_return_move.get("success", false))
+			and bridge_return_route.has(generated_bridge_points.front()) and bridge_return_route.has(generated_bridge_points.back())
+			and bool(canonical_legacy_validation.get("valid", false))
+			and bool(legacy_restore_result.get("success", false))
+			and Array(legacy_restored_specialist.get("move_route_world_points", [])).size() >= 2
+			and legacy_restored.export_v5_campaign_snapshot() == Dictionary(canonical_legacy_validation.get("snapshot", {})),
+		"正式 V5 恢复会以战区水域标准化旧专家路径，并保持严格快照核对"
+	)
+	legacy_restored_scene.queue_free()
+	await process_frame
+	city.advance_war_loop_time(int(Dictionary(bridge_return_move.get("specialist", {})).get("move_total_milliseconds", 0)))
+	var bridge_return_after: Dictionary = Dictionary(city.get_field_tactics_read_model().specialists_by_id.get(bridge_crossing_specialist_id, {}))
+	var generated_bridge_id := StringName(Dictionary(formal_segments[1]).get("road_id", &""))
+	var field_state: FieldTacticsState = city._war_loop_state.field_tactics
+	field_state.damage_road(generated_bridge_id, 999)
+	var damaged_bridge_move: Dictionary = city.order_field_specialist_move(bridge_crossing_specialist_id, &"reedbank_garrison")
+	var damaged_bridge_route: Array = Array(Dictionary(damaged_bridge_move.get("specialist", {})).get("move_route_world_points", []))
+	_check(
+		StringName(bridge_return_after.get("current_point_id", &"")) == &"blackstone_city"
+			and not field_state._is_open_bridge_edge(Vector2(generated_bridge_points[0]), Vector2(generated_bridge_points[1]))
+			and not damaged_bridge_route.has(generated_bridge_points.front()) and not damaged_bridge_route.has(generated_bridge_points.back()),
+		"同一座正式生成桥可双向通行；损坏后不再作为任一方向的可通行桥面"
+	)
+	var snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	var restored_scene := CITY_SCENE.instantiate()
+	root.add_child(restored_scene)
+	await process_frame
+	var restored: Node = restored_scene.get_node("ConstructionController")
+	restored.set_process(false)
+	var restored_result: Dictionary = restored.restore_v5_campaign_snapshot(snapshot)
+	_check(bool(restored_result.get("success", false)) and Array(restored.get_macro_march_read_model().armies).size() == 2 and not Dictionary(restored.get_field_tactics_read_model().camps_by_id).is_empty(), "两支军令与工程战区状态可在同一正式快照冷恢复")
+	scene.queue_free()
+	restored_scene.queue_free()
+	await process_frame
+
+	var ambush_context := await _new_scenario_city()
+	var ambush_scene: Node = ambush_context.scene
+	var ambush_city: Node = ambush_context.city
+	ambush_city.set_process(false)
+	ambush_city.food = 200
+	var ambush_field: FieldTacticsState = ambush_city._war_loop_state.field_tactics
+	var patrol_fixture: Dictionary = Dictionary(ambush_field.patrols_by_id[&"patrol.ridge.001"]).duplicate(true)
+	ambush_field.patrols_by_id.clear()
+	var ambush_engineer: Dictionary = ambush_city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var ambush_engineer_id := StringName(Dictionary(ambush_engineer.get("specialist", {})).get("specialist_id", &""))
+	var ambush_project: Dictionary = ambush_city.begin_field_road_project(
+		ambush_engineer_id, &"northwatch_garrison", &"camp.site.forest_ambush",
+		[Vector2i(790, 170), Vector2i(750, 300), Vector2i(710, 400)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var ambush_project_record := Dictionary(ambush_project.get("project", {}))
+	ambush_city.advance_war_loop_time(int(ambush_project_record.get("travel_milliseconds", 0)) + int(ambush_project_record.get("required_milliseconds", 0)))
+	var ridge_to_forest := Array(ridge.points).duplicate(true)
+	ridge_to_forest.pop_back()
+	ridge_to_forest.append_array(Array(ambush_project_record.get("route_world_points", [])))
+	var forest_plan: Dictionary = ambush_city.plan_field_path(&"blackstone_city", &"camp.site.forest_ambush", ridge_to_forest)
+	var ambush_roster: Array[Dictionary] = ambush_city.get_formation_roster()
+	var ambush_issue: Dictionary = ambush_city.commit_macro_march_from_city(
+		[StringName(ambush_roster[0].formation_id)], &"camp.site.forest_ambush",
+		StringName(forest_plan.get("route_id", &"")), Array(forest_plan.get("points", []))
+	)
+	var ambush_army_id := StringName(Dictionary(ambush_issue.get("army", {})).get("army_id", &""))
+	ambush_city._advance_all_macro_marches_seconds(float(int(forest_plan.get("duration_milliseconds", 0))) / 1000.0)
+	ambush_field.patrols_by_id[&"patrol.ridge.001"] = patrol_fixture
+	ambush_field.intel_by_subject_id[&"patrol.ridge.001"] = {
+		"subject_id": &"patrol.ridge.001", "fog_state": FieldTacticsState.FOG_OBSERVED,
+		"last_known_point_id": &"northwatch_garrison", "last_known_world_position": Vector2i(790, 170),
+		"last_observed_milliseconds": ambush_field.world_milliseconds, "known_strength": 5,
+	}
+	var ambush_advance: Dictionary = ambush_city.advance_war_loop_time(9500)
+	var ambush_encounters: Array = Array(ambush_advance.get("patrol_encounters", []))
+	var ambush_after: Dictionary = ambush_city._army_registry.get_army(ambush_army_id)
+	var ambush_patrol_after: Dictionary = Dictionary(ambush_field.patrols_by_id[&"patrol.ridge.001"])
+	var ambush_encounter: Dictionary = Dictionary(ambush_encounters.front()) if not ambush_encounters.is_empty() else {}
+	var ambush_road_id := StringName(ambush_project_record.get("road_id", &""))
+	var visible_ambush_patrol := Dictionary(Dictionary(ambush_city.get_field_tactics_read_model().get("visible_patrols_by_id", {})).get(&"patrol.ridge.001", {}))
+	_check(
+		bool(ambush_project.get("success", false)) and bool(ambush_issue.get("success", false))
+			and StringName(ambush_after.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED
+			and bool(Dictionary(ambush_field.specialists_by_id.get(ambush_engineer_id, {})).get("alive", false))
+			and Array(ambush_encounter.get("ambush_army_ids", [])).has(ambush_army_id)
+			and int(ambush_encounter.get("patrol_losses", 0)) == 5
+			and ambush_city._macro_army_member_count(ambush_after) == 5
+			and Array(ambush_patrol_after.get("ambush_consumed_army_ids", [])).has(ambush_army_id)
+			and bool(visible_ambush_patrol.get("exposed", false))
+			and not Dictionary(visible_ambush_patrol.get("last_engagement", {})).is_empty()
+			and StringName(ambush_encounter.get("damaged_road_id", &"")) == ambush_road_id
+			and not ambush_field.is_route_open(ambush_road_id),
+		"已侦察巡逻进入林地驻军伏击时只获得一次先手并暴露，护卫保住工程师且巡逻会实际损坏附近工程道路"
+	)
+	var ambush_snapshot: Dictionary = ambush_city.export_v5_campaign_snapshot()
+	var ambush_restored_scene := CITY_SCENE.instantiate()
+	root.add_child(ambush_restored_scene)
+	await process_frame
+	await process_frame
+	var ambush_restored_city: Node = ambush_restored_scene.get_node("ConstructionController")
+	ambush_restored_city.set_process(false)
+	var ambush_restore: Dictionary = ambush_restored_city.restore_v5_campaign_snapshot(ambush_snapshot)
+	var restored_ambush_patrol: Dictionary = Dictionary(ambush_restored_city._war_loop_state.field_tactics.patrols_by_id[&"patrol.ridge.001"])
+	_check(
+		bool(ambush_restore.get("success", false))
+			and Array(restored_ambush_patrol.get("ambush_consumed_army_ids", [])).has(ambush_army_id)
+			and int(restored_ambush_patrol.get("strength", -1)) == 0
+			and ambush_restored_city._army_registry.get_army(ambush_army_id) == ambush_after,
+		"伏击首击消耗、暴露后的巡逻兵力、道路损坏和真实编队伤亡冷恢复后不会刷新"
+	)
+	ambush_scene.queue_free()
+	ambush_restored_scene.queue_free()
+	await process_frame
+	await _run_formal_multisegment_march_contract()
+
+
+func _run_formal_multisegment_march_contract() -> void:
+	var context := await _new_scenario_city()
+	var scene: Node = context.scene
+	var city: Node = context.city
+	city.set_process(false)
+	city.food = 120
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var lowland: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.lowland")
+	var northwatch_reedbank: Dictionary = THEATER.get_route(&"road.northwatch.reedbank")
+	var draw_points := Array(lowland.points).duplicate(true)
+	draw_points.pop_back()
+	draw_points.append_array(Array(northwatch_reedbank.points))
+	var plan: Dictionary = city.plan_field_path(&"blackstone_city", &"reedbank_garrison", draw_points)
+	var route_id := StringName(plan.get("route_id", &""))
+	var issued: Dictionary = city.commit_macro_march_from_city(
+		[StringName(roster[0].formation_id)], &"reedbank_garrison", route_id, Array(plan.get("points", []))
+	)
+	var issued_army: Dictionary = Dictionary(issued.get("army", {}))
+	var issued_macro: Dictionary = Dictionary(issued_army.get("macro_march", {}))
+	var food_after_issue := int(city.food)
+	city._advance_all_macro_marches_seconds(float(int(plan.get("duration_milliseconds", 0))) / 1000.0)
+	var arrived: Dictionary = city._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	var snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	var restored_scene := CITY_SCENE.instantiate()
+	root.add_child(restored_scene)
+	await process_frame
+	var restored: Node = restored_scene.get_node("ConstructionController")
+	restored.set_process(false)
+	var restore_result: Dictionary = restored.restore_v5_campaign_snapshot(snapshot)
+	var restored_army: Dictionary = restored._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	_check(
+		bool(plan.get("valid", false))
+			and bool(issued.get("success", false))
+			and Array(issued_macro.get("route_segments", [])).size() == 2
+			and StringName(Dictionary(Array(issued_macro.get("route_segments", [])).front()).get("road_id", &"")) == &"road.blackstone.northwatch.lowland"
+			and StringName(arrived.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED
+			and StringName(arrived.get("target_node_id", &"")) == &"reedbank_garrison"
+			and int(city.food) == food_after_issue
+			and bool(restore_result.get("success", false))
+			and Array(Dictionary(restored_army.get("macro_march", {})).get("route_segments", [])).size() == 2,
+		"正式绘线确认的多段军令保留段序列、连续抵达且冷恢复不重复扣粮"
+	)
+	scene.queue_free()
+	restored_scene.queue_free()
+	await process_frame
+
+
+func _run_damaged_road_resume_contract() -> void:
+	var context := await _new_scenario_city()
+	var scene: Node = context.scene
+	var city: Node = context.city
+	city.set_process(false)
+	city.food = 140
+	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var route_points := [Vector2i(150, 430), Vector2i(340, 470), Vector2i(480, 440)]
+	var project: Dictionary = city.begin_field_road_project(
+		StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")),
+		&"blackstone_city", &"camp.site.resume", route_points, FieldTacticsState.ROAD_NORMAL, true
+	)
+	city.advance_war_loop_time(int(Dictionary(project.get("project", {})).get("required_milliseconds", 0)))
+	var road_id := StringName(Dictionary(project.get("project", {})).get("road_id", &""))
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var issued: Dictionary = city.commit_macro_march_from_city(
+		[StringName(roster[0].formation_id)], &"camp.site.resume", road_id, route_points
+	)
+	var army_before_damage: Dictionary = Dictionary(issued.get("army", {}))
+	var food_after_issue := int(city.food)
+	var field: FieldTacticsState = city._war_loop_state.field_tactics
+	field.damage_road(road_id, 999)
+	city._advance_all_macro_marches_seconds(1.0)
+	var blocked: Dictionary = city._army_registry.get_army(StringName(army_before_damage.get("army_id", &"")))
+	var repair: Dictionary = city.begin_field_road_repair(StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")), road_id)
+	var repair_engineer := Dictionary(field.specialists_by_id[StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &""))])
+	city.advance_war_loop_time(int(repair_engineer.get("move_remaining_milliseconds", 0)) + int(Dictionary(repair.get("project", {})).get("required_milliseconds", 0)))
+	var resumed: Dictionary = city._army_registry.get_army(StringName(army_before_damage.get("army_id", &"")))
+	city._advance_all_macro_marches_seconds(1.0)
+	var advancing: Dictionary = city._army_registry.get_army(StringName(army_before_damage.get("army_id", &"")))
+	_check(
+		bool(project.get("success", false)) and bool(issued.get("success", false)) and bool(repair.get("success", false))
+			and StringName(blocked.get("phase", &"")) == ArmyRegistry.PHASE_BLOCKED
+			and StringName(resumed.get("phase", &"")) == ArmyRegistry.PHASE_MARCHING
+			and StringName(Dictionary(resumed.get("macro_march", {})).get("order_id", &"")) == StringName(Dictionary(army_before_damage.get("macro_march", {})).get("order_id", &""))
+			and int(city.food) == food_after_issue - int(repair.get("food_cost", 0))
+			and int(Dictionary(advancing.get("macro_march", {})).get("progress_millis", 0)) > int(Dictionary(resumed.get("macro_march", {})).get("progress_millis", 0)),
+		"真实受损道路使军令就近受阻；到场维修后原 order 自动恢复且不重复扣行军粮"
+	)
+	scene.queue_free()
+	await process_frame
+
+
+## This goes through the production Controller rather than calling the Field
+## planner alone.  The second original segment is damaged while the army is in
+## the first curved segment, so a valid result must preserve the mid-road
+## position and physically return along that curve before entering the camp
+## branch.
+func _run_mid_segment_camp_transfer_contract() -> void:
+	var context := await _new_scenario_city()
+	var scene: Node = context.scene
+	var city: Node = context.city
+	city.set_process(false)
+	city.food = 200
+	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var camp_points := [Vector2i(150, 430), Vector2i(150, 555)]
+	var project: Dictionary = city.begin_field_road_project(
+		StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")),
+		&"blackstone_city", &"camp.site.mid_transfer", camp_points, FieldTacticsState.ROAD_NORMAL, true
+	)
+	city.advance_war_loop_time(int(Dictionary(project.get("project", {})).get("required_milliseconds", 0)))
+	var target_points := [Vector2i(790, 170), Vector2i(895, 245)]
+	var target_project: Dictionary = city.begin_field_road_project(
+		StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")),
+		&"northwatch_garrison", &"camp.site.mid_target", target_points, FieldTacticsState.ROAD_NORMAL, true
+	)
+	city.advance_war_loop_time(int(Dictionary(target_project.get("project", {})).get("travel_milliseconds", 0)) + int(Dictionary(target_project.get("project", {})).get("required_milliseconds", 0)))
+	var target_road_id := StringName(Dictionary(target_project.get("project", {})).get("road_id", &""))
+	var lowland: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.lowland")
+	var drawn_points := Array(lowland.points).duplicate(true)
+	drawn_points.pop_back()
+	drawn_points.append_array(target_points)
+	var main_plan: Dictionary = city.plan_field_path(&"blackstone_city", &"camp.site.mid_target", drawn_points)
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var issued: Dictionary = city.commit_macro_march_from_city(
+		[StringName(roster[0].formation_id)], &"camp.site.mid_target", StringName(main_plan.get("route_id", &"")), Array(main_plan.get("points", []))
+	)
+	var issued_army: Dictionary = Dictionary(issued.get("army", {}))
+	var issued_macro: Dictionary = Dictionary(issued_army.get("macro_march", {}))
+	var original_order_id := StringName(issued_macro.get("order_id", &""))
+	var food_after_issue := int(city.food)
+	# 4.5 seconds places the army just past the first lowland bend; returning
+	# to the nearby camp is shorter than continuing to Northwatch.
+	city._advance_all_macro_marches_seconds(4.5)
+	var before_damage: Dictionary = city._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	var before_macro: Dictionary = Dictionary(before_damage.get("macro_march", {}))
+	var field: FieldTacticsState = city._war_loop_state.field_tactics
+	field.damage_road(target_road_id, 999)
+	city._advance_all_macro_marches_seconds(0.1)
+	var blocked: Dictionary = city._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	var blocked_macro: Dictionary = Dictionary(blocked.get("macro_march", {}))
+	var transfer: Dictionary = Dictionary(blocked_macro.get("blocked_transfer", {}))
+	var transfer_points: Array = Array(transfer.get("route_world_points", []))
+	var transfer_total_seconds := float(int(transfer.get("total_millis", 0))) / 1000.0
+	city._advance_all_macro_marches_seconds(transfer_total_seconds)
+	var stationed: Dictionary = city._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	var stationed_transfer: Dictionary = Dictionary(Dictionary(stationed.get("macro_march", {})).get("blocked_transfer", {}))
+	var food_before_repair := int(city.food)
+	var repair: Dictionary = city.begin_field_road_repair(StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &"")), target_road_id)
+	var repairing_engineer: Dictionary = Dictionary(field.specialists_by_id[StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &""))])
+	city.advance_war_loop_time(int(repairing_engineer.get("move_remaining_milliseconds", 0)) + int(Dictionary(repair.get("project", {})).get("required_milliseconds", 0)))
+	var returning: Dictionary = city._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	var return_transfer: Dictionary = Dictionary(Dictionary(returning.get("macro_march", {})).get("blocked_transfer", {}))
+	city._advance_all_macro_marches_seconds(float(int(return_transfer.get("total_millis", 0))) / 1000.0)
+	city.advance_war_loop_time(1)
+	var resumed: Dictionary = city._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	city._advance_all_macro_marches_seconds(1.0)
+	var resumed_advancing: Dictionary = city._army_registry.get_army(StringName(issued_army.get("army_id", &"")))
+	_check(
+		bool(project.get("success", false)) and bool(target_project.get("success", false)) and bool(main_plan.get("valid", false)) and bool(issued.get("success", false)) and bool(repair.get("success", false))
+			and int(before_macro.get("progress_millis", 0)) > 0
+			and StringName(blocked.get("phase", &"")) == ArmyRegistry.PHASE_BLOCKED
+			and StringName(transfer.get("phase", &"")) == &"TO_CAMP"
+			and StringName(transfer.get("target_point_id", &"")) == &"camp.site.mid_transfer"
+			and StringName(Dictionary(Array(transfer.get("route_segments", [])).front()).get("road_id", &"")) == &"road.blackstone.northwatch.lowland"
+			and bool(Dictionary(Array(transfer.get("route_segments", [])).front()).get("partial", false))
+			and transfer_points.size() >= 3
+			and Vector2(transfer_points[0]).distance_to(Vector2(transfer_points[1])) > 1.0
+			and int(blocked_macro.get("progress_millis", 0)) == int(before_macro.get("progress_millis", 0))
+			and StringName(stationed_transfer.get("phase", &"")) == &"WAITING"
+			and StringName(Dictionary(stationed.get("macro_march", {})).get("order_id", &"")) == original_order_id
+			and food_before_repair == food_after_issue,
+		"正式 Controller 在前方断路后从低洼弯道路中实际回退并转移到可达工程驻点，原令和粮食保持不变"
+	)
+	_check(
+		StringName(return_transfer.get("phase", &"")) == &"TO_RESUME"
+			and StringName(resumed.get("phase", &"")) == ArmyRegistry.PHASE_MARCHING
+			and StringName(Dictionary(resumed.get("macro_march", {})).get("order_id", &"")) == original_order_id
+			and int(Dictionary(resumed_advancing.get("macro_march", {})).get("progress_millis", 0)) > int(Dictionary(resumed.get("macro_march", {})).get("progress_millis", 0)),
+		"维修完成后军队先沿临时路径返回冻结位置，再以同一原军令继续行军"
+	)
+	scene.queue_free()
+	await process_frame
+
+
+func _run_temporary_rebreak_and_time_contract() -> void:
+	var context := await _new_scenario_city()
+	var scene: Node = context.scene
+	var city: Node = context.city
+	city.set_process(false)
+	city.food = 240
+	var engineer: Dictionary = city.dispatch_field_specialist(FieldTacticsState.SPECIALIST_ENGINEER)
+	var engineer_id := StringName(Dictionary(engineer.get("specialist", {})).get("specialist_id", &""))
+	var safe: Dictionary = city.begin_field_road_project(
+		engineer_id, &"blackstone_city", &"camp.site.rebreak_safe",
+		[Vector2i(150, 430), Vector2i(150, 555)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	city.advance_war_loop_time(int(Dictionary(safe.get("project", {})).get("required_milliseconds", 0)))
+	var safe_road_id := StringName(Dictionary(safe.get("project", {})).get("road_id", &""))
+	var target: Dictionary = city.begin_field_road_project(
+		engineer_id, &"northwatch_garrison", &"camp.site.rebreak_target",
+		[Vector2i(790, 170), Vector2i(895, 245)], FieldTacticsState.ROAD_NORMAL, true
+	)
+	var target_project := Dictionary(target.get("project", {}))
+	city.advance_war_loop_time(int(target_project.get("travel_milliseconds", 0)) + int(target_project.get("required_milliseconds", 0)))
+	var target_road_id := StringName(target_project.get("road_id", &""))
+	var lowland: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.lowland")
+	var drawn := Array(lowland.points).duplicate(true)
+	drawn.pop_back()
+	drawn.append_array([Vector2i(790, 170), Vector2i(895, 245)])
+	var plan: Dictionary = city.plan_field_path(&"blackstone_city", &"camp.site.rebreak_target", drawn)
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var issued: Dictionary = city.commit_macro_march_from_city(
+		[StringName(roster[0].formation_id)], &"camp.site.rebreak_target",
+		StringName(plan.get("route_id", &"")), Array(plan.get("points", []))
+	)
+	var army_id := StringName(Dictionary(issued.get("army", {})).get("army_id", &""))
+	city._advance_all_macro_marches_seconds(4.5)
+	var field: FieldTacticsState = city._war_loop_state.field_tactics
+	field.damage_road(target_road_id, 999)
+	city._advance_all_macro_marches_seconds(0.1)
+	var army: Dictionary = city._army_registry.get_army(army_id)
+	var transfer := Dictionary(Dictionary(army.get("macro_march", {})).get("blocked_transfer", {}))
+	var transfer_segments: Array = Array(transfer.get("route_segments", []))
+	var first_segment_points: Array = Array(Dictionary(transfer_segments.front()).get("route_world_points", []))
+	var transfer_points: Array = Array(transfer.get("route_world_points", []))
+	var first_segment_ratio := _test_points_length(first_segment_points) / maxf(_test_points_length(transfer_points), 1.0)
+	var enter_second_milliseconds := mini(int(transfer.get("total_millis", 0)) - 1, ceili(float(int(transfer.get("total_millis", 0))) * first_segment_ratio) + 100)
+	city._advance_all_macro_marches_seconds(float(enter_second_milliseconds) / 1000.0)
+	var before_rebreak: Dictionary = city._army_registry.get_army(army_id)
+	var before_rebreak_transfer := Dictionary(Dictionary(before_rebreak.get("macro_march", {})).get("blocked_transfer", {}))
+	field.damage_road(safe_road_id, 999)
+	city._advance_all_macro_marches_seconds(0.25)
+	var reblocked: Dictionary = city._army_registry.get_army(army_id)
+	var reblocked_transfer := Dictionary(Dictionary(reblocked.get("macro_march", {})).get("blocked_transfer", {}))
+	_check(
+		StringName(reblocked_transfer.get("phase", &"")) == &"TO_CAMP_BLOCKED"
+			and int(reblocked_transfer.get("progress_millis", -1)) == int(before_rebreak_transfer.get("progress_millis", -2))
+			and StringName(Dictionary(reblocked.get("macro_march", {})).get("order_id", &"")) == StringName(Dictionary(before_rebreak.get("macro_march", {})).get("order_id", &"")),
+		"临时转移路线再次断裂时军队停在实际进度，不穿越损坏路段也不替换原军令"
+	)
+	var repair_safe: Dictionary = city.begin_field_road_repair(engineer_id, safe_road_id)
+	var repair_safe_project := Dictionary(repair_safe.get("project", {}))
+	var repairing_safe_engineer := Dictionary(field.specialists_by_id.get(engineer_id, {}))
+	city.advance_war_loop_time(int(repairing_safe_engineer.get("move_remaining_milliseconds", 0)) + int(repair_safe_project.get("required_milliseconds", 0)))
+	army = city._army_registry.get_army(army_id)
+	transfer = Dictionary(Dictionary(army.get("macro_march", {})).get("blocked_transfer", {}))
+	city._advance_all_macro_marches_seconds(float(int(transfer.get("total_millis", 0)) - int(transfer.get("progress_millis", 0))) / 1000.0)
+	var waiting: Dictionary = city._army_registry.get_army(army_id)
+	var waiting_transfer := Dictionary(Dictionary(waiting.get("macro_march", {})).get("blocked_transfer", {}))
+	_check(
+		bool(repair_safe.get("success", false)) and StringName(waiting_transfer.get("phase", &"")) == &"WAITING",
+		"临时路线修复后从冻结位置继续转移并抵达原选定驻点"
+	)
+	var repair_target: Dictionary = city.begin_field_road_repair(engineer_id, target_road_id)
+	var repair_target_project := Dictionary(repair_target.get("project", {}))
+	var repairing_target_engineer := Dictionary(field.specialists_by_id.get(engineer_id, {}))
+	city.advance_war_loop_time(int(repairing_target_engineer.get("move_remaining_milliseconds", 0)) + int(repair_target_project.get("required_milliseconds", 0)))
+	var return_start: Dictionary = city._army_registry.get_army(army_id)
+	var return_transfer := Dictionary(Dictionary(return_start.get("macro_march", {})).get("blocked_transfer", {}))
+	var comparison_snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	var comparison_duration := float(int(return_transfer.get("total_millis", 0)) + 1500) / 1000.0
+	var comparison_scenes: Array[Node] = []
+	var comparison_cities: Array[Node] = []
+	for unused in 3:
+		var comparison_scene := CITY_SCENE.instantiate()
+		root.add_child(comparison_scene)
+		await process_frame
+		await process_frame
+		var comparison_city: Node = comparison_scene.get_node("ConstructionController")
+		comparison_city.set_process(false)
+		var restored: Dictionary = comparison_city.restore_v5_campaign_snapshot(comparison_snapshot)
+		if not bool(restored.get("success", false)):
+			failures.append("时间等价场景无法从正式 V5 快照恢复")
+		comparison_scenes.append(comparison_scene)
+		comparison_cities.append(comparison_city)
+	_advance_controller_frames(comparison_cities[0], comparison_duration, [1.0 / 30.0])
+	_advance_controller_frames(comparison_cities[1], comparison_duration, [1.0 / 60.0])
+	_advance_controller_frames(comparison_cities[2], comparison_duration, [0.017, 0.041, 0.113, 0.007])
+	var result_30: Dictionary = comparison_cities[0]._army_registry.get_army(army_id)
+	var result_60: Dictionary = comparison_cities[1]._army_registry.get_army(army_id)
+	var result_irregular: Dictionary = comparison_cities[2]._army_registry.get_army(army_id)
+	_check(
+		result_30 == result_60 and result_30 == result_irregular
+			and StringName(result_30.get("phase", &"")) == ArmyRegistry.PHASE_MARCHING
+			and int(Dictionary(result_30.get("macro_march", {})).get("progress_millis", 0)) >= int(Dictionary(return_start.get("macro_march", {})).get("progress_millis", 0)) + 1499,
+		"正式 _process 在返回边界消费剩余时间，30/60 FPS 与不规则帧步得到相同军令状态"
+	)
+	for comparison_scene in comparison_scenes:
+		comparison_scene.queue_free()
+	scene.queue_free()
+	await process_frame
+
+
+func _advance_controller_frames(city: Node, total_seconds: float, pattern: Array[float]) -> void:
+	var remaining := total_seconds
+	var index := 0
+	while remaining > 0.0000001:
+		var delta := minf(pattern[index % pattern.size()], remaining)
+		city._process(delta)
+		remaining -= delta
+		index += 1
+
+
+func _test_points_length(points: Array) -> float:
+	var length := 0.0
+	for index in range(1, points.size()):
+		length += Vector2(points[index - 1]).distance_to(Vector2(points[index]))
+	return length
+
+
+func _run_patrol_encounter_contract() -> void:
+	var geometry_context := await _new_scenario_city()
+	var geometry_scene: Node = geometry_context.scene
+	var geometry_city: Node = geometry_context.city
+	geometry_city.set_process(false)
+	var opposing: bool = geometry_city._timed_movement_segments_within_distance(
+		[{"from": Vector2(0, 0), "to": Vector2(100, 0), "start_milliseconds": 0, "end_milliseconds": 1000}],
+		[{"from": Vector2(100, 0), "to": Vector2(0, 0), "start_milliseconds": 0, "end_milliseconds": 1000}], 8.0
+	)
+	var separated_same_direction: bool = geometry_city._timed_movement_segments_within_distance(
+		[{"from": Vector2(0, 0), "to": Vector2(100, 0), "start_milliseconds": 0, "end_milliseconds": 1000}],
+		[{"from": Vector2(-100, 0), "to": Vector2(0, 0), "start_milliseconds": 0, "end_milliseconds": 1000}], 8.0
+	)
+	var different_times: bool = geometry_city._timed_movement_segments_within_distance(
+		[{"from": Vector2(0, 0), "to": Vector2(50, 0), "start_milliseconds": 0, "end_milliseconds": 400}],
+		[{"from": Vector2(50, 0), "to": Vector2(0, 0), "start_milliseconds": 600, "end_milliseconds": 1000}], 8.0
+	)
+	var arrival_contact: bool = geometry_city._timed_movement_segments_within_distance(
+		[
+			{"from": Vector2(0, 0), "to": Vector2(50, 0), "start_milliseconds": 0, "end_milliseconds": 500},
+			{"from": Vector2(50, 0), "to": Vector2(50, 0), "start_milliseconds": 500, "end_milliseconds": 1000},
+		],
+		[{"from": Vector2(100, 0), "to": Vector2(50, 0), "start_milliseconds": 0, "end_milliseconds": 700}], 8.0
+	)
+	_check(opposing and not separated_same_direction and not different_times and arrival_contact, "巡逻接敌同时比较空间与时间：相向交会和到站边界命中，同向间隔及先后经过不误判")
+	var field_geometry: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	var specialist_opposing := field_geometry._first_timed_contact_milliseconds(
+		[{"from": Vector2(0, 0), "to": Vector2(100, 0), "start_milliseconds": 0, "end_milliseconds": 1000}],
+		[{"from": Vector2(100, 0), "to": Vector2(0, 0), "start_milliseconds": 0, "end_milliseconds": 1000}], 8.0
+	)
+	var specialist_separated := field_geometry._first_timed_contact_milliseconds(
+		[{"from": Vector2(0, 0), "to": Vector2(100, 0), "start_milliseconds": 0, "end_milliseconds": 1000}],
+		[{"from": Vector2(-100, 0), "to": Vector2(0, 0), "start_milliseconds": 0, "end_milliseconds": 1000}], 8.0
+	)
+	var specialist_different_times := field_geometry._first_timed_contact_milliseconds(
+		[{"from": Vector2(0, 0), "to": Vector2(50, 0), "start_milliseconds": 0, "end_milliseconds": 400}],
+		[{"from": Vector2(50, 0), "to": Vector2(0, 0), "start_milliseconds": 600, "end_milliseconds": 1000}], 8.0
+	)
+	_check(specialist_opposing < INF and specialist_separated == INF and specialist_different_times == INF, "专家与巡逻也以同一时间区间判断接触，不把同向间隔或先后经过误算为遇袭")
+	geometry_scene.queue_free()
+	await process_frame
+
+	var timed_base: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	timed_base.initialize_from_theater({
+		&"test.west": {"world_position": Vector2i(0, 0)},
+		&"test.east": {"world_position": Vector2i(100, 0)},
+	}, {})
+	var timed_scout := timed_base.dispatch_specialist(FieldTacticsState.SPECIALIST_SCOUT, &"test.west")
+	var timed_scout_id := StringName(timed_scout.specialist_id)
+	var timed_scout_state := Dictionary(timed_base.specialists_by_id[timed_scout_id])
+	timed_scout_state.target_point_id = &"test.east"
+	timed_scout_state.target_world_position = Vector2i(100, 0)
+	timed_scout_state.move_route_world_points = [Vector2i(0, 0), Vector2i(100, 0)]
+	timed_scout_state.move_total_milliseconds = 1000
+	timed_scout_state.move_elapsed_milliseconds = 0
+	timed_scout_state.move_remaining_milliseconds = 1000
+	timed_scout_state.phase = FieldTacticsState.SPECIALIST_MOVING
+	timed_base.specialists_by_id[timed_scout_id] = timed_scout_state
+	timed_base.patrols_by_id = {&"patrol.timed": {
+		"patrol_id": &"patrol.timed", "current_point_id": &"test.east", "strength": 5,
+		"phase": &"PATROL", "route_point_ids": [&"test.east", &"test.west"], "target_route_index": 1,
+		"wait_remaining_milliseconds": 0, "move_total_milliseconds": 1000, "move_elapsed_milliseconds": 0,
+		"move_start_position": Vector2i(100, 0), "move_route_world_points": [Vector2i(100, 0), Vector2i(0, 0)],
+		"world_position": Vector2i(100, 0), "resolved_army_ids": [], "ambush_consumed_army_ids": [],
+		"exposed": false, "last_engagement": {},
+	}}
+	var guard_left: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	guard_left.restore_snapshot(timed_base.get_snapshot())
+	guard_left.initialize_from_theater({&"test.west": {"world_position": Vector2i(0, 0)}, &"test.east": {"world_position": Vector2i(100, 0)}}, {})
+	var guard_arrived: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	guard_arrived.restore_snapshot(timed_base.get_snapshot())
+	guard_arrived.initialize_from_theater({&"test.west": {"world_position": Vector2i(0, 0)}, &"test.east": {"world_position": Vector2i(100, 0)}}, {})
+	guard_left.advance_world(1000, {&"army.guard": Vector2i(200, 0)}, {&"army.guard": [
+		{"from": Vector2(50, 0), "to": Vector2(200, 0), "start_milliseconds": 0, "end_milliseconds": 300},
+		{"from": Vector2(200, 0), "to": Vector2(200, 0), "start_milliseconds": 300, "end_milliseconds": 1000},
+	]})
+	guard_arrived.advance_world(1000, {&"army.guard": Vector2i(50, 0)}, {&"army.guard": [
+		{"from": Vector2(200, 0), "to": Vector2(50, 0), "start_milliseconds": 0, "end_milliseconds": 360},
+		{"from": Vector2(50, 0), "to": Vector2(50, 0), "start_milliseconds": 360, "end_milliseconds": 1000},
+	]})
+	_check(
+		not bool(Dictionary(guard_left.specialists_by_id[timed_scout_id]).get("alive", true))
+			and bool(Dictionary(guard_arrived.specialists_by_id[timed_scout_id]).get("alive", false)),
+		"护卫是否生效取决于接敌时刻的位置：提前离开不保护，及时抵达才参与"
+	)
+
+	var construction_base: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	var construction_points := {
+		&"work.west": {"world_position": Vector2i(0, 0)},
+		&"work.east": {"world_position": Vector2i(100, 0)},
+	}
+	construction_base.initialize_from_theater(construction_points, {})
+	var working_engineer := construction_base.dispatch_specialist(FieldTacticsState.SPECIALIST_ENGINEER, &"work.west")
+	var working_engineer_id := StringName(working_engineer.specialist_id)
+	var working_state := Dictionary(construction_base.specialists_by_id[working_engineer_id])
+	working_state.phase = FieldTacticsState.SPECIALIST_BUILDING
+	working_state.project_id = &"project.timed.work"
+	construction_base.specialists_by_id[working_engineer_id] = working_state
+	construction_base.projects_by_id[&"project.timed.work"] = {
+		"project_id": &"project.timed.work", "project_kind": &"CONSTRUCTION",
+		"engineer_id": working_engineer_id, "road_id": &"road.timed.work",
+		"source_point_id": &"work.west", "target_point_id": &"work.east",
+		"route_world_points": [Vector2i(0, 0), Vector2i(100, 0)], "road_kind": FieldTacticsState.ROAD_NORMAL,
+		"progress_milliseconds": 0, "required_milliseconds": 1000, "max_durability": 100,
+		"segment_plans": [{
+			"road_id": &"road.timed.work", "source_point_id": &"work.west", "target_point_id": &"work.east",
+			"route_world_points": [Vector2i(0, 0), Vector2i(100, 0)], "road_kind": FieldTacticsState.ROAD_NORMAL,
+			"required_milliseconds": 1000, "max_durability": 100,
+		}],
+		"build_camp": false, "camp_id": &"", "phase": &"BUILDING",
+	}
+	construction_base.patrols_by_id[&"patrol.timed.work"] = {
+		"patrol_id": &"patrol.timed.work", "display_name": "测试巡逻",
+		"current_point_id": &"work.east", "strength": 5, "phase": &"PATROL",
+		"route_point_ids": [&"work.east", &"work.west"], "target_route_index": 1,
+		"wait_remaining_milliseconds": 0, "move_total_milliseconds": 1000,
+		"move_elapsed_milliseconds": 0, "move_start_position": Vector2i(100, 0),
+		"move_route_world_points": [Vector2i(100, 0), Vector2i(0, 0)],
+		"world_position": Vector2i(100, 0), "resolved_army_ids": [],
+		"ambush_consumed_army_ids": [], "exposed": false, "last_engagement": {},
+	}
+	var construction_large: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	construction_large.restore_snapshot(construction_base.get_snapshot())
+	construction_large.initialize_from_theater(construction_points, {})
+	var construction_split: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	construction_split.restore_snapshot(construction_base.get_snapshot())
+	construction_split.initialize_from_theater(construction_points, {})
+	var large_result := construction_large.advance_world(1000)
+	var split_engagements: Array = []
+	for _step in 10:
+		split_engagements.append_array(Array(construction_split.advance_world(100).get("engagements", [])))
+	var large_project := Dictionary(construction_large.projects_by_id[&"project.timed.work"])
+	var split_project := Dictionary(construction_split.projects_by_id[&"project.timed.work"])
+	_check(
+		not bool(Dictionary(construction_large.specialists_by_id[working_engineer_id]).get("alive", true))
+			and not bool(Dictionary(construction_split.specialists_by_id[working_engineer_id]).get("alive", true))
+			and StringName(large_project.get("phase", &"")) == &"INTERRUPTED"
+			and large_project == split_project
+			and not Array(large_result.get("engagements", [])).is_empty()
+			and not split_engagements.is_empty()
+			and not construction_large.roads_by_id.has(&"road.timed.work")
+			and not construction_split.roads_by_id.has(&"road.timed.work"),
+		"施工人员沿作业路线生成带时间轨迹；同一接敌在大步与拆分推进下于相同进度中断且不会提前开路"
+	)
+
+	var unguarded: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	unguarded.initialize_from_theater(THEATER.get_points(), THEATER.get_routes(), THEATER.get_water_regions(), Rect2i(THEATER.get_world_bounds()), THEATER.get_terrain_regions())
+	var moving_scout: Dictionary = unguarded.dispatch_specialist(FieldTacticsState.SPECIALIST_SCOUT, &"northwatch_garrison")
+	unguarded.order_specialist_move(StringName(moving_scout.specialist_id), &"reedbank_garrison")
+	var guarded: FieldTacticsState = FIELD_TACTICS_STATE.new()
+	guarded.restore_snapshot(unguarded.get_snapshot())
+	guarded.initialize_from_theater(THEATER.get_points(), THEATER.get_routes(), THEATER.get_water_regions(), Rect2i(THEATER.get_world_bounds()), THEATER.get_terrain_regions())
+	var unguarded_contact: Dictionary = unguarded.advance_world(100)
+	var guarded_contact: Dictionary = guarded.advance_world(100, {&"army.guard": Vector2i(790, 170)})
+	_check(
+		not bool(Dictionary(unguarded.specialists_by_id[StringName(moving_scout.specialist_id)]).get("alive", true))
+			and bool(Dictionary(guarded.specialists_by_id[StringName(moving_scout.specialist_id)]).get("alive", false))
+			and Array(Dictionary(Array(guarded_contact.get("engagements", [])).front()).get("guard_army_ids", [])).has(&"army.guard")
+			and not Array(unguarded_contact.get("engagements", [])).is_empty(),
+		"移动中的专家会被巡逻实际接触；有效距离内的军队护卫会阻止专家被直接击杀"
+	)
+
+	var context := await _new_scenario_city()
+	var scene: Node = context.scene
+	var city: Node = context.city
+	city.set_process(false)
+	city.food = 240
+	var roster: Array[Dictionary] = city.get_formation_roster()
+	var ridge: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
+	var lowland: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.lowland")
+	var northwatch_redcliff: Dictionary = THEATER.get_route(&"road.northwatch.redcliff")
+	var redcliff_drawn := Array(ridge.points).duplicate(true)
+	redcliff_drawn.pop_back()
+	redcliff_drawn.append_array(Array(northwatch_redcliff.points))
+	var ridge_plan: Dictionary = city.plan_field_path(&"blackstone_city", &"northwatch_garrison", Array(ridge.points))
+	var lowland_plan: Dictionary = city.plan_field_path(&"blackstone_city", &"northwatch_garrison", Array(lowland.points))
+	var redcliff_plan: Dictionary = city.plan_field_path(&"blackstone_city", &"redcliff_city", redcliff_drawn)
+	var first_issue: Dictionary = city.commit_macro_march_from_city([StringName(roster[0].formation_id)], &"northwatch_garrison", StringName(ridge_plan.get("route_id", &"")), Array(ridge_plan.get("points", [])))
+	var second_issue: Dictionary = city.commit_macro_march_from_city([StringName(roster[1].formation_id)], &"northwatch_garrison", StringName(lowland_plan.get("route_id", &"")), Array(lowland_plan.get("points", [])))
+	var siege_issue: Dictionary = city.commit_macro_march_from_city([StringName(roster[2].formation_id)], &"redcliff_city", StringName(redcliff_plan.get("route_id", &"")), Array(redcliff_plan.get("points", [])))
+	var maximum_duration := maxi(int(ridge_plan.get("duration_milliseconds", 0)), maxi(int(lowland_plan.get("duration_milliseconds", 0)), int(redcliff_plan.get("duration_milliseconds", 0))))
+	city._advance_all_macro_marches_seconds(float(maximum_duration) / 1000.0)
+	var first_id := StringName(Dictionary(first_issue.get("army", {})).get("army_id", &""))
+	var second_id := StringName(Dictionary(second_issue.get("army", {})).get("army_id", &""))
+	var siege_id := StringName(Dictionary(siege_issue.get("army", {})).get("army_id", &""))
+	var encounter_advance: Dictionary = city.advance_war_loop_time(2600)
+	var encounters: Array = Array(encounter_advance.get("patrol_encounters", []))
+	var first_after: Dictionary = city._army_registry.get_army(first_id)
+	var second_after: Dictionary = city._army_registry.get_army(second_id)
+	var siege_after: Dictionary = city._army_registry.get_army(siege_id)
+	var patrol_after := Dictionary(city._war_loop_state.field_tactics.patrols_by_id.get(&"patrol.ridge.001", {}))
+	var first_count: int = city._macro_army_member_count(first_after)
+	var second_count: int = city._macro_army_member_count(second_after)
+	var before_repeat_first := first_after.duplicate(true)
+	var before_repeat_second := second_after.duplicate(true)
+	var repeat_advance: Dictionary = city.advance_war_loop_time(2600)
+	var first_formations: Array = Array(Dictionary(first_after.get("macro_march", {})).get("formation_snapshots", []))
+	var second_formations: Array = Array(Dictionary(second_after.get("macro_march", {})).get("formation_snapshots", []))
+	_check(
+		bool(first_issue.get("success", false)) and bool(second_issue.get("success", false)) and bool(siege_issue.get("success", false))
+			and encounters.size() == 1
+			and Array(Dictionary(encounters.front()).get("army_ids", [])).size() == 2
+			and int(patrol_after.get("strength", -1)) == 0
+			and first_count == 5 and second_count == 6
+			and int(Dictionary(first_formations[0]).get("member_count", -1)) == 5
+			and int(Dictionary(second_formations[0]).get("member_count", -1)) == 6,
+		"两支军队接触同一巡逻时共享有限敌军并各自回写真实编队伤亡，敌军只结算一次"
+	)
+	_check(
+		StringName(siege_after.get("phase", &"")) == ArmyRegistry.PHASE_SIEGING
+			and before_repeat_first == city._army_registry.get_army(first_id)
+			and before_repeat_second == city._army_registry.get_army(second_id)
+			and Array(repeat_advance.get("patrol_encounters", [])).is_empty(),
+		"一处巡逻遭遇与另一支军队攻城并行推进，已结算巡逻不会按帧重复扣兵"
+	)
+	var encounter_snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	var restored_scene := CITY_SCENE.instantiate()
+	root.add_child(restored_scene)
+	await process_frame
+	await process_frame
+	var restored_city: Node = restored_scene.get_node("ConstructionController")
+	restored_city.set_process(false)
+	var restored_result: Dictionary = restored_city.restore_v5_campaign_snapshot(encounter_snapshot)
+	var restored_patrol: Dictionary = Dictionary(restored_city._war_loop_state.field_tactics.patrols_by_id.get(&"patrol.ridge.001", {}))
+	_check(
+		bool(restored_result.get("success", false))
+			and int(restored_patrol.get("strength", -1)) == 0
+			and Array(restored_patrol.get("resolved_army_ids", [])).size() == 2
+			and restored_city._army_registry.get_army(first_id) == city._army_registry.get_army(first_id)
+			and restored_city._army_registry.get_army(second_id) == city._army_registry.get_army(second_id),
+		"巡逻唯一兵力、已结算军队身份和逐编队伤亡随正式 V5 快照冷恢复"
+	)
+	scene.queue_free()
+	restored_scene.queue_free()
+	await process_frame
+
+	var crossing_context := await _new_scenario_city()
+	var crossing_scene: Node = crossing_context.scene
+	var crossing_city: Node = crossing_context.city
+	crossing_city.set_process(false)
+	crossing_city.food = 120
+	var crossing_roster: Array[Dictionary] = crossing_city.get_formation_roster()
+	var crossing_plan: Dictionary = crossing_city.plan_field_path(&"blackstone_city", &"northwatch_garrison", Array(ridge.points))
+	var crossing_issue: Dictionary = crossing_city.commit_macro_march_from_city(
+		[StringName(crossing_roster[0].formation_id)], &"northwatch_garrison",
+		StringName(crossing_plan.get("route_id", &"")), Array(crossing_plan.get("points", []))
+	)
+	var crossing_army_id := StringName(Dictionary(crossing_issue.get("army", {})).get("army_id", &""))
+	var crossing_field: FieldTacticsState = crossing_city._war_loop_state.field_tactics
+	var crossing_patrol: Dictionary = Dictionary(crossing_field.patrols_by_id[&"patrol.ridge.001"])
+	var reverse_ridge := Array(ridge.points).duplicate(true)
+	reverse_ridge.reverse()
+	crossing_patrol.current_point_id = &"northwatch_garrison"
+	crossing_patrol.route_point_ids = [&"northwatch_garrison", &"blackstone_city"]
+	crossing_patrol.target_route_index = 1
+	crossing_patrol.wait_remaining_milliseconds = 0
+	crossing_patrol.move_total_milliseconds = int(crossing_plan.get("duration_milliseconds", 0))
+	crossing_patrol.move_elapsed_milliseconds = 0
+	crossing_patrol.move_start_position = Vector2i(reverse_ridge.front())
+	crossing_patrol.move_route_world_points = reverse_ridge
+	crossing_patrol.world_position = Vector2i(reverse_ridge.front())
+	crossing_patrol.strength = 5
+	crossing_patrol.resolved_army_ids = []
+	crossing_patrol.ambush_consumed_army_ids = []
+	crossing_field.patrols_by_id[&"patrol.ridge.001"] = crossing_patrol
+	# The contact summary is also the authority input to nearby engineered-road
+	# damage. Keep one normal road on the crossing geometry so this time-split
+	# contract proves both the reported contact and its gameplay consequence.
+	var crossing_damage_road_id := &"test.crossing.engineered"
+	crossing_field.roads_by_id[crossing_damage_road_id] = {
+		"road_id": crossing_damage_road_id,
+		"source_point_id": &"blackstone_city",
+		"target_point_id": &"northwatch_garrison",
+		"route_world_points": Array(ridge.points).duplicate(true),
+		"road_kind": FieldTacticsState.ROAD_NORMAL,
+		"state": FieldTacticsState.ROAD_OPEN,
+		"durability": 1,
+		"max_durability": 1,
+		"built": true,
+		"project_id": &"test.crossing",
+	}
+	var crossing_duration := float(int(crossing_plan.get("duration_milliseconds", 0))) / 1000.0
+	var crossing_snapshot: Dictionary = crossing_city.export_v5_campaign_snapshot()
+	var crossing_comparison_scenes: Array[Node] = []
+	var crossing_comparison_cities: Array[Node] = []
+	for unused in 3:
+		var comparison_scene := CITY_SCENE.instantiate()
+		root.add_child(comparison_scene)
+		await process_frame
+		await process_frame
+		var comparison_city: Node = comparison_scene.get_node("ConstructionController")
+		comparison_city.set_process(false)
+		var restored_crossing: Dictionary = comparison_city.restore_v5_campaign_snapshot(crossing_snapshot)
+		if not bool(restored_crossing.get("success", false)):
+			failures.append("巡逻时间等价场景无法从正式 V5 快照恢复")
+		crossing_comparison_scenes.append(comparison_scene)
+		crossing_comparison_cities.append(comparison_city)
+	crossing_city._process(crossing_duration)
+	_advance_controller_frames(crossing_comparison_cities[0], crossing_duration, [1.0 / 30.0])
+	_advance_controller_frames(crossing_comparison_cities[1], crossing_duration, [1.0 / 60.0])
+	_advance_controller_frames(crossing_comparison_cities[2], crossing_duration, [0.017, 0.041, 0.113, 0.007])
+	var crossing_after: Dictionary = crossing_city._army_registry.get_army(crossing_army_id)
+	var crossing_patrol_after: Dictionary = Dictionary(crossing_field.patrols_by_id[&"patrol.ridge.001"])
+	var crossing_encounter: Dictionary = Dictionary(crossing_patrol_after.get("last_engagement", {}))
+	var crossing_damage_road: Dictionary = Dictionary(crossing_field.roads_by_id.get(crossing_damage_road_id, {}))
+	var crossing_army_count: int = crossing_city._macro_army_member_count(crossing_after)
+	var crossing_results_match := true
+	for comparison_city in crossing_comparison_cities:
+		var comparison_army: Dictionary = comparison_city._army_registry.get_army(crossing_army_id)
+		var comparison_patrol: Dictionary = Dictionary(comparison_city._war_loop_state.field_tactics.patrols_by_id[&"patrol.ridge.001"])
+		var comparison_encounter: Dictionary = Dictionary(comparison_patrol.get("last_engagement", {}))
+		var comparison_damage_road: Dictionary = Dictionary(comparison_city._war_loop_state.field_tactics.roads_by_id.get(crossing_damage_road_id, {}))
+		print("CROSSING_CONTACT_COMPARE world_contact=%d/%d position=%s/%s damage=%s/%s state=%s/%s" % [
+			int(crossing_encounter.get("contact_world_milliseconds", -1)), int(comparison_encounter.get("contact_world_milliseconds", -1)),
+			str(crossing_encounter.get("contact_world_position", Vector2i.ZERO)), str(comparison_encounter.get("contact_world_position", Vector2i.ZERO)),
+			String(crossing_encounter.get("damaged_road_id", &"")), String(comparison_encounter.get("damaged_road_id", &"")),
+			String(crossing_damage_road.get("state", &"")), String(comparison_damage_road.get("state", &"")),
+		])
+		crossing_results_match = crossing_results_match and (
+			StringName(comparison_army.get("phase", &"")) == StringName(crossing_after.get("phase", &""))
+			and comparison_city._macro_army_member_count(comparison_army) == crossing_army_count
+			and int(comparison_patrol.get("strength", -1)) == int(crossing_patrol_after.get("strength", -1))
+			and Array(comparison_patrol.get("resolved_army_ids", [])) == Array(crossing_patrol_after.get("resolved_army_ids", []))
+			# Persisted positions are Vector2i and frame remainders quantize the
+			# continuous first-contact solver at the millisecond boundary. A three-ms,
+			# one-world-unit tolerance proves the same physical contact without asking
+			# different valid frame partitions to share a rounding artifact.
+			and absi(int(comparison_encounter.get("contact_world_milliseconds", -1)) - int(crossing_encounter.get("contact_world_milliseconds", -2))) <= 3
+			and Vector2i(comparison_encounter.get("contact_world_position", Vector2i.ZERO)).distance_to(Vector2i(crossing_encounter.get("contact_world_position", Vector2i(1, 1)))) <= 1.0
+			and StringName(comparison_encounter.get("damaged_road_id", &"")) == crossing_damage_road_id
+			and StringName(comparison_damage_road.get("state", &"")) == FieldTacticsState.ROAD_DAMAGED
+		)
+	_check(
+		bool(crossing_issue.get("success", false))
+			and StringName(crossing_after.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED
+			and int(crossing_patrol_after.get("strength", 5)) < 5
+			and Array(crossing_patrol_after.get("resolved_army_ids", [])).has(crossing_army_id)
+			and crossing_results_match,
+		"军队与巡逻在同一道路相向穿越时不会因帧末错开而漏战，单步、30/60 FPS 与不规则帧得到相同结算"
+	)
+	_check(
+		StringName(crossing_encounter.get("damaged_road_id", &"")) == crossing_damage_road_id
+			and StringName(crossing_damage_road.get("state", &"")) == FieldTacticsState.ROAD_DAMAGED
+			and int(crossing_encounter.get("contact_milliseconds", -1)) >= 0
+			and Vector2i(crossing_encounter.get("contact_world_position", Vector2i.ZERO)) != Vector2i(crossing_patrol_after.get("world_position", Vector2i.ZERO)),
+		"首次接触坐标同时决定工程道路损坏；大步、30/60 FPS 与不规则帧保持同一接触和损坏结果"
+	)
+	for comparison_scene in crossing_comparison_scenes:
+		comparison_scene.queue_free()
+	crossing_scene.queue_free()
+	await process_frame
+
+
+func _check(condition: bool, description: String) -> void:
+	assertions += 1
+	if condition:
+		print("PASS: %s" % description)
+	else:
+		failures.append(description)
+
+
+func _finish() -> void:
+	if failures.is_empty():
+		print("FIELD_TACTICS_R2_SMOKE PASS assertions=%d" % assertions)
+		quit(0)
+		return
+	for failure in failures:
+		push_error("FIELD_TACTICS_R2_SMOKE FAIL: %s" % failure)
+	quit(1)

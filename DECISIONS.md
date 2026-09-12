@@ -1,27 +1,161 @@
 # Product Successor Decisions
 
-## R1E macro command contract (reviewed, not implemented)
+## Blackstone first-invasion ownership
 
-- Ordinary armies are commanded as source-to-legal-target mission tasks over
-  drawn continuous routes. A draft may be cancelled; after issue, ordinary
-  orders may not be arbitrarily retargeted, rerouted, or withdrawn. Emergency
-  escape is a separately designed loss-bearing action, not a free cancellation.
-- A blocked route normally creates a nearby temporary station while engineers
-  restore connectivity. This exceptional station does not make arbitrary
-  wilderness points ordinary player-selected destinations.
-- Preserve formation data for force, equipment, generals, and casualties, but
-  do not preserve a formation-micro-management UI merely because the data
-  exists. Snipers, engineers, and comparable specialist units remain a separate
-  future control boundary.
-- Generals share one energy pool and strategists share another. Skill use is
-  constrained by both energy and an as-yet-unspecified usage count; energy
-  restoration and medicine do not imply restoring usage counts.
-- `匿迹奔袭` is a one-use off-road permission for one point-to-point army task.
-  It is neither timed expiry, automatic teleportation, permanent off-road
-  freedom, nor universal stealth. Interruption, temporary station, escape, and
-  count-consumption details remain explicitly unresolved.
-- These are product rules and next-slice constraints only. They do not alter
-  current V6 attempt data, save schema, C0 combat orders, or settlement owners.
+- The first Blackstone invasion is authored in the playable theatre resource
+  and persisted as one `FieldTacticsState` patrol record. R0 deliberately does
+  not add a generic event bus or a UI-owned countdown.
+- Warning knowledge and tactical intel remain distinct. The campaign can reveal
+  a known source, target and broad approach before departure, while exact force
+  strength still requires the existing visibility projection.
+- Arrival transfers the same patrol identity and surviving count into the
+  existing wartime-defense transaction. While handed off, field movement and
+  field-facility effects skip that force; settlement resolves it once.
+- External watchtowers, arrow towers and barricades share the existing durable
+  field project/facility envelope for save compatibility, but carry an explicit
+  `facility_kind`. C0 works stay separate `BattleSession` objects even when
+  Chinese labels overlap.
+- R0 barricades use a persisted one-time traversal delay rather than dynamic
+  rerouting. This matches the current ordered-road patrol model and can be
+  tuned or replaced later without changing facility identity or save ownership.
+
+## Field Tactics R2 outer-city state
+
+- `FieldTacticsState` is a serializable subrecord of `WarLoopState`, not a
+  second scene timer, resource ledger, or save owner. `ConstructionController`
+  remains the only route for food commits and runtime checkpoint publication.
+- The R1 `active_siege` compatibility record remains intact while R2 work
+  moves dynamic roads, camps, specialists, patrol knowledge, and project
+  progress into the persistent field record. R1 war snapshots normalize before
+  the controller's exact restore postcondition.
+- Macro command concurrency is limited by available distinct formations, not
+  a global “first active army” lookup. Closed history never occupies a formation;
+  a current macro formation may belong to only one non-closed army snapshot.
+- The player projection contains field construction and own specialists but
+  only observed or last-known patrol intel. It must not render the authoritative
+  patrol table directly.
+- R2 initial food costs, construction durations, and durability are reversible
+  greybox defaults, not user-approved final balance. Patrol combat, parallel
+  siege completion, full drag-line specialist UI, and player media remain
+  deliberately unaccepted follow-up work.
+- Specialists consume shared world time before changing location. Patrol contact
+	may remove a specialist only at the same recorded node and preserves the last
+	observed report; a building project with a lost engineer remains interrupted.
+- Completed field roads are authoritative macro-command routes, not display
+	overlays. Their endpoint coordinates become runtime camp points and the same
+	persisted route identity is validated before an army order can be issued.
+	Unfinished and damaged routes remain non-commandable.
+- Macro map interaction resolves a selected `army_id` from player-visible army
+	markers. Route continuation and retreat use that identity rather than the
+	legacy first-army read-model projection.
+- Field project completion and encounters are persistence boundaries. They use
+	the controller's existing checkpoint and rollback transaction rather than
+	depending on unrelated siege activity.
+- A Field watchtower is a completed engineering-camp attachment, not a city
+	construction platform. `FieldTacticsState` persists its project and completed
+	observer; `ConstructionController` owns its resource transaction, world time
+	and V5 publication. A tower contributes only to the existing fog observer
+	set after completion, and older snapshots conservatively restore no tower.
+- Specialist movement and fog use persisted world coordinates. A historical
+	intel record exists only after actual visibility, never as a side effect of
+	reading the player projection.
+- Map drafts are a presentation contract distinct from persisted road records.
+	They normalize road identity and polyline before confirmation; engineering
+	drafts have no resource side effect until the explicit confirm action.
+- Camp IDs are reserved at engineering confirmation, not completion, so an
+	in-progress project already owns its future runtime point and camp record.
+	The reservation is kept inside `FieldTacticsState` and therefore the V5
+	snapshot; no UI counter owns a strategic identity.
+- Field-road repair is an explicit persisted project: an engineer first travels
+	to the damaged endpoint, then repairs over shared world time.  The original
+	road remains closed until the completion transaction, and runtime road
+	validation accepts either direction only when the submitted polyline matches
+	the corresponding direction.
+- The theatre Resource owns the greybox water regions used for bridge
+	classification. A crossing construction line becomes a bridge in the field
+	authority even if a presentation caller requested a normal road; the map only
+	previews that authoritative choice.
+- World-step partitioning is a simulation invariant. If specialist travel
+	ends during a step, any remaining milliseconds are consumed by its repair
+	work in that same step; this prevents frame rate from changing completion.
+- A damaged runtime road blocks an affected macro order through `ArmyRegistry`
+	and preserves its original order identity. Repair completion is the only
+	path that automatically resumes it; no new food transaction, route rewrite,
+	or UI-owned recovery record is created.
+- Patrols are finite persistent field participants with a route, wait and
+	interpolated position. Historical intel stores the last observed coordinate;
+	it must not derive a new location from the current patrol record after
+	visibility has been lost. Army encounter and ambush resolution remain a
+	separate unfinished authority extension.
+- Patrol wait, route movement and arrival are one time-partition invariant:
+	any remainder of a shared world step continues into the next patrol state
+	instead of being discarded at arrival.
+- Macro map camera state is presentation-only. Every map render, hit test and
+	draft point uses the same reversible screen/world transform; camera position
+	and zoom are not part of a command, field record or save migration.
+- Command-cost copy uses a controller-owned immutable preview. The map may
+	display its selected force, food shortfall and duration, but it never copies
+	the food formula or reserves resources before the user confirms a command.
+- Tactical world bounds and terrain regions are theatre Resource data. The
+	map renders them but does not define tactical geography independently.
+- A runtime path is an ordered traversal of physical roads, not a newly merged
+	road record. Its handle encodes road identity and direction for validation;
+	damage and repairs still belong to the physical road records.
+- A normal macro command requires an explicit selected city formation or
+	stationed army. Clicking a legal destination uses the authority's shortest
+	completed path. Dragging from that subject may cross a displayed physical-road
+	choice point; the latest crossed `road_id` is then a hard authority
+	constraint, not a pointer-proximity score. If that road becomes unfinished or
+	damaged, confirmation rejects without substituting another route or charging
+	food. Engineering remains the separate free-polyline planning interaction.
+- Macro drawing has a single UI-time hold gate: pressing for 0.5 seconds starts
+	planning, while a pre-activation displacement above eight screen pixels
+	cancels. It is independent of world pause and speed. Road identity can change
+	only at the same visible choice points that accept the hit; a formation/army
+	subject switch or successful confirmation clears the draft-only road choice.
+- Engineering stores committed strokes separately from the live pointer end.
+	Undo removes one complete continuation rather than an arbitrary sample. New
+	camps use FieldTacticsState's bounds and land checks at preview and commit,
+	so the map does not reserve an impossible endpoint.
+- A newly issued macro order persists the directed physical road segments that
+	the field authority validated. This is immutable command intent, whereas
+progress remains the existing single shared-clock value. Snapshot validation
+migrates older single-road orders and composite route handles into this field.
+Road-damage checks start at
+	the segment containing current progress, so completed segments cannot freeze
+	the remainder of the same order.
+- A cross-water field project owns a sequential physical-segment plan instead
+	of one misleading bridge polyline. Intermediate generated junction IDs are
+	road-network connections only, never player-commandable camps; the final
+	camp remains the sole deployed endpoint. A finished early segment may enter
+	the graph while later construction remains closed.
+- Retreat is a new order over the same immutable physical roads: it reverses
+	the ordered segments and their directions but never invents a derivative
+	route ID. A construction segment becoming traversable is a durable world
+	event, so it uses the controller's existing checkpoint/rollback boundary.
+- Runtime path planning is weighted graph search, not all-simple-path
+	enumeration. Physical road length is the base cost and proximity to the
+	player's drawn line biases legal alternatives, removing the artificial
+	twelve-segment ceiling without substituting a UI-side route choice.
+
+## Macro March R0 outer-city greybox
+
+- `ArmyRegistry` owns one issued macro order and preserves the existing stable
+  `army_id`; the macro screen owns only draft pointers, selected controls, and
+  rendering. A stationed army receives a new `order_id` for its next leg but
+  keeps its army identity and exact carried formations.
+- `GarrisonState.try_extract_selected_formations()` is the only R0 city
+  departure mutation. Aggregate `try_remove_units()` and `set_unit_count()`
+  remain compatibility paths and must not be used for selected formation
+  marching or rollback.
+- A road draw resolves to one configured polyline before confirmation. The
+  stored path is world-coordinate `Vector2i` data, and the controller validates
+  it again before it charges food or creates an army.
+- `BLOCKED` remains the same durable order at the preceding reachable segment;
+  recovery resumes the same route and fee. `STATIONED` is not an active-army
+  phase, permitting the same army to issue one later garrison-to-garrison leg.
+- The legacy Blackstone MVP scene remains retained for historical reference but
+  is no longer the formal city entry and may not mutate macro army state.
 
 ## M1B standalone playable shell
 
@@ -210,3 +344,43 @@
   Legacy snapshots with no road placements restore an empty delta.
 - R2B excludes road deletion/upgrades, traffic/pathfinding, bridges/slopes,
   curved roads, full-map rotation, organic city generation, final art, and G4.
+
+## Blackstone formal art integration and R2 scenario isolation
+
+- The low-poly presentation is strictly a read-only adapter over theatre,
+  army, project and fog facts. Imported models may replace static visual
+  geometry, but never own passability, selection, timing, combat, resource, or
+  V5 persistence state. The 2D map remains the rollback path.
+- Only selected, traceable third-party files belong in the runtime tree. Asset
+  source, license, archive/file checksums and modifications are recorded next
+  to the selected files; generated imagery is a non-runtime design reference
+  unless a separate asset approval explicitly changes that boundary.
+- Field R2 same-process scenario tests restore one pristine production V5
+  snapshot per independent scenario. This prevents normal persistence
+  publication from leaking one test route's armies or patrol results into the
+  next one; dedicated multi-process workers continue to prove disk recovery.
+
+## 2026-09-12 - Population, recovery, location capability and field-defense ownership
+
+- `PopulationRecoveryState` is the only aggregate population allocation and
+  casualty/recovery authority. `GarrisonState`, `ArmyRegistry`, `TrainingQueue`
+  and `FieldTacticsState` keep their existing domain identities; population
+  validates their totals instead of replacing them.
+- Training, specialist dispatch, battle casualties and treatment are atomic
+  cross-authority operations. A settlement creates wounded/fallen facts; a
+  medical screen never invents casualties, and fallen never re-enter a roster.
+- Recovery parameters are authored in one adjustable resource. They are R0
+  balance inputs, not scattered UI constants or an individual-NPC simulation.
+- Location capability is a stable theatre-definition property, independent of
+  military control and display name. Occupation changes controller, not city
+  class or construction permission.
+- Fortress garrison identity is a real stationed `ArmyRegistry` army. Hidden
+  soldiers or a second fortress roster are prohibited.
+- Mine ownership, discovery, charge use and destruction are persistent field
+  facts. Player read models hide hostile mines until the existing specialist
+  rules discover them.
+- A field facility keeps its original effect while upgrading. Completion changes
+  configured parameters while preserving durability ratio; upgrade, repair and
+  C0 temporary construction remain distinct transactions and lifecycles.
+- Automated accelerated flow and engine-GUI screenshots are implementation
+  evidence only. Normal-speed human acceptance remains a separate open gate.

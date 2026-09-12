@@ -4,7 +4,7 @@
 [ext_resource type="Script" path="res://scripts/construction_controller.gd" id="2_construction"]
 [ext_resource type="Script" path="res://scripts/building_selection_controller.gd" id="3_selection"]
 [ext_resource type="PackedScene" path="res://scenes/world_map_v0.tscn" id="4_world_map"]
-[ext_resource type="PackedScene" path="res://scenes/blackstone_expedition_mvp.tscn" id="5_mvp"]
+[ext_resource type="PackedScene" path="res://scenes/macro_march_r0.tscn" id="5_mvp"]
 [ext_resource type="Script" path="res://scripts/inner_city_ui_r0.gd" id="6_inner_city_ui"]
 [ext_resource type="Theme" path="res://resources/ui/inner_city_theme.tres" id="7_inner_city_theme"]
 [ext_resource type="Script" path="res://scripts/regular_city_spatial_foundation.gd" id="8_regular_city"]
@@ -463,7 +463,7 @@ vertical_alignment = 1
 
 [node name="UI" type="CanvasLayer" parent="."]
 
-[node name="BlackstoneExpeditionMvp" parent="UI" instance=ExtResource("5_mvp")]
+[node name="MacroMarchR0" parent="UI" instance=ExtResource("5_mvp")]
 visible = false
 
 [node name="Shell" type="Control" parent="UI"]
@@ -634,6 +634,22 @@ theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
 text = "主线：第 7 日应战"
 tooltip_text = "当前主线将在第 7 日进入应战状态"
+
+[node name="MacroMarchButton" type="Button" parent="UI/Shell"]
+layout_mode = 0
+offset_left = 20.0
+offset_top = 56.0
+offset_right = 174.0
+offset_bottom = 90.0
+focus_mode = 2
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.98, 0.95, 0.83, 1)
+theme_override_font_sizes/font_size = 14
+theme_override_styles/normal = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/hover = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_disabled_action")
+text = "外城军令"
+tooltip_text = "进入黑石外城宏观军令战区"
 
 [node name="CityBar" type="Panel" parent="UI/Shell"]
 visible = false
@@ -1428,7 +1444,7 @@ theme_override_font_sizes/font_size = 14
 text = "北坡敌情"
 autowrap_mode = 2
 
-[node name="MvpExpeditionButton" type="Button" parent="UI/Shell/BuildingDetailPanel/FirstWarActions"]
+[node name="MacroMarchEntryButton" type="Button" parent="UI/Shell/BuildingDetailPanel/FirstWarActions"]
 layout_mode = 0
 offset_top = 150.0
 offset_right = 240.0
@@ -1440,9 +1456,9 @@ theme_override_font_sizes/font_size = 13
 theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
 theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
-text = "出征黑石堡"
+text = "进入外城军令"
 
-[node name="MvpResultStatus" type="Label" parent="UI/Shell/BuildingDetailPanel/FirstWarActions"]
+[node name="MacroMarchStatus" type="Label" parent="UI/Shell/BuildingDetailPanel/FirstWarActions"]
 layout_mode = 0
 offset_top = 190.0
 offset_right = 240.0
@@ -1595,6 +1611,20 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
 theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
 text = "进入战役地图"
+
+[node name="EnterWartimeDefenseButton" type="Button" parent="UI/Shell/BuildingDetailPanel/CityGateActions"]
+layout_mode = 0
+offset_top = 208.0
+offset_right = 240.0
+offset_bottom = 246.0
+focus_mode = 0
+mouse_default_cursor_shape = 2
+theme_override_colors/font_color = Color(0.286275, 0.27451, 0.254902, 1)
+theme_override_font_sizes/font_size = 12
+theme_override_styles/normal = SubResource("StyleBoxFlat_disabled_action")
+theme_override_styles/hover = SubResource("StyleBoxFlat_current_city")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_current_city")
+text = "进入黑石守城"
 
 [node name="RemovalConfirmation" type="Control" parent="UI/Shell/BuildingDetailPanel"]
 visible = false

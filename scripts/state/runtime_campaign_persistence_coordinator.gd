@@ -144,6 +144,14 @@ func persist_expedition_departure(attempt_id: StringName) -> Dictionary:
 	)
 
 
+func persist_expedition_battle_checkpoint(attempt_id: StringName) -> Dictionary:
+	return _persist_expedition_checkpoint(
+		attempt_id,
+		&"",
+		&"expedition_battle_checkpoint"
+	)
+
+
 func persist_expedition_settlement(
 	attempt_id: StringName,
 	result_id: StringName
@@ -155,6 +163,40 @@ func persist_expedition_settlement(
 		result_id,
 		&"expedition_settlement"
 	)
+
+
+func persist_macro_march_checkpoint() -> Dictionary:
+	# Macro marching has no battle result ledger. Its canonical ArmyRegistry
+	# snapshot is the checkpoint, and ordinary headless scene tests retain the
+	# existing opt-out unless they explicitly configure an isolated store.
+	if (
+		_writes_blocked
+		and StringName(_status.get("error_id", &""))
+			== &"HEADLESS_STORE_NOT_CONFIGURED"
+	):
+		return {
+			"success": true,
+			"uncertain": false,
+			"headless_test_store_disabled": true,
+		}
+	if flush_now(&"macro_march_checkpoint"):
+		return {"success": true, "uncertain": false}
+	# V5 save publication may have reached disk before the store's final reread
+	# failed. Reuse the existing latest-generation validation path so callers do
+	# not roll back a durable enemy-city arrival and later create a duplicate
+	# siege/order on restart.
+	if (
+		_store != null
+		and _controller != null
+		and StringName(_status.get("error_id", &"")) == &"FINAL_REREAD_FAILED"
+	):
+		var expected: Dictionary = _controller.export_v5_campaign_snapshot()
+		var loaded := _store.load_latest(
+			Callable(_controller, "validate_v5_campaign_snapshot")
+		)
+		if bool(loaded.get("success", false)) and Dictionary(loaded.get("snapshot", {})) == expected:
+			return {"success": true, "uncertain": false, "recovered_after_final_reread": true}
+	return {"success": false, "uncertain": false}
 
 
 func _persist_expedition_checkpoint(

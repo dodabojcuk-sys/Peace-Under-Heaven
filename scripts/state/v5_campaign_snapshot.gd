@@ -2,9 +2,14 @@ class_name V5CampaignSnapshot
 extends RefCounted
 
 
-const SCHEMA_VERSION := 6
+const MACRO_MARCH_THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
+const POPULATION_RECOVERY_STATE = preload("res://scripts/state/population_recovery_state.gd")
+const CITY_GOVERNANCE_STATE = preload("res://scripts/state/city_governance_state.gd")
+const CITY_STRATEGY_STATE = preload("res://scripts/state/city_strategy_state.gd")
+const SCHEMA_VERSION := 15
 const SNAPSHOT_KIND := &"campaign_authoritative"
 const CITY_ID := "blackstone_city"
+const LEGACY_SILVERFORD_REINFORCEMENT_TOTAL := 4
 const ROOT_KEYS := [
 	"schema_version",
 	"snapshot_kind",
@@ -19,6 +24,33 @@ const ROOT_KEYS := [
 	"mainline_level",
 	"build_slot",
 	"expedition_attempt",
+	"war_loop",
+	"population_recovery",
+	"city_governance",
+	"city_strategy",
+]
+const V14_ROOT_KEYS := [
+	"schema_version", "snapshot_kind", "city_id", "city", "placements",
+	"next_placement_id", "garrison", "training_queue", "army_registry",
+	"settlement_ledger", "mainline_level", "build_slot", "expedition_attempt",
+	"war_loop", "population_recovery", "city_governance",
+]
+const V13_ROOT_KEYS := [
+	"schema_version", "snapshot_kind", "city_id", "city", "placements",
+	"next_placement_id", "garrison", "training_queue", "army_registry",
+	"settlement_ledger", "mainline_level", "build_slot", "expedition_attempt",
+	"war_loop", "population_recovery",
+]
+const V12_ROOT_KEYS := [
+	"schema_version", "snapshot_kind", "city_id", "city", "placements",
+	"next_placement_id", "garrison", "training_queue", "army_registry",
+	"settlement_ledger", "mainline_level", "build_slot", "expedition_attempt",
+	"war_loop",
+]
+const V6_ROOT_KEYS := [
+	"schema_version", "snapshot_kind", "city_id", "city", "placements",
+	"next_placement_id", "garrison", "training_queue", "army_registry",
+	"settlement_ledger", "mainline_level", "build_slot", "expedition_attempt",
 ]
 const V5_ROOT_KEYS := [
 	"schema_version",
@@ -89,6 +121,50 @@ const EXPEDITION_ATTEMPT_KEYS := [
 	"reward_food",
 	"settled",
 	"result_id",
+	"wartime_facility_plan",
+	"battle_session_snapshot",
+	"terminal_result_snapshot",
+	"source_id",
+	"mission_id",
+	"source_patrol_id",
+	"source_force_name",
+	"source_point_id",
+	"source_route_name",
+]
+const V11_EXPEDITION_ATTEMPT_KEYS := [
+	"attempt_id", "mainline_id", "phase", "created_day",
+	"created_day_elapsed_milliseconds", "food_cost", "food_before",
+	"food_after", "committed_total", "selected_formations",
+	"committed_force_snapshot", "enemy_force_snapshot",
+	"city_defense_snapshot", "first_clear_key", "reward_wood",
+	"reward_food", "settled", "result_id", "wartime_facility_plan",
+	"battle_session_snapshot", "terminal_result_snapshot", "source_id",
+	"mission_id",
+]
+const V10_EXPEDITION_ATTEMPT_KEYS := [
+	"attempt_id", "mainline_id", "phase", "created_day",
+	"created_day_elapsed_milliseconds", "food_cost", "food_before",
+	"food_after", "committed_total", "selected_formations",
+	"committed_force_snapshot", "enemy_force_snapshot",
+	"city_defense_snapshot", "first_clear_key", "reward_wood",
+	"reward_food", "settled", "result_id", "wartime_facility_plan",
+	"battle_session_snapshot", "source_id", "mission_id",
+]
+const V7_EXPEDITION_ATTEMPT_KEYS := [
+	"attempt_id", "mainline_id", "phase", "created_day",
+	"created_day_elapsed_milliseconds", "food_cost", "food_before",
+	"food_after", "committed_total", "selected_formations",
+	"committed_force_snapshot", "enemy_force_snapshot",
+	"city_defense_snapshot", "first_clear_key", "reward_wood",
+	"reward_food", "settled", "result_id",
+]
+const V8_EXPEDITION_ATTEMPT_KEYS := [
+	"attempt_id", "mainline_id", "phase", "created_day",
+	"created_day_elapsed_milliseconds", "food_cost", "food_before",
+	"food_after", "committed_total", "selected_formations",
+	"committed_force_snapshot", "enemy_force_snapshot",
+	"city_defense_snapshot", "first_clear_key", "reward_wood",
+	"reward_food", "settled", "result_id", "wartime_facility_plan",
 ]
 const PLACEMENT_KEYS := [
 	"placement_id",
@@ -159,6 +235,10 @@ static func validate_structure(
 	var source_version := int(snapshot.get("schema_version", 0))
 	if (
 		(source_version == SCHEMA_VERSION and not _has_exact_keys(snapshot, ROOT_KEYS))
+		or (source_version == 14 and not _has_exact_keys(snapshot, V14_ROOT_KEYS))
+		or (source_version == 13 and not _has_exact_keys(snapshot, V13_ROOT_KEYS))
+		or (source_version in [7, 8, 9, 10, 11, 12] and not _has_exact_keys(snapshot, V12_ROOT_KEYS))
+		or (source_version == 6 and not _has_exact_keys(snapshot, V6_ROOT_KEYS))
 		or (source_version == 5 and not _has_exact_keys(snapshot, V5_ROOT_KEYS))
 		or (source_version == 4 and not _has_exact_keys(snapshot, V4_ROOT_KEYS))
 		or (source_version in [2, 3] and not _has_exact_keys(snapshot, V3_ROOT_KEYS))
@@ -166,7 +246,7 @@ static func validate_structure(
 		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段不完整或含未知字段")
 	if (
 		typeof(snapshot.schema_version) != TYPE_INT
-		or int(snapshot.schema_version) not in [2, 3, 4, 5, SCHEMA_VERSION]
+		or int(snapshot.schema_version) not in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, SCHEMA_VERSION]
 		or typeof(snapshot.snapshot_kind) != TYPE_STRING_NAME
 		or StringName(snapshot.snapshot_kind) != SNAPSHOT_KIND
 		or typeof(snapshot.city_id) != TYPE_STRING
@@ -178,6 +258,15 @@ static func validate_structure(
 		or typeof(snapshot.training_queue) != TYPE_DICTIONARY
 		or typeof(snapshot.army_registry) != TYPE_DICTIONARY
 		or typeof(snapshot.settlement_ledger) != TYPE_DICTIONARY
+		or (
+			source_version == SCHEMA_VERSION
+			and typeof(snapshot.get("population_recovery", null)) != TYPE_DICTIONARY
+		)
+		or (
+			source_version == SCHEMA_VERSION
+			and typeof(snapshot.get("city_governance", null)) != TYPE_DICTIONARY
+		)
+		or (source_version == SCHEMA_VERSION and typeof(snapshot.get("city_strategy", null)) != TYPE_DICTIONARY)
 	):
 		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段类型或身份错误")
 	if not _is_persistence_value(snapshot):
@@ -209,6 +298,72 @@ static func validate_structure(
 		if not bool(migration.valid):
 			return migration
 		normalized = migration.snapshot
+	if int(normalized.schema_version) == 6:
+		var migration := _migrate_v6_war_loop(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if int(normalized.schema_version) == 7:
+		var migration := _migrate_v7_wartime_facilities(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if int(normalized.schema_version) == 8:
+		var migration := _migrate_v8_battle_session(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if int(normalized.schema_version) == 9:
+		var migration := _migrate_v9_battle_source(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if int(normalized.schema_version) == 10:
+		var migration := _migrate_v10_terminal_result(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if int(normalized.schema_version) == 11:
+		var migration := _migrate_v11_invasion_source(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if int(normalized.schema_version) == 12:
+		var migration := _migrate_v12_population_recovery(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if int(normalized.schema_version) == 13:
+		var migration := _migrate_v13_city_governance(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if int(normalized.schema_version) == 14:
+		normalized.city_strategy = CITY_STRATEGY_STATE.empty_legacy_snapshot()
+		normalized.schema_version = SCHEMA_VERSION
+	if typeof(normalized.get("war_loop", null)) != TYPE_DICTIONARY:
+		return _failure(&"INVALID_WAR_LOOP", "WarLoop 快照字段非法")
+	# WarLoop owns its nested R1 -> R2 migration.  Normalize it here so the
+	# controller's exact restore postcondition compares one canonical snapshot
+	# rather than a valid legacy input against a newer exported representation.
+	var normalized_war_loop := WarLoopState.new()
+	if not normalized_war_loop.restore_snapshot(Dictionary(normalized.war_loop)):
+		return _failure(&"INVALID_WAR_LOOP", "WarLoop 快照字段非法")
+	# Route migration for specialists needs the same Resource-owned terrain facts
+	# as the real restore.  Canonicalizing with those facts keeps the controller's
+	# exact postcondition check strict without comparing pre- and post-migration
+	# representations of a legacy save.
+	normalized_war_loop.initialize_from_theater(
+		MACRO_MARCH_THEATER.get_points(),
+		MACRO_MARCH_THEATER.get_routes(),
+		MACRO_MARCH_THEATER.get_water_regions(),
+		Rect2i(MACRO_MARCH_THEATER.get_world_bounds()),
+		MACRO_MARCH_THEATER.get_terrain_regions(),
+		MACRO_MARCH_THEATER.get_patrol_configs(),
+		MACRO_MARCH_THEATER.get_scout_visibility_range(),
+		MACRO_MARCH_THEATER.get_watchtower_config()
+	)
+	normalized.war_loop = normalized_war_loop.get_snapshot()
 	var city_result := _validate_city(normalized.city)
 	if not bool(city_result.valid):
 		return city_result
@@ -244,6 +399,20 @@ static func validate_structure(
 			StringName(queue_result.error_id),
 			"TrainingQueue 校验失败"
 		)
+	var population_result := POPULATION_RECOVERY_STATE.validate_snapshot(
+		Dictionary(normalized.population_recovery)
+	)
+	if not bool(population_result.get("valid", false)):
+		return _failure(&"INVALID_POPULATION_RECOVERY", "人口与恢复状态校验失败")
+	var governance_result := CITY_GOVERNANCE_STATE.validate_snapshot(
+		Dictionary(normalized.city_governance)
+	)
+	if not bool(governance_result.get("valid", false)):
+		return _failure(&"INVALID_CITY_GOVERNANCE", "城市治理状态校验失败")
+	var strategy_result := CITY_STRATEGY_STATE.validate_snapshot(Dictionary(normalized.city_strategy))
+	if not bool(strategy_result.get("valid", false)):
+		return _failure(&"INVALID_CITY_STRATEGY", "城市战略支持状态校验失败")
+	normalized.city_strategy = Dictionary(strategy_result.snapshot).duplicate(true)
 	var army_result := ArmyRegistry.validate_snapshot(
 		normalized.army_registry,
 		allowed_unit_definition_ids,
@@ -254,6 +423,21 @@ static func validate_structure(
 			StringName(army_result.error_id),
 			"ArmyRegistry 校验失败"
 		)
+	var armies_by_id := Dictionary(Dictionary(army_result.snapshot).get("armies_by_id", {}))
+	for facility_value in Dictionary(Dictionary(normalized.war_loop).get("field_tactics", {})).get("watchtowers_by_id", {}).values():
+		var facility: Dictionary = Dictionary(facility_value)
+		if StringName(facility.get("facility_kind", &"")) != &"FORTRESS":
+			continue
+		var garrison_army_id := StringName(facility.get("garrison_army_id", &""))
+		if garrison_army_id == &"":
+			continue
+		var garrison_army := Dictionary(armies_by_id.get(garrison_army_id, {}))
+		if garrison_army.is_empty() or StringName(garrison_army.get("phase", &"")) != &"STATIONED":
+			return _failure(&"INVALID_FORTRESS_GARRISON", "堡垒驻军必须引用一支真实驻扎军队")
+	# ArmyRegistry owns its own schema migration.  Persist the normalized
+	# registry so a restored schema-1 army snapshot cannot fail the controller's
+	# exact postcondition after the macro-march extension writes schema 2.
+	normalized.army_registry = Dictionary(army_result.snapshot).duplicate(true)
 	var ledger_result := _validate_ledger(normalized.settlement_ledger)
 	if not bool(ledger_result.valid):
 		return ledger_result
@@ -269,9 +453,12 @@ static func validate_structure(
 		var attempt: Dictionary = normalized.expedition_attempt
 		var attempt_id := StringName(attempt.attempt_id)
 		var phase := StringName(attempt.phase)
-		if StringName(attempt.mainline_id) != StringName(normalized.mainline_level.level_id):
+		if (
+			StringName(attempt.source_id) == &"FIRST_WAR"
+			and StringName(attempt.mainline_id) != StringName(normalized.mainline_level.level_id)
+		):
 			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征尝试与主线身份不一致")
-		if phase in [&"RESERVED", &"ACTIVE"]:
+		if phase in [&"RESERVED", &"ACTIVE", &"RESULT_PENDING"]:
 			var transaction_already_settled := false
 			for summary_value in Dictionary(
 				normalized.settlement_ledger.committed_results_by_id
@@ -288,7 +475,10 @@ static func validate_structure(
 				or int(normalized.city.current_day) != int(attempt.created_day)
 				or int(normalized.city.day_elapsed_milliseconds)
 					!= int(attempt.created_day_elapsed_milliseconds)
-				or bool(normalized.mainline_level.cleared)
+				or (
+					StringName(attempt.source_id) == &"FIRST_WAR"
+					and bool(normalized.mainline_level.cleared)
+				)
 				or transaction_already_settled
 				or Dictionary(normalized.settlement_ledger.closed_transactions_by_id).has(attempt_id)
 			):
@@ -462,13 +652,247 @@ static func _migrate_v5_expedition(
 		total_count
 	)
 	normalized.expedition_attempt = empty_expedition_attempt()
-	normalized.schema_version = SCHEMA_VERSION
+	normalized.schema_version = 6
 	return {
 		"valid": true,
 		"error_id": &"",
 		"error": "",
 		"snapshot": normalized,
+}
+
+
+static func _migrate_v6_war_loop(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, V6_ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V6 CampaignSnapshot 根字段非法")
+	normalized.war_loop = {
+		"schema_version": 1,
+		"cities_by_id": {},
+		"required_city_ids": {},
+		"active_siege": {},
+		"completed_resolution_ids": {},
+		"next_siege_sequence": 1,
 	}
+	normalized.schema_version = 7
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _migrate_v7_wartime_facilities(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, V12_ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V7 CampaignSnapshot 根字段非法")
+	var attempt: Dictionary = Dictionary(normalized.expedition_attempt)
+	if not attempt.is_empty():
+		if not _has_exact_keys(attempt, V7_EXPEDITION_ATTEMPT_KEYS):
+			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "V7 出征尝试字段非法")
+		attempt.wartime_facility_plan = WartimeFacilityPlan.empty_snapshot()
+		normalized.expedition_attempt = attempt
+	normalized.schema_version = 8
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _migrate_v8_battle_session(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, V12_ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V8 CampaignSnapshot 根字段非法")
+	var attempt: Dictionary = Dictionary(normalized.expedition_attempt)
+	if not attempt.is_empty():
+		if not _has_exact_keys(attempt, V8_EXPEDITION_ATTEMPT_KEYS):
+			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "V8 出征尝试字段非法")
+		attempt.battle_session_snapshot = {}
+		normalized.expedition_attempt = attempt
+	normalized.schema_version = 9
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _migrate_v9_battle_source(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, V12_ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V9 CampaignSnapshot 根字段非法")
+	var attempt: Dictionary = Dictionary(normalized.expedition_attempt)
+	if not attempt.is_empty():
+		var v9_keys := V10_EXPEDITION_ATTEMPT_KEYS.duplicate()
+		v9_keys.pop_back()
+		v9_keys.pop_back()
+		if not _has_exact_keys(attempt, v9_keys):
+			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "V9 出征尝试字段非法")
+		attempt.source_id = &"FIRST_WAR"
+		attempt.mission_id = &""
+		normalized.expedition_attempt = attempt
+	normalized.schema_version = 10
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _migrate_v10_terminal_result(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, V12_ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V10 CampaignSnapshot 根字段非法")
+	var attempt: Dictionary = Dictionary(normalized.expedition_attempt)
+	if not attempt.is_empty():
+		if not _has_exact_keys(attempt, V10_EXPEDITION_ATTEMPT_KEYS):
+			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "V10 出征尝试字段非法")
+		# Earlier active checkpoints cannot truthfully reconstruct a terminal
+		# result.  Keep them resumable as ACTIVE; only new snapshots may persist
+		# RESULT_PENDING together with an authoritative terminal result.
+		if StringName(attempt.get("phase", &"")) == &"RESULT_PENDING":
+			attempt.phase = &"ACTIVE"
+		attempt.terminal_result_snapshot = {}
+		normalized.expedition_attempt = attempt
+	normalized.schema_version = 11
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _migrate_v11_invasion_source(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, V12_ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V11 CampaignSnapshot 根字段非法")
+	var attempt: Dictionary = Dictionary(normalized.expedition_attempt)
+	if not attempt.is_empty():
+		if not _has_exact_keys(attempt, V11_EXPEDITION_ATTEMPT_KEYS):
+			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "V11 出征尝试字段非法")
+		attempt.source_patrol_id = &""
+		attempt.source_force_name = ""
+		attempt.source_point_id = &""
+		attempt.source_route_name = ""
+		normalized.expedition_attempt = attempt
+	normalized.schema_version = 12
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _migrate_v12_population_recovery(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, V12_ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V12 CampaignSnapshot 根字段非法")
+	var military_count := 0
+	for value in Dictionary(Dictionary(normalized.garrison).get("unit_counts_by_definition_id", {})).values():
+		military_count += int(value)
+	for army_value in Dictionary(Dictionary(normalized.army_registry).get("armies_by_id", {})).values():
+		var army: Dictionary = Dictionary(army_value)
+		if StringName(army.get("phase", &"")) == &"CLOSED":
+			continue
+		for value in Dictionary(army.get("units_by_definition_id", {})).values():
+			military_count += int(value)
+	var specialist_count := 0
+	var war_loop := Dictionary(normalized.war_loop)
+	var field := Dictionary(war_loop.get("field_tactics", {}))
+	for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
+		if bool(Dictionary(specialist_value).get("alive", false)):
+			specialist_count += 1
+	var queue := Dictionary(normalized.training_queue)
+	var active_order_id := StringName(queue.get("active_order_id", &""))
+	var active_order := Dictionary(Dictionary(queue.get("orders_by_id", {})).get(active_order_id, {}))
+	var training_reserved := int(active_order.get("quantity", 0))
+	var production_workers := 12
+	var construction_workers := 12
+	var total_living := maxi(72, military_count + specialist_count + training_reserved + production_workers + construction_workers)
+	normalized.population_recovery = {
+		"schema_version": 1,
+		"total_living": total_living,
+		"available": total_living - military_count - specialist_count - training_reserved - production_workers - construction_workers,
+		"production_workers": production_workers,
+		"construction_workers": construction_workers,
+		"training_reserved": training_reserved,
+		"wounded": 0,
+		"fallen": 0,
+		"next_treatment_sequence": 1,
+		"treatment": POPULATION_RECOVERY_STATE.empty_treatment(),
+	}
+	normalized.schema_version = 13
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _migrate_v13_city_governance(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, V13_ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V13 CampaignSnapshot 根字段非法")
+	var legacy_population_validation := _validate_v13_population_recovery(normalized.population_recovery)
+	if not bool(legacy_population_validation.valid):
+		return legacy_population_validation
+	var population: Dictionary = Dictionary(legacy_population_validation.snapshot)
+	var available := int(population.get("available", 0))
+	var medical_workers := mini(4, available)
+	available -= medical_workers
+	var governance_workers := mini(4, available)
+	available -= governance_workers
+	population.schema_version = POPULATION_RECOVERY_STATE.SCHEMA_VERSION
+	population.available = available
+	population.medical_workers = medical_workers
+	population.governance_workers = governance_workers
+	# Silverford's finite local pool predates population recovery. A V13 save
+	# may therefore contain enlisted local recruits in ArmyRegistry without the
+	# same people in total_living. Reconcile only the exact consumed share of
+	# that authored four-person pool; unrelated conservation differences remain
+	# invalid and are rejected after structural migration.
+	var conservation_deficit := _population_conservation_deficit(normalized, population)
+	var field: Dictionary = Dictionary(Dictionary(normalized.war_loop).get("field_tactics", {}))
+	var reinforcements: Dictionary = Dictionary(field.get("stationed_reinforcements_by_point_id", {}))
+	var silverford_remaining := int(reinforcements.get(
+		&"silverford_city", LEGACY_SILVERFORD_REINFORCEMENT_TOTAL
+	))
+	var silverford_consumed := (
+		LEGACY_SILVERFORD_REINFORCEMENT_TOTAL
+		- clampi(
+			silverford_remaining,
+			0,
+			LEGACY_SILVERFORD_REINFORCEMENT_TOTAL
+		)
+	)
+	if conservation_deficit == silverford_consumed and conservation_deficit > 0:
+		population.total_living = int(population.total_living) + conservation_deficit
+	normalized.population_recovery = population
+	normalized.city_governance = {
+		"schema_version": CITY_GOVERNANCE_STATE.SCHEMA_VERSION,
+		"health_permille": 1000,
+		"diseased_count": 0,
+		"consecutive_food_shortage_days": 0,
+		"consecutive_housing_pressure_days": 0,
+		"last_applied_day": maxi(int(normalized.city.current_day) - 1, 0),
+		"next_event_sequence": 1,
+		"active_event": CITY_GOVERNANCE_STATE.empty_event(),
+		"resolved_event_ids": {},
+	}
+	normalized.schema_version = 14
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _validate_v13_population_recovery(value: Variant) -> Dictionary:
+	if typeof(value) != TYPE_DICTIONARY:
+		return _failure(&"INVALID_POPULATION_RECOVERY", "V13 人口状态类型非法")
+	var population: Dictionary = value
+	var legacy_keys := ["schema_version", "total_living", "available", "production_workers", "construction_workers", "training_reserved", "wounded", "fallen", "next_treatment_sequence", "treatment"]
+	if not _has_exact_keys(population, legacy_keys):
+		return _failure(&"INVALID_POPULATION_RECOVERY", "V13 人口状态字段非法")
+	if typeof(population.schema_version) != TYPE_INT or int(population.schema_version) != 1:
+		return _failure(&"INVALID_POPULATION_RECOVERY", "V13 人口状态版本非法")
+	var current_probe := population.duplicate(true)
+	current_probe.schema_version = POPULATION_RECOVERY_STATE.SCHEMA_VERSION
+	current_probe.medical_workers = 0
+	current_probe.governance_workers = 0
+	var validation := POPULATION_RECOVERY_STATE.validate_snapshot(current_probe)
+	if not bool(validation.get("valid", false)):
+		return _failure(&"INVALID_POPULATION_RECOVERY", "V13 人口状态内容非法")
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": population.duplicate(true)}
+
+
+static func _population_conservation_deficit(snapshot: Dictionary, population: Dictionary) -> int:
+	var military := 0
+	for count_value in Dictionary(Dictionary(snapshot.garrison).get("unit_counts_by_definition_id", {})).values():
+		military += int(count_value)
+	for army_value in Dictionary(Dictionary(snapshot.army_registry).get("armies_by_id", {})).values():
+		var army: Dictionary = Dictionary(army_value)
+		if StringName(army.get("phase", &"")) == &"CLOSED":
+			continue
+		for count_value in Dictionary(army.get("units_by_definition_id", {})).values():
+			military += int(count_value)
+	var specialists := 0
+	var field: Dictionary = Dictionary(Dictionary(snapshot.war_loop).get("field_tactics", {}))
+	for specialist_value in Dictionary(field.get("specialists_by_id", {})).values():
+		if bool(Dictionary(specialist_value).get("alive", false)):
+			specialists += 1
+	var accounted := military + specialists
+	for key in ["available", "production_workers", "construction_workers", "medical_workers", "governance_workers", "training_reserved", "wounded"]:
+		accounted += int(population.get(key, 0))
+	return accounted - int(population.get("total_living", 0))
 
 
 static func empty_build_slot() -> Dictionary:
@@ -892,7 +1316,7 @@ static func _validate_expedition_attempt(
 		or StringName(attempt.mainline_id) == &""
 		or typeof(attempt.phase) != TYPE_STRING_NAME
 		or StringName(attempt.phase) not in [
-			&"RESERVED", &"ACTIVE", &"APPLIED",
+			&"RESERVED", &"ACTIVE", &"RESULT_PENDING", &"APPLIED",
 		]
 		or typeof(attempt.created_day) != TYPE_INT
 		or int(attempt.created_day) <= 0
@@ -900,7 +1324,7 @@ static func _validate_expedition_attempt(
 		or int(attempt.created_day_elapsed_milliseconds) < 0
 		or int(attempt.created_day_elapsed_milliseconds) >= 180000
 		or typeof(attempt.food_cost) != TYPE_INT
-		or int(attempt.food_cost) <= 0
+		or int(attempt.food_cost) < 0
 		or typeof(attempt.food_before) != TYPE_INT
 		or typeof(attempt.food_after) != TYPE_INT
 		or int(attempt.food_before) < int(attempt.food_cost)
@@ -924,8 +1348,34 @@ static func _validate_expedition_attempt(
 		or int(attempt.reward_food) < 0
 		or typeof(attempt.settled) != TYPE_BOOL
 		or typeof(attempt.result_id) != TYPE_STRING_NAME
+		or typeof(attempt.wartime_facility_plan) != TYPE_DICTIONARY
+		or typeof(attempt.battle_session_snapshot) != TYPE_DICTIONARY
+		or typeof(attempt.terminal_result_snapshot) != TYPE_DICTIONARY
+		or typeof(attempt.source_id) != TYPE_STRING_NAME
+		or StringName(attempt.source_id) not in [&"FIRST_WAR", &"WARTIME_DEFENSE"]
+		or typeof(attempt.mission_id) != TYPE_STRING_NAME
+		or typeof(attempt.source_patrol_id) != TYPE_STRING_NAME
+		or typeof(attempt.source_force_name) != TYPE_STRING
+		or typeof(attempt.source_point_id) != TYPE_STRING_NAME
+		or typeof(attempt.source_route_name) != TYPE_STRING
 	):
 		return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征尝试领域值非法")
+	var is_defense := StringName(attempt.source_id) == &"WARTIME_DEFENSE"
+	var has_invasion_source := StringName(attempt.source_patrol_id) != &""
+	if (
+		(is_defense and StringName(attempt.mission_id) != &"wartime_defense.blackstone_gate.v0")
+		or (not is_defense and StringName(attempt.mission_id) != &"")
+		or (is_defense and int(attempt.food_cost) != 0)
+		or (not is_defense and int(attempt.food_cost) <= 0)
+		or (has_invasion_source and (not is_defense or StringName(attempt.source_point_id) == &"" or str(attempt.source_force_name).is_empty() or str(attempt.source_route_name).is_empty()))
+		or (not has_invasion_source and (StringName(attempt.source_point_id) != &"" or not str(attempt.source_force_name).is_empty() or not str(attempt.source_route_name).is_empty()))
+	):
+		return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征来源身份非法")
+	var facility_plan_validation := WartimeFacilityPlan.validate_snapshot(
+		Dictionary(attempt.wartime_facility_plan)
+	)
+	if not bool(facility_plan_validation.get("valid", false)):
+		return _failure(&"INVALID_EXPEDITION_ATTEMPT", "战时工事计划非法")
 	if (
 		bool(attempt.settled)
 		!= (StringName(attempt.phase) == &"APPLIED")
@@ -939,6 +1389,23 @@ static func _validate_expedition_attempt(
 		)
 	):
 		return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征尝试结算状态非法")
+	var terminal_result_snapshot: Dictionary = Dictionary(
+		attempt.terminal_result_snapshot
+	)
+	if StringName(attempt.phase) == &"RESULT_PENDING":
+		var terminal_result := BattleResult.from_authority_snapshot(
+			terminal_result_snapshot
+		)
+		if (
+			terminal_result == null
+			or not terminal_result.is_consistent()
+			or terminal_result.transaction_id != StringName(attempt.attempt_id)
+			or terminal_result.level_id != StringName(attempt.mainline_id)
+			or terminal_result.started_day != int(attempt.created_day)
+		):
+			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "待回写战果快照非法")
+	elif not terminal_result_snapshot.is_empty():
+		return _failure(&"INVALID_EXPEDITION_ATTEMPT", "非待回写尝试不得保留终局战果")
 	var seen_formations: Dictionary = {}
 	var seen_squads: Dictionary = {}
 	var total := 0

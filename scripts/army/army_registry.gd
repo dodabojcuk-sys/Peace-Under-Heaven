@@ -2,13 +2,17 @@ class_name ArmyRegistry
 extends RefCounted
 
 
-const SCHEMA_VERSION := 1
+const SCHEMA_VERSION := 6
 const MAX_EXACT_PERSISTED_SEQUENCE := 9007199254740991
 const PHASE_RESERVED := &"RESERVED"
 const PHASE_MARCHING := &"MARCHING"
 const PHASE_ARRIVED := &"ARRIVED"
 const PHASE_RETURNING := &"RETURNING"
 const PHASE_SETTLEMENT_PENDING := &"SETTLEMENT_PENDING"
+const PHASE_BLOCKED := &"BLOCKED"
+const PHASE_STATIONED := &"STATIONED"
+const PHASE_SIEGING := &"SIEGING"
+const PHASE_RETREATING := &"RETREATING"
 const PHASE_CLOSED := &"CLOSED"
 const DISPOSITION_STATIONED_TARGET := &"STATIONED_TARGET"
 const DISPOSITION_RETURNING_HOME := &"RETURNING_HOME"
@@ -19,6 +23,9 @@ const ACTIVE_PHASES := [
 	PHASE_ARRIVED,
 	PHASE_RETURNING,
 	PHASE_SETTLEMENT_PENDING,
+	PHASE_BLOCKED,
+	PHASE_SIEGING,
+	PHASE_RETREATING,
 ]
 const ALL_PHASES := [
 	PHASE_RESERVED,
@@ -26,10 +33,15 @@ const ALL_PHASES := [
 	PHASE_ARRIVED,
 	PHASE_RETURNING,
 	PHASE_SETTLEMENT_PENDING,
+	PHASE_BLOCKED,
+	PHASE_STATIONED,
+	PHASE_SIEGING,
+	PHASE_RETREATING,
 	PHASE_CLOSED,
 ]
 
 var _next_army_sequence := 1
+var _next_macro_order_sequence := 1
 var _armies_by_id: Dictionary = {}
 
 
@@ -61,6 +73,24 @@ func get_active_armies() -> Array[Dictionary]:
 		if StringName(army.phase) in ACTIVE_PHASES:
 			active.append(army)
 	return active
+
+
+## R2 deliberately allows several independent macro orders.  The legacy
+## reservation flow still calls [method has_active_army] and therefore keeps
+## its one-at-a-time contract; macro callers use this narrow query instead.
+func get_active_macro_armies() -> Array[Dictionary]:
+	var active: Array[Dictionary] = []
+	for army in get_active_armies():
+		if not Dictionary(army.get("macro_march", {})).is_empty():
+			active.append(army)
+	return active
+
+
+func has_active_non_macro_army() -> bool:
+	for army in get_active_armies():
+		if Dictionary(army.get("macro_march", {})).is_empty():
+			return true
+	return false
 
 
 func create_reserved(
@@ -109,6 +139,7 @@ func create_reserved(
 		"phase": PHASE_RESERVED,
 		"transaction_id": transaction_id,
 		"last_applied_result_id": &"",
+		"macro_order_history": [],
 	}
 	_armies_by_id[army_id] = army
 	return army.duplicate(true)
@@ -294,7 +325,12 @@ func get_total_active_units(definition_id: StringName) -> int:
 func get_total_stationed_units(definition_id: StringName) -> int:
 	var total := 0
 	for army in get_armies():
-		if (
+		if StringName(army.phase) == PHASE_STATIONED:
+			total += int(Dictionary(army.units_by_definition_id).get(
+				definition_id,
+				0
+			))
+		elif (
 			StringName(army.phase) == PHASE_CLOSED
 			and StringName(army.last_applied_result_id) != &""
 		):
@@ -314,6 +350,7 @@ func get_snapshot() -> Dictionary:
 	return {
 		"schema_version": SCHEMA_VERSION,
 		"next_army_sequence": _next_army_sequence,
+		"next_macro_order_sequence": _next_macro_order_sequence,
 		"armies_by_id": armies_by_id,
 	}
 
@@ -332,6 +369,7 @@ func restore_snapshot(
 		return false
 	var candidate: Dictionary = validation.snapshot
 	_next_army_sequence = int(candidate.next_army_sequence)
+	_next_macro_order_sequence = int(candidate.next_macro_order_sequence)
 	_armies_by_id = Dictionary(candidate.armies_by_id).duplicate(true)
 	return true
 
@@ -341,18 +379,56 @@ static func validate_snapshot(
 	allowed_unit_definition_ids: Array,
 	enforce_single_active := true
 ) -> Dictionary:
+	var source_schema_version := int(snapshot.get("schema_version", 0))
 	if (
-		int(snapshot.get("schema_version", 0)) != SCHEMA_VERSION
+		source_schema_version not in [1, 2, 3, 4, 5, SCHEMA_VERSION]
 		or typeof(snapshot.get("next_army_sequence", null)) != TYPE_INT
 		or int(snapshot.get("next_army_sequence", 0)) <= 0
 		or int(snapshot.get("next_army_sequence", 0))
 			> MAX_EXACT_PERSISTED_SEQUENCE
 		or not snapshot.get("armies_by_id", null) is Dictionary
+		or (
+			source_schema_version == SCHEMA_VERSION
+			and typeof(snapshot.get("next_macro_order_sequence", null)) != TYPE_INT
+		)
 	):
 		return {"valid": false, "error_id": &"INVALID_ARMY_REGISTRY"}
 	var normalized := snapshot.duplicate(true)
+	if source_schema_version in [1, 2, 3, 5]:
+		normalized["schema_version"] = SCHEMA_VERSION
+		if source_schema_version == 1:
+			normalized["next_macro_order_sequence"] = 1
+		for army_id_value in normalized.armies_by_id:
+			var migrated_army: Dictionary = Dictionary(normalized.armies_by_id[army_id_value]).duplicate(true)
+			if not migrated_army.has("macro_order_history"):
+				migrated_army["macro_order_history"] = []
+			normalized.armies_by_id[army_id_value] = migrated_army
+	for army_id_value in normalized.armies_by_id:
+		var normalized_army: Dictionary = Dictionary(normalized.armies_by_id[army_id_value]).duplicate(true)
+		var normalized_macro: Dictionary = Dictionary(normalized_army.get("macro_march", {})).duplicate(true)
+		if not normalized_macro.is_empty():
+			if not normalized_macro.has("route_segments"):
+				normalized_macro["route_segments"] = _legacy_macro_route_segments(StringName(normalized_macro.get("route_id", &"")))
+			# Earlier blocked orders did not preserve the work type that was
+			# interrupted. They historically resumed as marching, which remains the
+			# conservative migration default. New blocks retain RETREATING exactly.
+			if not normalized_macro.has("blocked_resume_phase"):
+				normalized_macro["blocked_resume_phase"] = PHASE_MARCHING
+			if not normalized_macro.has("blocked_transfer"):
+				normalized_macro["blocked_transfer"] = _empty_blocked_transfer()
+			normalized_army["macro_march"] = normalized_macro
+			normalized.armies_by_id[army_id_value] = normalized_army
+	if (
+		int(normalized.next_macro_order_sequence) <= 0
+		or int(normalized.next_macro_order_sequence)
+			> MAX_EXACT_PERSISTED_SEQUENCE
+	):
+		return {"valid": false, "error_id": &"INVALID_MACRO_ORDER_SEQUENCE"}
 	var active_count := 0
+	var active_non_macro_count := 0
+	var active_formation_ids: Dictionary = {}
 	var maximum_army_sequence := 0
+	var maximum_macro_order_sequence := 0
 	for army_id_value in normalized.armies_by_id:
 		var army_value = normalized.armies_by_id[army_id_value]
 		if not army_value is Dictionary:
@@ -404,16 +480,46 @@ static func validate_snapshot(
 			)
 		):
 			return {"valid": false, "error_id": &"INVALID_ARMY_STATE"}
+		if not army.get("macro_order_history", null) is Array:
+			return {"valid": false, "error_id": &"INVALID_MACRO_HISTORY"}
+		var history_validation := _validate_macro_order_history(
+			Array(army.macro_order_history),
+			StringName(army.get("transaction_id", &""))
+		)
+		if not bool(history_validation.valid):
+			return history_validation
+		var macro_validation := _validate_macro_march(army)
+		if not bool(macro_validation.valid):
+			return macro_validation
+		if (
+			not Dictionary(army.get("macro_march", {})).is_empty()
+			and phase != PHASE_CLOSED
+		):
+			for formation_value in Array(Dictionary(army.macro_march).get("formation_snapshots", [])):
+				var formation_id := StringName(Dictionary(formation_value).get("formation_id", &""))
+				if formation_id == &"" or active_formation_ids.has(formation_id):
+					return {"valid": false, "error_id": &"DUPLICATE_MACRO_FORMATION"}
+				active_formation_ids[formation_id] = StringName(army.army_id)
+			maximum_macro_order_sequence = maxi(
+				maximum_macro_order_sequence,
+				_parse_macro_order_sequence(StringName(
+					Dictionary(army.macro_march).order_id
+				))
+			)
 		maximum_army_sequence = maxi(
 			maximum_army_sequence,
 			army_sequence
 		)
 		if phase in ACTIVE_PHASES:
 			active_count += 1
-	if enforce_single_active and active_count > 1:
+			if Dictionary(army.get("macro_march", {})).is_empty():
+				active_non_macro_count += 1
+	if enforce_single_active and active_non_macro_count > 1:
 		return {"valid": false, "error_id": &"V5_ACTIVE_ARMY_LIMIT"}
 	if int(normalized.next_army_sequence) <= maximum_army_sequence:
 		return {"valid": false, "error_id": &"ARMY_SEQUENCE_MISMATCH"}
+	if int(normalized.next_macro_order_sequence) <= maximum_macro_order_sequence:
+		return {"valid": false, "error_id": &"MACRO_ORDER_SEQUENCE_MISMATCH"}
 	return {
 		"valid": true,
 		"error_id": &"",
@@ -496,3 +602,774 @@ func _is_allowed_transition(
 			and to_phase == PHASE_CLOSED
 		)
 	)
+
+
+func create_macro_march(
+	owner_faction_id: StringName,
+	home_city_id: StringName,
+	source_point_id: StringName,
+	target_point_id: StringName,
+	route_id: StringName,
+	route_world_points: Array,
+	units_by_definition_id: Dictionary,
+	formation_snapshots: Array,
+	food_cost: int,
+	duration_milliseconds: int,
+	route_segments: Array = [],
+	strategy_snapshot: Dictionary = {}
+) -> Dictionary:
+	if (
+		owner_faction_id == &""
+		or home_city_id == &""
+		or source_point_id == &""
+		or target_point_id == &""
+		or source_point_id == target_point_id
+		or route_id == &""
+		or route_world_points.size() < 2
+		or food_cost <= 0
+		or duration_milliseconds <= 0
+		or not _has_valid_composition(units_by_definition_id)
+		or not _has_valid_macro_formations(formation_snapshots, units_by_definition_id)
+		or not can_allocate_stable_id()
+		or _next_macro_order_sequence >= MAX_EXACT_PERSISTED_SEQUENCE
+	):
+		return {}
+	var army_id := StringName("army.%s.%06d" % [
+		String(owner_faction_id), _next_army_sequence,
+	])
+	var order_id := _allocate_macro_order_id()
+	_next_army_sequence += 1
+	var macro_march := _build_macro_march(
+		order_id, source_point_id, target_point_id, route_id, route_world_points,
+		formation_snapshots, food_cost, duration_milliseconds, route_segments,
+		strategy_snapshot
+	)
+	var army := {
+		"army_id": army_id,
+		"owner_faction_id": owner_faction_id,
+		"home_city_id": home_city_id,
+		"source_node_id": source_point_id,
+		"target_node_id": target_point_id,
+		"route_id": route_id,
+		"units_by_definition_id": units_by_definition_id.duplicate(true),
+		"progress_milliseconds": 0,
+		"duration_milliseconds": duration_milliseconds,
+		"phase": PHASE_MARCHING,
+		"transaction_id": order_id,
+		"last_applied_result_id": &"",
+		"macro_march": macro_march,
+		"macro_order_history": [],
+	}
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func issue_stationed_macro_march(
+	army_id: StringName,
+	target_point_id: StringName,
+	route_id: StringName,
+	route_world_points: Array,
+	food_cost: int,
+	duration_milliseconds: int,
+	route_segments: Array = [],
+	strategy_snapshot: Dictionary = {}
+) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	if (
+		army.is_empty()
+		or StringName(army.phase) != PHASE_STATIONED
+		or target_point_id == &""
+		or target_point_id == StringName(army.target_node_id)
+		or route_id == &""
+		or route_world_points.size() < 2
+		or food_cost <= 0
+		or duration_milliseconds <= 0
+		or _next_macro_order_sequence >= MAX_EXACT_PERSISTED_SEQUENCE
+	):
+		return {}
+	var prior_macro: Dictionary = army.get("macro_march", {})
+	if prior_macro.is_empty():
+		return {}
+	var source_point_id := StringName(army.target_node_id)
+	var order_id := _allocate_macro_order_id()
+	army.source_node_id = source_point_id
+	army.target_node_id = target_point_id
+	army.route_id = route_id
+	army.progress_milliseconds = 0
+	army.duration_milliseconds = duration_milliseconds
+	army.transaction_id = order_id
+	army.phase = PHASE_MARCHING
+	army.macro_march = _build_macro_march(
+		order_id, source_point_id, target_point_id, route_id, route_world_points,
+		Array(prior_macro.formation_snapshots), food_cost, duration_milliseconds, route_segments,
+		strategy_snapshot
+	)
+	var macro_history: Array = Array(army.get("macro_order_history", [])).duplicate(true)
+	macro_history.append(prior_macro.duplicate(true))
+	army.macro_order_history = macro_history
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func advance_macro_march(
+	army_id: StringName,
+	order_id: StringName,
+	expected_progress_milliseconds: int,
+	delta_milliseconds: int
+) -> Dictionary:
+	if delta_milliseconds <= 0 or expected_progress_milliseconds < 0:
+		return {}
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	if (
+		army.is_empty()
+		or macro.is_empty()
+		or StringName(army.phase) not in [PHASE_MARCHING, PHASE_RETREATING]
+		or StringName(macro.order_id) != order_id
+		or int(macro.progress_millis) != expected_progress_milliseconds
+	):
+		return {}
+	var next_progress := mini(
+		expected_progress_milliseconds + delta_milliseconds,
+		int(macro.total_millis)
+	)
+	macro.progress_millis = next_progress
+	army.progress_milliseconds = next_progress
+	var arrived := next_progress == int(macro.total_millis)
+	if arrived:
+		macro.phase = PHASE_STATIONED
+		army.phase = PHASE_STATIONED
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return {"success": true, "arrived": arrived, "army": army.duplicate(true)}
+
+
+func begin_macro_siege(army_id: StringName, order_id: StringName) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	if army.is_empty() or macro.is_empty() or StringName(army.phase) != PHASE_STATIONED or StringName(macro.order_id) != order_id:
+		return {}
+	army.phase = PHASE_SIEGING
+	macro.phase = PHASE_SIEGING
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func complete_macro_siege(army_id: StringName, order_id: StringName) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	if army.is_empty() or macro.is_empty() or StringName(army.phase) != PHASE_SIEGING or StringName(macro.order_id) != order_id:
+		return {}
+	army.phase = PHASE_STATIONED
+	macro.phase = PHASE_STATIONED
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func replace_macro_composition(army_id: StringName, order_id: StringName, surviving_count: int) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	if army.is_empty() or macro.is_empty() or StringName(macro.order_id) != order_id or surviving_count < 0:
+		return {}
+	var units: Dictionary = army.units_by_definition_id
+	if units.size() != 1:
+		return {}
+	var current_total := 0
+	for formation_value in Array(macro.formation_snapshots):
+		current_total += int(Dictionary(formation_value).member_count)
+	if surviving_count > current_total:
+		return {}
+	var definition_id = units.keys()[0]
+	units[definition_id] = surviving_count
+	army.units_by_definition_id = units
+	var formations: Array = macro.formation_snapshots
+	var losses_remaining := current_total - surviving_count
+	# Deterministic rear-first attrition preserves every formation identity and
+	# never reallocates survivors into an earlier formation.
+	for index in range(formations.size() - 1, -1, -1):
+		var formation: Dictionary = formations[index]
+		var loss := mini(losses_remaining, int(formation.member_count))
+		formation.member_count = int(formation.member_count) - loss
+		formations[index] = formation
+		losses_remaining -= loss
+	macro.formation_snapshots = formations
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+## Field encounters report losses by stable formation identity. Keeping the
+## write here prevents the tactical resolver from becoming a second roster
+## owner and preserves exact per-formation attribution across recovery.
+func apply_macro_formation_losses(army_id: StringName, order_id: StringName, losses_by_formation_id: Dictionary) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	if army.is_empty() or macro.is_empty() or StringName(macro.get("order_id", &"")) != order_id or losses_by_formation_id.is_empty():
+		return {}
+	var formations: Array = Array(macro.get("formation_snapshots", [])).duplicate(true)
+	var known_ids: Dictionary = {}
+	for formation_value in formations:
+		known_ids[StringName(Dictionary(formation_value).get("formation_id", &""))] = true
+	for formation_id_value in losses_by_formation_id:
+		var formation_id := StringName(formation_id_value)
+		if not known_ids.has(formation_id) or typeof(losses_by_formation_id[formation_id_value]) != TYPE_INT or int(losses_by_formation_id[formation_id_value]) < 0:
+			return {}
+	var surviving_total := 0
+	for index in formations.size():
+		var formation: Dictionary = Dictionary(formations[index]).duplicate(true)
+		var loss := int(losses_by_formation_id.get(StringName(formation.get("formation_id", &"")), 0))
+		if loss > int(formation.get("member_count", 0)):
+			return {}
+		formation.member_count = int(formation.get("member_count", 0)) - loss
+		surviving_total += int(formation.member_count)
+		formations[index] = formation
+	var units: Dictionary = Dictionary(army.get("units_by_definition_id", {})).duplicate(true)
+	if units.size() != 1:
+		return {}
+	units[units.keys()[0]] = surviving_total
+	macro.formation_snapshots = formations
+	army.units_by_definition_id = units
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+## Local R0 reinforcements enter only a physically stationary macro army. The
+## Field owns the finite location pool; this registry remains the sole owner of
+## enlisted members and formation totals. Allocation is formation-ID ordered so
+## preview and commit cannot disagree about which unit receives the last recruit.
+func preview_stationed_reinforcement(army_id: StringName, point_id: StringName, available_count: int) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	if army.is_empty():
+		return {"valid": false, "error": "未找到指定驻军"}
+	if StringName(army.get("phase", &"")) != PHASE_STATIONED or StringName(army.get("target_node_id", &"")) != point_id:
+		return {"valid": false, "error": "该军队尚未驻扎在此地点"}
+	if available_count <= 0:
+		return {"valid": false, "error": "当地已无可补充兵源"}
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	var formations: Array = Array(macro.get("formation_snapshots", [])).duplicate(true)
+	if formations.is_empty():
+		return {"valid": false, "error": "该驻军没有可补充编队"}
+	formations.sort_custom(func(left: Dictionary, right: Dictionary) -> bool:
+		return String(left.get("formation_id", &"")) < String(right.get("formation_id", &""))
+	)
+	var remaining := available_count
+	var allocation: Array[Dictionary] = []
+	for formation_value in formations:
+		var formation: Dictionary = Dictionary(formation_value)
+		var formation_id := StringName(formation.get("formation_id", &""))
+		var definition_id := StringName(formation.get("definition_id", &""))
+		var member_count := int(formation.get("member_count", -1))
+		var max_members := int(formation.get("max_members", -1))
+		if formation_id == &"" or definition_id == &"" or member_count < 0 or max_members < member_count:
+			return {"valid": false, "error": "驻军编队数据无效"}
+		var added := mini(maxi(max_members - member_count, 0), remaining)
+		allocation.append({
+			"formation_id": formation_id,
+			"definition_id": definition_id,
+			"display_name": str(formation.get("display_name", "编队")),
+			"member_count": member_count,
+			"max_members": max_members,
+			"added": added,
+			"after_count": member_count + added,
+		})
+		remaining -= added
+	var amount := available_count - remaining
+	if amount <= 0:
+		return {"valid": false, "error": "该驻军各编队已满编", "allocation": allocation}
+	return {"valid": true, "army_id": army_id, "point_id": point_id, "amount": amount, "allocation": allocation}
+
+
+func replenish_stationed_army(army_id: StringName, point_id: StringName, expected_allocation: Array) -> Dictionary:
+	var requested_amount := 0
+	for allocation_value in expected_allocation:
+		if not allocation_value is Dictionary or typeof(Dictionary(allocation_value).get("added", null)) != TYPE_INT or int(Dictionary(allocation_value).get("added", 0)) < 0:
+			return {}
+		requested_amount += int(Dictionary(allocation_value).get("added", 0))
+	var preview := preview_stationed_reinforcement(army_id, point_id, requested_amount)
+	if not bool(preview.get("valid", false)) or Array(preview.get("allocation", [])).size() != expected_allocation.size():
+		return {}
+	var allocation: Array = Array(preview.get("allocation", [])).duplicate(true)
+	for index in allocation.size():
+		var expected: Dictionary = Dictionary(expected_allocation[index])
+		var actual: Dictionary = Dictionary(allocation[index])
+		if StringName(expected.get("formation_id", &"")) != StringName(actual.get("formation_id", &"")) or int(expected.get("added", -1)) != int(actual.get("added", -2)):
+			return {}
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	var formations: Array = Array(macro.get("formation_snapshots", [])).duplicate(true)
+	var additions_by_id: Dictionary = {}
+	for allocation_value in allocation:
+		var entry: Dictionary = Dictionary(allocation_value)
+		additions_by_id[StringName(entry.get("formation_id", &""))] = int(entry.get("added", 0))
+	var units: Dictionary = Dictionary(army.get("units_by_definition_id", {})).duplicate(true)
+	for index in formations.size():
+		var formation: Dictionary = Dictionary(formations[index]).duplicate(true)
+		var added := int(additions_by_id.get(StringName(formation.get("formation_id", &"")), 0))
+		if added <= 0:
+			continue
+		formation.member_count = int(formation.get("member_count", 0)) + added
+		formations[index] = formation
+		var definition_id := StringName(formation.get("definition_id", &""))
+		units[definition_id] = int(units.get(definition_id, 0)) + added
+	if not _has_valid_macro_formations(formations, units):
+		return {}
+	macro.formation_snapshots = formations
+	army.units_by_definition_id = units
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func close_macro_field_lost(army_id: StringName, order_id: StringName, result_id: StringName) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	if army.is_empty() or macro.is_empty() or result_id == &"" or StringName(macro.get("order_id", &"")) != order_id or StringName(army.get("phase", &"")) not in [PHASE_MARCHING, PHASE_BLOCKED, PHASE_STATIONED, PHASE_RETREATING]:
+		return {}
+	var formations: Array = Array(macro.get("formation_snapshots", [])).duplicate(true)
+	for index in formations.size():
+		var formation: Dictionary = Dictionary(formations[index]).duplicate(true)
+		formation.member_count = 0
+		formations[index] = formation
+	macro.formation_snapshots = formations
+	macro.phase = PHASE_CLOSED
+	macro.blocked_segment_index = -1
+	macro.temporary_station_point = &""
+	macro.blocked_transfer = _empty_blocked_transfer()
+	army.units_by_definition_id = {}
+	army.last_applied_result_id = result_id
+	army.phase = PHASE_CLOSED
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func begin_macro_retreat(army_id: StringName, order_id: StringName) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	if army.is_empty() or macro.is_empty() or StringName(army.phase) != PHASE_SIEGING or StringName(macro.order_id) != order_id:
+		return {}
+	var points: Array = Array(macro.route_world_points).duplicate()
+	points.reverse()
+	var return_segments: Array = Array(macro.get("route_segments", [])).duplicate(true)
+	if return_segments.is_empty():
+		return_segments = _legacy_macro_route_segments(StringName(macro.get("route_id", &"")))
+	return_segments.reverse()
+	for segment_index in range(return_segments.size()):
+		var segment: Dictionary = Dictionary(return_segments[segment_index]).duplicate(true)
+		segment["forward"] = not bool(segment.get("forward", false))
+		return_segments[segment_index] = segment
+	if return_segments.is_empty():
+		return {}
+	var return_order_id := _allocate_macro_order_id()
+	var original_order := macro.duplicate(true)
+	var original_history: Array = Array(army.get("macro_order_history", [])).duplicate(true)
+	original_history.append(original_order)
+	macro = _build_macro_march(
+		return_order_id,
+		StringName(original_order.target_point_id),
+		StringName(original_order.source_point_id),
+		StringName(original_order.route_id),
+		points,
+		Array(original_order.formation_snapshots),
+		int(original_order.food_cost),
+		int(original_order.total_millis),
+		return_segments
+	)
+	macro.phase = PHASE_RETREATING
+	army.source_node_id = StringName(macro.source_point_id)
+	army.target_node_id = StringName(macro.target_point_id)
+	army.route_id = StringName(macro.route_id)
+	army.progress_milliseconds = 0
+	army.duration_milliseconds = int(macro.total_millis)
+	army.transaction_id = return_order_id
+	army.phase = PHASE_RETREATING
+	army.macro_march = macro
+	army.macro_order_history = original_history
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func close_macro_lost(army_id: StringName, order_id: StringName, result_id: StringName) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	if (
+		army.is_empty() or macro.is_empty() or result_id == &""
+		or StringName(army.phase) != PHASE_SIEGING
+		or StringName(macro.order_id) != order_id
+	):
+		return {}
+	var formations: Array = Array(macro.formation_snapshots).duplicate(true)
+	for index in formations.size():
+		var formation: Dictionary = formations[index]
+		formation.member_count = 0
+		formations[index] = formation
+	macro.formation_snapshots = formations
+	macro.phase = PHASE_CLOSED
+	army.units_by_definition_id = {}
+	army.last_applied_result_id = result_id
+	army.phase = PHASE_CLOSED
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func block_macro_march(
+	army_id: StringName,
+	order_id: StringName,
+	segment_index: int,
+	progress_before_segment_millis: int,
+	temporary_station_point: StringName,
+	transfer: Dictionary = {}
+) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	var blocked_transfer := transfer.duplicate(true) if not transfer.is_empty() else _empty_blocked_transfer()
+	if (
+		army.is_empty()
+		or macro.is_empty()
+		or StringName(army.phase) not in [PHASE_MARCHING, PHASE_RETREATING]
+		or StringName(macro.order_id) != order_id
+		or segment_index < 0
+		or (temporary_station_point == &"" and StringName(blocked_transfer.get("phase", &"NONE")) not in [&"TO_CAMP", &"TO_RESUME"])
+		or progress_before_segment_millis < int(macro.progress_millis)
+		or progress_before_segment_millis > int(macro.total_millis)
+	):
+		return {}
+	macro.progress_millis = progress_before_segment_millis
+	macro.blocked_segment_index = segment_index
+	macro.temporary_station_point = temporary_station_point if StringName(blocked_transfer.get("phase", &"NONE")) in [&"NONE", &"WAITING"] else &""
+	macro.blocked_resume_phase = StringName(army.phase)
+	macro.blocked_transfer = blocked_transfer
+	macro.phase = PHASE_BLOCKED
+	army.progress_milliseconds = progress_before_segment_millis
+	army.phase = PHASE_BLOCKED
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func resume_blocked_macro_march(
+	army_id: StringName,
+	order_id: StringName
+) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	if (
+		army.is_empty()
+		or macro.is_empty()
+		or StringName(army.phase) != PHASE_BLOCKED
+		or StringName(macro.order_id) != order_id
+	):
+		return {}
+	macro.blocked_segment_index = -1
+	macro.temporary_station_point = &""
+	var resume_phase := StringName(macro.get("blocked_resume_phase", PHASE_MARCHING))
+	if resume_phase not in [PHASE_MARCHING, PHASE_RETREATING]:
+		return {}
+	macro.blocked_resume_phase = PHASE_MARCHING
+	macro.blocked_transfer = _empty_blocked_transfer()
+	macro.phase = resume_phase
+	army.phase = resume_phase
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func advance_blocked_transfer(army_id: StringName, order_id: StringName, expected_progress_milliseconds: int, delta_milliseconds: int) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	var transfer: Dictionary = Dictionary(macro.get("blocked_transfer", {}))
+	if army.is_empty() or StringName(army.phase) != PHASE_BLOCKED or StringName(macro.get("order_id", &"")) != order_id or StringName(transfer.get("phase", &"")) not in [&"TO_CAMP", &"TO_RESUME"] or int(transfer.get("progress_millis", 0)) != expected_progress_milliseconds or delta_milliseconds <= 0:
+		return {}
+	var available_milliseconds := maxi(int(transfer.total_millis) - int(transfer.progress_millis), 0)
+	var consumed_milliseconds := mini(delta_milliseconds, available_milliseconds)
+	var remaining_milliseconds := maxi(delta_milliseconds - consumed_milliseconds, 0)
+	transfer.progress_millis = int(transfer.progress_millis) + consumed_milliseconds
+	var arrived := int(transfer.progress_millis) == int(transfer.total_millis)
+	if arrived and StringName(transfer.phase) == &"TO_CAMP":
+		transfer.phase = &"WAITING"
+	elif arrived:
+		macro.blocked_segment_index = -1
+		macro.temporary_station_point = &""
+		macro.blocked_transfer = _empty_blocked_transfer()
+		var resume_phase := StringName(macro.get("blocked_resume_phase", PHASE_MARCHING))
+		macro.blocked_resume_phase = PHASE_MARCHING
+		macro.phase = resume_phase
+		army.phase = resume_phase
+		army.macro_march = macro
+		_armies_by_id[army_id] = army
+		return {"success": true, "arrived": true, "consumed_milliseconds": consumed_milliseconds, "remaining_milliseconds": remaining_milliseconds, "army": army.duplicate(true)}
+	macro.temporary_station_point = StringName(transfer.target_point_id) if StringName(transfer.phase) == &"WAITING" else &""
+	macro.blocked_transfer = transfer
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return {"success": true, "arrived": arrived, "consumed_milliseconds": consumed_milliseconds, "remaining_milliseconds": remaining_milliseconds, "army": army.duplicate(true)}
+
+
+## The temporary transfer belongs to the same immutable original order as the
+## blocked macro march.  Keep the registry mutation here so controllers never
+## patch an army snapshot behind validation's back.
+func replace_blocked_transfer(army_id: StringName, order_id: StringName, transfer: Dictionary) -> Dictionary:
+	var army: Dictionary = _armies_by_id.get(army_id, {})
+	var macro: Dictionary = army.get("macro_march", {})
+	if army.is_empty() or StringName(army.get("phase", &"")) != PHASE_BLOCKED or StringName(macro.get("order_id", &"")) != order_id or not _valid_blocked_transfer(transfer):
+		return {}
+	macro.blocked_transfer = transfer.duplicate(true)
+	macro.temporary_station_point = StringName(transfer.get("target_point_id", &"")) if StringName(transfer.get("phase", &"")) == &"WAITING" else &""
+	army.macro_march = macro
+	_armies_by_id[army_id] = army
+	return army.duplicate(true)
+
+
+func _allocate_macro_order_id() -> StringName:
+	var result := StringName("macro.order.%06d" % _next_macro_order_sequence)
+	_next_macro_order_sequence += 1
+	return result
+
+
+func _build_macro_march(
+	order_id: StringName,
+	source_point_id: StringName,
+	target_point_id: StringName,
+	route_id: StringName,
+	route_world_points: Array,
+	formation_snapshots: Array,
+	food_cost: int,
+	duration_milliseconds: int,
+	route_segments: Array = [],
+	strategy_snapshot: Dictionary = {}
+) -> Dictionary:
+	var macro := {
+		"order_id": order_id,
+		"source_point_id": source_point_id,
+		"target_point_id": target_point_id,
+		"route_id": route_id,
+		"route_world_points": route_world_points.duplicate(),
+		"route_segments": route_segments.duplicate(true),
+		"formation_snapshots": formation_snapshots.duplicate(true),
+		"food_cost": food_cost,
+		"progress_millis": 0,
+		"total_millis": duration_milliseconds,
+		"blocked_segment_index": -1,
+		"temporary_station_point": &"",
+		"blocked_resume_phase": PHASE_MARCHING,
+		"blocked_transfer": _empty_blocked_transfer(),
+		"phase": PHASE_MARCHING,
+	}
+	if not strategy_snapshot.is_empty():
+		macro.strategy_snapshot = strategy_snapshot.duplicate(true)
+	return macro
+
+
+func is_equipment_referenced_by_active_macro_order(equipment_id: StringName) -> bool:
+	if equipment_id == &"":
+		return false
+	for army_value in _armies_by_id.values():
+		var army: Dictionary = Dictionary(army_value)
+		if StringName(army.get("phase", &"")) in [PHASE_CLOSED, PHASE_STATIONED]:
+			continue
+		var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+		var strategy: Dictionary = Dictionary(macro.get("strategy_snapshot", {}))
+		if equipment_id in Array(strategy.get("equipment_ids", [])):
+			return true
+	return false
+
+
+static func _empty_blocked_transfer() -> Dictionary:
+	return {"phase": &"NONE", "target_point_id": &"", "route_id": &"", "route_segments": [], "route_world_points": [], "progress_millis": 0, "total_millis": 0, "resume_progress_millis": 0}
+
+static func _has_valid_macro_formations(
+	formation_snapshots: Array,
+	units_by_definition_id: Dictionary
+) -> bool:
+	if formation_snapshots.is_empty():
+		return false
+	var total := 0
+	var seen: Dictionary = {}
+	for value in formation_snapshots:
+		if not value is Dictionary:
+			return false
+		var formation: Dictionary = value
+		var formation_id := StringName(formation.get("formation_id", &""))
+		if (
+			formation_id == &""
+			or seen.has(formation_id)
+			or StringName(formation.get("definition_id", &"")) == &""
+			or typeof(formation.get("display_name", null)) != TYPE_STRING
+			or typeof(formation.get("member_count", null)) != TYPE_INT
+			or typeof(formation.get("max_members", null)) != TYPE_INT
+			or int(formation.member_count) < 0
+			or int(formation.max_members) < int(formation.member_count)
+		):
+			return false
+		seen[formation_id] = true
+		total += int(formation.member_count)
+	var composition_total := 0
+	for count in units_by_definition_id.values():
+		composition_total += int(count)
+	return total == composition_total
+
+
+static func _validate_macro_march(army: Dictionary) -> Dictionary:
+	var has_macro := army.has("macro_march")
+	if not has_macro:
+		return {"valid": true}
+	var macro_value = army.get("macro_march", null)
+	if not macro_value is Dictionary:
+		return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+	var macro: Dictionary = macro_value
+	var expected_keys := [
+		"order_id", "source_point_id", "target_point_id", "route_id",
+		"route_world_points", "formation_snapshots", "food_cost",
+		"progress_millis", "total_millis", "blocked_segment_index",
+		"temporary_station_point", "blocked_resume_phase", "blocked_transfer", "phase",
+	]
+	if macro.has("strategy_snapshot"):
+		expected_keys.append("strategy_snapshot")
+	if macro.has("route_segments"):
+		expected_keys.append("route_segments")
+	if macro.size() != expected_keys.size():
+		return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+	for key in expected_keys:
+		if not macro.has(key):
+			return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+	if (
+		_parse_macro_order_sequence(StringName(macro.order_id)) <= 0
+		or StringName(army.transaction_id) != StringName(macro.order_id)
+		or StringName(army.source_node_id) != StringName(macro.source_point_id)
+		or StringName(army.target_node_id) != StringName(macro.target_point_id)
+		or StringName(army.route_id) != StringName(macro.route_id)
+		or not macro.route_world_points is Array
+		or Array(macro.route_world_points).size() < 2
+		or typeof(macro.food_cost) != TYPE_INT
+		or int(macro.food_cost) <= 0
+		or typeof(macro.progress_millis) != TYPE_INT
+		or typeof(macro.total_millis) != TYPE_INT
+		or int(macro.progress_millis) < 0
+		or int(macro.total_millis) <= 0
+		or int(macro.progress_millis) > int(macro.total_millis)
+		or int(army.progress_milliseconds) != int(macro.progress_millis)
+		or int(army.duration_milliseconds) != int(macro.total_millis)
+		or typeof(macro.blocked_segment_index) != TYPE_INT
+		or typeof(macro.temporary_station_point) != TYPE_STRING_NAME
+		or not _valid_blocked_transfer(Dictionary(macro.blocked_transfer))
+		or StringName(macro.blocked_resume_phase) not in [PHASE_MARCHING, PHASE_RETREATING]
+		or StringName(macro.phase) not in [PHASE_MARCHING, PHASE_BLOCKED, PHASE_STATIONED, PHASE_SIEGING, PHASE_RETREATING, PHASE_CLOSED]
+		or StringName(army.phase) != StringName(macro.phase)
+		or not _has_valid_macro_formations(
+			Array(macro.formation_snapshots), Dictionary(army.units_by_definition_id)
+		)
+	):
+		return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+	for point in macro.route_world_points:
+		if typeof(point) != TYPE_VECTOR2I:
+			return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+	if macro.has("route_segments"):
+		if not (macro.route_segments is Array):
+			return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+		for segment_value in Array(macro.route_segments):
+			if not (segment_value is Dictionary):
+				return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+			var segment: Dictionary = segment_value
+			if StringName(segment.get("road_id", &"")) == &"" or typeof(segment.get("forward", null)) != TYPE_BOOL:
+				return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+			if segment.has("route_world_points"):
+				if not segment.route_world_points is Array or Array(segment.route_world_points).size() < 2:
+					return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+				for segment_point in Array(segment.route_world_points):
+					if typeof(segment_point) != TYPE_VECTOR2I:
+						return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+	if StringName(macro.phase) == PHASE_BLOCKED:
+		var transfer_phase := StringName(Dictionary(macro.blocked_transfer).get("phase", &"NONE"))
+		if int(macro.blocked_segment_index) < 0:
+			return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+		if transfer_phase in [&"TO_CAMP", &"TO_CAMP_BLOCKED", &"TO_RESUME", &"TO_RESUME_BLOCKED"] and StringName(macro.temporary_station_point) != &"":
+			return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+		if transfer_phase in [&"NONE", &"WAITING"] and StringName(macro.temporary_station_point) == &"":
+			return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+	if (
+		StringName(macro.phase) != PHASE_BLOCKED
+		and (int(macro.blocked_segment_index) != -1 or StringName(macro.temporary_station_point) != &"")
+	):
+		return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+	if macro.has("strategy_snapshot") and not _valid_macro_strategy_snapshot(Dictionary(macro.strategy_snapshot)):
+		return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+	return {"valid": true}
+
+
+static func _valid_macro_strategy_snapshot(value: Dictionary) -> bool:
+	var expected_keys := ["equipment_ids", "general_id", "tech_ids", "attack_basis_points", "defense_basis_points", "supply_shortage"]
+	if value.size() != expected_keys.size():
+		return false
+	for key in expected_keys:
+		if not value.has(key):
+			return false
+	if typeof(value.equipment_ids) != TYPE_ARRAY or typeof(value.general_id) != TYPE_STRING_NAME or typeof(value.tech_ids) != TYPE_ARRAY or typeof(value.attack_basis_points) != TYPE_INT or typeof(value.defense_basis_points) != TYPE_INT or typeof(value.supply_shortage) != TYPE_BOOL:
+		return false
+	var seen: Dictionary = {}
+	for equipment_id_value in Array(value.equipment_ids):
+		if typeof(equipment_id_value) != TYPE_STRING_NAME or StringName(equipment_id_value) == &"" or seen.has(StringName(equipment_id_value)):
+			return false
+		seen[StringName(equipment_id_value)] = true
+	for tech_id_value in Array(value.tech_ids):
+		if typeof(tech_id_value) != TYPE_STRING_NAME:
+			return false
+	return int(value.attack_basis_points) > 0 and int(value.defense_basis_points) > 0
+
+
+static func _valid_blocked_transfer(value: Dictionary) -> bool:
+	if value.size() != 8:
+		return false
+	if StringName(value.get("phase", &"")) not in [&"NONE", &"TO_CAMP", &"TO_CAMP_BLOCKED", &"WAITING", &"TO_RESUME", &"TO_RESUME_BLOCKED"]:
+		return false
+	if typeof(value.get("target_point_id", null)) != TYPE_STRING_NAME or typeof(value.get("route_id", null)) != TYPE_STRING_NAME or not value.get("route_segments", null) is Array or not value.get("route_world_points", null) is Array or typeof(value.get("progress_millis", null)) != TYPE_INT or typeof(value.get("total_millis", null)) != TYPE_INT or typeof(value.get("resume_progress_millis", null)) != TYPE_INT:
+		return false
+	if int(value.progress_millis) < 0 or int(value.total_millis) < 0 or int(value.progress_millis) > int(value.total_millis) or int(value.resume_progress_millis) < 0:
+		return false
+	return StringName(value.phase) == &"NONE" or (StringName(value.target_point_id) != &"" and Array(value.route_world_points).size() >= 2 and int(value.total_millis) > 0)
+
+
+static func _validate_macro_order_history(history: Array, current_order_id: StringName) -> Dictionary:
+	var seen: Dictionary = {}
+	for value in history:
+		if not value is Dictionary:
+			return {"valid": false, "error_id": &"INVALID_MACRO_HISTORY"}
+		var order: Dictionary = value
+		if StringName(order.get("order_id", &"")) == current_order_id or seen.has(StringName(order.get("order_id", &""))):
+			return {"valid": false, "error_id": &"INVALID_MACRO_HISTORY"}
+		# Historical orders are immutable records, so validate their shape without
+		# tying their casualties back to the army's current composition.
+		if StringName(order.get("phase", &"")) not in [PHASE_SIEGING, PHASE_STATIONED]:
+			return {"valid": false, "error_id": &"INVALID_MACRO_HISTORY"}
+		if not order.get("formation_snapshots", null) is Array:
+			return {"valid": false, "error_id": &"INVALID_MACRO_HISTORY"}
+		seen[StringName(order.order_id)] = true
+	return {"valid": true}
+
+
+static func _parse_macro_order_sequence(order_id: StringName) -> int:
+	var text := String(order_id)
+	var prefix := "macro.order."
+	if not text.begins_with(prefix):
+		return 0
+	var digits := text.trim_prefix(prefix)
+	if not digits.is_valid_int():
+		return 0
+	var sequence := int(digits)
+	return sequence if sequence > 0 and text == "%s%06d" % [prefix, sequence] else 0
+
+
+static func _legacy_macro_route_segments(route_id: StringName) -> Array:
+	var route_text := String(route_id)
+	if route_text.begins_with("path."):
+		var segments: Array = []
+		for token in route_text.trim_prefix("path.").split("|", false):
+			var parts := token.rsplit(":", true, 1)
+			if parts.size() != 2 or parts[0].is_empty() or parts[1] not in ["f", "r"]:
+				return []
+			segments.append({"road_id": StringName(parts[0]), "forward": parts[1] == "f"})
+		return segments
+	return [{"road_id": route_id, "forward": true}] if route_id != &"" else []

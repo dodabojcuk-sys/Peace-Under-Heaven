@@ -12,15 +12,22 @@ static func build_snapshot(
 	request: BattleRequest,
 	session: BattleSession,
 	mission: MissionDefinition,
-	selected_squad_id := -1
+	selected_squad_id := -1,
+	battle_context: Dictionary = {}
 ) -> Dictionary:
 	if request == null or request.committed_force == null:
 		return {}
+	# Prepared formal entries persist their mission on the request.  The C0
+	# scene does not own that durable fact, so use it when a transient scene
+	# configuration did not supply a mission explicitly.
+	var effective_mission := mission if mission != null else request.mission_definition
 
 	var routes: Array[Dictionary] = []
 	for route_id in ROUTE_IDS:
 		routes.append(
-			_build_route(request, session, mission, route_id)
+			_build_route(
+				request, session, effective_mission, route_id, battle_context
+			)
 		)
 
 	var squads: Array[Dictionary] = []
@@ -36,12 +43,8 @@ static func build_snapshot(
 		)
 
 	return {
-		"title": mission.title if mission != null else "北坡防御战",
-		"objective_text": (
-			mission.objective_text
-			if mission != null
-			else "突破两处城门并击溃守军"
-		),
+		"title": _battle_title(request, effective_mission, battle_context),
+		"objective_text": _objective_text(request, effective_mission, battle_context),
 		"phase_text": _phase_text(request.phase),
 		"tick": session.current_tick if session != null else 0,
 		"elapsed_seconds": (
@@ -53,7 +56,7 @@ static func build_snapshot(
 		"routes": routes,
 		"squads": squads,
 		"selected_squad_id": selected_squad_id,
-		"objective": _build_objective(request, session, mission, routes),
+		"objective": _build_objective(request, session, effective_mission, routes),
 	}
 
 
@@ -61,7 +64,8 @@ static func _build_route(
 	request: BattleRequest,
 	session: BattleSession,
 	mission: MissionDefinition,
-	route_id: StringName
+	route_id: StringName,
+	battle_context: Dictionary = {}
 ) -> Dictionary:
 	var initial: Dictionary = request.enemy_force.route_states.get(route_id, {})
 	var distance_fixed := _initial_distance_fixed(mission, route_id)
@@ -71,17 +75,35 @@ static func _build_route(
 	)
 	var gate_hp := int(initial.get("gate_hp", 0))
 	var gate_max_hp := gate_hp
+	var enemy_position_fixed := 0
 	if session != null:
 		var state := session.get_route_state(route_id)
 		distance_fixed = int(state.get("distance_fixed", distance_fixed))
 		enemy_hp = int(state.get("enemy_total_hp", enemy_hp))
 		gate_hp = int(state.get("gate_hp", gate_hp))
 		gate_max_hp = int(state.get("gate_initial_hp", gate_max_hp))
+		enemy_position_fixed = int(state.get("enemy_position_fixed", 0))
 	var enemy_count := _alive_members(
 		enemy_hp,
 		request.committed_force.hp_per_member
 	)
-	var route_name := _route_name(mission, route_id)
+	# Protection routes are visible threats, but their exact strength is a
+	# battle fact revealed by the completed watch platform on that route. The
+	# presentation consumes this projection only; it never changes enemy HP or
+	# gives C0 a second source of intelligence.
+	var enemy_count_known := not (
+		mission != null
+		and mission.objective_type == MissionDefinition.OBJECTIVE_PROTECT
+	)
+	if session != null and not enemy_count_known:
+		var facilities := session.get_wartime_facility_state()
+		enemy_count_known = (
+			bool(facilities.get("enemy_observation_ready", false))
+			and route_id in Array(facilities.get("watch_route_ids", [
+				StringName(facilities.get("watch_route_id", &"")),
+			]))
+		)
+	var route_name := _route_name(request, mission, route_id, battle_context)
 	var engaged_squads: Array[int] = []
 	if session != null:
 		for squad in session.squads:
@@ -96,19 +118,28 @@ static func _build_route(
 	if enemy_count > 0 and not engaged_squads.is_empty():
 		enemy_status = "正在与%s接战" % _join_squad_names(engaged_squads)
 	elif enemy_count > 0:
-		enemy_status = "据守路线尽头"
+		enemy_status = (
+			"正在逼近城门"
+			if mission != null and mission.objective_type == MissionDefinition.OBJECTIVE_PROTECT
+			else "据守路线尽头"
+		)
 	return {
 		"route_id": route_id,
 		"name": route_name,
 		"distance_fixed": distance_fixed,
 		"enemy_count": enemy_count,
+		"enemy_count_known": enemy_count_known,
 		"enemy_initial_count": int(initial.get("enemy_members", 0)),
 		"enemy_status": enemy_status,
 		"engaged_squad_ids": engaged_squads,
 		"gate_hp": gate_hp,
 		"gate_max_hp": gate_max_hp,
 		"has_obstacle": gate_max_hp > 0,
-		"enemy_position_ratio": 1.0,
+		"enemy_position_ratio": (
+			clampf(float(enemy_position_fixed) / float(maxi(distance_fixed, 1)), 0.0, 1.0)
+			if mission != null and mission.objective_type == MissionDefinition.OBJECTIVE_PROTECT
+			else 1.0
+		),
 		"enemy_direction_text": "敌军来向 ←",
 	}
 
@@ -224,6 +255,7 @@ static func _build_objective(
 			for route in routes:
 				if (
 					int(route.enemy_count) > 0
+					and float(route.get("enemy_position_ratio", 0.0)) >= 1.0
 					and Array(route.engaged_squad_ids).is_empty()
 				):
 					attacking_routes.append(str(route.name))
@@ -305,8 +337,10 @@ static func _initial_distance_fixed(
 
 
 static func _route_name(
+	request: BattleRequest,
 	mission: MissionDefinition,
-	route_id: StringName
+	route_id: StringName,
+	battle_context: Dictionary = {}
 ) -> String:
 	if mission != null:
 		return (
@@ -314,11 +348,45 @@ static func _route_name(
 			if route_id == CommittedForceSnapshot.FRONT_ROUTE
 			else mission.side_route_name
 		)
+	if request != null and request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		if route_id == CommittedForceSnapshot.FRONT_ROUTE:
+			return "主攻线·%s" % str(
+				battle_context.get("approach_route_name", "外部攻城道路")
+			)
+		return "预备线·无外部军令"
 	return (
 		"正门路线"
 		if route_id == CommittedForceSnapshot.FRONT_ROUTE
 		else "侧门路线"
 	)
+
+
+static func _battle_title(
+	request: BattleRequest,
+	mission: MissionDefinition,
+	battle_context: Dictionary
+) -> String:
+	if mission != null:
+		return mission.title
+	if request != null and request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		return "%s攻城战 · 我方攻城" % str(
+			battle_context.get("target_city_name", "敌城")
+		)
+	return "北坡战斗"
+
+
+static func _objective_text(
+	request: BattleRequest,
+	mission: MissionDefinition,
+	battle_context: Dictionary
+) -> String:
+	if mission != null:
+		return mission.objective_text
+	if request != null and request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		return "突破%s城门并消灭守军；胜利后原军队驻扎，撤退则沿原路返程" % str(
+			battle_context.get("target_city_name", "目标城")
+		)
+	return "突破任一城门并击溃该路线守军"
 
 
 static func _phase_text(phase: StringName) -> String:
@@ -368,6 +436,9 @@ static func _find_route(
 
 
 static func _remaining_enemy_text(routes: Array[Dictionary]) -> String:
+	for route in routes:
+		if not bool(route.get("enemy_count_known", true)):
+			return "敌情未明（瞭望台完工后显示兵力）"
 	return "剩余敌人 %d" % _remaining_enemy_count(routes)
 
 

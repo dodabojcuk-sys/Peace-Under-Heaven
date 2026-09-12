@@ -161,8 +161,8 @@ func _run() -> void:
 	_check(int(record.get("orientation", -1)) == 1,
 		"确认后的建筑方向进入唯一权威实例")
 	var snapshot: Dictionary = controller.export_v5_campaign_snapshot()
-	_check(snapshot.schema_version == 6,
-		"含方向的 Campaign 快照使用 schema 6，并包含编队 roster 投影")
+	_check(snapshot.schema_version == V5CampaignSnapshot.SCHEMA_VERSION,
+		"含方向的 Campaign 快照使用当前 schema，并包含编队 roster 投影")
 	var temp_save_root := "%s/txwzs-r1-orientation-%d" % [
 		OS.get_temp_dir(),
 		Time.get_ticks_usec(),
@@ -191,6 +191,7 @@ func _run() -> void:
 	legacy_v2.garrison = _legacy_garrison_projection(snapshot.garrison)
 	legacy_v2.erase("mainline_level")
 	legacy_v2.erase("build_slot")
+	legacy_v2.erase("war_loop")
 	legacy_v2.city.erase("security")
 	for placement in legacy_v2.placements:
 		for key in [
@@ -204,7 +205,7 @@ func _run() -> void:
 	var legacy_validation: Dictionary = controller.validate_v5_campaign_snapshot(legacy_v2)
 	_check(
 		bool(legacy_validation.valid)
-			and int(legacy_validation.snapshot.schema_version) == 6
+			and int(legacy_validation.snapshot.schema_version) == V5CampaignSnapshot.SCHEMA_VERSION
 			and int(legacy_validation.snapshot.placements[0].orientation) == 0,
 		"旧 schema 2 存档载入时稳定默认北向"
 	)
