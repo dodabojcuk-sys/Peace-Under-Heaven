@@ -359,6 +359,17 @@ text = "开始战斗"
 custom_minimum_size = Vector2(200, 44)
 theme_type_variation = &"PrimaryButton"
 
+[node name="OfficialSupportButton" type="MenuButton" parent="UI/RootPanel"]
+visible = false
+anchor_left = 1.0
+anchor_right = 1.0
+offset_left = -612.0
+offset_top = 14.0
+offset_right = -384.0
+offset_bottom = 54.0
+text = "战中文官支援"
+tooltip_text = "对当前选中小队或其所在路线使用支援"
+
 [node name="WartimePlanPanel" type="Panel" parent="UI/RootPanel"]
 visible = false
 anchor_top = 1.0

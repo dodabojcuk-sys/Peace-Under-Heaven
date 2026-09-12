@@ -186,6 +186,10 @@ func _run_campaign_r0_engineering_route() -> void:
 				break
 	_advance_until_project_phase(city, tower_project_id, &"COMPLETE", 40000)
 	var towers: Dictionary = city._war_loop_state.field_tactics.watchtowers_by_id
+	var player_tower_count := 0
+	for tower_value in towers.values():
+		if StringName(Dictionary(tower_value).get("owner_faction_id", &"player")) == &"player":
+			player_tower_count += 1
 	# Let the authored patrol enter the completed observer range through normal
 	# Controller frames. The scout's earlier report remains distinct from this
 	# live tower observer fact.
@@ -287,7 +291,7 @@ func _run_campaign_r0_engineering_route() -> void:
 			and not completed_camp_project.is_empty() and camp_id != &""
 			and StringName(completed_link_project.get("phase", &"")) == &"COMPLETE"
 			and not valid_a.is_empty() and invalid_b_clears_a and not tower_replanned.is_empty()
-			and tower_confirm_visible and towers.size() == 1 and not tower_visible_patrols.is_empty(),
+			and tower_confirm_visible and player_tower_count == 1 and not tower_visible_patrols.is_empty(),
 		"工程路线通过正式工程计划建成新驻点、桥接林间道路，并以合法—无效—合法选址完成瞭望塔与真实敌情"
 	)
 	_check(

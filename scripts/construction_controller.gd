@@ -152,6 +152,20 @@ const EMERGENCY_MOBILIZATION_INFANTRY := 5
 const SECONDS_PER_DAY := 180.0
 const MILLISECONDS_PER_DAY := 180000
 const CONSTRUCTION_TICK_MILLISECONDS := 1000
+const FIELD_SPECIALIST_DISPATCH_COSTS := {
+	FieldTacticsState.SPECIALIST_SCOUT: 4,
+	FieldTacticsState.SPECIALIST_ENGINEER: 8,
+	FieldTacticsState.SPECIALIST_MEDIC: 6,
+	FieldTacticsState.SPECIALIST_SABOTEUR: 7,
+	FieldTacticsState.SPECIALIST_THIEF: 5,
+	FieldTacticsState.SPECIALIST_SNIPER: 7,
+}
+const FIELD_SPECIALIST_ACTION_RULES := {
+	FieldTacticsState.ACTION_MEDICAL: {"duration_milliseconds": 2500, "food_cost": 2, "effect_amount": 60},
+	FieldTacticsState.ACTION_SABOTAGE: {"duration_milliseconds": 4000, "food_cost": 2, "effect_amount": 60},
+	FieldTacticsState.ACTION_THEFT: {"duration_milliseconds": 3500, "food_cost": 2, "effect_amount": 5},
+	FieldTacticsState.ACTION_SNIPER: {"duration_milliseconds": 3000, "food_cost": 2, "effect_amount": 1},
+}
 const CONSTRUCTION_PRIORITY_LOW := 0
 const CONSTRUCTION_PRIORITY_NORMAL := 1
 const CONSTRUCTION_PRIORITY_HIGH := 2
@@ -4594,6 +4608,81 @@ func activate_city_official_support() -> Dictionary:
 	return {"success": true, "support": support}
 
 
+func get_battle_official_support_model() -> Dictionary:
+	var official_id := _city_strategy.appointed_official_id
+	var allowed_kinds: Array[StringName] = []
+	if official_id == &"official.physician":
+		allowed_kinds = [BattleSession.SUPPORT_HEAL]
+	elif official_id == &"official.strategist":
+		allowed_kinds = [
+			BattleSession.SUPPORT_MOVE, BattleSession.SUPPORT_ATTACK,
+			BattleSession.SUPPORT_PROTECT, BattleSession.SUPPORT_DOMAIN,
+		]
+	return {
+		"appointed_official_id": official_id,
+		"appointed_official_name": {
+			&"official.steward": "治粟官", &"official.physician": "医官",
+			&"official.strategist": "军谋官",
+		}.get(official_id, "未任命"),
+		"campaign_energy": _city_strategy.campaign_energy,
+		"allowed_kinds": allowed_kinds,
+	}
+
+
+## One durable boundary owns both the account-wide energy debit and the
+## BattleSession command. A failed checkpoint restores both snapshots, so a
+## retry cannot spend energy without an effect or duplicate an accepted effect.
+func commit_battle_official_support(
+	coordinator: CombatTransactionCoordinator,
+	kind: StringName,
+	squad_id: int,
+	route_id: StringName = &""
+) -> Dictionary:
+	if (
+		not is_combat_transaction_coordinator_bound(coordinator)
+		or coordinator.active_session == null
+		or coordinator.active_request == null
+		or coordinator.active_request.phase != BattleRequest.PHASE_ACTIVE
+	):
+		return {"success": false, "error": "当前没有可接受支援命令的战斗"}
+	var model := get_battle_official_support_model()
+	if kind not in Array(model.allowed_kinds):
+		return {"success": false, "error": "当前任命文官不能使用这项战中能力"}
+	if int(model.campaign_energy) <= 0:
+		return {"success": false, "error": "关卡能量不足"}
+	var context := coordinator.get_battle_source_context()
+	if not bool(context.get("macro_siege", false)) and not bool(context.get("prepared_expedition", false)):
+		return {"success": false, "error": "该临时战斗尚不支持持久文官命令"}
+	var strategy_before := _city_strategy.get_snapshot()
+	var session_before := coordinator.active_session.get_snapshot()
+	var receipt := coordinator.active_session.issue_official_support(kind, squad_id, route_id)
+	if receipt.is_empty() or not _city_strategy.spend_campaign_energy(1):
+		coordinator.active_session.restore_snapshot(session_before)
+		_city_strategy.restore_snapshot(strategy_before)
+		return {"success": false, "error": "目标当前不适用该支援，未消耗能量"}
+	var checkpoint: Dictionary
+	if bool(context.get("macro_siege", false)):
+		checkpoint = checkpoint_macro_siege_battle_session(
+			StringName(context.get("army_id", &"")),
+			StringName(context.get("city_id", &"")),
+			StringName(context.get("transaction_id", &"")),
+			coordinator.active_session.get_snapshot()
+		)
+	else:
+		checkpoint = checkpoint_active_battle_session(
+			StringName(context.get("transaction_id", &"")),
+			coordinator.active_session.get_snapshot()
+		)
+	if not bool(checkpoint.get("success", false)):
+		coordinator.active_session.restore_snapshot(session_before)
+		_city_strategy.restore_snapshot(strategy_before)
+		_refresh_city_ui()
+		return {"success": false, "error": "战中支援保存失败，能量与效果已回滚"}
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {"success": true, "receipt": receipt, "campaign_energy": _city_strategy.campaign_energy}
+
+
 func craft_city_equipment(equipment_id: StringName) -> Dictionary:
 	if is_city_action_locked_for_battle() or _city_strategy.owned_equipment_ids.has(equipment_id):
 		return {"success": false, "error": "战斗事务处理中不能制造，或装备已经拥有"}
@@ -6595,8 +6684,7 @@ func get_field_tactics_read_model() -> Dictionary:
 	for facility_id_value in Dictionary(field_snapshot.get("watchtowers_by_id", {})).keys():
 		var facility := Dictionary(field_snapshot.watchtowers_by_id[facility_id_value])
 		if (
-			StringName(facility.get("facility_kind", &"")) != FieldTacticsState.FACILITY_MINEFIELD
-			or StringName(facility.get("owner_faction_id", &"player")) == &"player"
+			StringName(facility.get("owner_faction_id", &"player")) == &"player"
 			or &"player" in Array(facility.get("discovered_by_faction_ids", []))
 		):
 			visible_facilities[StringName(facility_id_value)] = facility.duplicate(true)
@@ -6744,9 +6832,9 @@ func replenish_field_stationed_army(point_id: StringName, army_id: StringName) -
 
 func dispatch_field_specialist(role: StringName) -> Dictionary:
 	_ensure_war_loop_initialized()
-	if role not in [FieldTacticsState.SPECIALIST_SCOUT, FieldTacticsState.SPECIALIST_ENGINEER]:
-		return _macro_failure(&"SPECIALIST_ROLE", "只能派遣侦察兵或工程师")
-	var food_cost := 4 if role == FieldTacticsState.SPECIALIST_SCOUT else 8
+	var food_cost := _field_specialist_dispatch_cost(role)
+	if food_cost <= 0:
+		return _macro_failure(&"SPECIALIST_ROLE", "未知专员类型")
 	if food < food_cost:
 		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足，无法派遣特殊单位")
 	var war_before := _war_loop_state.get_snapshot()
@@ -6782,14 +6870,14 @@ func dispatch_field_specialist_to_target(role: StringName, target_point_id: Stri
 	# This avoids the old two-click flow where a failed target could still spend
 	# food on an idle specialist.
 	_ensure_war_loop_initialized()
-	if role not in [FieldTacticsState.SPECIALIST_SCOUT, FieldTacticsState.SPECIALIST_ENGINEER]:
-		return _macro_failure(&"SPECIALIST_ROLE", "只能派遣侦察兵或工程师")
+	var food_cost := _field_specialist_dispatch_cost(role)
+	if food_cost <= 0:
+		return _macro_failure(&"SPECIALIST_ROLE", "未知专员类型")
 	if target_point_id == &"blackstone_city":
 		return _macro_failure(&"SPECIALIST_TARGET", "请选择另一处城池或驻点")
 	var movement_preview := _war_loop_state.field_tactics.preview_specialist_move_from_point(&"blackstone_city", target_point_id)
 	if not bool(movement_preview.get("valid", false)):
 		return _macro_failure(&"SPECIALIST_MOVE", str(movement_preview.get("error", "特殊单位无法前往该位置")))
-	var food_cost := 4 if role == FieldTacticsState.SPECIALIST_SCOUT else 8
 	if food < food_cost:
 		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足，无法派遣特殊单位")
 	var war_before := _war_loop_state.get_snapshot()
@@ -6827,12 +6915,12 @@ func dispatch_field_specialist_to_target(role: StringName, target_point_id: Stri
 
 func preview_field_specialist_dispatch_to_target(role: StringName, target_point_id: StringName) -> Dictionary:
 	_ensure_war_loop_initialized()
-	if role not in [FieldTacticsState.SPECIALIST_SCOUT, FieldTacticsState.SPECIALIST_ENGINEER]:
-		return {"valid": false, "error": "只能派遣侦察兵或工程师"}
+	var food_cost := _field_specialist_dispatch_cost(role)
+	if food_cost <= 0:
+		return {"valid": false, "error": "未知专员类型"}
 	var movement_preview := _war_loop_state.field_tactics.preview_specialist_move_from_point(&"blackstone_city", target_point_id)
 	if not bool(movement_preview.get("valid", false)):
 		return movement_preview
-	var food_cost := 4 if role == FieldTacticsState.SPECIALIST_SCOUT else 8
 	movement_preview.food_cost = food_cost
 	movement_preview.food_shortage = maxi(food_cost - food, 0)
 	movement_preview.affordable = food >= food_cost
@@ -6840,6 +6928,17 @@ func preview_field_specialist_dispatch_to_target(role: StringName, target_point_
 		movement_preview.valid = false
 		movement_preview.error = "粮食不足：需要 %d，当前 %d" % [food_cost, food]
 	return movement_preview
+
+
+func _field_specialist_dispatch_cost(role: StringName) -> int:
+	return int(FIELD_SPECIALIST_DISPATCH_COSTS.get(role, 0))
+
+
+func get_field_specialist_rules_model() -> Dictionary:
+	return {
+		"dispatch_food_costs": FIELD_SPECIALIST_DISPATCH_COSTS.duplicate(true),
+		"action_rules": FIELD_SPECIALIST_ACTION_RULES.duplicate(true),
+	}
 
 
 func preview_field_specialist_move(specialist_id: StringName, target_point_id: StringName) -> Dictionary:
@@ -6857,6 +6956,185 @@ func order_field_specialist_move(specialist_id: StringName, target_point_id: Str
 		_war_loop_state.restore_snapshot(war_before)
 		return _macro_failure(&"SAVE_FAILED", "特殊单位军令存档失败")
 	return {"success": true, "specialist": specialist}
+
+
+func preview_field_specialist_action(specialist_id: StringName, action_kind: StringName, target_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	var target := _resolve_field_specialist_action_target(action_kind, target_id, specialist_id)
+	if not bool(target.get("valid", false)):
+		return target
+	var action_rule := Dictionary(FIELD_SPECIALIST_ACTION_RULES.get(action_kind, {}))
+	var required_milliseconds := int(action_rule.get("duration_milliseconds", 0))
+	var preview := _war_loop_state.field_tactics.preview_specialist_action(
+		specialist_id, action_kind, target_id,
+		Vector2i(target.get("world_position", FieldTacticsState.INVALID_WORLD_POSITION)),
+		required_milliseconds
+	)
+	if not bool(preview.get("valid", false)):
+		return preview
+	var food_cost := int(action_rule.get("food_cost", 0))
+	preview.food_cost = food_cost
+	preview.affordable = food >= food_cost
+	if not bool(preview.affordable):
+		preview.valid = false
+		preview.error = "粮食不足：任务需要 %d 粮" % food_cost
+	return preview
+
+
+func begin_field_specialist_action(specialist_id: StringName, action_kind: StringName, target_id: StringName) -> Dictionary:
+	var preview := preview_field_specialist_action(specialist_id, action_kind, target_id)
+	if not bool(preview.get("valid", false)):
+		return _macro_failure(&"SPECIALIST_ACTION", str(preview.get("error", "专员任务不合法")))
+	var war_before := _war_loop_state.get_snapshot()
+	var specialist := _war_loop_state.field_tactics.begin_specialist_action(
+		specialist_id, action_kind, target_id, Vector2i(preview.target_world_position),
+		int(preview.required_milliseconds)
+	)
+	if specialist.is_empty():
+		return _macro_failure(&"SPECIALIST_ACTION", "专员任务未能建立")
+	var food_cost := int(Dictionary(FIELD_SPECIALIST_ACTION_RULES.get(action_kind, {})).get("food_cost", 0))
+	var transaction := _nation_state.commit_resource_transaction(
+		NationState.BLACKSTONE_CITY_ID,
+		[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": food_cost}],
+		&"field_specialist_action"
+	)
+	if not bool(transaction.get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		return _macro_failure(&"SPECIALIST_ACTION_RESOURCE", "专员任务费用未能提交")
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		_nation_state.commit_resource_transaction(
+			NationState.BLACKSTONE_CITY_ID,
+			[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": food_cost}],
+			&"field_specialist_action_rollback"
+		)
+		return _macro_failure(&"SAVE_FAILED", "专员任务存档失败，费用和任务已回滚")
+	return {"success": true, "specialist": specialist, "preview": preview, "food_cost": food_cost}
+
+
+func _resolve_field_specialist_action_target(action_kind: StringName, target_id: StringName, specialist_id: StringName = &"") -> Dictionary:
+	var field: FieldTacticsState = _war_loop_state.field_tactics
+	if action_kind == FieldTacticsState.ACTION_MEDICAL:
+		for siege_value in _war_loop_state.get_active_sieges():
+			var siege: Dictionary = Dictionary(siege_value)
+			if StringName(siege.get("army_id", &"")) != target_id:
+				continue
+			var hp := int(siege.get("attacker_total_hp", 0))
+			var hp_per_member := maxi(int(siege.get("attacker_hp_per_member", 1)), 1)
+			var heal_cap := ceili(float(hp) / float(hp_per_member)) * hp_per_member
+			if hp <= 0 or hp >= heal_cap or not Dictionary(siege.get("wartime_handoff", {})).is_empty():
+				return {"valid": false, "error": "该军队没有可稳定的存活单位伤势，或已交接战时实例"}
+			return {"valid": true, "world_position": Vector2i(field.point_positions_by_id.get(StringName(siege.get("city_id", &"")), FieldTacticsState.INVALID_WORLD_POSITION))}
+	elif action_kind == FieldTacticsState.ACTION_SABOTAGE:
+		var facility := Dictionary(field.watchtowers_by_id.get(target_id, {}))
+		if (
+			facility.is_empty()
+			or StringName(facility.get("owner_faction_id", &"player")) == &"player"
+			or StringName(facility.get("state", FieldTacticsState.FACILITY_ACTIVE)) == FieldTacticsState.FACILITY_DESTROYED
+			or &"player" not in Array(facility.get("discovered_by_faction_ids", []))
+		):
+			return {"valid": false, "error": "请选择已发现且仍有效的敌方设施"}
+		return {"valid": true, "world_position": Vector2i(facility.get("world_position", FieldTacticsState.INVALID_WORLD_POSITION))}
+	elif action_kind == FieldTacticsState.ACTION_THEFT:
+		var city := _war_loop_state.get_city(target_id)
+		var target_siege := _war_loop_state.get_siege(target_id)
+		var target_handoff := Dictionary(target_siege.get("wartime_handoff", {}))
+		var city_intel := Dictionary(field.intel_by_subject_id.get(target_id, {}))
+		var available_stock := int(field.supply_inventory_by_point_id.get(target_id, 0))
+		var theft_amount := mini(available_stock, int(Dictionary(FIELD_SPECIALIST_ACTION_RULES[FieldTacticsState.ACTION_THEFT]).effect_amount))
+		if (
+			city.is_empty()
+			or StringName(city.get("military_controller_faction_id", &"player")) == &"player"
+			or available_stock <= 0
+			or StringName(target_handoff.get("phase", &"")) in [WarLoopState.WARTIME_HANDOFF_RESERVED, WarLoopState.WARTIME_HANDOFF_ACTIVE, WarLoopState.WARTIME_HANDOFF_RESULT_PENDING]
+			or StringName(city_intel.get("subject_kind", &"")) != &"POINT"
+			or StringName(city_intel.get("fog_state", FieldTacticsState.FOG_UNOBSERVED)) not in [FieldTacticsState.FOG_VISIBLE, FieldTacticsState.FOG_OBSERVED]
+		):
+			return {"valid": false, "error": "目标没有可盗取的已知库存，或已由我方控制"}
+		if maxi(get_resource_capacity(&"food") - food, 0) < theft_amount:
+			return {"valid": false, "error": "黑石城粮仓没有空间接收本次战利品"}
+		return {"valid": true, "world_position": Vector2i(field.point_positions_by_id.get(target_id, FieldTacticsState.INVALID_WORLD_POSITION))}
+	elif action_kind == FieldTacticsState.ACTION_SNIPER:
+		var patrol := Dictionary(field.patrols_by_id.get(target_id, {}))
+		var intel := Dictionary(field.intel_by_subject_id.get(target_id, {}))
+		if patrol.is_empty() or int(patrol.get("strength", 0)) <= 0 or StringName(patrol.get("phase", &"")) in [FieldTacticsState.INVASION_HANDED_OFF, FieldTacticsState.INVASION_DEFEATED, FieldTacticsState.INVASION_RESOLVED] or StringName(intel.get("fog_state", FieldTacticsState.FOG_UNOBSERVED)) != FieldTacticsState.FOG_VISIBLE:
+			return {"valid": false, "error": "狙击目标必须是当前已发现且未交接的存活敌军"}
+		var patrol_position := Vector2(patrol.get("world_position", FieldTacticsState.INVALID_WORLD_POSITION))
+		var action_position := patrol_position
+		var specialist := Dictionary(field.specialists_by_id.get(specialist_id, {}))
+		if not specialist.is_empty():
+			# A sniper acts from a visible stand-off position. Walking onto the enemy
+			# marker made the ordinary patrol-contact resolver kill the specialist
+			# before the shot could be committed, so the formal action was impossible
+			# without a guard. Exposure remains a result fact after the real shot.
+			var from_target := Vector2(specialist.get("world_position", patrol_position)) - patrol_position
+			if from_target.length_squared() > 0.01:
+				action_position = patrol_position + from_target.normalized() * 110.0
+		return {"valid": true, "world_position": Vector2i(action_position)}
+	return {"valid": false, "error": "未知专员任务"}
+
+
+func _resolve_ready_field_specialist_actions(action_ids: Array) -> Dictionary:
+	var field: FieldTacticsState = _war_loop_state.field_tactics
+	var pending_action_ids := action_ids.duplicate()
+	# A thief who physically returned while the storehouse was full keeps the
+	# same cargo and retries on later world steps. No new theft or debit occurs.
+	for specialist_id_value in field.specialists_by_id.keys():
+		var pending_id := StringName(specialist_id_value)
+		var pending := Dictionary(field.specialists_by_id[pending_id])
+		if StringName(pending.get("action_stage", &"")) == FieldTacticsState.ACTION_READY_DEPOSIT and pending_id not in pending_action_ids:
+			pending_action_ids.append(pending_id)
+	var changed := false
+	var committed_amounts: Array[Dictionary] = []
+	var events: Array[Dictionary] = []
+	for specialist_id_value in pending_action_ids:
+		var specialist_id := StringName(specialist_id_value)
+		var specialist := Dictionary(field.specialists_by_id.get(specialist_id, {}))
+		var kind := StringName(specialist.get("action_kind", &""))
+		var stage := StringName(specialist.get("action_stage", &""))
+		var target_id := StringName(specialist.get("action_target_id", &""))
+		var action_result: Dictionary = {}
+		var waiting_for_capacity := false
+		if stage == FieldTacticsState.ACTION_READY_DEPOSIT and kind == FieldTacticsState.ACTION_THEFT:
+			var amount := int(specialist.get("action_cargo_food", 0))
+			if amount > 0 and maxi(get_resource_capacity(&"food") - food, 0) >= amount:
+				var transaction := _nation_state.commit_resource_transaction(
+					NationState.BLACKSTONE_CITY_ID,
+					[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": amount}],
+					&"field_specialist_theft_deposit",
+					func() -> Dictionary: return {"success": field.finish_specialist_action(specialist_id, {"deposited_food": amount})}
+				)
+				if bool(transaction.get("success", false)):
+					committed_amounts.append({"transport_id": specialist_id, "amount": amount})
+					action_result = {"deposited_food": amount}
+			elif amount > 0:
+				waiting_for_capacity = true
+		elif stage == FieldTacticsState.ACTION_READY:
+			var current_target := _resolve_field_specialist_action_target(kind, target_id)
+			if not bool(current_target.get("valid", false)):
+				field.interrupt_specialist_action(specialist_id, &"TARGET_INVALID")
+			elif kind == FieldTacticsState.ACTION_MEDICAL:
+				for siege_value in _war_loop_state.get_active_sieges():
+					var siege: Dictionary = Dictionary(siege_value)
+					if StringName(siege.get("army_id", &"")) == target_id:
+						action_result = _war_loop_state.heal_siege_attacker(StringName(siege.get("city_id", &"")), int(Dictionary(FIELD_SPECIALIST_ACTION_RULES[FieldTacticsState.ACTION_MEDICAL]).effect_amount))
+						break
+				if not action_result.is_empty():
+					field.finish_specialist_action(specialist_id, action_result)
+			elif kind == FieldTacticsState.ACTION_SABOTAGE:
+				action_result = field.apply_specialist_sabotage(specialist_id, target_id, int(Dictionary(FIELD_SPECIALIST_ACTION_RULES[FieldTacticsState.ACTION_SABOTAGE]).effect_amount))
+			elif kind == FieldTacticsState.ACTION_THEFT:
+				action_result = field.begin_specialist_theft_return(specialist_id, target_id, int(Dictionary(FIELD_SPECIALIST_ACTION_RULES[FieldTacticsState.ACTION_THEFT]).effect_amount), &"blackstone_city")
+			elif kind == FieldTacticsState.ACTION_SNIPER:
+				action_result = field.apply_specialist_sniper_shot(specialist_id, target_id, int(Dictionary(FIELD_SPECIALIST_ACTION_RULES[FieldTacticsState.ACTION_SNIPER]).effect_amount))
+		if not waiting_for_capacity and action_result.is_empty() and StringName(Dictionary(field.specialists_by_id.get(specialist_id, {})).get("action_stage", &"")) in [FieldTacticsState.ACTION_READY, FieldTacticsState.ACTION_READY_DEPOSIT]:
+			field.interrupt_specialist_action(specialist_id, &"ACTION_FAILED")
+		var current := Dictionary(field.specialists_by_id.get(specialist_id, {}))
+		var action_changed := current != specialist or not action_result.is_empty()
+		changed = changed or action_changed
+		if action_changed:
+			events.append({"specialist_id": specialist_id, "action_kind": kind, "result": action_result})
+	return {"success": true, "changed": changed, "events": events, "committed_amounts": committed_amounts}
 
 
 func preview_field_road_project(
@@ -7594,13 +7872,24 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		return encounter_result
 	if not Array(encounter_result.get("encounters", [])).is_empty():
 		field_advance.patrol_encounters = Array(encounter_result.encounters).duplicate(true)
+	var specialist_action_settlement := _resolve_ready_field_specialist_actions(
+		Array(field_advance.get("ready_specialist_action_ids", []))
+	)
+	if not bool(specialist_action_settlement.get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
+		return _macro_failure(&"SPECIALIST_ACTION_SETTLEMENT", "专员行动结算失败")
+	if not Array(specialist_action_settlement.get("events", [])).is_empty():
+		field_advance.specialist_action_events = Array(specialist_action_settlement.events).duplicate(true)
 	if not activated_invasion_ids.is_empty():
 		field_advance.activated_invasion_ids = activated_invasion_ids.duplicate()
 	var supply_settlement := _settle_arrived_supply_transports(
 		Array(field_advance.get("ready_supply_transport_ids", []))
 	)
+	var resource_credits: Array = Array(specialist_action_settlement.get("committed_amounts", [])).duplicate(true)
+	resource_credits.append_array(Array(supply_settlement.get("committed_amounts", [])))
 	if not bool(supply_settlement.get("success", false)):
-		_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
+		_rollback_supply_delivery_transactions(resource_credits)
 		_war_loop_state.restore_snapshot(war_before)
 		_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 		return _macro_failure(&"SUPPLY_SETTLEMENT_FAILED", str(supply_settlement.get("error", "粮草入库未能提交")))
@@ -7619,6 +7908,7 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		or Array(field_advance.get("patrol_encounters", [])).size() > 0
 		or not resumed_armies.is_empty()
 		or bool(supply_settlement.get("changed", false))
+		or bool(specialist_action_settlement.get("changed", false))
 		or supply_checkpoint_required
 	)
 	var completed_watchtower_checkpoint := false
@@ -7636,13 +7926,13 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 			var surviving_count := ceili(float(maxi(int(result.attacker_total_hp), 0)) / float(maxi(int(result.attacker_hp_per_member), 1)))
 			if surviving_count <= 0:
 				if StringName(result.phase) != WarLoopState.PHASE_FAILED:
-					_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
+					_rollback_supply_delivery_transactions(resource_credits)
 					_war_loop_state.restore_snapshot(war_before)
 					_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 					return _macro_failure(&"SIEGE_ZERO_SURVIVOR_STATE", "全灭攻城未进入失败状态")
 				result = _close_lost_macro_siege(result, StringName("%s.lost" % String(result.siege_id)))
 				if not bool(result.get("success", false)):
-					_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
+					_rollback_supply_delivery_transactions(resource_credits)
 					_war_loop_state.restore_snapshot(war_before)
 					_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 					return result
@@ -7658,7 +7948,7 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 					StringName(result.army_id), StringName(result.order_id), surviving_count
 				)
 			if army.is_empty():
-				_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
+				_rollback_supply_delivery_transactions(resource_credits)
 				_war_loop_state.restore_snapshot(war_before)
 				_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 				return _macro_failure(&"SIEGE_ARMY_SYNC_FAILED", "攻城伤亡无法同步到军队")
@@ -7672,6 +7962,7 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 	var specialist_losses := maxi(specialists_before - _current_alive_specialists(), 0)
 	if military_losses + specialist_losses > 0:
 		if not _population_recovery.record_fallen(military_losses + specialist_losses):
+			_rollback_supply_delivery_transactions(resource_credits)
 			_war_loop_state.restore_snapshot(war_before)
 			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 			_population_recovery.restore_snapshot(population_before)
@@ -7687,7 +7978,7 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		_field_supply_fault_for_test = &"" if _field_supply_fault_for_test == &"CHECKPOINT_SAVE_FAILED" else _field_supply_fault_for_test
 		_field_watchtower_fault_for_test = &"" if completed_watchtower_checkpoint and _field_watchtower_fault_for_test == &"COMPLETION_CHECKPOINT_SAVE_FAILED" else _field_watchtower_fault_for_test
 		if not checkpoint_success:
-			_rollback_supply_delivery_transactions(Array(supply_settlement.get("committed_amounts", [])))
+			_rollback_supply_delivery_transactions(resource_credits)
 			_war_loop_state.restore_snapshot(war_before)
 			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
 			_population_recovery.restore_snapshot(population_before)

@@ -63,14 +63,28 @@ const PROTECT_TARGET_REPAIR_TICKS := 2
 const PROTECT_TARGET_REPAIR_HP := 120
 const PROTECT_TARGET_REPAIR_IDLE := &"IDLE"
 const PROTECT_TARGET_REPAIRING := &"REPAIRING"
+const SUPPORT_HEAL := &"HEAL"
+const SUPPORT_MOVE := &"MOVE"
+const SUPPORT_ATTACK := &"ATTACK"
+const SUPPORT_PROTECT := &"PROTECT"
+const SUPPORT_DOMAIN := &"DOMAIN"
+const SUPPORT_KINDS := [SUPPORT_HEAL, SUPPORT_MOVE, SUPPORT_ATTACK, SUPPORT_PROTECT, SUPPORT_DOMAIN]
+const SUPPORT_DURATION_TICKS := 8
+const SUPPORT_HEAL_HP := 60
+const SUPPORT_MOVE_BASIS_POINTS := 12500
+const SUPPORT_ATTACK_BASIS_POINTS := 12500
+const SUPPORT_PROTECT_BASIS_POINTS := 7000
+const SUPPORT_DOMAIN_ATTACK_BASIS_POINTS := 11000
+const SUPPORT_DOMAIN_PROTECT_BASIS_POINTS := 9000
 ## Schema 7 records the immutable squad that physically carries out each
-## battle-local facility task. This is an existing committed squad, never a
-## shadow engineer or a second unit owner.
-const SNAPSHOT_SCHEMA_VERSION := 7
+## battle-local facility task. Schema 8 adds battle-local official command
+## receipts and timed effects while the shared energy remains city-owned.
+const SNAPSHOT_SCHEMA_VERSION := 8
 const SNAPSHOT_KEYS := [
 	"schema_version", "current_tick", "next_order_id", "squads", "routes",
 	"pending_orders", "accepted_orders", "retreat_was_ordered",
 	"forced_retreat_requested", "mission_objective_state", "wartime_facility_state",
+	"official_support_state",
 ]
 
 var request: BattleRequest
@@ -89,6 +103,7 @@ var _terminal_authority_record: Dictionary = {}
 var mission_definition: MissionDefinition
 var mission_objective_state: Dictionary = {}
 var wartime_facility_state: Dictionary = {}
+var official_support_state: Dictionary = {}
 ## Presentation-only facts for the most recently committed simulation tick.
 ## They are intentionally not saved: route HP is the durable authority, and a
 ## restored battle must not replay a historical volley as a fresh event.
@@ -123,6 +138,7 @@ func initialize(request_value: BattleRequest) -> bool:
 	mission_definition = request.mission_definition
 	mission_objective_state = {}
 	wartime_facility_state = {}
+	official_support_state = {"next_command_id": 1, "effects": [], "receipts": []}
 	last_tick_facility_events.clear()
 	for squad_snapshot in request.committed_force.squads:
 		var initial_members := int(squad_snapshot.initial_members)
@@ -192,6 +208,71 @@ func issue_order(
 	return order
 
 
+## Battle-local support commands consume the shared campaign energy through the
+## controller. This method only commits their deterministic combat effect; it
+## never owns or replenishes the account-wide balance.
+func issue_official_support(kind: StringName, squad_id: int, route_id: StringName = &"") -> Dictionary:
+	if completed or request == null or kind not in SUPPORT_KINDS:
+		return {}
+	var squad := get_squad_state(squad_id)
+	if squad.is_empty() or int(squad.get("total_hp", 0)) <= 0 or bool(squad.get("exited", false)):
+		return {}
+	var squad_route := StringName(squad.get("route_id", &""))
+	if route_id == &"":
+		route_id = squad_route
+	if route_id not in [CommittedForceSnapshot.FRONT_ROUTE, CommittedForceSnapshot.SIDE_ROUTE]:
+		return {}
+	if kind != SUPPORT_HEAL:
+		for effect_value in Array(official_support_state.get("effects", [])):
+			var active_effect := Dictionary(effect_value)
+			if (
+				StringName(active_effect.get("kind", &"")) == kind
+				and current_tick < int(active_effect.get("expires_tick", 0))
+				and (
+					(kind == SUPPORT_DOMAIN and StringName(active_effect.get("route_id", &"")) == route_id)
+					or (kind != SUPPORT_DOMAIN and int(active_effect.get("squad_id", 0)) == squad_id)
+				)
+			):
+				return {}
+	var command_id := int(official_support_state.get("next_command_id", 1))
+	var receipt := {
+		"command_id": command_id, "kind": kind, "squad_id": squad_id,
+		"route_id": route_id, "issued_tick": current_tick,
+	}
+	if kind == SUPPORT_HEAL:
+		# Healing may repair only the currently surviving member's partial HP.
+		# Crossing the next member boundary would resurrect a casualty.
+		var hp_per_member := maxi(int(request.committed_force.hp_per_member), 1)
+		var current_hp := int(squad.get("total_hp", 0))
+		var living_members := _alive_members(current_hp)
+		var heal_cap := living_members * hp_per_member
+		var healed := mini(SUPPORT_HEAL_HP, maxi(heal_cap - current_hp, 0))
+		if healed <= 0:
+			return {}
+		for live_squad in squads:
+			if int(live_squad.squad_id) == squad_id:
+				live_squad.total_hp = current_hp + healed
+				break
+		receipt["healed_hp"] = healed
+	else:
+		var effects: Array = Array(official_support_state.get("effects", [])).duplicate(true)
+		effects.append({
+			"command_id": command_id, "kind": kind, "squad_id": squad_id,
+			"route_id": route_id, "started_tick": current_tick,
+			"expires_tick": current_tick + SUPPORT_DURATION_TICKS,
+		})
+		official_support_state.effects = effects
+	official_support_state.next_command_id = command_id + 1
+	var receipts: Array = Array(official_support_state.get("receipts", [])).duplicate(true)
+	receipts.append(receipt)
+	official_support_state.receipts = receipts
+	return receipt.duplicate(true)
+
+
+func get_official_support_state() -> Dictionary:
+	return official_support_state.duplicate(true)
+
+
 func step_tick() -> bool:
 	if completed or request == null:
 		return false
@@ -205,6 +286,9 @@ func step_tick() -> bool:
 	var damage_intents := _build_damage_intents()
 	_apply_damage_intents(damage_intents)
 	_check_outcome()
+	# The expiry tick still receives the eighth configured combat application;
+	# removal happens only after that authoritative tick is fully committed.
+	_expire_official_supports()
 	return true
 
 
@@ -381,6 +465,7 @@ func get_snapshot() -> Dictionary:
 		"forced_retreat_requested": forced_retreat_requested,
 		"mission_objective_state": mission_objective_state.duplicate(true),
 		"wartime_facility_state": wartime_facility_state.duplicate(true),
+		"official_support_state": official_support_state.duplicate(true),
 	}
 
 
@@ -391,6 +476,8 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		return false
 	var source_schema_version := int(snapshot.schema_version)
 	var normalized_snapshot := snapshot.duplicate(true)
+	if source_schema_version < 8:
+		normalized_snapshot["official_support_state"] = {"next_command_id": 1, "effects": [], "receipts": []}
 	if source_schema_version <= 3:
 		## Older sessions had no invader position because protection targets were
 		## damaged immediately. They cannot truthfully recover lost approach
@@ -409,7 +496,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 		normalized_snapshot.mission_objective_state["protect_target_repair_progress_ticks"] = 0
 		normalized_snapshot.mission_objective_state["protect_target_repair_required_ticks"] = 0
 		normalized_snapshot.mission_objective_state["protect_target_repair_amount"] = 0
-	if source_schema_version < SNAPSHOT_SCHEMA_VERSION:
+	if source_schema_version < 7:
 		## Schema 7 records the committed combat squad that is doing each facility
 		## job. Historical records did not distinguish a construction detachment;
 		## bind the stable lowest-id living committed squad once during
@@ -528,6 +615,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 				legacy_record.max_durability = maximum
 				legacy_record.durability = maximum
 				wartime_facility_state.facilities[index] = legacy_record
+	official_support_state = Dictionary(normalized_snapshot.official_support_state).duplicate(true)
 	return true
 
 
@@ -581,6 +669,7 @@ func get_state_digest() -> String:
 		parts.append(str(mission_objective_state))
 	if not wartime_facility_state.is_empty():
 		parts.append(str(wartime_facility_state))
+	parts.append(str(official_support_state))
 	parts.append(get_orders_digest())
 	return "|".join(parts)
 
@@ -901,11 +990,13 @@ func _has_matching_snapshot_value_types(value: Dictionary, expected: Dictionary)
 
 func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 	var schema_version = snapshot.get("schema_version", null)
-	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, 2, 3, 4, 5, 6, SNAPSHOT_SCHEMA_VERSION]:
+	if typeof(schema_version) != TYPE_INT or int(schema_version) not in [1, 2, 3, 4, 5, 6, 7, SNAPSHOT_SCHEMA_VERSION]:
 		return false
 	var expected_keys: Array = SNAPSHOT_KEYS.duplicate()
 	if int(schema_version) == 1:
 		expected_keys.erase("wartime_facility_state")
+	if int(schema_version) < 8:
+		expected_keys.erase("official_support_state")
 	return (
 		snapshot.size() == expected_keys.size()
 		and _has_exact_snapshot_keys(snapshot, expected_keys)
@@ -921,6 +1012,10 @@ func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 		and typeof(snapshot.get("retreat_was_ordered", null)) == TYPE_BOOL
 		and typeof(snapshot.get("forced_retreat_requested", null)) == TYPE_BOOL
 		and typeof(snapshot.get("mission_objective_state", null)) == TYPE_DICTIONARY
+		and (
+			int(schema_version) < 8
+			or _has_valid_official_support_state(Dictionary(snapshot.get("official_support_state", {})))
+		)
 		and (
 			(
 				_has_valid_legacy_mission_objective_state(
@@ -946,19 +1041,77 @@ func _is_valid_snapshot(snapshot: Dictionary) -> bool:
 				and _has_valid_legacy_wartime_facility_state(Dictionary(snapshot.get("wartime_facility_state", {})))
 			)
 			or (
-				int(schema_version) < SNAPSHOT_SCHEMA_VERSION
+				int(schema_version) in [3, 4, 5, 6]
 				and _has_valid_schema6_wartime_facility_state(
 					Dictionary(snapshot.get("wartime_facility_state", {}))
 				)
 			)
 			or (
-				int(schema_version) == SNAPSHOT_SCHEMA_VERSION
+				int(schema_version) in [7, SNAPSHOT_SCHEMA_VERSION]
 				and _has_valid_wartime_facility_state(
 					Dictionary(snapshot.get("wartime_facility_state", {}))
 				)
 			)
 		)
 	)
+
+
+func _has_valid_official_support_state(state: Dictionary) -> bool:
+	if (
+		state.size() != 3
+		or typeof(state.get("next_command_id", null)) != TYPE_INT
+		or int(state.get("next_command_id", 0)) <= 0
+		or typeof(state.get("effects", null)) != TYPE_ARRAY
+		or typeof(state.get("receipts", null)) != TYPE_ARRAY
+	):
+		return false
+	var seen_ids: Dictionary = {}
+	var highest_id := 0
+	for receipt_value in Array(state.receipts):
+		if not receipt_value is Dictionary:
+			return false
+		var receipt: Dictionary = receipt_value
+		if (
+			receipt.size() not in [5, 6]
+			or typeof(receipt.get("command_id", null)) != TYPE_INT
+			or int(receipt.get("command_id", 0)) <= 0
+			or seen_ids.has(int(receipt.get("command_id", 0)))
+			or typeof(receipt.get("kind", null)) != TYPE_STRING_NAME
+			or StringName(receipt.get("kind", &"")) not in SUPPORT_KINDS
+			or typeof(receipt.get("squad_id", null)) != TYPE_INT
+			or not _has_known_squad(int(receipt.get("squad_id", 0)))
+			or typeof(receipt.get("route_id", null)) != TYPE_STRING_NAME
+			or StringName(receipt.get("route_id", &"")) not in [CommittedForceSnapshot.FRONT_ROUTE, CommittedForceSnapshot.SIDE_ROUTE]
+			or typeof(receipt.get("issued_tick", null)) != TYPE_INT
+			or int(receipt.get("issued_tick", -1)) < 0
+			or int(receipt.get("issued_tick", 0)) >= MAX_BATTLE_TICKS
+			or (receipt.has("healed_hp") and (typeof(receipt.healed_hp) != TYPE_INT or int(receipt.healed_hp) <= 0 or StringName(receipt.kind) != SUPPORT_HEAL))
+		):
+			return false
+		var command_id := int(receipt.command_id)
+		seen_ids[command_id] = true
+		highest_id = maxi(highest_id, command_id)
+	for effect_value in Array(state.effects):
+		if not effect_value is Dictionary:
+			return false
+		var effect: Dictionary = effect_value
+		if (
+			effect.size() != 6
+			or typeof(effect.get("command_id", null)) != TYPE_INT
+			or not seen_ids.has(int(effect.get("command_id", 0)))
+			or typeof(effect.get("kind", null)) != TYPE_STRING_NAME
+			or StringName(effect.get("kind", &"")) not in [SUPPORT_MOVE, SUPPORT_ATTACK, SUPPORT_PROTECT, SUPPORT_DOMAIN]
+			or typeof(effect.get("squad_id", null)) != TYPE_INT
+			or not _has_known_squad(int(effect.get("squad_id", 0)))
+			or typeof(effect.get("route_id", null)) != TYPE_STRING_NAME
+			or StringName(effect.get("route_id", &"")) not in [CommittedForceSnapshot.FRONT_ROUTE, CommittedForceSnapshot.SIDE_ROUTE]
+			or typeof(effect.get("started_tick", null)) != TYPE_INT
+			or typeof(effect.get("expires_tick", null)) != TYPE_INT
+			or int(effect.get("started_tick", -1)) < 0
+			or int(effect.get("expires_tick", 0)) <= int(effect.get("started_tick", 0))
+		):
+			return false
+	return int(state.next_command_id) > highest_id
 
 
 func _has_valid_legacy_mission_objective_state(state: Dictionary) -> bool:
@@ -1177,6 +1330,45 @@ func _apply_orders_for_current_tick() -> void:
 	pending_orders = remaining
 
 
+func _expire_official_supports() -> void:
+	var remaining: Array = []
+	for effect_value in Array(official_support_state.get("effects", [])):
+		var effect: Dictionary = Dictionary(effect_value)
+		if current_tick < int(effect.get("expires_tick", 0)):
+			remaining.append(effect.duplicate(true))
+	official_support_state.effects = remaining
+
+
+func _support_basis_points(kind: StringName, squad_id: int, route_id: StringName) -> int:
+	var multiplier := BASIS_POINTS
+	for effect_value in Array(official_support_state.get("effects", [])):
+		var effect: Dictionary = Dictionary(effect_value)
+		# Commands are issued between ticks. An effect with expires_tick=8 must
+		# participate in ticks 1 through 8, then is removed at the end of tick 8.
+		if current_tick > int(effect.get("expires_tick", 0)):
+			continue
+		var effect_kind := StringName(effect.get("kind", &""))
+		var applies := (
+			(effect_kind == SUPPORT_DOMAIN and StringName(effect.get("route_id", &"")) == route_id)
+			or (effect_kind != SUPPORT_DOMAIN and int(effect.get("squad_id", 0)) == squad_id)
+		)
+		if not applies:
+			continue
+		if kind == SUPPORT_MOVE and effect_kind == SUPPORT_MOVE:
+			multiplier = maxi(multiplier, SUPPORT_MOVE_BASIS_POINTS)
+		elif kind == SUPPORT_ATTACK:
+			if effect_kind == SUPPORT_ATTACK:
+				multiplier = maxi(multiplier, SUPPORT_ATTACK_BASIS_POINTS)
+			elif effect_kind == SUPPORT_DOMAIN:
+				multiplier = maxi(multiplier, SUPPORT_DOMAIN_ATTACK_BASIS_POINTS)
+		elif kind == SUPPORT_PROTECT:
+			if effect_kind == SUPPORT_PROTECT:
+				multiplier = mini(multiplier, SUPPORT_PROTECT_BASIS_POINTS)
+			elif effect_kind == SUPPORT_DOMAIN:
+				multiplier = mini(multiplier, SUPPORT_DOMAIN_PROTECT_BASIS_POINTS)
+	return multiplier
+
+
 func _update_positions() -> void:
 	var advance_per_tick := _positive_integer_divide(
 		request.committed_force.move_speed_fixed,
@@ -1191,8 +1383,11 @@ func _update_positions() -> void:
 			continue
 		var command := int(squad.active_order) as BattleOrder.Command
 		if command == BattleOrder.Command.ADVANCE:
+			var move_basis_points := _support_basis_points(
+				SUPPORT_MOVE, int(squad.squad_id), StringName(squad.route_id)
+			)
 			squad.position_fixed = mini(
-				int(squad.position_fixed) + advance_per_tick,
+				int(squad.position_fixed) + _positive_integer_divide(advance_per_tick * move_basis_points, BASIS_POINTS),
 				_get_route_distance_fixed(StringName(squad.route_id))
 			)
 		elif command == BattleOrder.Command.RETREAT:
@@ -1270,7 +1465,10 @@ func _build_damage_intents() -> Dictionary:
 		)
 		var damage := _calculate_player_damage(
 			_alive_members(int(squad.total_hp)),
-			order_basis_points
+			_positive_integer_divide(
+				order_basis_points * _support_basis_points(SUPPORT_ATTACK, int(squad.squad_id), route_id),
+				BASIS_POINTS
+			)
 		)
 		if int(route.gate_hp) > 0:
 			gate_damage[route_id] = int(gate_damage[route_id]) + damage
@@ -1303,6 +1501,10 @@ func _build_damage_intents() -> Dictionary:
 		var barricade_basis_points := _get_wartime_facility_incoming_damage_basis_points(route_id)
 		var squad_damage := _positive_integer_divide(
 			damage * barricade_basis_points,
+			BASIS_POINTS
+		)
+		squad_damage = _positive_integer_divide(
+			squad_damage * _support_basis_points(SUPPORT_PROTECT, int(target.squad_id), route_id),
 			BASIS_POINTS
 		)
 		player_damage[int(target.squad_id)] = squad_damage

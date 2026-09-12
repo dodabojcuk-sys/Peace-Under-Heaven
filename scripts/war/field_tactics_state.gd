@@ -14,12 +14,31 @@ const ROAD_OPEN := &"OPEN"
 const ROAD_DAMAGED := &"DAMAGED"
 const SPECIALIST_SCOUT := &"SCOUT"
 const SPECIALIST_ENGINEER := &"ENGINEER"
+const SPECIALIST_MEDIC := &"MEDIC"
+const SPECIALIST_SABOTEUR := &"SABOTEUR"
+const SPECIALIST_THIEF := &"THIEF"
+const SPECIALIST_SNIPER := &"SNIPER"
+const SPECIALIST_ROLES := [SPECIALIST_SCOUT, SPECIALIST_ENGINEER, SPECIALIST_MEDIC, SPECIALIST_SABOTEUR, SPECIALIST_THIEF, SPECIALIST_SNIPER]
 const SPECIALIST_IDLE := &"IDLE"
 const SPECIALIST_MOVING := &"MOVING"
 const SPECIALIST_BUILDING := &"BUILDING"
 const SPECIALIST_REPAIRING := &"REPAIRING"
 const SPECIALIST_BLOCKED := &"BLOCKED"
 const SPECIALIST_LOST := &"LOST"
+const SPECIALIST_ACTING := &"ACTING"
+const ACTION_MEDICAL := &"MEDICAL"
+const ACTION_SABOTAGE := &"SABOTAGE"
+const ACTION_THEFT := &"THEFT"
+const ACTION_SNIPER := &"SNIPER"
+const ACTION_KINDS := [ACTION_MEDICAL, ACTION_SABOTAGE, ACTION_THEFT, ACTION_SNIPER]
+const ACTION_NONE := &"NONE"
+const ACTION_TRAVELING := &"TRAVELING"
+const ACTION_WORKING := &"WORKING"
+const ACTION_READY := &"READY"
+const ACTION_RETURNING := &"RETURNING"
+const ACTION_READY_DEPOSIT := &"READY_DEPOSIT"
+const ACTION_COMPLETED := &"COMPLETED"
+const ACTION_INTERRUPTED := &"INTERRUPTED"
 const FOG_UNOBSERVED := &"UNOBSERVED"
 const FOG_OBSERVED := &"OBSERVED"
 const FOG_VISIBLE := &"VISIBLE"
@@ -117,6 +136,41 @@ func initialize_from_theater(
 			var initial_reinforcements := maxi(int(point.get("initial_stationed_reinforcements", 0)), 0)
 			if initial_reinforcements > 0:
 				stationed_reinforcements_by_point_id[StringName(point_id_value)] = initial_reinforcements
+		# Authored hostile facilities are seeded only for a brand-new theatre. A
+		# restored save (including a legacy one) must not gain a new sabotage target
+		# merely because content was added in a later build.
+		if not _supply_snapshot_restored:
+			var hostile_facility := Dictionary(point.get("initial_hostile_facility", {}))
+			var facility_id := StringName(hostile_facility.get("facility_id", &""))
+			if facility_id != &"" and not watchtowers_by_id.has(facility_id):
+				var maximum := maxi(int(hostile_facility.get("max_durability", 100)), 1)
+				watchtowers_by_id[facility_id] = {
+					"authored": true,
+					"watchtower_id": facility_id,
+					"camp_id": StringName(point_id_value),
+					"project_id": &"",
+					"world_position": Vector2i(hostile_facility.get("world_position", point.get("world_position", Vector2i.ZERO))),
+					"visibility_range": maxi(int(hostile_facility.get("visibility_range", 180)), 1),
+					"facility_kind": StringName(hostile_facility.get("facility_kind", FACILITY_WATCHTOWER)),
+					"durability": maximum,
+					"max_durability": maximum,
+					"state": FACILITY_ACTIVE,
+					"effect_range": maxi(int(hostile_facility.get("effect_range", 180)), 1),
+					"attack_interval_milliseconds": 0,
+					"attack_elapsed_milliseconds": 0,
+					"damage": 0,
+					"route_delay_milliseconds": 0,
+					"collision_damage": 0,
+					"garrison_casualty_reduction_permille": 0,
+					"garrison_army_id": &"",
+					"mine_charges": 0,
+					"mine_damage": 0,
+					"owner_faction_id": StringName(hostile_facility.get("owner_faction_id", point.get("military_controller_faction_id", &"enemy"))),
+					"discovered_by_faction_ids": [],
+					"level": 1,
+					"affected_patrol_ids": [],
+					"complete": true,
+				}
 	if _specialist_path_migration_pending:
 		_migrate_restored_specialist_paths()
 		_specialist_path_migration_pending = false
@@ -263,7 +317,7 @@ func resolve_invasion_handoff(
 
 
 func dispatch_specialist(role: StringName, source_point_id: StringName) -> Dictionary:
-	if role not in [SPECIALIST_SCOUT, SPECIALIST_ENGINEER] or source_point_id == &"":
+	if role not in SPECIALIST_ROLES or source_point_id == &"":
 		return {}
 	var specialist_id := StringName("%s.%06d" % [String(role).to_lower(), next_specialist_sequence])
 	next_specialist_sequence += 1
@@ -284,11 +338,197 @@ func dispatch_specialist(role: StringName, source_point_id: StringName) -> Dicti
 		# regression fixture keeps its historical exact-contact behavior.
 		"visibility_range": scout_visibility_range if role == SPECIALIST_SCOUT else 1,
 		"project_id": &"",
+		"action_kind": &"", "action_stage": ACTION_NONE,
+		"action_target_id": &"", "action_target_world_position": INVALID_WORLD_POSITION,
+		"action_progress_milliseconds": 0, "action_required_milliseconds": 0,
+		"action_cargo_food": 0, "action_result": {},
 		"alive": true,
 	}
 	specialists_by_id[specialist_id] = specialist
 	_refresh_intel()
 	return specialist.duplicate(true)
+
+
+func preview_specialist_action(
+	specialist_id: StringName,
+	action_kind: StringName,
+	target_id: StringName,
+	target_position: Vector2i,
+	required_milliseconds: int
+) -> Dictionary:
+	var specialist := Dictionary(specialists_by_id.get(specialist_id, {}))
+	var expected_role := {
+		ACTION_MEDICAL: SPECIALIST_MEDIC, ACTION_SABOTAGE: SPECIALIST_SABOTEUR,
+		ACTION_THEFT: SPECIALIST_THIEF, ACTION_SNIPER: SPECIALIST_SNIPER,
+	}.get(action_kind, &"") as StringName
+	if (
+		specialist.is_empty() or expected_role == &""
+		or StringName(specialist.get("role", &"")) != expected_role
+		or not bool(specialist.get("alive", false))
+		or StringName(specialist.get("phase", &"")) not in [SPECIALIST_IDLE, SPECIALIST_BLOCKED]
+		or StringName(specialist.get("project_id", &"")) != &""
+		or StringName(specialist.get("action_stage", ACTION_NONE)) not in [ACTION_NONE, ACTION_COMPLETED, ACTION_INTERRUPTED]
+		or target_id == &"" or target_position == INVALID_WORLD_POSITION
+		or required_milliseconds <= 0
+	):
+		return {"valid": false, "error": "该专员当前不能执行此任务"}
+	var start_position := Vector2(specialist.get("world_position", INVALID_WORLD_POSITION))
+	var movement_plan := _plan_specialist_land_path(start_position, Vector2(target_position))
+	if movement_plan.is_empty() and start_position.distance_to(Vector2(target_position)) > 1.0:
+		return {"valid": false, "error": "任务目标当前不可达"}
+	return {
+		"valid": true, "action_kind": action_kind, "target_id": target_id,
+		"target_world_position": target_position,
+		"travel_milliseconds": 0 if movement_plan.is_empty() else maxi(1800, int(movement_plan.get("duration_milliseconds", 0))),
+		"required_milliseconds": required_milliseconds,
+		"points": [start_position] if movement_plan.is_empty() else Array(movement_plan.get("points", [])).duplicate(true),
+	}
+
+
+func begin_specialist_action(
+	specialist_id: StringName,
+	action_kind: StringName,
+	target_id: StringName,
+	target_position: Vector2i,
+	required_milliseconds: int
+) -> Dictionary:
+	var preview := preview_specialist_action(specialist_id, action_kind, target_id, target_position, required_milliseconds)
+	if not bool(preview.get("valid", false)):
+		return {}
+	var specialist := Dictionary(specialists_by_id[specialist_id])
+	specialist.action_kind = action_kind
+	specialist.action_stage = ACTION_TRAVELING if int(preview.travel_milliseconds) > 0 else ACTION_WORKING
+	specialist.action_target_id = target_id
+	specialist.action_target_world_position = target_position
+	specialist.action_progress_milliseconds = 0
+	specialist.action_required_milliseconds = required_milliseconds
+	specialist.action_cargo_food = 0
+	specialist.action_result = {}
+	specialist.target_point_id = &""
+	specialist.target_world_position = target_position
+	specialist.move_start_position = Vector2i(specialist.get("world_position", target_position))
+	specialist.move_route_world_points = Array(preview.points).duplicate(true)
+	specialist.move_total_milliseconds = int(preview.travel_milliseconds)
+	specialist.move_elapsed_milliseconds = 0
+	specialist.move_remaining_milliseconds = int(preview.travel_milliseconds)
+	specialist.phase = SPECIALIST_MOVING if int(preview.travel_milliseconds) > 0 else SPECIALIST_ACTING
+	specialists_by_id[specialist_id] = specialist
+	return specialist.duplicate(true)
+
+
+func return_thief_with_cargo(specialist_id: StringName, amount: int, home_point_id: StringName) -> bool:
+	var specialist := Dictionary(specialists_by_id.get(specialist_id, {}))
+	if StringName(specialist.get("action_kind", &"")) != ACTION_THEFT or StringName(specialist.get("action_stage", &"")) != ACTION_READY or amount <= 0:
+		return false
+	var home_position := _point_position(home_point_id)
+	var start_position := Vector2(specialist.get("world_position", INVALID_WORLD_POSITION))
+	var movement_plan := _plan_specialist_land_path(start_position, Vector2(home_position))
+	if home_position == INVALID_WORLD_POSITION or movement_plan.is_empty():
+		return false
+	var duration := maxi(1800, int(movement_plan.get("duration_milliseconds", 0)))
+	specialist.action_cargo_food = amount
+	specialist.action_stage = ACTION_RETURNING
+	specialist.target_point_id = home_point_id
+	specialist.target_world_position = home_position
+	specialist.move_start_position = Vector2i(start_position)
+	specialist.move_route_world_points = Array(movement_plan.get("points", [])).duplicate(true)
+	specialist.move_total_milliseconds = duration
+	specialist.move_elapsed_milliseconds = 0
+	specialist.move_remaining_milliseconds = duration
+	specialist.phase = SPECIALIST_MOVING
+	specialists_by_id[specialist_id] = specialist
+	return true
+
+
+func finish_specialist_action(specialist_id: StringName, result: Dictionary = {}) -> bool:
+	var specialist := Dictionary(specialists_by_id.get(specialist_id, {}))
+	if StringName(specialist.get("action_stage", &"")) not in [ACTION_READY, ACTION_READY_DEPOSIT]:
+		return false
+	specialist.action_stage = ACTION_COMPLETED
+	specialist.action_result = result.duplicate(true)
+	specialist.phase = SPECIALIST_IDLE
+	specialist.current_point_id = StringName(specialist.get("target_point_id", &""))
+	specialist.action_cargo_food = 0
+	specialists_by_id[specialist_id] = specialist
+	return true
+
+
+func interrupt_specialist_action(specialist_id: StringName, reason: StringName) -> bool:
+	var specialist := Dictionary(specialists_by_id.get(specialist_id, {}))
+	if specialist.is_empty() or StringName(specialist.get("action_kind", &"")) == &"":
+		return false
+	specialist.action_stage = ACTION_INTERRUPTED
+	specialist.action_result = {"error_id": reason}
+	specialist.phase = SPECIALIST_BLOCKED if bool(specialist.get("alive", false)) else SPECIALIST_LOST
+	specialists_by_id[specialist_id] = specialist
+	return true
+
+
+func apply_specialist_sabotage(specialist_id: StringName, facility_id: StringName, damage: int) -> Dictionary:
+	var specialist := Dictionary(specialists_by_id.get(specialist_id, {}))
+	var facility := Dictionary(watchtowers_by_id.get(facility_id, {}))
+	if (
+		StringName(specialist.get("action_kind", &"")) != ACTION_SABOTAGE
+		or StringName(specialist.get("action_stage", &"")) != ACTION_READY
+		or StringName(specialist.get("action_target_id", &"")) != facility_id
+		or facility.is_empty() or damage <= 0
+		or StringName(facility.get("owner_faction_id", &"player")) == &"player"
+		or StringName(facility.get("state", FACILITY_ACTIVE)) == FACILITY_DESTROYED
+	):
+		return {}
+	var before := int(facility.get("durability", 0))
+	var dealt := mini(damage, before)
+	facility.durability = before - dealt
+	facility.state = FACILITY_DESTROYED if int(facility.durability) <= 0 else FACILITY_DAMAGED
+	watchtowers_by_id[facility_id] = facility
+	var result := {"facility_id": facility_id, "damage": dealt, "durability_after": int(facility.durability)}
+	finish_specialist_action(specialist_id, result)
+	return result
+
+
+func begin_specialist_theft_return(specialist_id: StringName, point_id: StringName, amount: int, home_point_id: StringName) -> Dictionary:
+	var specialist := Dictionary(specialists_by_id.get(specialist_id, {}))
+	var available := int(supply_inventory_by_point_id.get(point_id, 0))
+	var stolen := mini(amount, available)
+	if (
+		StringName(specialist.get("action_kind", &"")) != ACTION_THEFT
+		or StringName(specialist.get("action_stage", &"")) != ACTION_READY
+		or StringName(specialist.get("action_target_id", &"")) != point_id
+		or stolen <= 0
+	):
+		return {}
+	# Plan the physical return before debiting the target inventory. A broken
+	# route therefore leaves the target stock untouched and the thief waiting.
+	var home_position := _point_position(home_point_id)
+	var movement_plan := _plan_specialist_land_path(Vector2(specialist.get("world_position", INVALID_WORLD_POSITION)), Vector2(home_position))
+	if home_position == INVALID_WORLD_POSITION or movement_plan.is_empty():
+		return {}
+	supply_inventory_by_point_id[point_id] = available - stolen
+	if not return_thief_with_cargo(specialist_id, stolen, home_point_id):
+		supply_inventory_by_point_id[point_id] = available
+		return {}
+	return {"point_id": point_id, "amount": stolen, "returning": true}
+
+
+func apply_specialist_sniper_shot(specialist_id: StringName, patrol_id: StringName, damage: int) -> Dictionary:
+	var specialist := Dictionary(specialists_by_id.get(specialist_id, {}))
+	var patrol := Dictionary(patrols_by_id.get(patrol_id, {}))
+	if (
+		StringName(specialist.get("action_kind", &"")) != ACTION_SNIPER
+		or StringName(specialist.get("action_stage", &"")) != ACTION_READY
+		or StringName(specialist.get("action_target_id", &"")) != patrol_id
+		or not _patrol_can_receive_field_effect(patrol) or damage <= 0
+	):
+		return {}
+	var before := int(patrol.get("strength", 0))
+	var dealt := mini(damage, before)
+	patrol.strength = before - dealt
+	if int(patrol.strength) <= 0:
+		patrol.phase = INVASION_DEFEATED
+	patrols_by_id[patrol_id] = patrol
+	var result := {"patrol_id": patrol_id, "damage": dealt, "strength_after": int(patrol.strength), "exposed": true}
+	finish_specialist_action(specialist_id, result)
+	return result
 
 
 func preview_specialist_move_from_point(source_point_id: StringName, target_point_id: StringName) -> Dictionary:
@@ -314,7 +554,12 @@ func preview_specialist_move(specialist_id: StringName, target_point_id: StringN
 	# specialist command. A target that cannot be reached must not look ready
 	# merely because it has a visible map point.
 	var specialist := Dictionary(specialists_by_id.get(specialist_id, {}))
-	if specialist.is_empty() or not bool(specialist.get("alive", false)) or StringName(specialist.get("project_id", &"")) != &"":
+	if (
+		specialist.is_empty()
+		or not bool(specialist.get("alive", false))
+		or StringName(specialist.get("project_id", &"")) != &""
+		or StringName(specialist.get("action_stage", ACTION_NONE)) not in [ACTION_NONE, ACTION_COMPLETED, ACTION_INTERRUPTED]
+	):
 		return {"valid": false, "error": "该专员当前无法接受新任务"}
 	if target_point_id == &"" or StringName(specialist.get("current_point_id", &"")) == target_point_id:
 		return {"valid": false, "error": "请选择另一处城池或驻点"}
@@ -336,7 +581,10 @@ func order_specialist_move(specialist_id: StringName, target_point_id: StringNam
 	var specialist := Dictionary(specialists_by_id.get(specialist_id, {}))
 	if specialist.is_empty() or not bool(specialist.get("alive", false)) or target_point_id == &"":
 		return {}
-	if StringName(specialist.get("project_id", &"")) != &"":
+	if (
+		StringName(specialist.get("project_id", &"")) != &""
+		or StringName(specialist.get("action_stage", ACTION_NONE)) not in [ACTION_NONE, ACTION_COMPLETED, ACTION_INTERRUPTED]
+	):
 		return {}
 	if StringName(specialist.get("current_point_id", &"")) == target_point_id:
 		return specialist.duplicate(true)
@@ -1235,7 +1483,9 @@ static func _has_valid_references(roads: Dictionary, camps: Dictionary, watchtow
 			return false
 	for specialist_id_value in specialists:
 		var specialist: Dictionary = Dictionary(specialists[specialist_id_value])
-		if StringName(specialist_id_value) == &"" or StringName(specialist.get("specialist_id", &"")) != StringName(specialist_id_value) or StringName(specialist.get("role", &"")) not in [SPECIALIST_SCOUT, SPECIALIST_ENGINEER]:
+		if StringName(specialist_id_value) == &"" or StringName(specialist.get("specialist_id", &"")) != StringName(specialist_id_value) or StringName(specialist.get("role", &"")) not in SPECIALIST_ROLES:
+			return false
+		if specialist.has("action_kind") and not _has_valid_specialist_action_state(specialist):
 			return false
 		var project_id := StringName(specialist.get("project_id", &""))
 		if project_id != &"" and not projects.has(project_id):
@@ -1269,12 +1519,13 @@ static func _has_valid_references(roads: Dictionary, camps: Dictionary, watchtow
 		var tower: Dictionary = Dictionary(watchtowers[tower_id_value])
 		var tower_id := StringName(tower_id_value)
 		var tower_sequence := _watchtower_sequence_from_id(tower_id)
+		var authored := bool(tower.get("authored", false))
 		var facility_kind := StringName(tower.get("facility_kind", FACILITY_WATCHTOWER))
 		var facility_state := StringName(tower.get("state", FACILITY_ACTIVE))
 		if (
-			tower_sequence <= 0
+			(not authored and tower_sequence <= 0)
 			or StringName(tower.get("watchtower_id", &"")) != tower_id
-			or not camps.has(StringName(tower.get("camp_id", &"")))
+			or (not authored and not camps.has(StringName(tower.get("camp_id", &""))))
 			or not tower.get("world_position", null) is Vector2i
 			or not _is_snapshot_int(tower.get("visibility_range", null))
 			or int(tower.get("visibility_range", 0)) <= 0
@@ -1322,6 +1573,13 @@ static func _has_valid_references(roads: Dictionary, camps: Dictionary, watchtow
 		# completed tower. Any live reservation sharing a completed ID is a
 		# collision and would otherwise make a later completion disappear. The
 		# completed record must agree with that project's camp, anchor and range.
+		if authored:
+			if (
+				StringName(tower.get("owner_faction_id", &"")) == &""
+				or not tower.get("discovered_by_faction_ids", null) is Array
+			):
+				return false
+			continue
 		var tower_camp_id := StringName(tower.get("camp_id", &""))
 		var tower_camp_slot := "%s:%s" % [String(tower_camp_id), String(tower.get("facility_kind", FACILITY_WATCHTOWER))]
 		if tower_camps.has(tower_camp_slot) or not claimed_tower_projects.has(tower_id):
@@ -1346,6 +1604,38 @@ static func _has_valid_references(roads: Dictionary, camps: Dictionary, watchtow
 		if StringName(subject_id_value) == &"" or not intel[subject_id_value] is Dictionary:
 			return false
 	return true
+
+
+static func _has_valid_specialist_action_state(specialist: Dictionary) -> bool:
+	var required := [
+		"action_kind", "action_stage", "action_target_id", "action_target_world_position",
+		"action_progress_milliseconds", "action_required_milliseconds",
+		"action_cargo_food", "action_result",
+	]
+	for key in required:
+		if not specialist.has(key):
+			return false
+	if (
+		typeof(specialist.action_kind) != TYPE_STRING_NAME
+		or typeof(specialist.action_stage) != TYPE_STRING_NAME
+		or typeof(specialist.action_target_id) != TYPE_STRING_NAME
+		or not specialist.action_target_world_position is Vector2i
+		or typeof(specialist.action_progress_milliseconds) != TYPE_INT
+		or typeof(specialist.action_required_milliseconds) != TYPE_INT
+		or typeof(specialist.action_cargo_food) != TYPE_INT
+		or typeof(specialist.action_result) != TYPE_DICTIONARY
+		or int(specialist.action_progress_milliseconds) < 0
+		or int(specialist.action_required_milliseconds) < 0
+		or int(specialist.action_cargo_food) < 0
+	):
+		return false
+	var kind := StringName(specialist.action_kind)
+	var stage := StringName(specialist.action_stage)
+	if kind == &"":
+		return stage == ACTION_NONE and int(specialist.action_required_milliseconds) == 0
+	if kind not in ACTION_KINDS or stage not in [ACTION_TRAVELING, ACTION_WORKING, ACTION_READY, ACTION_RETURNING, ACTION_READY_DEPOSIT, ACTION_COMPLETED, ACTION_INTERRUPTED]:
+		return false
+	return int(specialist.action_required_milliseconds) > 0 and int(specialist.action_progress_milliseconds) <= int(specialist.action_required_milliseconds)
 
 
 static func _is_snapshot_id(value: Variant) -> bool:
@@ -2258,6 +2548,8 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 	var facility_events: Array[Dictionary] = []
 	var specialist_movements: Dictionary = {}
 	var specialist_project_ids: Dictionary = {}
+	var specialist_action_work_milliseconds: Dictionary = {}
+	var ready_specialist_action_ids: Array[StringName] = []
 	var project_step_facts: Dictionary = {}
 	var supply_ready_to_unload: Array[StringName] = []
 	var repaired_road_open_offsets: Dictionary = {}
@@ -2295,6 +2587,15 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 		if int(moving.move_remaining_milliseconds) == 0:
 			moving.current_point_id = StringName(moving.target_point_id)
 			moving.world_position = Vector2i(moving.get("target_world_position", Vector2i.ZERO))
+			var action_stage := StringName(moving.get("action_stage", ACTION_NONE))
+			if action_stage == ACTION_TRAVELING:
+				moving.action_stage = ACTION_WORKING
+				moving.phase = SPECIALIST_ACTING
+				specialist_action_work_milliseconds[moving_id] = maxi(delta_milliseconds - move_remaining_before, 0)
+			elif action_stage == ACTION_RETURNING:
+				moving.action_stage = ACTION_READY_DEPOSIT
+				moving.phase = SPECIALIST_ACTING
+				ready_specialist_action_ids.append(moving_id)
 			var active_project_id := StringName(moving.get("project_id", &""))
 			var active_project := Dictionary(projects_by_id.get(active_project_id, {}))
 			if StringName(active_project.get("phase", &"")) == &"TRAVELING" and StringName(active_project.get("project_kind", &"")) in [&"REPAIR", &"CONSTRUCTION", &"WATCHTOWER", PROJECT_FACILITY_REPAIR, PROJECT_FACILITY_UPGRADE]:
@@ -2302,7 +2603,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 				projects_by_id[active_project_id] = active_project
 				project_arrival_work_milliseconds[active_project_id] = maxi(delta_milliseconds - move_remaining_before, 0)
 				moving.phase = SPECIALIST_REPAIRING if StringName(active_project.get("project_kind", &"")) in [&"REPAIR", PROJECT_FACILITY_REPAIR] else SPECIALIST_BUILDING
-			else:
+			elif action_stage not in [ACTION_TRAVELING, ACTION_RETURNING]:
 				moving.phase = SPECIALIST_IDLE
 		specialists_by_id[moving_id] = moving
 		var specialist_trace := _timed_route_movement_records(
@@ -2321,6 +2622,20 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 				"end_offset_milliseconds": delta_milliseconds,
 			})
 		specialist_movements[moving_id] = specialist_trace
+	for specialist_id_value in specialists_by_id.keys():
+		var action_specialist_id := StringName(specialist_id_value)
+		var action_specialist := Dictionary(specialists_by_id[action_specialist_id])
+		if not bool(action_specialist.get("alive", false)) or StringName(action_specialist.get("phase", &"")) != SPECIALIST_ACTING or StringName(action_specialist.get("action_stage", &"")) != ACTION_WORKING:
+			continue
+		var work_milliseconds := int(specialist_action_work_milliseconds.get(action_specialist_id, delta_milliseconds))
+		action_specialist.action_progress_milliseconds = mini(
+			int(action_specialist.get("action_progress_milliseconds", 0)) + work_milliseconds,
+			int(action_specialist.get("action_required_milliseconds", 0))
+		)
+		if int(action_specialist.action_progress_milliseconds) >= int(action_specialist.get("action_required_milliseconds", 0)):
+			action_specialist.action_stage = ACTION_READY
+			ready_specialist_action_ids.append(action_specialist_id)
+		specialists_by_id[action_specialist_id] = action_specialist
 	for project_id_value in projects_by_id.keys():
 		var project_id := StringName(project_id_value)
 		var project := Dictionary(projects_by_id[project_id])
@@ -2551,6 +2866,9 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 				if guard_army_ids.is_empty():
 					specialist.alive = false
 					specialist.phase = SPECIALIST_LOST
+					if StringName(specialist.get("action_kind", &"")) != &"":
+						specialist.action_stage = ACTION_INTERRUPTED
+						specialist.action_result = {"error_id": &"SPECIALIST_LOST"}
 					var project_id := StringName(specialist_project_ids.get(specialist_id, specialist.get("project_id", &"")))
 					if projects_by_id.has(project_id):
 						var interrupted_project := Dictionary(projects_by_id[project_id])
@@ -2608,7 +2926,7 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 				facility_events.append({"facility_id": StringName(facility_id_value), "facility_kind": FACILITY_MINEFIELD, "effect": &"MINE_DISCOVERED"})
 				break
 	_refresh_intel()
-	return {"success": true, "completed_project_ids": completed, "opened_road_ids": opened_road_ids, "arrived_invasion_ids": arrived_invasion_ids, "facility_events": facility_events, "engagements": engagements, "patrol_movements": patrol_movements, "ready_supply_transport_ids": supply_ready_to_unload, "world_milliseconds": world_milliseconds, "delta_milliseconds": delta_milliseconds}
+	return {"success": true, "completed_project_ids": completed, "opened_road_ids": opened_road_ids, "arrived_invasion_ids": arrived_invasion_ids, "facility_events": facility_events, "engagements": engagements, "patrol_movements": patrol_movements, "ready_specialist_action_ids": ready_specialist_action_ids, "ready_supply_transport_ids": supply_ready_to_unload, "world_milliseconds": world_milliseconds, "delta_milliseconds": delta_milliseconds}
 
 
 func _apply_field_facility_effects(delta_milliseconds: int, patrol_movements: Array = []) -> Array[Dictionary]:
@@ -3272,19 +3590,59 @@ func _point_position(point_id: StringName) -> Vector2i:
 
 func _refresh_intel() -> void:
 	var observers: Array[Dictionary] = []
+	var scout_observers: Array[Dictionary] = []
 	for specialist_value in specialists_by_id.values():
 		var specialist: Dictionary = specialist_value
-		if bool(specialist.get("alive", false)):
-			observers.append({
+		if bool(specialist.get("alive", false)) and StringName(specialist.get("role", &"")) in [SPECIALIST_SCOUT, SPECIALIST_ENGINEER]:
+			var observer := {
 				"world_position": Vector2(specialist.get("world_position", _point_position(StringName(specialist.get("current_point_id", &""))))),
 				"range": int(specialist.get("visibility_range", 1)) * 180,
-			})
+			}
+			observers.append(observer)
+			if StringName(specialist.get("role", &"")) == SPECIALIST_SCOUT:
+				scout_observers.append(observer)
+	# City theft uses a durable scout report, not the mere fact that an authored
+	# city marker exists. A previously inspected point remains known after the
+	# scout leaves, while its live visibility is recomputed from current position.
+	for point_id_value in point_positions_by_id.keys():
+		var point_id := StringName(point_id_value)
+		var point_position := Vector2(point_positions_by_id[point_id])
+		var visible_to_scout := false
+		for observer_value in scout_observers:
+			var scout_observer: Dictionary = observer_value
+			if point_position.distance_to(Vector2(scout_observer.world_position)) <= float(scout_observer.range):
+				visible_to_scout = true
+				break
+		var previous_point_intel := Dictionary(intel_by_subject_id.get(point_id, {}))
+		var previously_scouted := StringName(previous_point_intel.get("subject_kind", &"")) == &"POINT" and StringName(previous_point_intel.get("fog_state", FOG_UNOBSERVED)) in [FOG_VISIBLE, FOG_OBSERVED]
+		if visible_to_scout or previously_scouted:
+			intel_by_subject_id[point_id] = {
+				"subject_id": point_id,
+				"subject_kind": &"POINT",
+				"fog_state": FOG_VISIBLE if visible_to_scout else FOG_OBSERVED,
+				"last_known_point_id": point_id,
+				"last_known_world_position": Vector2i(point_position),
+				"last_observed_milliseconds": world_milliseconds if visible_to_scout else int(previous_point_intel.get("last_observed_milliseconds", 0)),
+			}
 	for camp_value in camps_by_id.values():
 		observers.append({"world_position": Vector2(Dictionary(camp_value).get("world_position", Vector2.ZERO)), "range": 120})
 	for tower_value in watchtowers_by_id.values():
 		var tower: Dictionary = Dictionary(tower_value)
-		if bool(tower.get("complete", false)) and StringName(tower.get("facility_kind", FACILITY_WATCHTOWER)) == FACILITY_WATCHTOWER and StringName(tower.get("state", FACILITY_ACTIVE)) != FACILITY_DESTROYED:
+		if bool(tower.get("complete", false)) and StringName(tower.get("owner_faction_id", &"player")) == &"player" and StringName(tower.get("facility_kind", FACILITY_WATCHTOWER)) == FACILITY_WATCHTOWER and StringName(tower.get("state", FACILITY_ACTIVE)) != FACILITY_DESTROYED:
 			observers.append({"world_position": Vector2(tower.get("world_position", Vector2.ZERO)), "range": maxi(int(tower.get("visibility_range", 1)), 1)})
+	for facility_id_value in watchtowers_by_id.keys():
+		var facility := Dictionary(watchtowers_by_id[facility_id_value])
+		if StringName(facility.get("owner_faction_id", &"player")) == &"player":
+			continue
+		for observer_value in observers:
+			var observer: Dictionary = observer_value
+			if Vector2(facility.get("world_position", Vector2.INF)).distance_to(Vector2(observer.world_position)) <= float(observer.range):
+				var discovered: Array = Array(facility.get("discovered_by_faction_ids", []))
+				if &"player" not in discovered:
+					discovered.append(&"player")
+					facility.discovered_by_faction_ids = discovered
+					watchtowers_by_id[facility_id_value] = facility
+				break
 	for patrol_id_value in patrols_by_id:
 		var patrol: Dictionary = Dictionary(patrols_by_id[patrol_id_value])
 		var patrol_id := StringName(patrol_id_value)

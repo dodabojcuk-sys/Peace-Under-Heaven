@@ -49,6 +49,7 @@ const DEBUG_PLAYER_COUNT := 50
 )
 @onready var side_gate: ColorRect = $UI/RootPanel/SideLane/SideGate
 @onready var start_button: Button = $UI/RootPanel/StartButton
+@onready var official_support_button: MenuButton = $UI/RootPanel/OfficialSupportButton
 @onready var battlefield_panel: Panel = $UI/RootPanel/Battlefield
 @onready var wartime_plan_panel: Panel = $UI/RootPanel/WartimePlanPanel
 @onready var wartime_watch_button: Button = (
@@ -209,6 +210,7 @@ func _ready() -> void:
 	selected_retreat_button.pressed.connect(
 		_issue_selected_order.bind(BattleOrder.Command.RETREAT)
 	)
+	_configure_official_support_menu()
 	if formal_city_mode:
 		_prepare_formal_city()
 	else:
@@ -224,6 +226,40 @@ func _ready() -> void:
 	_append_recent_action("选择小队，核对部署路线与有效命令")
 	_refresh_battle_ui()
 	call_deferred("_grab_initial_focus")
+
+
+func _configure_official_support_menu() -> void:
+	var popup := official_support_button.get_popup()
+	popup.clear()
+	popup.add_item("恢复当前小队 · 1 能量", 0)
+	popup.add_item("疾行当前小队 · 1 能量", 1)
+	popup.add_item("攻击强化 · 1 能量", 2)
+	popup.add_item("伤害防护 · 1 能量", 3)
+	popup.add_item("路线领域 · 1 能量", 4)
+	popup.id_pressed.connect(_on_official_support_selected)
+
+
+func _on_official_support_selected(item_id: int) -> void:
+	if coordinator.active_session == null or _selected_squad_id <= 0:
+		status_label.text = "请先选择一支存活小队"
+		return
+	var kinds := [
+		BattleSession.SUPPORT_HEAL, BattleSession.SUPPORT_MOVE,
+		BattleSession.SUPPORT_ATTACK, BattleSession.SUPPORT_PROTECT,
+		BattleSession.SUPPORT_DOMAIN,
+	]
+	if item_id < 0 or item_id >= kinds.size():
+		return
+	var squad := coordinator.active_session.get_squad_state(_selected_squad_id)
+	var result := coordinator.issue_official_support(
+		StringName(kinds[item_id]), _selected_squad_id,
+		StringName(squad.get("route_id", &""))
+	)
+	if bool(result.get("success", false)):
+		_append_recent_action("文官支援已提交 · %s" % official_support_button.get_popup().get_item_text(item_id))
+	else:
+		_append_recent_action(str(result.get("error", "文官支援未能提交")))
+	_refresh_battle_ui()
 
 
 func _unhandled_input(event: InputEvent) -> void:
@@ -1116,6 +1152,7 @@ func _refresh_battle_ui() -> void:
 	_refresh_selected_squad(next_snapshot)
 	_refresh_mission_objects(next_snapshot.objective)
 	start_button.visible = request.phase == BattleRequest.PHASE_RESERVED
+	_refresh_official_support_ui()
 	_refresh_wartime_plan_ui()
 	_refresh_wartime_repair_ui()
 	_refresh_wartime_gate_repair_ui()
@@ -1123,6 +1160,30 @@ func _refresh_battle_ui() -> void:
 	_refresh_wartime_action_layout()
 	_refresh_recent_actions()
 	_refresh_exit_ui()
+
+
+func _refresh_official_support_ui() -> void:
+	var active := request != null and request.phase == BattleRequest.PHASE_ACTIVE and coordinator.active_session != null
+	official_support_button.visible = active
+	if not active or city_controller == null or not city_controller.has_method("get_battle_official_support_model"):
+		return
+	var model: Dictionary = city_controller.get_battle_official_support_model()
+	official_support_button.text = "%s支援 · 能量 %d" % [
+		str(model.get("appointed_official_name", "未任命")), int(model.get("campaign_energy", 0))
+	]
+	official_support_button.disabled = (
+		_selected_squad_id <= 0
+		or int(model.get("campaign_energy", 0)) <= 0
+		or Array(model.get("allowed_kinds", [])).is_empty()
+	)
+	var popup := official_support_button.get_popup()
+	var kind_by_item := [
+		BattleSession.SUPPORT_HEAL, BattleSession.SUPPORT_MOVE,
+		BattleSession.SUPPORT_ATTACK, BattleSession.SUPPORT_PROTECT,
+		BattleSession.SUPPORT_DOMAIN,
+	]
+	for index in kind_by_item.size():
+		popup.set_item_disabled(index, StringName(kind_by_item[index]) not in Array(model.get("allowed_kinds", [])))
 
 
 func _refresh_wartime_plan_ui() -> void:
