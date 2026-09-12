@@ -2,7 +2,7 @@ class_name PopulationRecoveryState
 extends RefCounted
 
 
-const SCHEMA_VERSION := 1
+const SCHEMA_VERSION := 2
 const TREATMENT_IDLE := &"IDLE"
 const TREATMENT_ACTIVE := &"ACTIVE"
 
@@ -10,6 +10,8 @@ var total_living := 0
 var available := 0
 var production_workers := 0
 var construction_workers := 0
+var medical_workers := 0
+var governance_workers := 0
 var training_reserved := 0
 var wounded := 0
 var fallen := 0
@@ -33,6 +35,8 @@ func initialize_fresh(rules: CampaignRecoveryRules, military_count: int, special
 		return false
 	production_workers = rules.initial_production_workers
 	construction_workers = rules.initial_construction_workers
+	medical_workers = rules.initial_medical_workers
+	governance_workers = rules.initial_governance_workers
 	training_reserved = 0
 	wounded = 0
 	fallen = 0
@@ -40,9 +44,9 @@ func initialize_fresh(rules: CampaignRecoveryRules, military_count: int, special
 	treatment = empty_treatment()
 	total_living = maxi(
 		rules.initial_living_population,
-		military_count + specialist_count + production_workers + construction_workers
+		military_count + specialist_count + production_workers + construction_workers + medical_workers + governance_workers
 	)
-	available = total_living - military_count - specialist_count - production_workers - construction_workers
+	available = total_living - military_count - specialist_count - production_workers - construction_workers - medical_workers - governance_workers
 	return true
 
 
@@ -58,6 +62,16 @@ func allocate_to_military(count: int) -> bool:
 	if count <= 0 or available < count:
 		return false
 	available -= count
+	return true
+
+
+## Enrolls people who already existed in a finite external-location pool. The
+## location inventory remains owned by FieldTacticsState; only the campaign
+## population total changes here, in the same transaction as enlistment.
+func admit_external_population(count: int) -> bool:
+	if count <= 0:
+		return false
+	total_living += count
 	return true
 
 
@@ -77,18 +91,24 @@ func cancel_training(count: int) -> bool:
 
 
 func allocate_worker(channel: StringName, delta: int) -> bool:
-	if channel not in [&"production", &"construction"] or delta == 0:
+	if channel not in [&"production", &"construction", &"medical", &"governance"] or delta == 0:
 		return false
-	var current := production_workers if channel == &"production" else construction_workers
+	var current := 0
+	match channel:
+		&"production": current = production_workers
+		&"construction": current = construction_workers
+		&"medical": current = medical_workers
+		&"governance": current = governance_workers
 	if delta > 0 and delta > available:
 		return false
 	if delta < 0 and -delta > current:
 		return false
 	available -= delta
-	if channel == &"production":
-		production_workers += delta
-	else:
-		construction_workers += delta
+	match channel:
+		&"production": production_workers += delta
+		&"construction": construction_workers += delta
+		&"medical": medical_workers += delta
+		&"governance": governance_workers += delta
 	return true
 
 
@@ -167,6 +187,8 @@ func get_snapshot() -> Dictionary:
 		"available": available,
 		"production_workers": production_workers,
 		"construction_workers": construction_workers,
+		"medical_workers": medical_workers,
+		"governance_workers": governance_workers,
 		"training_reserved": training_reserved,
 		"wounded": wounded,
 		"fallen": fallen,
@@ -184,6 +206,8 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	available = int(normalized.available)
 	production_workers = int(normalized.production_workers)
 	construction_workers = int(normalized.construction_workers)
+	medical_workers = int(normalized.medical_workers)
+	governance_workers = int(normalized.governance_workers)
 	training_reserved = int(normalized.training_reserved)
 	wounded = int(normalized.wounded)
 	fallen = int(normalized.fallen)
@@ -193,13 +217,13 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 
 
 static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
-	var keys := ["schema_version", "total_living", "available", "production_workers", "construction_workers", "training_reserved", "wounded", "fallen", "next_treatment_sequence", "treatment"]
+	var keys := ["schema_version", "total_living", "available", "production_workers", "construction_workers", "medical_workers", "governance_workers", "training_reserved", "wounded", "fallen", "next_treatment_sequence", "treatment"]
 	if snapshot.size() != keys.size():
 		return {"valid": false}
 	for key in keys:
 		if not snapshot.has(key):
 			return {"valid": false}
-	for key in ["total_living", "available", "production_workers", "construction_workers", "training_reserved", "wounded", "fallen", "next_treatment_sequence"]:
+	for key in ["total_living", "available", "production_workers", "construction_workers", "medical_workers", "governance_workers", "training_reserved", "wounded", "fallen", "next_treatment_sequence"]:
 		if typeof(snapshot.get(key)) != TYPE_INT or int(snapshot.get(key)) < 0:
 			return {"valid": false}
 	if int(snapshot.schema_version) != SCHEMA_VERSION or int(snapshot.next_treatment_sequence) <= 0 or not snapshot.treatment is Dictionary:
@@ -228,4 +252,4 @@ static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
 func invariant_matches(military_count: int, specialist_count: int) -> bool:
 	if military_count < 0 or specialist_count < 0:
 		return false
-	return total_living == available + production_workers + construction_workers + training_reserved + wounded + military_count + specialist_count
+	return total_living == available + production_workers + construction_workers + medical_workers + governance_workers + training_reserved + wounded + military_count + specialist_count

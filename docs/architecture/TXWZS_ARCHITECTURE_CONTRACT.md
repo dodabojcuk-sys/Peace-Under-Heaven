@@ -103,9 +103,12 @@ dispatchable = min(unreserved, dispatch_cap)
 - 负数、超量、未知兵种、重复预留和冲突结果必须拒绝且零写入。
 - read model 必须深复制，调用方不能借引用修改城市真相。
 
-当前没有接受的人口/兵源源状态。训练消耗
-`UnitRole.recruit_food_per_unit`，并受征募容量和有效指挥上限约束；不得从
-居民数字或 UI 标签中推导并消耗虚构人口。
+当前已接受聚合的 `PopulationRecoveryState` 作为城市人口分配和
+战后恢复真值。训练除消耗 `UnitRole.recruit_food_per_unit` 外，还必须从
+该状态预留真实可用人口，并受征募容量和有效指挥上限约束。
+驻军、外派军队和专员仍由原领域持有，但必须通过人口守恒校验；
+有限地点兵源在真实入伍事务中才纳入总人口，不得同时留在库存和军队。
+仍不得从 UI 标签或未持久的居民数字中推导并消耗虚构人口。
 
 ## TrainingQueue 合同
 

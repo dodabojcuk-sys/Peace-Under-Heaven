@@ -92,6 +92,7 @@ func _run() -> void:
 	var legacy_v11: Dictionary = city.export_v5_campaign_snapshot()
 	legacy_v11.schema_version = 11
 	legacy_v11.erase("population_recovery")
+	legacy_v11.erase("city_governance")
 	for key in ["source_patrol_id", "source_force_name", "source_point_id", "source_route_name"]:
 		Dictionary(legacy_v11.expedition_attempt).erase(key)
 	var migrated_v11: Dictionary = V5CampaignSnapshot.validate_structure(legacy_v11, city.get_unit_definition_ids())
@@ -162,7 +163,7 @@ func _run() -> void:
 			siege_battle._show_pending_result(siege_result)
 			siege_summary = siege_battle.confirm_pending_result()
 	var redcliff := Dictionary(Dictionary(city.get_macro_march_read_model().war_loop).cities_by_id.get(&"redcliff_city", {}))
-	print("BLACKSTONE_COUNTERATTACK_TRACE treated_remaining=%d army=%s outcome=%s controller=%s" % [treated_wounded_remaining, String(counter_army_id), String(siege_summary.get("outcome", &"")), String(redcliff.get("military_controller_faction_id", &""))])
+	print("BLACKSTONE_COUNTERATTACK_TRACE treated_remaining=%d north=%s attack=%s army=%s outcome=%s controller=%s food=%d" % [treated_wounded_remaining, str(north_order.get("success", false)), str(attack_order.get("success", false)), String(counter_army_id), String(siege_summary.get("outcome", &"")), String(redcliff.get("military_controller_faction_id", &"")), int(city.food)])
 	_check(
 		(int(recovery_before.get("wounded", 0)) == 0 or (bool(treatment_result.get("success", false)) and treated_wounded_remaining == 0))
 		and bool(north_order.get("success", false)) and bool(attack_order.get("success", false))

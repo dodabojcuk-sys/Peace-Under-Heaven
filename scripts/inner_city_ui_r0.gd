@@ -57,7 +57,12 @@ var governance_production_minus: Button
 var governance_production_plus: Button
 var governance_construction_minus: Button
 var governance_construction_plus: Button
+var governance_medical_minus: Button
+var governance_medical_plus: Button
+var governance_order_minus: Button
+var governance_order_plus: Button
 var governance_treatment_button: Button
+var governance_event_button: Button
 var _governance_workspace_was_visible := false
 
 
@@ -296,14 +301,14 @@ func _install_governance_workspace() -> void:
 	var margin := MarginContainer.new()
 	margin.name = "GovernanceMargin"
 	margin.add_theme_constant_override("margin_left", 12)
-	margin.add_theme_constant_override("margin_top", 10)
+	margin.add_theme_constant_override("margin_top", 6)
 	margin.add_theme_constant_override("margin_right", 12)
-	margin.add_theme_constant_override("margin_bottom", 10)
+	margin.add_theme_constant_override("margin_bottom", 6)
 	governance_workspace.add_child(margin)
 
 	var content := VBoxContainer.new()
 	content.name = "GovernanceContent"
-	content.add_theme_constant_override("separation", 6)
+	content.add_theme_constant_override("separation", 3)
 	margin.add_child(content)
 
 	governance_title = Label.new()
@@ -360,30 +365,64 @@ func _install_governance_workspace() -> void:
 	governance_production_plus.name = "ProductionWorkerPlus"
 	governance_production_plus.pressed.connect(_adjust_workforce.bind(&"production", 1))
 	production_row.add_child(governance_production_plus)
-	content.add_child(production_row)
-
-	var construction_row := HBoxContainer.new()
-	construction_row.add_child(_make_row_label("施工岗位"))
+	production_row.add_child(_make_row_label("施工"))
 	governance_construction_minus = _make_small_action("−")
 	governance_construction_minus.name = "ConstructionWorkerMinus"
 	governance_construction_minus.pressed.connect(_adjust_workforce.bind(&"construction", -1))
-	construction_row.add_child(governance_construction_minus)
+	production_row.add_child(governance_construction_minus)
 	governance_construction_plus = _make_small_action("+")
 	governance_construction_plus.name = "ConstructionWorkerPlus"
 	governance_construction_plus.pressed.connect(_adjust_workforce.bind(&"construction", 1))
-	construction_row.add_child(governance_construction_plus)
-	content.add_child(construction_row)
+	production_row.add_child(governance_construction_plus)
+	content.add_child(production_row)
+
+	var care_row := HBoxContainer.new()
+	care_row.add_child(_make_row_label("医疗岗位"))
+	governance_medical_minus = _make_small_action("−")
+	governance_medical_minus.name = "MedicalWorkerMinus"
+	governance_medical_minus.pressed.connect(_adjust_workforce.bind(&"medical", -1))
+	care_row.add_child(governance_medical_minus)
+	governance_medical_plus = _make_small_action("+")
+	governance_medical_plus.name = "MedicalWorkerPlus"
+	governance_medical_plus.pressed.connect(_adjust_workforce.bind(&"medical", 1))
+	care_row.add_child(governance_medical_plus)
+	care_row.add_child(_make_row_label("治理"))
+	governance_order_minus = _make_small_action("−")
+	governance_order_minus.name = "GovernanceWorkerMinus"
+	governance_order_minus.pressed.connect(_adjust_workforce.bind(&"governance", -1))
+	care_row.add_child(governance_order_minus)
+	governance_order_plus = _make_small_action("+")
+	governance_order_plus.name = "GovernanceWorkerPlus"
+	governance_order_plus.pressed.connect(_adjust_workforce.bind(&"governance", 1))
+	care_row.add_child(governance_order_plus)
+	content.add_child(care_row)
+
+	var wellbeing_buildings := HBoxContainer.new()
+	wellbeing_buildings.name = "WellbeingBuildingShortcuts"
+	var housing_button := _make_governance_button("建设民居")
+	housing_button.name = "GovernanceHousingButton"
+	housing_button.pressed.connect(_start_governance_definition.bind(&"building.housing.t1"))
+	wellbeing_buildings.add_child(housing_button)
+	var clinic_button := _make_governance_button("建设医舍")
+	clinic_button.name = "GovernanceClinicButton"
+	clinic_button.pressed.connect(_start_governance_definition.bind(&"building.clinic.t1"))
+	wellbeing_buildings.add_child(clinic_button)
+	content.add_child(wellbeing_buildings)
 
 	governance_treatment_button = _make_governance_button("治疗伤员")
 	governance_treatment_button.name = "WoundedTreatmentButton"
 	governance_treatment_button.pressed.connect(_begin_wounded_treatment)
 	content.add_child(governance_treatment_button)
+	governance_event_button = _make_governance_button("安排治安处置")
+	governance_event_button.name = "GovernanceEventButton"
+	governance_event_button.pressed.connect(_resolve_governance_event)
+	content.add_child(governance_event_button)
 
 
 func _make_governance_button(copy: String) -> Button:
 	var button := Button.new()
 	button.text = copy
-	button.custom_minimum_size = Vector2(0.0, 34.0)
+	button.custom_minimum_size = Vector2(0.0, 28.0)
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	button.focus_mode = Control.FOCUS_ALL
 	_apply_button_tokens(button)
@@ -400,7 +439,7 @@ func _make_row_label(copy: String) -> Label:
 
 func _make_small_action(copy: String) -> Button:
 	var button := _make_governance_button(copy)
-	button.custom_minimum_size = Vector2(44.0, 32.0)
+	button.custom_minimum_size = Vector2(38.0, 26.0)
 	button.size_flags_horizontal = Control.SIZE_SHRINK_END
 	return button
 
@@ -411,6 +450,10 @@ func _adjust_workforce(channel: StringName, delta: int) -> void:
 
 func _begin_wounded_treatment() -> void:
 	construction_controller.begin_wounded_treatment()
+
+
+func _resolve_governance_event() -> void:
+	construction_controller.resolve_city_governance_event()
 
 
 func _start_governance_definition(definition_id: StringName) -> void:
@@ -463,27 +506,44 @@ func _refresh_governance_workspace(
 		food_capacity,
 	]
 	var population: Dictionary = construction_controller.get_population_recovery_read_model()
+	var governance: Dictionary = construction_controller.get_city_governance_read_model()
 	var treatment: Dictionary = Dictionary(population.get("treatment", {}))
 	var treatment_active := StringName(treatment.get("phase", &"")) == &"ACTIVE"
 	governance_population_summary.text = (
-		"人口 %d · 可用 %d · 生产 %d · 施工 %d\n驻军与外派 %d · 伤员 %d · 阵亡累计 %d%s"
+		"人口 %d · 可用 %d · 生产 %d · 施工 %d · 医疗 %d · 治理 %d\n驻军与外派 %d · 伤员 %d · 患病 %d · 阵亡累计 %d%s\n%s季 · 健康 %d%% · 住房 %d/%d · 治安 %d"
 		% [
 			int(population.get("total_living", 0)),
 			int(population.get("available", 0)),
 			int(population.get("production_workers", 0)),
 			int(population.get("construction_workers", 0)),
+			int(population.get("medical_workers", 0)),
+			int(population.get("governance_workers", 0)),
 			int(population.get("military", 0)),
 			int(population.get("wounded", 0)),
+			int(governance.get("diseased_count", 0)),
 			int(population.get("fallen", 0)),
 			" · 治疗中 %d/%d" % [int(treatment.get("progress_milliseconds", 0)), int(treatment.get("required_milliseconds", 0))] if treatment_active else "",
+			str(governance.get("season_name", "")),
+			floori(float(int(governance.get("health_permille", 0))) / 10.0),
+			int(population.get("total_living", 0)),
+			int(governance.get("housing_capacity", 0)),
+			int(governance.get("security", 0)),
 		]
 	)
 	governance_production_minus.disabled = int(population.get("production_workers", 0)) <= 0
 	governance_construction_minus.disabled = int(population.get("construction_workers", 0)) <= 0
 	governance_production_plus.disabled = int(population.get("available", 0)) <= 0
 	governance_construction_plus.disabled = int(population.get("available", 0)) <= 0
+	governance_medical_minus.disabled = int(population.get("medical_workers", 0)) <= 0
+	governance_medical_plus.disabled = int(population.get("available", 0)) <= 0
+	governance_order_minus.disabled = int(population.get("governance_workers", 0)) <= 0
+	governance_order_plus.disabled = int(population.get("available", 0)) <= 0
 	governance_treatment_button.disabled = int(population.get("wounded", 0)) <= 0 or treatment_active
 	governance_treatment_button.text = "治疗进行中" if treatment_active else "治疗伤员 · 每批最多 6 人"
+	governance_event_button.visible = StringName(Dictionary(governance.get("active_event", {})).get("phase", &"")) == &"ACTIVE"
+	governance_event_button.disabled = int(population.get("governance_workers", 0)) < 2
+	if not str(governance.get("active_issue", "")).is_empty():
+		issues.push_front(str(governance.active_issue))
 	governance_issue_detail.visible = not issues.is_empty()
 	governance_issue_detail.text = "\n".join(issues)
 	var show_workspace: bool = (

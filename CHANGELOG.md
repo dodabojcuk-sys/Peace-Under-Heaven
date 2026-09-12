@@ -1618,3 +1618,22 @@
 - Render all active armies, runtime roads, camps and living specialist roles
   from the safe field projection, with main/field/damaged road distinction.
 - Removed player-facing timing formulas from the normal map panel.
+# 2026-09-12 — Blackstone city governance R0
+
+- Added one aggregate city population allocation across available, production,
+  construction, medical, governance, training and wounded residents, while
+  retaining the existing garrison, field-army and specialist owners.
+- Added daily civilian food demand, warning-before-disease health pressure,
+  medical recovery, four seasons, winter housing pressure and one stable,
+  recoverable petty-theft governance event.
+- Added road-connected housing and clinic definitions. Completed buildings add
+  capacity only; they never create residents.
+- Upgraded V5 to schema 14 with conservative schema-13 defaults and independent
+  process recovery for active disease and governance events.
+- Reconciled Silverford's finite local recruits at their enlistment transaction
+  so the location stock, army formations and campaign population remain
+  conserved; save-failure rollback now restores all three owners.
+- Added focused logical, independent-process and three-resolution graphical
+  checks. Route A/B, field R2, formal war-loop, invasion and V5 persistence
+  regressions remain green. This is implementation evidence, not player
+  acceptance.

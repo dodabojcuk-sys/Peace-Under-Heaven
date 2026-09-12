@@ -115,8 +115,18 @@ func _check_real_stationed_replenishment_and_reissue() -> void:
 	var preview: Dictionary = city.preview_field_stationed_replenishment(&"silverford_city", army_id)
 	var applied: Dictionary = city.replenish_field_stationed_army(&"silverford_city", army_id)
 	var replenished: Dictionary = city._army_registry.get_army(army_id)
+	var population_after: Dictionary = city.get_population_recovery_read_model()
 	var stock_after := int(Dictionary(city.get_field_tactics_read_model().get("stationed_reinforcements_by_point_id", {})).get(&"silverford_city", -1))
 	var duplicate_snapshot: Dictionary = city.export_v5_campaign_snapshot()
+	var legacy_recruited := duplicate_snapshot.duplicate(true)
+	legacy_recruited.schema_version = 13
+	legacy_recruited.erase("city_governance")
+	legacy_recruited.population_recovery.schema_version = 1
+	legacy_recruited.population_recovery.available += int(legacy_recruited.population_recovery.medical_workers) + int(legacy_recruited.population_recovery.governance_workers)
+	legacy_recruited.population_recovery.total_living -= 4
+	legacy_recruited.population_recovery.erase("medical_workers")
+	legacy_recruited.population_recovery.erase("governance_workers")
+	var legacy_recruited_validation: Dictionary = city.validate_v5_campaign_snapshot(legacy_recruited)
 	var duplicate: Dictionary = city.replenish_field_stationed_army(&"silverford_city", army_id)
 	var duplicate_after_snapshot: Dictionary = city.export_v5_campaign_snapshot()
 	var onward: Dictionary = city.plan_field_path(&"silverford_city", &"redcliff_city")
@@ -128,9 +138,12 @@ func _check_real_stationed_replenishment_and_reissue() -> void:
 		StringName(stationed.get("phase", &"")) == ArmyRegistry.PHASE_STATIONED
 			and stock_before == 4 and bool(preview.get("valid", false)) and int(preview.get("amount", 0)) == 4
 			and bool(applied.get("success", false)) and _army_members(replenished) == members_before + 4 and stock_after == 0
+			and int(population_after.get("total_living", 0)) == 76 and bool(population_after.get("accounted", false))
+			and bool(legacy_recruited_validation.get("valid", false)) and int(legacy_recruited_validation.snapshot.population_recovery.total_living) == 76
+			and int(legacy_recruited_validation.snapshot.war_loop.field_tactics.stationed_reinforcements_by_point_id[&"silverford_city"]) == 0
 			and not bool(duplicate.get("success", false)) and duplicate_after_snapshot == duplicate_snapshot
 			and bool(reissued.get("success", false)) and StringName(Dictionary(reissued.get("army", {})).get("phase", &"")) == ArmyRegistry.PHASE_MARCHING,
-		"正式 Controller 行军到已占领银渡城后，驻军补员一次并可沿既有入口续令"
+		"正式 Controller 行军到已占领银渡城后，驻军补员一次、纳入人口守恒，旧档不复兵源且可沿既有入口续令"
 	)
 	_check(not bool(moving_preview.get("valid", false)) and not bool(wrong_place_preview.get("valid", false)), "在途军队或错误地点不能绕过驻军补员资格")
 	scene.queue_free()
@@ -168,12 +181,29 @@ func _check_invalid_and_checkpoint_rollback() -> void:
 	var army_id := StringName(stationed.get("army_id", &""))
 	var enemy_stationed := _create_stationed_test_army(city, &"river_lords", "河主卫队", 7)
 	var enemy_army_id := StringName(enemy_stationed.get("army_id", &""))
-	var enemy_before: Dictionary = city.export_v5_campaign_snapshot()
+	var enemy_before := {
+		"field": city._war_loop_state.field_tactics.get_snapshot(),
+		"armies": city._army_registry.get_snapshot(),
+		"population": city._population_recovery.get_snapshot(),
+		"resources": city.get_nation_state().get_shared_resources(),
+	}
 	var enemy_preview: Dictionary = city.preview_field_stationed_replenishment(&"silverford_city", enemy_army_id)
 	var enemy_commit: Dictionary = city.replenish_field_stationed_army(&"silverford_city", enemy_army_id)
-	var enemy_after: Dictionary = city.export_v5_campaign_snapshot()
-	var before: Dictionary = city.export_v5_campaign_snapshot()
+	var enemy_after := {
+		"field": city._war_loop_state.field_tactics.get_snapshot(),
+		"armies": city._army_registry.get_snapshot(),
+		"population": city._population_recovery.get_snapshot(),
+		"resources": city.get_nation_state().get_shared_resources(),
+	}
 	var wrong_army: Dictionary = city.preview_field_stationed_replenishment(&"silverford_city", &"army.player.999999")
+	scene.queue_free()
+	await process_frame
+	fixture = await _new_city()
+	scene = fixture.scene
+	city = fixture.city
+	stationed = _occupy_and_station_silverford(city)
+	army_id = StringName(stationed.get("army_id", &""))
+	var before: Dictionary = city.export_v5_campaign_snapshot()
 	city.set_field_reinforcement_fault_for_test(&"CHECKPOINT_SAVE_FAILED")
 	var save_failure: Dictionary = city.replenish_field_stationed_army(&"silverford_city", army_id)
 	var after_failure: Dictionary = city.export_v5_campaign_snapshot()
@@ -193,6 +223,8 @@ func _check_legacy_and_strict_field_snapshots() -> void:
 	var fresh := field.get_snapshot()
 	var legacy := fresh.duplicate(true)
 	legacy.erase("stationed_reinforcements_by_point_id")
+	legacy.erase("watchtowers_by_id")
+	legacy.erase("next_watchtower_sequence")
 	var restored := FieldTacticsState.new()
 	var legacy_ok := restored.restore_snapshot(legacy)
 	restored.initialize_from_theater(THEATER.get_points(), THEATER.get_routes(), THEATER.get_water_regions(), Rect2i(THEATER.get_world_bounds()), THEATER.get_terrain_regions(), THEATER.get_patrol_configs(), THEATER.get_scout_visibility_range())
