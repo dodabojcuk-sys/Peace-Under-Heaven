@@ -257,7 +257,7 @@ func _check_result_pending_escape_and_postbattle_return() -> void:
 	var summary: Dictionary = battle.confirm_pending_result()
 	_check(
 		not summary.is_empty()
-			and battle.exit_button.text == "返回内城"
+			and battle.exit_button.text == "返回黑石城"
 			and not battle.exit_button.disabled,
 		"战果确认后全局主操作变为返回内城"
 	)
@@ -293,7 +293,9 @@ func _make_pending_city(player_count: int) -> Dictionary:
 	var city: Node = scene.get_node("ConstructionController")
 	city.set_process(false)
 	city.advance_city_time_for_test(city.SECONDS_PER_DAY * 6.0)
+	var old_count := int(city.infantry_count)
 	city.infantry_count = player_count
+	city._population_recovery.total_living += player_count - old_count
 	city.food = 80
 	city._refresh_city_ui()
 	return {

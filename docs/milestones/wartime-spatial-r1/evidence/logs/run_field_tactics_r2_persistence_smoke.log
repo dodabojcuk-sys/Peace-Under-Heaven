@@ -1,0 +1,13 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+PASS: 三个独立进程完成施工中、完工和道路驻点冷恢复
+PASS: 跨进程实盘保留工程进度、完成道路和连接驻点
+PASS: 三个独立进程完成受损道路、维修到场和完工冷恢复
+PASS: 跨进程实盘保留维修在途、到场余量与原道路恢复
+PASS: 三个独立进程完成多段军令在途、跨段抵达和终态冷恢复
+PASS: 跨进程实盘保留多段军令的道路顺序、进度和一次性粮草事务
+PASS: 独立进程完成转移中、驻点等待、返回中及返回完成后的断路军令恢复
+PASS: 跨进程实盘保留临时路径、原军令、驻点等待、返回进度及原令续行
+PASS: 独立进程冷恢复临时路线再次断裂、维修解阻和继续驻扎转移
+FIELD_TACTICS_R2_PERSISTENCE_SMOKE PASS
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED

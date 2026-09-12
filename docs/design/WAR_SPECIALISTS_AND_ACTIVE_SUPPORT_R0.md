@@ -1,5 +1,9 @@
 # War Specialists and Active Official Support R0
 
+> Historical R0 checkpoint. For current macro-siege and sourced-defense spatial
+> movement, work and support coverage, use [Wartime spatial R1](WARTIME_SPATIAL_BATTLE_R1.md).
+> Route-only presentation and timing below do not constrain that runtime.
+
 ## Purpose
 
 This R0 gives the player meaningful commands after a war begins without adding

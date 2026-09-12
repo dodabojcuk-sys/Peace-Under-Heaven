@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026-09-12 - Wartime spatial battle R1
+
+- Added fixed-tick spatial deployment, map selection and movement/attack/hold/
+  retreat commands for macro siege and sourced Blackstone defense.
+- Connected actual travel/range/blockers to construction, repair, towers,
+  barricades, traps, observation, rams and existing official support.
+- Added session schema 9 with deterministic old-progress projection and exact
+  current spatial recovery through the existing V5 checkpoint owner.
+- Fixed settled invasion state being overwritten after city time resumed and
+  interrupted/destroyed work snapshots becoming invalid during combat.
+- Archived superseded two-route defense fixtures; added formal spatial journeys,
+  cold recovery and full-terminal frame consistency. 33 relevant runners pass;
+  automated graphical recordings do not close human acceptance.
+
 ## 2026-09-12 - War specialists and active official support R0
 
 - Added formal field actions for medic, saboteur, thief and sniper specialists,

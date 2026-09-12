@@ -1,0 +1,18 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 事务进入 ACTIVE
+PASS: 实际演算结果进入 RESULT_PENDING
+PASS: 胜利结果写回实际伤亡并授予一次首通
+PASS: 事务进入 ACTIVE
+PASS: 实际演算结果进入 RESULT_PENDING
+PASS: 全军失败扣除实际一人且不发奖励
+PASS: 事务进入 ACTIVE
+PASS: 实际演算结果进入 RESULT_PENDING
+PASS: 主动撤退返回全部幸存者且不发奖励
+PASS: 胜败撤退均不污染城市建筑记录或占用格
+PASS: 正门与侧门都通过各自路线状态产生真实胜利
+PASS: 两条路线的距离、城门与守军差异产生不同战斗轨迹
+PASS: 不同画面采样频率不改变整数 tick 战斗结果
+PASS: BattleSession 不依赖渲染帧或 delta
+C0E_COMBAT_CONTRACT_SMOKE PASS

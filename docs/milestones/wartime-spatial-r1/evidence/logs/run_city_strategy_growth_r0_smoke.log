@@ -1,0 +1,32 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 正式制造获得 equipment.general.iron_sword
+PASS: 正式装配 equipment.general.iron_sword
+PASS: 正式制造获得 equipment.general.scout_helmet
+PASS: 正式装配 equipment.general.scout_helmet
+PASS: 正式制造获得 equipment.general.lamellar
+PASS: 正式装配 equipment.general.lamellar
+PASS: 正式制造获得 equipment.general.leather_gloves
+PASS: 正式装配 equipment.general.leather_gloves
+PASS: 正式制造获得 equipment.general.riding_boots
+PASS: 正式装配 equipment.general.riding_boots
+PASS: 正式制造获得 equipment.general.command_talisman
+PASS: 正式装配 equipment.general.command_talisman
+PASS: 将领六槽均有正式物品，攻击与防护效果进入真实战斗参数
+PASS: 同槽来源装备通过正式制造获得
+PASS: 培养投入现有资源并增加累计经验
+PASS: 培养保存失败时资源与累计经验完整回滚
+PASS: 重复培养只按成功事务扣费并达到当前等级上限
+PASS: 升阶保存失败时品质、经验与资源共同回滚
+PASS: 满级装备支付确定成本升至下一品质并保留累计经验
+PASS: 同槽换装明确更新实际将领装备
+PASS: 已装配来源装备不能作为继承材料
+PASS: 已被活动军令冻结引用的来源装备不能作为继承材料
+PASS: 继承保存失败不消耗来源、不增加目标经验
+PASS: 继承原子消耗来源并保留超出当前品质上限的累计经验
+PASS: 后续升阶立即释放此前保留的超限经验
+PASS: 军令冻结装备身份、机动与攻防参数，城内培养不回写
+PASS: 培养、升阶、继承与在途冻结参数经正式 V5 精确恢复
+PASS: 旧嵌套 schema 1 只为既有物品补零经验常备记录，不补发装备或免费品质
+CITY_STRATEGY_GROWTH_R0_SMOKE PASS assertions=28

@@ -1,0 +1,267 @@
+{
+  "baseline": "45018750a6bc7e2aa2c3c351dad7c4276e7f45e2",
+  "branch": "codex/txwzs-field-tactics-r2",
+  "default_branch": "codex/txwzs-review-20260906",
+  "viewport": [
+    1280,
+    800
+  ],
+  "engine": "Godot 4.5.1 stable",
+  "simulation_tick_ms": 250,
+  "recording_fps": 30,
+  "recordings_accelerated": true,
+  "input": "engine GUI events and formal command/signal calls",
+  "human_acceptance": "OPEN",
+  "independent_process_stages": {
+    "assault": 6,
+    "defense": 4
+  },
+  "runners": [
+    {
+      "runner": "run_blackstone_invasion_r0_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_blackstone_recovery_r0_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_c0a_battle_transaction_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_c0b_deterministic_battle_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_c0d_result_writeback_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_c0e_combat_contract_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_c0f_battle_exit_return_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_city_strategy_growth_r0_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_city_strategy_r0_persistence_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_city_strategy_r0_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_field_defense_expansion_r0_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_field_tactics_r2_persistence_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_field_tactics_r2_playthrough_smoke",
+      "status": "PASS",
+      "warnings": [
+        "WARNING: ObjectDB instances leaked at exit (run with --verbose for details)."
+      ]
+    },
+    {
+      "runner": "run_field_tactics_r2_smoke",
+      "status": "PASS",
+      "warnings": [
+        "WARNING: ObjectDB instances leaked at exit (run with --verbose for details)."
+      ]
+    },
+    {
+      "runner": "run_macro_siege_wartime_handoff_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_macro_siege_wartime_persistence_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_macro_siege_wartime_victory_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_v5_army_state_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_v5_campaign_persistence_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_v5_encounter_writeback_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_v5_single_unit_garrison_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_v5_training_queue_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_v5_vertical_loop_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_war_loop_arrival_persistence_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_war_loop_disk_recovery_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_war_loop_formal_scene_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_war_loop_r1_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_war_specialists_and_support_r0_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_war_specialists_support_persistence_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_wartime_defense_persistence_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_wartime_defense_r0_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_wartime_inner_city_r0_smoke",
+      "status": "PASS",
+      "warnings": []
+    },
+    {
+      "runner": "run_wartime_spatial_r1_smoke",
+      "status": "PASS",
+      "warnings": []
+    }
+  ],
+  "assets": [
+    {
+      "file": "assault-00-field-siege.png",
+      "bytes": 122662,
+      "sha256": "7dbf7c26bd3453b581daa5b3dc83c3b7966d98538460627b1074d495372aa658"
+    },
+    {
+      "file": "assault-01-deployment.png",
+      "bytes": 132301,
+      "sha256": "327e3199abcd5d729c958bd0b61cf45d921a79d344b495567c4fd8ff839fa688"
+    },
+    {
+      "file": "assault-02-crew-approach.png",
+      "bytes": 130309,
+      "sha256": "36328dbdee4464912fac208508005b41058b80c6f67603795eef31309c955439"
+    },
+    {
+      "file": "assault-02-domain-coverage.png",
+      "bytes": 132382,
+      "sha256": "f9306c9a0e2e665e66a6646e61cae143c6e336b6d0a2dd6e39c2427b9f2f9728"
+    },
+    {
+      "file": "assault-03-ram-and-tower.png",
+      "bytes": 126972,
+      "sha256": "fcb2782575de1a1b1f6fd79fbddfac707ccbcca7b487127d0c74a4dcf7d51b95"
+    },
+    {
+      "file": "assault-04-result-pending.png",
+      "bytes": 141425,
+      "sha256": "81a49563d17a6a27213575f5731db28bb4d7f0842fbc58407e29eac61db0dee7"
+    },
+    {
+      "file": "assault-05-return.png",
+      "bytes": 109095,
+      "sha256": "6e6da017b38863c41bb79709c0b4cb4375798d3098d480064454752315a2e08d"
+    },
+    {
+      "file": "assault.webp",
+      "bytes": 2576276,
+      "sha256": "4451bf79ac039757a9a4c1d9f027090ab7ca949f7e5f74a7cdccfda426fdad81"
+    },
+    {
+      "file": "defense-00-city-arrival.png",
+      "bytes": 118406,
+      "sha256": "0d05bdd062a904751f9df2ffe2c1d89a9d3cd8ce8cce9b34351f89ee62f968f1"
+    },
+    {
+      "file": "defense-01-deployment.png",
+      "bytes": 122548,
+      "sha256": "1c790b570a2d0693c4e0f54736af122594f53f9c3147259989b532ebadef1c9b"
+    },
+    {
+      "file": "defense-02-construction.png",
+      "bytes": 129293,
+      "sha256": "a8aa5015ab09ab8c3b9dff1bcd85fd512e2bb9756853ffc4311ce183d213a399"
+    },
+    {
+      "file": "defense-03-repair-support.png",
+      "bytes": 131006,
+      "sha256": "800186dcf76f5a1be3332b24a55ecb6e87297c308b1980a2dd11bef98e412ba3"
+    },
+    {
+      "file": "defense-03-result.png",
+      "bytes": 146107,
+      "sha256": "9cd083dfc442c64b0df14d0380b736222e24292c8a13e3835c5061c315bc15cd"
+    },
+    {
+      "file": "defense-04-return.png",
+      "bytes": 121204,
+      "sha256": "ab5cf99020580a8245d9c1d016b981572e7cfaf916a6dcb48db412d28d9c3d73"
+    },
+    {
+      "file": "defense.webp",
+      "bytes": 3052446,
+      "sha256": "bbc1a0abe141f3e0fd8881677aa0a0bc28093a05a04d28ce754f7edfc333600b"
+    }
+  ]
+}

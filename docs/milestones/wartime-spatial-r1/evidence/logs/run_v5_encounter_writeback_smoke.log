@@ -1,0 +1,27 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+PASS: 正式城市场景可加载
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 遭遇协调器绑定唯一城市权威
+PASS: 抵达军队通过正式入口进入遭遇等待
+PASS: 遭遇请求从 ArmyState 只读构造同一事务兵力快照
+PASS: ArmyState 遭遇仍复用唯一 BattleSession
+PASS: 极简战斗只产出一致的胜利事实
+PASS: BattleResult 只包含合同事实，不包含城市、ArmyState、存档或 UI 后状态
+PASS: 篡改 terminal payload 在写回前拒绝且全状态零写入
+PASS: 胜利事实一次性写回为返乡策略
+PASS: 返乡军队保留幸存者事实且伤亡后世界总兵力守恒
+PASS: 相同 result replay 返回同一摘要且不重复写回
+PASS: 同事务冲突 result ID 无法绕过协调器权威
+PASS: 第二支军队可在首支 CLOSED 后进入遭遇
+PASS: 撤退遭遇建立真实 BattleSession
+PASS: 真实撤退命令产生幸存/伤亡事实
+PASS: 撤退策略交换稳定节点并进入 RETURNING，不直接写城市驻军
+PASS: 返回行军仍由同一整数战略时间入口抵达
+PASS: 返城一次性把幸存者写入原驻军并保持伤亡守恒
+PASS: 重复返回、信号或场景重进不能二次增加驻军
+PASS: 失败用例建立第三个集合记录
+PASS: 失败遭遇建立真实 BattleSession
+PASS: 真实失败战斗产出零幸存事实
+PASS: 失败清空该军队幸存组成并关闭记录，不修改 UI 缓存
+V5_ENCOUNTER_WRITEBACK_SMOKE PASS

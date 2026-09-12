@@ -172,6 +172,8 @@ var _recent_actions: Array[String] = []
 var _pending_wartime_facility_plan: Dictionary = {}
 var _selected_repair_facility_id: StringName = &""
 var _battle_context: Dictionary = {}
+var spatial_view: SpatialBattleView
+var _spatial_elapsed_seconds := 0.0
 
 
 func _ready() -> void:
@@ -221,6 +223,14 @@ func _ready() -> void:
 		_pending_wartime_facility_plan = request.wartime_facility_plan.duplicate(true)
 		_resume_active_battle_if_available()
 	_create_squad_controls()
+	if request != null and request.source_id in [BattleRequest.SOURCE_MACRO_SIEGE, BattleRequest.SOURCE_WARTIME_DEFENSE]:
+		spatial_view = SpatialBattleView.new()
+		spatial_view.battle = self
+		spatial_view.name = "SpatialBattlefield"
+		$UI/RootPanel.add_child(spatial_view)
+		$UI/RootPanel.move_child(spatial_view, $UI/RootPanel/ExitInputBlocker.get_index())
+		spatial_view.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		spatial_view.offset_top = 110
 	_apply_northern_visual_palette()
 	_append_source_context_feedback()
 	_append_recent_action("选择小队，核对部署路线与有效命令")
@@ -251,14 +261,14 @@ func _on_official_support_selected(item_id: int) -> void:
 	if item_id < 0 or item_id >= kinds.size():
 		return
 	var squad := coordinator.active_session.get_squad_state(_selected_squad_id)
+	var target_route := spatial_view.selected_route if spatial_view != null else StringName(squad.get("route_id", &""))
 	var result := coordinator.issue_official_support(
-		StringName(kinds[item_id]), _selected_squad_id,
-		StringName(squad.get("route_id", &""))
+		StringName(kinds[item_id]), _selected_squad_id, target_route
 	)
-	if bool(result.get("success", false)):
-		_append_recent_action("文官支援已提交 · %s" % official_support_button.get_popup().get_item_text(item_id))
-	else:
-		_append_recent_action(str(result.get("error", "文官支援未能提交")))
+	var support_message := "文官支援已提交 · %s" % official_support_button.get_popup().get_item_text(item_id) if bool(result.get("success", false)) else str(result.get("error", "文官支援未能提交"))
+	_append_recent_action(support_message)
+	if spatial_view != null:
+		spatial_view.message = support_message
 	_refresh_battle_ui()
 
 
@@ -365,6 +375,12 @@ func start_battle(apply_deployment_plan := false) -> bool:
 		return false
 	if coordinator.active_session == null and coordinator.create_session() == null:
 		return false
+	if spatial_view != null and coordinator.active_session.current_tick == 0:
+		for id in spatial_view.draft:
+			var error := BattlefieldSpace.deploy(coordinator.active_session, int(id), spatial_view.draft[id])
+			if not error.is_empty():
+				status_label.text = error
+				return false
 	if not _checkpoint_active_battle_session():
 		status_label.text = "战时实例检查点保存失败；请检查存档后重试"
 		return false
@@ -384,6 +400,8 @@ func start_battle(apply_deployment_plan := false) -> bool:
 		request.wartime_facility_plan, WartimeFacilityPlan.KIND_ARROW_TOWER
 	):
 		_append_recent_action("战时工事开始施工；完工后才提供观察、破门或箭塔火力")
+	if spatial_view != null:
+		spatial_view.message = "战斗已开始：点击路标移动、敌军或城门攻击；工位需人员到达"
 	tick_timer.start()
 	_refresh_battle_ui()
 	return true
@@ -872,7 +890,23 @@ func _issue_selected_order(command: BattleOrder.Command) -> void:
 
 
 func _on_tick_timeout() -> void:
-	_advance_one_tick()
+	if spatial_view == null:
+		_advance_one_tick()
+
+
+func _process(delta: float) -> void:
+	if spatial_view == null or tick_timer.is_stopped():
+		return
+	advance_spatial_frame(delta)
+
+
+func advance_spatial_frame(delta: float) -> void:
+	_spatial_elapsed_seconds += delta
+	while _spatial_elapsed_seconds + 0.000000001 >= 0.25:
+		_spatial_elapsed_seconds -= 0.25
+		if _advance_one_tick() != null:
+			_spatial_elapsed_seconds = 0.0
+			break
 
 
 func _advance_one_tick() -> BattleResult:
@@ -1160,6 +1194,10 @@ func _refresh_battle_ui() -> void:
 	_refresh_wartime_action_layout()
 	_refresh_recent_actions()
 	_refresh_exit_ui()
+	if spatial_view != null:
+		for name in ["Battlefield", "FrontLane", "SideLane", "MarkerLayer", "MissionObjectLayer", "SquadControls", "SelectedSquadPanel", "WartimePlanPanel", "WartimeFacilityStatusLabel", "WartimeRepairButton", "WartimeRepairTargetButton", "WartimeGateRepairButton", "OfficialSupportButton", "StartButton"]:
+			$UI/RootPanel.get_node(name).hide()
+		spatial_view.refresh()
 
 
 func _refresh_official_support_ui() -> void:
@@ -1312,6 +1350,12 @@ func _toggle_wartime_facility(kind: StringName) -> void:
 	if not WartimeFacilityPlan.is_available_for_source(kind, request.source_id):
 		status_label.text = "该工事不能用于本次战斗"
 		return
+	if spatial_view != null and request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		var crew: Array = spatial_view.current_units().get(str(_selected_squad_id), [])
+		if not crew.is_empty() and ((kind == WartimeFacilityPlan.KIND_SPIKE_TRAP and int(crew[0]) >= 84 * 16) or (kind == WartimeFacilityPlan.KIND_WATCH_PLATFORM and int(crew[0]) < 80 * 16)):
+			spatial_view.message = "工位在封闭城墙另一侧：请先把施工编队部署到该侧绿色集结点"
+			spatial_view.refresh()
+			return
 	var facilities: Array = Array(
 		_pending_wartime_facility_plan.get("facilities", [])
 	).duplicate(true)
@@ -1342,6 +1386,8 @@ func _toggle_wartime_facility(kind: StringName) -> void:
 ## plan to the front route.  The request remains the source of truth and is
 ## revalidated by the controller when the plan is confirmed.
 func _selected_deployment_route() -> StringName:
+	if spatial_view != null and spatial_view.selected_route != &"":
+		return spatial_view.selected_route
 	if request != null:
 		for squad in request.committed_force.squads:
 			if int(squad.squad_id) == _selected_squad_id:
@@ -1635,7 +1681,7 @@ func _repair_protect_target() -> void:
 		status_label.text = cost_error
 		return
 	if (
-		not coordinator.active_session.begin_protect_target_repair()
+		not coordinator.active_session.begin_protect_target_repair(_selected_squad_id)
 		or not _checkpoint_active_battle_session()
 	):
 		coordinator.active_session.restore_snapshot(before_session)

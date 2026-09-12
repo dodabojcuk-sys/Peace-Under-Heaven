@@ -8,6 +8,12 @@ V4 派遣主链路冻结，以及 V5-G0 至 V5-G2 的单兵种、驻军、训练
 当前不是可发布版本。R2 已形成可自动复核的外城战术闭环候选，但真实玩家
 验收、最终数值与完整美术仍未关闭；V5 的其他后续阶段也不因本候选自动推进。
 
+Current wartime spatial behavior and coverage:
+[design](docs/design/WARTIME_SPATIAL_BATTLE_R1.md) ·
+[verification and recordings](docs/milestones/wartime-spatial-r1/VERIFICATION.md).
+Macro siege and sourced defense use this contract; older two-route descriptions
+are historical for those sources. Human play acceptance remains open.
+
 ## 当前权威入口
 
 - 当前状态：[CURRENT_STATE.md](CURRENT_STATE.md)

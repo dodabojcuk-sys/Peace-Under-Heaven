@@ -1,5 +1,9 @@
 # Wartime Inner City R0
 
+> Historical R0 checkpoint. For current macro-siege and sourced-defense spatial
+> movement, work and support coverage, use [Wartime spatial R1](WARTIME_SPATIAL_BATTLE_R1.md).
+> Route-only presentation and timing below do not constrain that runtime.
+
 ## Purpose
 
 R0 turns the existing C0 battle scene into a recoverable battle-instance

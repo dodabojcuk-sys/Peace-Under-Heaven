@@ -92,7 +92,7 @@ func _run() -> void:
 	) as Button
 	var wood_before_plan := int(city.get("wood"))
 	_check(
-		plan_panel.visible
+		battle.spatial_view.visible
 			and not watch_button.visible
 			and ram_button.visible and not ram_button.disabled
 			and arrow_button.visible and not arrow_button.disabled
@@ -186,31 +186,12 @@ func _run() -> void:
 	var gate_before_ram := int(battle.coordinator.active_session.get_route_state(
 		CommittedForceSnapshot.FRONT_ROUTE
 	).get("gate_hp", 0))
-	for _tick in range(BattleSession.FACILITY_BUILD_TICKS[WartimeFacilityPlan.KIND_SIEGE_RAM]):
-		(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
-	var macro_facility_state := battle.coordinator.active_session.get_wartime_facility_state()
-	var macro_facilities: Array = Array(macro_facility_state.get("facilities", []))
-	_check(
-		macro_facilities.size() == 2
-			and macro_facilities.all(func(record: Dictionary) -> bool: return StringName(record.get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE),
-		"宏观围城确认的攻城槌和箭塔随正式战斗刻施工完成后才生效"
-	)
+	battle.tick_timer.stop()
+	battle.step_battle_for_test(8)
 	var session := battle.coordinator.active_session
-	var gate_after_ram := int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("gate_hp", 0))
-	var enemy_before_arrow := int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("enemy_total_hp", 0))
-	for _tick in range(BattleSession.ARROW_TOWER_ATTACK_INTERVAL_TICKS):
-		(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
-	var enemy_after_arrow := int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("enemy_total_hp", 0))
-	var arrow_volley := session.get_last_tick_facility_events().any(
-		func(event: Dictionary) -> bool:
-			return StringName(event.get("kind", &"")) == WartimeFacilityPlan.KIND_ARROW_TOWER
-	)
-	_check(
-		gate_after_ram == maxi(0, gate_before_ram - BattleSession.SIEGE_RAM_GATE_DAMAGE)
-			and enemy_after_arrow < enemy_before_arrow
-			and arrow_volley,
-		"宏观围城工事实际破坏城门并写入一次共享敌军伤害，而非只显示计划"
-	)
+	var works: Array = session.get_wartime_facility_state().facilities
+	_check(works.size() == 2 and works.all(func(r: Dictionary): return r.phase == BattleSession.FACILITY_PHASE_CONSTRUCTING and int(r.progress_ticks) == 0), "工事人员仍在接近工位，不提前授予建设效果")
+	_check(int(session.routes[CommittedForceSnapshot.FRONT_ROUTE].gate_hp) == gate_before_ram and int(session.spatial_state.units["1"][0]) > 0, "途中位置推进，远离城门时攻城槌不改变耐久")
 	var active: Dictionary = city.get_macro_march_read_model().war_loop.active_siege
 	_check(
 		StringName(Dictionary(active.get("wartime_handoff", {})).get("phase", &"")) == WarLoopState.WARTIME_HANDOFF_ACTIVE
@@ -382,7 +363,7 @@ func _run_formal_macro_victory_chain() -> void:
 		await process_frame
 	var pending_result: BattleResult
 	for _tick in range(BattleSession.MAX_BATTLE_TICKS + 2):
-		(victory_battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+		victory_battle.step_battle_for_test(1)
 		await process_frame
 		if victory_battle.coordinator.active_session != null:
 			pending_result = victory_battle.coordinator.active_session.result
@@ -463,7 +444,7 @@ func _run_formal_macro_defeat_chain() -> void:
 	defeat_battle.tick_timer.stop()
 	var pending_result: BattleResult
 	for _tick in range(BattleSession.MAX_BATTLE_TICKS + 2):
-		(defeat_battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+		defeat_battle.step_battle_for_test(1)
 		await process_frame
 		if defeat_battle.coordinator.active_session != null:
 			pending_result = defeat_battle.coordinator.active_session.result
@@ -567,7 +548,7 @@ func _run_formal_macro_full_wipe_chain() -> void:
 			await process_frame
 	var pending_result: BattleResult
 	for _tick in range(BattleSession.MAX_BATTLE_TICKS + 2):
-		(wipe_battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+		wipe_battle.step_battle_for_test(1)
 		await process_frame
 		if wipe_battle.coordinator.active_session != null:
 			pending_result = wipe_battle.coordinator.active_session.result
