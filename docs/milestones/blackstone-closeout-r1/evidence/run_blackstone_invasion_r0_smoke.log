@@ -1,0 +1,8 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+BLACKSTONE_INVASION_DEFENSE_TRACE patrol=invasion.blackstone.001 outcome=VICTORY remaining=0 returned=true
+BLACKSTONE_COUNTERATTACK_TRACE treated_remaining=0 north=true attack=true army=army.player.000001 outcome=VICTORY controller=player food=69
+BLACKSTONE_INVASION_R0_SMOKE PASS assertions=17 steps=29
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+     at: cleanup (core/object/object.cpp:2514)

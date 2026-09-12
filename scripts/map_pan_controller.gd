@@ -137,6 +137,10 @@ func persist_macro_march_checkpoint() -> Dictionary:
 
 
 func _input(event: InputEvent) -> void:
+	if OS.is_debug_build() and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F8:
+		print("BLACKSTONE_PROGRESS_DIAGNOSTICS ", JSON.stringify(construction_controller.get_campaign_progress_diagnostics()))
+		get_viewport().set_input_as_handled()
+		return
 	# This fullscreen modal owns every pointer/key while visible. Returning here
 	# keeps root map gestures from racing GUI dispatch; the Control handles
 	# ui_cancel through its own unhandled-key path.

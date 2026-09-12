@@ -8,6 +8,10 @@ V4 派遣主链路冻结，以及 V5-G0 至 V5-G2 的单兵种、驻军、训练
 当前不是可发布版本。R2 已形成可自动复核的外城战术闭环候选，但真实玩家
 验收、最终数值与完整美术仍未关闭；V5 的其他后续阶段也不因本候选自动推进。
 
+Current first-campaign behavior and evidence:
+[Blackstone closeout R1](docs/design/BLACKSTONE_FIRST_CAMPAIGN_CLOSEOUT_R1.md) ·
+[normal-start journeys and recovery](docs/milestones/blackstone-closeout-r1/VERIFICATION.md).
+
 Current wartime spatial behavior and coverage:
 [design](docs/design/WARTIME_SPATIAL_BATTLE_R1.md) ·
 [verification and recordings](docs/milestones/wartime-spatial-r1/VERIFICATION.md).
@@ -127,8 +131,8 @@ G3 或替代真实窗口、独立复查和用户试玩 Gate。
 
 - 当前工作分支：`codex/txwzs-field-tactics-r2`。
 - V5-G2 acceptance checkpoint：`af244167f7b0a31f3de2cc34673faa953113b96b`。
-- 普通 push 仅授权到上述 R2 审阅分支；不 force、不合并主分支、不 tag、
-  不部署。
+- 实际默认分支：`codex/txwzs-review-20260906`。push、PR 合并与部署
+  需要当前任务明确授权；历史 R2 审阅限制不替代后续明确授权。
 - S1A.2 八个文件必须保持 untracked、unstaged 和哈希不变；它们不是 Markdown，
   也不是已采用的 V5 writer/schema。
 - 不使用 `git add -A`；提交时按精确路径暂存。

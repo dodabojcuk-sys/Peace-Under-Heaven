@@ -1,0 +1,14 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 正式城市入口可建立拒降攻城
+PASS: 正式城市入口可打开外城视图
+PASS: 外城视图保持打开时，权威攻城时钟持续推进
+PASS: 正式城市入口可返回城市视图
+PASS: 返回城市视图后继续同一时钟，不重复或补打外城停留时间
+PASS: 只有全局暂停会停止外城攻城时钟
+PASS: 全灭关闭军队不会被当作当前可指挥军令
+PASS: 有其他驻军与粮食时，全灭后可从城市重新发令
+PASS: 正式 _process 的 30 帧、60 帧与不规则浮点拆分在同一秒得到相同攻城状态
+PASS: 暂停不累积补打，2 倍速只对恢复后的半秒计算一次
+WAR_LOOP_FORMAL_SCENE_SMOKE PASS assertions=10

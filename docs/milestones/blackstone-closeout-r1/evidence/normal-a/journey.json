@@ -1,0 +1,1639 @@
+{
+	"accelerated_driver": false,
+	"failures": [],
+	"input": "formal Controller commands, connected GUI signals and spatial map events",
+	"nodes": [
+		{
+			"day": 1,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"definition_id": "building.farm.t1",
+					"display_name": "农田",
+					"effect_text": "粮食 +22/日",
+					"eta_text": "第 2 日 00:01",
+					"next_missing_text": "",
+					"paid_text": "木材 0/45",
+					"progress_percent": 0.0,
+					"refund_text": "",
+					"remaining_text": "木材 45",
+					"state": "PRODUCING",
+					"status_text": "建造中"
+				},
+				"city_reservation_blocked": false,
+				"controller_processing": true,
+				"day": 1,
+				"day_elapsed_ms": 149,
+				"field_projects": {
+
+				},
+				"last_checkpoint": {
+
+				},
+				"persistence": {
+					"dirty": true,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-a-live",
+					"save_sequence": 1,
+					"status": "created_initial_generation",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 0,
+					"next_order_sequence": 1,
+					"orders_by_id": {
+
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 149
+			},
+			"food": 80,
+			"invasion": {
+				"activation_day": 5,
+				"known": false,
+				"phase": "DORMANT",
+				"warning_day": 4
+			},
+			"node": "preparation",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 0,
+				"adults": 72,
+				"available": 20,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 0,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 0,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 20,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 1,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 0,
+				"total_living": 72,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 72,
+				"unsettled_refugees": 0,
+				"work_eligible": 20,
+				"wounded": 0
+			},
+			"real_ms": 689,
+			"wood": 100
+		},
+		{
+			"day": 3,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": false,
+				"controller_processing": true,
+				"day": 3,
+				"day_elapsed_ms": 14972,
+				"field_projects": {
+					"project.000001": {
+						"build_camp": true,
+						"camp_id": "camp.000001",
+						"engineer_id": "engineer.000001",
+						"max_durability": 70,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 5000,
+						"project_id": "project.000001",
+						"project_kind": "CONSTRUCTION",
+						"required_milliseconds": 5000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_world_points": [
+							"(135, 650)",
+							"(310, 640)",
+							"(500, 620)"
+						],
+						"segment_plans": [
+							{
+								"max_durability": 70,
+								"required_milliseconds": 5000,
+								"road_id": "road.built.000002",
+								"road_kind": "NORMAL",
+								"route_world_points": [
+									"(135, 650)",
+									"(310, 640)",
+									"(500, 620)"
+								],
+								"source_point_id": "blackstone_city",
+								"target_point_id": "camp.site.000001"
+							}
+						],
+						"source_point_id": "blackstone_city",
+						"target_point_id": "camp.site.000001",
+						"travel_milliseconds": 0
+					},
+					"watchtower.000002": {
+						"attack_interval_milliseconds": 4000,
+						"build_camp": false,
+						"camp_id": "camp.000001",
+						"collision_damage": 0,
+						"damage": 1,
+						"effect_range": 220,
+						"engineer_id": "engineer.000001",
+						"facility_kind": "ARROW_TOWER",
+						"garrison_casualty_reduction_permille": 0,
+						"max_durability": 120,
+						"mine_charges": 0,
+						"mine_damage": 0,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 8000,
+						"project_id": "watchtower.000002",
+						"project_kind": "WATCHTOWER",
+						"required_milliseconds": 8000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_delay_milliseconds": 0,
+						"route_world_points": [
+							"(440, 600)"
+						],
+						"segment_plans": [],
+						"source_point_id": "camp.site.000001",
+						"target_point_id": "camp.site.000001",
+						"tower_id": "watchtower.000001",
+						"travel_milliseconds": 1800,
+						"visibility_range": 1,
+						"work_world_position": "(440, 600)"
+					}
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": false,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-a-live",
+					"save_sequence": 366,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "training.blackstone_city.000001",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 0,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "QUEUED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 374972
+			},
+			"food": 52,
+			"invasion": {
+				"activation_day": 5,
+				"known": false,
+				"phase": "DORMANT",
+				"warning_day": 4
+			},
+			"node": "external-defense-line",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 40,
+				"adults": 72,
+				"available": 14,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 0,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 0,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 20,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 1,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 1,
+				"total_living": 72,
+				"training_reserved": 5,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 72,
+				"unsettled_refugees": 0,
+				"work_eligible": 14,
+				"wounded": 0
+			},
+			"real_ms": 375470,
+			"wood": 20
+		},
+		{
+			"day": 4,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": false,
+				"controller_processing": true,
+				"day": 4,
+				"day_elapsed_ms": 44,
+				"field_projects": {
+					"project.000001": {
+						"build_camp": true,
+						"camp_id": "camp.000001",
+						"engineer_id": "engineer.000001",
+						"max_durability": 70,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 5000,
+						"project_id": "project.000001",
+						"project_kind": "CONSTRUCTION",
+						"required_milliseconds": 5000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_world_points": [
+							"(135, 650)",
+							"(310, 640)",
+							"(500, 620)"
+						],
+						"segment_plans": [
+							{
+								"max_durability": 70,
+								"required_milliseconds": 5000,
+								"road_id": "road.built.000002",
+								"road_kind": "NORMAL",
+								"route_world_points": [
+									"(135, 650)",
+									"(310, 640)",
+									"(500, 620)"
+								],
+								"source_point_id": "blackstone_city",
+								"target_point_id": "camp.site.000001"
+							}
+						],
+						"source_point_id": "blackstone_city",
+						"target_point_id": "camp.site.000001",
+						"travel_milliseconds": 0
+					},
+					"watchtower.000002": {
+						"attack_interval_milliseconds": 4000,
+						"build_camp": false,
+						"camp_id": "camp.000001",
+						"collision_damage": 0,
+						"damage": 1,
+						"effect_range": 220,
+						"engineer_id": "engineer.000001",
+						"facility_kind": "ARROW_TOWER",
+						"garrison_casualty_reduction_permille": 0,
+						"max_durability": 120,
+						"mine_charges": 0,
+						"mine_damage": 0,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 8000,
+						"project_id": "watchtower.000002",
+						"project_kind": "WATCHTOWER",
+						"required_milliseconds": 8000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_delay_milliseconds": 0,
+						"route_world_points": [
+							"(440, 600)"
+						],
+						"segment_plans": [],
+						"source_point_id": "camp.site.000001",
+						"target_point_id": "camp.site.000001",
+						"tower_id": "watchtower.000001",
+						"travel_milliseconds": 1800,
+						"visibility_range": 1,
+						"work_world_position": "(440, 600)"
+					}
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": true,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-a-live",
+					"save_sequence": 366,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 540044
+			},
+			"food": 67,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "DORMANT",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "warning",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 54,
+				"adults": 72,
+				"available": 14,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 0,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 250,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 25,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 1,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 1,
+				"total_living": 72,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 72,
+				"unsettled_refugees": 0,
+				"work_eligible": 14,
+				"wounded": 0
+			},
+			"real_ms": 540556,
+			"wood": 20
+		},
+		{
+			"day": 5,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": false,
+				"controller_processing": true,
+				"day": 5,
+				"day_elapsed_ms": 58,
+				"field_projects": {
+					"project.000001": {
+						"build_camp": true,
+						"camp_id": "camp.000001",
+						"engineer_id": "engineer.000001",
+						"max_durability": 70,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 5000,
+						"project_id": "project.000001",
+						"project_kind": "CONSTRUCTION",
+						"required_milliseconds": 5000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_world_points": [
+							"(135, 650)",
+							"(310, 640)",
+							"(500, 620)"
+						],
+						"segment_plans": [
+							{
+								"max_durability": 70,
+								"required_milliseconds": 5000,
+								"road_id": "road.built.000002",
+								"road_kind": "NORMAL",
+								"route_world_points": [
+									"(135, 650)",
+									"(310, 640)",
+									"(500, 620)"
+								],
+								"source_point_id": "blackstone_city",
+								"target_point_id": "camp.site.000001"
+							}
+						],
+						"source_point_id": "blackstone_city",
+						"target_point_id": "camp.site.000001",
+						"travel_milliseconds": 0
+					},
+					"watchtower.000002": {
+						"attack_interval_milliseconds": 4000,
+						"build_camp": false,
+						"camp_id": "camp.000001",
+						"collision_damage": 0,
+						"damage": 1,
+						"effect_range": 220,
+						"engineer_id": "engineer.000001",
+						"facility_kind": "ARROW_TOWER",
+						"garrison_casualty_reduction_permille": 0,
+						"max_durability": 120,
+						"mine_charges": 0,
+						"mine_damage": 0,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 8000,
+						"project_id": "watchtower.000002",
+						"project_kind": "WATCHTOWER",
+						"required_milliseconds": 8000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_delay_milliseconds": 0,
+						"route_world_points": [
+							"(440, 600)"
+						],
+						"segment_plans": [],
+						"source_point_id": "camp.site.000001",
+						"target_point_id": "camp.site.000001",
+						"tower_id": "watchtower.000001",
+						"travel_milliseconds": 1800,
+						"visibility_range": 1,
+						"work_world_position": "(440, 600)"
+					}
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": false,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-a-live",
+					"save_sequence": 368,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 720058
+			},
+			"food": 81,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "INVADING",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "invasion-marching",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 68,
+				"adults": 72,
+				"available": 14,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 0,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 500,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 25,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 1,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 1,
+				"total_living": 72,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 72,
+				"unsettled_refugees": 0,
+				"work_eligible": 14,
+				"wounded": 0
+			},
+			"real_ms": 720550,
+			"wood": 20
+		},
+		{
+			"day": 5,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": true,
+				"controller_processing": true,
+				"day": 5,
+				"day_elapsed_ms": 28295,
+				"field_projects": {
+					"project.000001": {
+						"build_camp": true,
+						"camp_id": "camp.000001",
+						"engineer_id": "engineer.000001",
+						"max_durability": 70,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 5000,
+						"project_id": "project.000001",
+						"project_kind": "CONSTRUCTION",
+						"required_milliseconds": 5000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_world_points": [
+							"(135, 650)",
+							"(310, 640)",
+							"(500, 620)"
+						],
+						"segment_plans": [
+							{
+								"max_durability": 70,
+								"required_milliseconds": 5000,
+								"road_id": "road.built.000002",
+								"road_kind": "NORMAL",
+								"route_world_points": [
+									"(135, 650)",
+									"(310, 640)",
+									"(500, 620)"
+								],
+								"source_point_id": "blackstone_city",
+								"target_point_id": "camp.site.000001"
+							}
+						],
+						"source_point_id": "blackstone_city",
+						"target_point_id": "camp.site.000001",
+						"travel_milliseconds": 0
+					},
+					"watchtower.000002": {
+						"attack_interval_milliseconds": 4000,
+						"build_camp": false,
+						"camp_id": "camp.000001",
+						"collision_damage": 0,
+						"damage": 1,
+						"effect_range": 220,
+						"engineer_id": "engineer.000001",
+						"facility_kind": "ARROW_TOWER",
+						"garrison_casualty_reduction_permille": 0,
+						"max_durability": 120,
+						"mine_charges": 0,
+						"mine_damage": 0,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 8000,
+						"project_id": "watchtower.000002",
+						"project_kind": "WATCHTOWER",
+						"required_milliseconds": 8000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_delay_milliseconds": 0,
+						"route_world_points": [
+							"(440, 600)"
+						],
+						"segment_plans": [],
+						"source_point_id": "camp.site.000001",
+						"target_point_id": "camp.site.000001",
+						"tower_id": "watchtower.000001",
+						"travel_milliseconds": 1800,
+						"visibility_range": 1,
+						"work_world_position": "(440, 600)"
+					}
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": false,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-a-live",
+					"save_sequence": 371,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 748295
+			},
+			"food": 81,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "HANDED_OFF",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "defense-active",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 68,
+				"adults": 72,
+				"available": 14,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 0,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 500,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 25,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 1,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 1,
+				"total_living": 72,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 72,
+				"unsettled_refugees": 0,
+				"work_eligible": 14,
+				"wounded": 0
+			},
+			"real_ms": 748934,
+			"wood": 20
+		},
+		{
+			"day": 5,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": true,
+				"controller_processing": true,
+				"day": 5,
+				"day_elapsed_ms": 28295,
+				"field_projects": {
+					"project.000001": {
+						"build_camp": true,
+						"camp_id": "camp.000001",
+						"engineer_id": "engineer.000001",
+						"max_durability": 70,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 5000,
+						"project_id": "project.000001",
+						"project_kind": "CONSTRUCTION",
+						"required_milliseconds": 5000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_world_points": [
+							"(135, 650)",
+							"(310, 640)",
+							"(500, 620)"
+						],
+						"segment_plans": [
+							{
+								"max_durability": 70,
+								"required_milliseconds": 5000,
+								"road_id": "road.built.000002",
+								"road_kind": "NORMAL",
+								"route_world_points": [
+									"(135, 650)",
+									"(310, 640)",
+									"(500, 620)"
+								],
+								"source_point_id": "blackstone_city",
+								"target_point_id": "camp.site.000001"
+							}
+						],
+						"source_point_id": "blackstone_city",
+						"target_point_id": "camp.site.000001",
+						"travel_milliseconds": 0
+					},
+					"watchtower.000002": {
+						"attack_interval_milliseconds": 4000,
+						"build_camp": false,
+						"camp_id": "camp.000001",
+						"collision_damage": 0,
+						"damage": 1,
+						"effect_range": 220,
+						"engineer_id": "engineer.000001",
+						"facility_kind": "ARROW_TOWER",
+						"garrison_casualty_reduction_permille": 0,
+						"max_durability": 120,
+						"mine_charges": 0,
+						"mine_damage": 0,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 8000,
+						"project_id": "watchtower.000002",
+						"project_kind": "WATCHTOWER",
+						"required_milliseconds": 8000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_delay_milliseconds": 0,
+						"route_world_points": [
+							"(440, 600)"
+						],
+						"segment_plans": [],
+						"source_point_id": "camp.site.000001",
+						"target_point_id": "camp.site.000001",
+						"tower_id": "watchtower.000001",
+						"travel_milliseconds": 1800,
+						"visibility_range": 1,
+						"work_world_position": "(440, 600)"
+					}
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": false,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-a-live",
+					"save_sequence": 671,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 748295
+			},
+			"food": 81,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "HANDED_OFF",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "defense-result-pending",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 68,
+				"adults": 72,
+				"available": 14,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 0,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 500,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 25,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 1,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 1,
+				"total_living": 72,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 72,
+				"unsettled_refugees": 0,
+				"work_eligible": 14,
+				"wounded": 0
+			},
+			"real_ms": 823995,
+			"wood": 20
+		},
+		{
+			"day": 5,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": false,
+				"controller_processing": true,
+				"day": 5,
+				"day_elapsed_ms": 107415,
+				"field_projects": {
+					"project.000001": {
+						"build_camp": true,
+						"camp_id": "camp.000001",
+						"engineer_id": "engineer.000001",
+						"max_durability": 70,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 5000,
+						"project_id": "project.000001",
+						"project_kind": "CONSTRUCTION",
+						"required_milliseconds": 5000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_world_points": [
+							"(135, 650)",
+							"(310, 640)",
+							"(500, 620)"
+						],
+						"segment_plans": [
+							{
+								"max_durability": 70,
+								"required_milliseconds": 5000,
+								"road_id": "road.built.000002",
+								"road_kind": "NORMAL",
+								"route_world_points": [
+									"(135, 650)",
+									"(310, 640)",
+									"(500, 620)"
+								],
+								"source_point_id": "blackstone_city",
+								"target_point_id": "camp.site.000001"
+							}
+						],
+						"source_point_id": "blackstone_city",
+						"target_point_id": "camp.site.000001",
+						"travel_milliseconds": 0
+					},
+					"watchtower.000002": {
+						"attack_interval_milliseconds": 4000,
+						"build_camp": false,
+						"camp_id": "camp.000001",
+						"collision_damage": 0,
+						"damage": 1,
+						"effect_range": 220,
+						"engineer_id": "engineer.000001",
+						"facility_kind": "ARROW_TOWER",
+						"garrison_casualty_reduction_permille": 0,
+						"max_durability": 120,
+						"mine_charges": 0,
+						"mine_damage": 0,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 8000,
+						"project_id": "watchtower.000002",
+						"project_kind": "WATCHTOWER",
+						"required_milliseconds": 8000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_delay_milliseconds": 0,
+						"route_world_points": [
+							"(440, 600)"
+						],
+						"segment_plans": [],
+						"source_point_id": "camp.site.000001",
+						"target_point_id": "camp.site.000001",
+						"tower_id": "watchtower.000001",
+						"travel_milliseconds": 1800,
+						"visibility_range": 1,
+						"work_world_position": "(440, 600)"
+					}
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": true,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-a-live",
+					"save_sequence": 674,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 752415
+			},
+			"food": 77,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "RESOLVED",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "recovery",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 68,
+				"adults": 69,
+				"available": 14,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 3,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 500,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 22,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 2,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 1,
+				"total_living": 69,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 69,
+				"unsettled_refugees": 0,
+				"work_eligible": 14,
+				"wounded": 0
+			},
+			"real_ms": 828146,
+			"wood": 20
+		},
+		{
+			"day": 5,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": false,
+				"controller_processing": true,
+				"day": 5,
+				"day_elapsed_ms": 134684,
+				"field_projects": {
+					"project.000001": {
+						"build_camp": true,
+						"camp_id": "camp.000001",
+						"engineer_id": "engineer.000001",
+						"max_durability": 70,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 5000,
+						"project_id": "project.000001",
+						"project_kind": "CONSTRUCTION",
+						"required_milliseconds": 5000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_world_points": [
+							"(135, 650)",
+							"(310, 640)",
+							"(500, 620)"
+						],
+						"segment_plans": [
+							{
+								"max_durability": 70,
+								"required_milliseconds": 5000,
+								"road_id": "road.built.000002",
+								"road_kind": "NORMAL",
+								"route_world_points": [
+									"(135, 650)",
+									"(310, 640)",
+									"(500, 620)"
+								],
+								"source_point_id": "blackstone_city",
+								"target_point_id": "camp.site.000001"
+							}
+						],
+						"source_point_id": "blackstone_city",
+						"target_point_id": "camp.site.000001",
+						"travel_milliseconds": 0
+					},
+					"watchtower.000002": {
+						"attack_interval_milliseconds": 4000,
+						"build_camp": false,
+						"camp_id": "camp.000001",
+						"collision_damage": 0,
+						"damage": 1,
+						"effect_range": 220,
+						"engineer_id": "engineer.000001",
+						"facility_kind": "ARROW_TOWER",
+						"garrison_casualty_reduction_permille": 0,
+						"max_durability": 120,
+						"mine_charges": 0,
+						"mine_damage": 0,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 8000,
+						"project_id": "watchtower.000002",
+						"project_kind": "WATCHTOWER",
+						"required_milliseconds": 8000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_delay_milliseconds": 0,
+						"route_world_points": [
+							"(440, 600)"
+						],
+						"segment_plans": [],
+						"source_point_id": "camp.site.000001",
+						"target_point_id": "camp.site.000001",
+						"tower_id": "watchtower.000001",
+						"travel_milliseconds": 1800,
+						"visibility_range": 1,
+						"work_world_position": "(440, 600)"
+					}
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": true,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-a-live",
+					"save_sequence": 994,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 779684
+			},
+			"food": 67,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "RESOLVED",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "occupation",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 68,
+				"adults": 65,
+				"available": 14,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 7,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 500,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 17,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 2,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 1,
+				"total_living": 65,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 65,
+				"unsettled_refugees": 0,
+				"work_eligible": 14,
+				"wounded": 1
+			},
+			"real_ms": 933530,
+			"wood": 20
+		},
+		{
+			"day": 5,
+			"diagnostics": {
+				"blocked_armies": [],
+				"city_build_slot": {
+					"state": "IDLE"
+				},
+				"city_reservation_blocked": false,
+				"controller_processing": true,
+				"day": 5,
+				"day_elapsed_ms": 145690,
+				"field_projects": {
+					"project.000001": {
+						"build_camp": true,
+						"camp_id": "camp.000001",
+						"engineer_id": "engineer.000001",
+						"max_durability": 70,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 5000,
+						"project_id": "project.000001",
+						"project_kind": "CONSTRUCTION",
+						"required_milliseconds": 5000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_world_points": [
+							"(135, 650)",
+							"(310, 640)",
+							"(500, 620)"
+						],
+						"segment_plans": [
+							{
+								"max_durability": 70,
+								"required_milliseconds": 5000,
+								"road_id": "road.built.000002",
+								"road_kind": "NORMAL",
+								"route_world_points": [
+									"(135, 650)",
+									"(310, 640)",
+									"(500, 620)"
+								],
+								"source_point_id": "blackstone_city",
+								"target_point_id": "camp.site.000001"
+							}
+						],
+						"source_point_id": "blackstone_city",
+						"target_point_id": "camp.site.000001",
+						"travel_milliseconds": 0
+					},
+					"watchtower.000002": {
+						"attack_interval_milliseconds": 4000,
+						"build_camp": false,
+						"camp_id": "camp.000001",
+						"collision_damage": 0,
+						"damage": 1,
+						"effect_range": 220,
+						"engineer_id": "engineer.000001",
+						"facility_kind": "ARROW_TOWER",
+						"garrison_casualty_reduction_permille": 0,
+						"max_durability": 120,
+						"mine_charges": 0,
+						"mine_damage": 0,
+						"phase": "COMPLETE",
+						"progress_milliseconds": 8000,
+						"project_id": "watchtower.000002",
+						"project_kind": "WATCHTOWER",
+						"required_milliseconds": 8000,
+						"road_id": "road.built.000002",
+						"road_kind": "NORMAL",
+						"route_delay_milliseconds": 0,
+						"route_world_points": [
+							"(440, 600)"
+						],
+						"segment_plans": [],
+						"source_point_id": "camp.site.000001",
+						"target_point_id": "camp.site.000001",
+						"tower_id": "watchtower.000001",
+						"travel_milliseconds": 1800,
+						"visibility_range": 1,
+						"work_world_position": "(440, 600)"
+					}
+				},
+				"last_checkpoint": {
+					"success": true,
+					"uncertain": false
+				},
+				"persistence": {
+					"dirty": false,
+					"error": "",
+					"error_id": "",
+					"loaded": false,
+					"recovered": false,
+					"save_directory": "/tmp/blackstone-r1-final-a-live",
+					"save_sequence": 996,
+					"status": "saved",
+					"writes_blocked": false
+				},
+				"player_paused": false,
+				"speed": 1.0,
+				"training": {
+					"active_order_id": "",
+					"city_id": "blackstone_city",
+					"last_order_day": 3,
+					"next_order_sequence": 2,
+					"orders_by_id": {
+						"training.blackstone_city.000001": {
+							"city_id": "blackstone_city",
+							"complete_day": 4,
+							"completed_day": 4,
+							"food_cost_committed": 15,
+							"order_id": "training.blackstone_city.000001",
+							"ordered_day": 3,
+							"phase": "COMPLETED",
+							"quantity": 5,
+							"schema_version": 1,
+							"unit_definition_id": "unit_role.infantry_basic"
+						}
+					},
+					"schema_version": 1
+				},
+				"training_wait_reason": "",
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"world_ms": 790689
+			},
+			"food": 63,
+			"invasion": {
+				"activation_day": 5,
+				"display_name": "赤崖先遣军",
+				"exact_strength_known": false,
+				"fog_state": "UNOBSERVED",
+				"known": true,
+				"known_route_name": "赤崖城—北望—黑石城",
+				"known_strength": -1,
+				"patrol_id": "invasion.blackstone.001",
+				"phase": "RESOLVED",
+				"source_name": "赤崖城",
+				"source_point_id": "redcliff_city",
+				"target_name": "黑石城",
+				"target_point_id": "blackstone_city",
+				"warning_day": 4
+			},
+			"node": "victory",
+			"population": {
+				"accounted": true,
+				"adult_age_progress": 68,
+				"adults": 65,
+				"available": 14,
+				"child_age_progress": 0,
+				"children": 0,
+				"construction_permille": 1000,
+				"construction_workers": 12,
+				"elderly": 0,
+				"elderly_exposure_progress": 0,
+				"fallen": 7,
+				"female_count": 0,
+				"governance_workers": 4,
+				"growth_progress": 500,
+				"male_count": 0,
+				"medical_workers": 4,
+				"military": 17,
+				"next_birth_sequence": 1,
+				"next_treatment_sequence": 2,
+				"production_permille": 1000,
+				"production_workers": 12,
+				"resident_sick": 0,
+				"schema_version": 3,
+				"specialists": 1,
+				"total_living": 65,
+				"training_reserved": 0,
+				"treatment": {
+					"count": 0,
+					"food_cost_committed": 0,
+					"phase": "IDLE",
+					"progress_milliseconds": 0,
+					"required_milliseconds": 0,
+					"treatment_id": ""
+				},
+				"unknown_sex_count": 65,
+				"unsettled_refugees": 0,
+				"work_eligible": 14,
+				"wounded": 1
+			},
+			"real_ms": 944550,
+			"wood": 20
+		}
+	],
+	"real_ms": 947570,
+	"route": "A"
+}

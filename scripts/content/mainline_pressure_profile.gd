@@ -38,10 +38,9 @@ func get_next_stage_summary(current_day: int) -> Dictionary:
 	if current_index >= stage_overdue_days.size() - 1:
 		return {"name": "已达最高压力", "days_until": 0}
 	var next_index := current_index + 1
-	var overdue_days := maxi(current_day - deadline_day, 0)
 	return {
 		"name": ["正常", "紧张", "吃紧", "危急", "濒临崩溃"][next_index],
-		"days_until": maxi(stage_overdue_days[next_index] - overdue_days, 0),
+		"days_until": maxi(deadline_day + stage_overdue_days[next_index] - current_day, 0),
 	}
 
 

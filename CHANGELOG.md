@@ -1,3 +1,13 @@
+# Blackstone closeout R1 — 2026-09-13
+
+Fix city calendar frame rounding, pressure-stage countdown, post-victory
+pressure, post-deadline recruitment and legacy casualty conservation. Project
+live campaign state into city navigation, expose food balance and actionable
+blockers, retire new legacy mission starts and unsafe partial readiness
+rewinds, and add transient F8 progress diagnostics. Normal resource parameters,
+city-control victory rules and save schema remain unchanged. See the R1
+contract and verification package for evidence and limits.
+
 # Changelog
 
 ## 2026-09-12 - City population development and social pressure R0

@@ -273,6 +273,13 @@ func _on_official_support_selected(item_id: int) -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if OS.is_debug_build() and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F8 and city_controller != null:
+		var diagnostics: Dictionary = city_controller.get_campaign_progress_diagnostics()
+		diagnostics["battle_phase"] = request.phase if request != null else &""
+		diagnostics["battle_tick"] = coordinator.active_session.current_tick if coordinator.active_session != null else -1
+		print("BLACKSTONE_PROGRESS_DIAGNOSTICS ", JSON.stringify(diagnostics))
+		get_viewport().set_input_as_handled()
+		return
 	if (
 		event is not InputEventKey
 		or not event.pressed
@@ -725,6 +732,7 @@ func _create_city_fixture() -> void:
 	city_ui = city_scene.get_node("UI")
 	city_camera = city_scene.get_node("Camera2D")
 	city_controller.infantry_count = DEBUG_PLAYER_COUNT
+	city_controller._population_recovery.initialize_fresh(city_controller.RECOVERY_RULES, DEBUG_PLAYER_COUNT)
 	city_ui.visible = false
 	city_camera.enabled = false
 	city_scene.visible = false

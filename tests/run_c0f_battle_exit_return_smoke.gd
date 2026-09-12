@@ -293,9 +293,9 @@ func _make_pending_city(player_count: int) -> Dictionary:
 	var city: Node = scene.get_node("ConstructionController")
 	city.set_process(false)
 	city.advance_city_time_for_test(city.SECONDS_PER_DAY * 6.0)
-	var old_count := int(city.infantry_count)
 	city.infantry_count = player_count
-	city._population_recovery.total_living += player_count - old_count
+	# Synthetic military strength must use the complete population fixture.
+	city._population_recovery.initialize_fresh(city.RECOVERY_RULES, player_count)
 	city.food = 80
 	city._refresh_city_ui()
 	return {

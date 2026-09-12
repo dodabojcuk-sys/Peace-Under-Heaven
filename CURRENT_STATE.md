@@ -1,5 +1,31 @@
 # 当前状态
 
+## Blackstone first campaign closeout R1 (2026-09-13)
+
+Current work is tracked in
+[the R1 contract](docs/design/BLACKSTONE_FIRST_CAMPAIGN_CLOSEOUT_R1.md) and
+[verification](docs/milestones/blackstone-closeout-r1/VERIFICATION.md).
+The city now projects the sourced invasion and live Redcliff/Silverford goal;
+post-victory economic pressure and the old recruitment date cap no longer
+block continued play. New legacy noticeboard starts and partial readiness
+rewinds leave this campaign's normal flow. Historical identities and reward
+receipts remain intact. Frame-rate-dependent city calendar drift and legacy
+non-durable casualty accounting are corrected. Art remains deferred.
+
+Two independent 1x engine-GUI journeys pass (947.570 and 973.964 seconds),
+including real preparation, defense, recovery, original-army counterattack,
+retreat/reissue and both required cities. Eighteen node-specific cold processes
+pass. The final evidence table records relevant regressions and source-specific
+clock semantics. Human play acceptance remains OPEN; the unspecified historical
+stall remains NOT REPRODUCED. Remote merge provenance is reported in the task delivery after readback.
+
+## Historical checkpoint log
+
+The sections below record their dated checkpoint, not the current backlog.
+R1 above supersedes older statements about entry points, two-route combat,
+first-war deadlines, recruitment cutoffs and completed-campaign pressure.
+Schema 16 and the linked current contracts supersede older schema snapshots.
+
 ## City population development and social pressure R0 (2026-09-12)
 
 The regular inner city now advances population only through its authoritative

@@ -1,0 +1,44 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 场景1：统一时钟接受 1x
+PASS: 场景1：1x 推进 1000ms
+PASS: 场景1：统一时钟接受 2x
+PASS: 场景1：2x 累计推进到 3000ms
+PASS: 场景1：统一时钟接受 4x
+PASS: 场景1：4x 累计推进到 7000ms
+PASS: 场景1：暂停时所有城市时间停止
+PASS: 场景2：下达施工单不预扣全部资源
+PASS: 场景2：施工进度按固定 tick 累计并只扣累计应付 10 木
+PASS: 场景2：暂停后施工与扣料同步停止
+PASS: 场景3：缺料仍可建立合法施工订单
+PASS: 场景3：到首个应付阈值时明确缺料暂停
+PASS: 场景3：补料后同一订单自动恢复且不丢进度
+PASS: 场景4：施工优先级只接受低／普通／高三级
+PASS: 场景4：资源竞争时高优先级先扣料，稳定 ID 只作同级次序
+PASS: 场景5：第 1 日进入 PRESSURE_0
+PASS: 场景5：可持续推进到第 8 日
+PASS: 场景5：可持续推进到第 8 日
+PASS: 场景5：可持续推进到第 8 日
+PASS: 场景5：可持续推进到第 8 日
+PASS: 场景5：可持续推进到第 8 日
+PASS: 场景5：可持续推进到第 8 日
+PASS: 场景5：可持续推进到第 8 日
+PASS: 场景5：第 8 日进入 PRESSURE_1
+PASS: 场景5：可持续推进到第 10 日
+PASS: 场景5：可持续推进到第 10 日
+PASS: 场景5：第 10 日进入 PRESSURE_2
+PASS: 场景5：可持续推进到第 12 日
+PASS: 场景5：可持续推进到第 12 日
+PASS: 场景5：第 12 日进入 PRESSURE_3
+PASS: 场景5：可持续推进到第 14 日
+PASS: 场景5：可持续推进到第 14 日
+PASS: 场景5：第 14 日进入 PRESSURE_4
+PASS: 场景5：压力只增加困难，不造成主城自动失败或死档
+PASS: 场景6：高治安真实缓冲逾期永久损失
+PASS: 场景6：五类生存通道始终高于防死档下限
+PASS: 场景7：战斗重试只恢复 attempt-local 状态
+PASS: 场景7：战斗重试不回滚日期、压力、治安或永久损失
+PASS: 场景8：当前 schema 精确恢复 legacy 施工、扣料、优先级、治安与主线压力
+PASS: 场景8：旧 V3 显式迁移且已付款施工不会重复扣料
+M0_TIME_BUILD_PRESSURE_SMOKE PASS

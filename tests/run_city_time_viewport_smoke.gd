@@ -43,6 +43,7 @@ func _run() -> void:
 	construction.set_process(false)
 	construction.restart_first_map()
 	var initial_food: int = construction.food
+	var expected_upkeep: int = construction.get_maintenance_food_cost()
 	_check(
 		construction.advance_city_time_for_test(
 			construction.SECONDS_PER_DAY
@@ -52,7 +53,7 @@ func _run() -> void:
 	_check(
 		construction.current_day == 2
 			and construction.tech_points == 1
-			and construction.food == initial_food - 4,
+			and construction.food == initial_food - expected_upkeep,
 		"一次日界线只结算一次维护与研究"
 	)
 

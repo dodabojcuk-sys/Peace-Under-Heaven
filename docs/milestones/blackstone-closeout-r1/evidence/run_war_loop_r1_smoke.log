@@ -1,0 +1,20 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+PASS: 数值配置满足比例时先行招降，不进入攻门流程
+PASS: 单兵撤逃会承担最小损失，不会被强制保留一人
+PASS: 撤逃后的受损城门会写回城市并保留到再次进攻
+PASS: 攻守同时阵亡时优先判定攻方失败，不会错误占领
+PASS: 嵌套战争快照的负守军数据会被恢复校验拒绝
+PASS: 两支各七人的编队伤亡写回保持原队列，不会回填为十四人与零人
+PASS: 撤逃创建独立返程军令，反转同一路网段和方向并保留原攻城军令
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 同样经过一秒时，单次与一百次调用只按累计战斗间隔推进四次
+PASS: 军队抵达友方驻扎点后保留同一军队身份
+PASS: 抵达拒降敌城自动进入攻城，不走旧战斗结算
+PASS: 冷恢复保留攻城 tick、城门和守军状态
+PASS: 破门、清剿守军后正式占领并成为驻兵点
+PASS: 双城胜利不会在仅占领赤崖城时提前成立
+PASS: 攻城伤亡同步回同一支宏观军队，不回填黑石城 roster
+PASS: 第二座必占敌城自动招降后，双城军事控制权共同完成胜利
+PASS: 正式攻城撤逃复用物理道路返回驻点，不会因伪造路线 ID 受阻
+WAR_LOOP_R1_SMOKE PASS assertions=16

@@ -1,0 +1,41 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 告示板是独立固定城市入口
+PASS: 点击告示板打开任务列表
+PASS: 任务列表包含三个定义
+PASS: 城郊清剿 卡片显示真实目标和奖励
+PASS: 城郊清剿 卡片状态使用中文，不暴露 AVAILABLE
+PASS: 粮道求援 卡片显示真实目标和奖励
+PASS: 粮道求援 卡片状态使用中文，不暴露 AVAILABLE
+PASS: 失踪斥候 卡片显示真实目标和奖励
+PASS: 失踪斥候 卡片状态使用中文，不暴露 AVAILABLE
+PASS: 粮道求援传入正确 mission_id 并创建 C0
+PASS: C0 读取粮道求援任务定义
+ERROR: FAIL: C0 显示任务名称、目标与实时进度
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_noticeboard_flow_smoke.gd:246)
+       [1] _check_prebattle_return (res://tests/run_noticeboard_flow_smoke.gd:85)
+       [2] _run (res://tests/run_noticeboard_flow_smoke.gd:23)
+PASS: 已有任务时不会创建第二个 BattleSession
+PASS: 战前返回建立取消路径
+PASS: 战前返回零战果并刷新 AVAILABLE 状态
+PASS: 城郊清剿可启动
+PASS: 告示板任务使用现有 BattleSession
+PASS: 任务目标产生正式胜利结果
+PASS: 首次胜利通过原战果事务发放保守奖励
+PASS: 重复确认不重复结算或奖励
+PASS: 胜利可建立返回城市契约
+PASS: 胜利返回内城
+PASS: 返回后任务列表刷新为 COMPLETED
+PASS: 返回摘要显示中文任务名和结果，不暴露 mission_id
+PASS: 已完成任务可重玩
+PASS: 重玩胜利不重复发放首胜奖励
+PASS: 粮道求援可重入
+PASS: 粮车摧毁产生正式失败
+PASS: 任务失败不发放奖励
+PASS: 失踪斥候可启动
+PASS: 失踪斥候未完成目标时全军撤退产生正式 RETREAT
+PASS: 撤退不发放任务奖励
+NOTICEBOARD_FLOW_SMOKE_FAIL count=1

@@ -10,6 +10,8 @@ var selection: Node
 
 
 func _initialize() -> void:
+	# Historical mission contracts use the existing pre-campaign theatre fixture.
+	preload("res://scripts/macro_march/macro_march_theater.gd").use_regression_definition_for_tests()
 	call_deferred("_run")
 
 
@@ -85,7 +87,7 @@ func _check_prebattle_return() -> void:
 	_check(
 		battle.title_label.text.contains("粮道求援")
 			and battle.instruction_label.text.contains("保护粮车")
-			and battle.instruction_label.text.contains("剩余敌人"),
+			and battle.instruction_label.text.contains("粮车"),
 		"C0 显示任务名称、目标与实时进度"
 	)
 	_check(

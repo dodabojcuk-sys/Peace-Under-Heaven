@@ -1,0 +1,166 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 正式出征测试进入已付费 C0
+PASS: 已付费 RESERVED 阶段显示可点击的已确认状态
+PASS: 已付费 RESERVED 阶段拒绝静默返回，粮草与 immutable attempt 零变化
+PASS: 拒绝后仍可正常开始已确认战斗
+ERROR: V5 campaign snapshot validation failed: INVALID_POPULATION_RECOVERY
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5233)
+       [1] _apply_durable_expedition_result_atomic (res://scripts/construction_controller.gd:10367)
+       [2] apply_battle_result_atomic (res://scripts/construction_controller.gd:10046)
+       [3] apply_authorized (res://scripts/combat/battle_result_applier.gd:21)
+       [4] confirm_result (res://scripts/combat/combat_transaction_coordinator.gd:438)
+       [5] confirm_pending_result (res://scripts/combat/c0_battle_graybox.gd:598)
+       [6] confirm_exit_as_retreat (res://scripts/combat/c0_battle_graybox.gd:499)
+       [7] _check_prebattle_button_return (res://tests/run_c0f_battle_exit_return_smoke.gd:52)
+       [8] _make_pending_city (res://tests/run_c0f_battle_exit_return_smoke.gd:301)
+ERROR: 全军撤退战果未能原子写回城市
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _fail_exit_as_retreat (res://scripts/combat/c0_battle_graybox.gd:712)
+       [1] confirm_exit_as_retreat (res://scripts/combat/c0_battle_graybox.gd:500)
+       [2] _check_prebattle_button_return (res://tests/run_c0f_battle_exit_return_smoke.gd:52)
+       [3] _make_pending_city (res://tests/run_c0f_battle_exit_return_smoke.gd:301)
+ERROR: FAIL: 已确认出征通过真实撤退结算收口
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0f_battle_exit_return_smoke.gd:319)
+       [1] _check_prebattle_button_return (res://tests/run_c0f_battle_exit_return_smoke.gd:52)
+       [2] _make_pending_city (res://tests/run_c0f_battle_exit_return_smoke.gd:301)
+ERROR: FAIL: 撤退结算返回同一内城并保留战后摘要门禁
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0f_battle_exit_return_smoke.gd:319)
+       [1] _check_prebattle_button_return (res://tests/run_c0f_battle_exit_return_smoke.gd:59)
+ERROR: FAIL: 撤退只写入一次逐编队战果，不重复扣除出征粮草
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0f_battle_exit_return_smoke.gd:319)
+       [1] _check_prebattle_button_return (res://tests/run_c0f_battle_exit_return_smoke.gd:67)
+PASS: 战前 Esc 测试进入已付费正式 C0
+PASS: 战前 Esc 与按钮一致：已付费出征明确拒绝，零退款零状态篡改
+PASS: Esc 拒绝后仍能开始既有出征
+ERROR: V5 campaign snapshot validation failed: INVALID_POPULATION_RECOVERY
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5233)
+       [1] _apply_durable_expedition_result_atomic (res://scripts/construction_controller.gd:10367)
+       [2] apply_battle_result_atomic (res://scripts/construction_controller.gd:10046)
+       [3] apply_authorized (res://scripts/combat/battle_result_applier.gd:21)
+       [4] confirm_result (res://scripts/combat/combat_transaction_coordinator.gd:438)
+       [5] confirm_pending_result (res://scripts/combat/c0_battle_graybox.gd:598)
+       [6] confirm_exit_as_retreat (res://scripts/combat/c0_battle_graybox.gd:499)
+       [7] _check_prebattle_escape_return (res://tests/run_c0f_battle_exit_return_smoke.gd:102)
+       [8] _make_pending_city (res://tests/run_c0f_battle_exit_return_smoke.gd:301)
+ERROR: 全军撤退战果未能原子写回城市
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _fail_exit_as_retreat (res://scripts/combat/c0_battle_graybox.gd:712)
+       [1] confirm_exit_as_retreat (res://scripts/combat/c0_battle_graybox.gd:500)
+       [2] _check_prebattle_escape_return (res://tests/run_c0f_battle_exit_return_smoke.gd:102)
+       [3] _make_pending_city (res://tests/run_c0f_battle_exit_return_smoke.gd:301)
+PASS: 战中取消测试进入正式 C0
+PASS: 战中取消测试启动 BattleSession
+PASS: 战中 Esc 只打开单个确认框并冻结战斗输入与 tick
+PASS: 连续退出请求不会创建第二个确认框节点
+PASS: 确认框打开时拒绝重复退出请求
+PASS: 取消退出关闭确认框
+PASS: 取消退出恢复原战斗且未改变权威状态
+PASS: 连续 Esc 不叠加确认框，第二次按键等同取消
+ERROR: V5 campaign snapshot validation failed: INVALID_POPULATION_RECOVERY
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5233)
+       [1] _apply_durable_expedition_result_atomic (res://scripts/construction_controller.gd:10367)
+       [2] apply_battle_result_atomic (res://scripts/construction_controller.gd:10046)
+       [3] apply_authorized (res://scripts/combat/battle_result_applier.gd:21)
+       [4] confirm_result (res://scripts/combat/combat_transaction_coordinator.gd:438)
+       [5] confirm_pending_result (res://scripts/combat/c0_battle_graybox.gd:598)
+       [6] confirm_exit_as_retreat (res://scripts/combat/c0_battle_graybox.gd:499)
+       [7] _check_active_exit_cancel (res://tests/run_c0f_battle_exit_return_smoke.gd:161)
+       [8] _make_pending_city (res://tests/run_c0f_battle_exit_return_smoke.gd:301)
+ERROR: 全军撤退战果未能原子写回城市
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _fail_exit_as_retreat (res://scripts/combat/c0_battle_graybox.gd:712)
+       [1] confirm_exit_as_retreat (res://scripts/combat/c0_battle_graybox.gd:500)
+       [2] _check_active_exit_cancel (res://tests/run_c0f_battle_exit_return_smoke.gd:161)
+       [3] _make_pending_city (res://tests/run_c0f_battle_exit_return_smoke.gd:301)
+PASS: 全军撤退测试进入正式 C0
+PASS: 全军撤退测试启动 BattleSession
+PASS: 战中退出先显示后果确认
+ERROR: V5 campaign snapshot validation failed: INVALID_POPULATION_RECOVERY
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5233)
+       [1] _apply_durable_expedition_result_atomic (res://scripts/construction_controller.gd:10367)
+       [2] apply_battle_result_atomic (res://scripts/construction_controller.gd:10046)
+       [3] apply_authorized (res://scripts/combat/battle_result_applier.gd:21)
+       [4] confirm_result (res://scripts/combat/combat_transaction_coordinator.gd:438)
+       [5] confirm_pending_result (res://scripts/combat/c0_battle_graybox.gd:598)
+       [6] confirm_exit_as_retreat (res://scripts/combat/c0_battle_graybox.gd:499)
+       [7] _check_active_exit_confirm (res://tests/run_c0f_battle_exit_return_smoke.gd:183)
+       [8] _make_pending_city (res://tests/run_c0f_battle_exit_return_smoke.gd:301)
+ERROR: 全军撤退战果未能原子写回城市
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _fail_exit_as_retreat (res://scripts/combat/c0_battle_graybox.gd:712)
+       [1] confirm_exit_as_retreat (res://scripts/combat/c0_battle_graybox.gd:500)
+       [2] _check_active_exit_confirm (res://tests/run_c0f_battle_exit_return_smoke.gd:183)
+       [3] _make_pending_city (res://tests/run_c0f_battle_exit_return_smoke.gd:301)
+ERROR: FAIL: 确认退出通过确定性全军撤退生成并应用正式战果
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0f_battle_exit_return_smoke.gd:319)
+       [1] _check_active_exit_confirm (res://tests/run_c0f_battle_exit_return_smoke.gd:183)
+       [2] _make_pending_city (res://tests/run_c0f_battle_exit_return_smoke.gd:301)
+SCRIPT ERROR: Invalid access to property or key 'outcome' on a base object of type 'Dictionary'.
+          at: _check_active_exit_confirm (res://tests/run_c0f_battle_exit_return_smoke.gd:188)
+          GDScript backtrace (most recent call first):
+              [0] _check_active_exit_confirm (res://tests/run_c0f_battle_exit_return_smoke.gd:188)
+              [1] _make_pending_city (res://tests/run_c0f_battle_exit_return_smoke.gd:301)
+PASS: 战后返回测试进入正式 C0
+PASS: 战后返回测试启动 BattleSession
+PASS: 战后返回测试生成真实战果
+PASS: RESULT_PENDING 的 Esc 不绕过战果确认或提前写回
+ERROR: V5 campaign snapshot validation failed: INVALID_POPULATION_RECOVERY
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5233)
+       [1] _apply_durable_expedition_result_atomic (res://scripts/construction_controller.gd:10367)
+       [2] apply_battle_result_atomic (res://scripts/construction_controller.gd:10046)
+       [3] apply_authorized (res://scripts/combat/battle_result_applier.gd:21)
+       [4] confirm_result (res://scripts/combat/combat_transaction_coordinator.gd:438)
+       [5] confirm_pending_result (res://scripts/combat/c0_battle_graybox.gd:598)
+       [6] _check_result_pending_escape_and_postbattle_return (res://tests/run_c0f_battle_exit_return_smoke.gd:257)
+       [7] _make_pending_city (res://tests/run_c0f_battle_exit_return_smoke.gd:301)
+ERROR: FAIL: 战果确认后全局主操作变为返回内城
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0f_battle_exit_return_smoke.gd:319)
+       [1] _check_result_pending_escape_and_postbattle_return (res://tests/run_c0f_battle_exit_return_smoke.gd:258)
+       [2] _make_pending_city (res://tests/run_c0f_battle_exit_return_smoke.gd:301)
+ERROR: FAIL: 战后全局入口返回内城
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0f_battle_exit_return_smoke.gd:319)
+       [1] _check_result_pending_escape_and_postbattle_return (res://tests/run_c0f_battle_exit_return_smoke.gd:265)
+       [2] _make_pending_city (res://tests/run_c0f_battle_exit_return_smoke.gd:301)
+PASS: 重复战后返回请求被防重入保护拒绝
+ERROR: FAIL: 战后返回恢复城市且不重复写回战果
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_c0f_battle_exit_return_smoke.gd:319)
+       [1] _check_result_pending_escape_and_postbattle_return (res://tests/run_c0f_battle_exit_return_smoke.gd:272)
+PASS: SceneTree 保持 auto_accept_quit，操作系统关闭窗口未被战斗页吞掉
+C0F_BATTLE_EXIT_RETURN_SMOKE FAIL (7)
+ - 已确认出征通过真实撤退结算收口
+ - 撤退结算返回同一内城并保留战后摘要门禁
+ - 撤退只写入一次逐编队战果，不重复扣除出征粮草
+ - 确认退出通过确定性全军撤退生成并应用正式战果
+ - 战果确认后全局主操作变为返回内城
+ - 战后全局入口返回内城
+ - 战后返回恢复城市且不重复写回战果

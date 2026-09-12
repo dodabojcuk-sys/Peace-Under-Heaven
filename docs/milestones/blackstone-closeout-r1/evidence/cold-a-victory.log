@@ -1,0 +1,20 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: cold process loads isolated saved generation
+PASS: restored population is conserved
+PASS: formal campaign cannot start legacy noticeboard battle
+PASS: restored pause blocks clock
+PASS: restored city can continue
+PASS: clock resume does not duplicate casualties or population
+PASS: cold resume preserves one invasion identity and reward receipts
+PASS: cold occupied cities determine completion
+PASS: completed campaign still opens field
+PASS: completed campaign returns to city
+PASS: city return preserves original armies and works
+PASS: occupied Silverford exposes finite supply
+PASS: post-victory order reuses exact stationed army
+PASS: no post-victory deadline losses
+PASS: late campaign retains finite training
+PASS: completion UI reads restored controllers
+COLD_RECOVERY {"attempt":"defense-000001","failures":[],"source_sequence":1}

@@ -170,6 +170,8 @@ func _refresh_read_model() -> void:
 		str(mainline.next_stage_name),
 		int(mainline.next_stage_days),
 	]
+	if construction_controller.is_campaign_pressure_cleared():
+		next_stage_summary.text = "战役目标达成 · 经营继续"
 	var garrison: Dictionary = construction_controller.get_garrison_snapshot()
 	var queue: Dictionary = construction_controller.get_training_queue_snapshot()
 	var population: Dictionary = construction_controller.get_population_recovery_read_model()
@@ -365,6 +367,10 @@ func _install_governance_workspace() -> void:
 
 	governance_population_summary = Label.new()
 	governance_population_summary.name = "PopulationRecoverySummary"
+	governance_population_summary.mouse_filter = Control.MOUSE_FILTER_STOP
+	governance_population_summary.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	governance_population_summary.tooltip_text = "点击查看伤员治疗入口；查看不会扣粮或调动人员。"
+	governance_population_summary.gui_input.connect(_on_population_summary_input)
 	governance_population_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	governance_population_summary.add_theme_color_override("font_color", MUTED_TEXT)
 	content.add_child(governance_population_summary)
@@ -664,24 +670,39 @@ func _make_small_action(copy: String) -> Button:
 	return button
 
 
+func _show_governance_action_result(result: Dictionary) -> void:
+	if not bool(result.get("success", false)):
+		governance_issue_detail.text = str(result.get("error", "本次操作未完成，请检查当前人员、资源和保存状态"))
+		governance_issue_detail.visible = true
+
+
 func _adjust_workforce(channel: StringName, delta: int) -> void:
-	construction_controller.adjust_city_workforce(channel, delta)
+	_show_governance_action_result(construction_controller.adjust_city_workforce(channel, delta))
+
+
+func _on_population_summary_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		var scroll := governance_treatment_button.get_parent().get_parent() as ScrollContainer
+		if scroll != null:
+			scroll.ensure_control_visible(governance_treatment_button)
+			governance_treatment_button.grab_focus()
+		governance_population_summary.accept_event()
 
 
 func _begin_wounded_treatment() -> void:
-	construction_controller.begin_wounded_treatment()
+	_show_governance_action_result(construction_controller.begin_wounded_treatment())
 
 
 func _resolve_governance_event() -> void:
-	construction_controller.resolve_city_governance_event()
+	_show_governance_action_result(construction_controller.resolve_city_governance_event())
 
 
 func _decide_refugee(case_id: StringName, decision: StringName) -> void:
-	construction_controller.decide_refugee_case(case_id, decision)
+	_show_governance_action_result(construction_controller.decide_refugee_case(case_id, decision))
 
 
 func _settle_refugee(case_id: StringName) -> void:
-	construction_controller.settle_refugee_case(case_id)
+	_show_governance_action_result(construction_controller.settle_refugee_case(case_id))
 
 
 func _start_governance_definition(definition_id: StringName) -> void:
@@ -700,9 +721,10 @@ func _layout_governance_workspace(
 ) -> void:
 	if not is_instance_valid(governance_workspace):
 		return
-	governance_workspace.position = Vector2(width - right_width - edge, rail_top + 140.0)
+	var governance_width := minf(maxf(right_width, 390.0), width - edge * 2.0)
+	governance_workspace.position = Vector2(width - governance_width - edge, rail_top + 140.0)
 	governance_workspace.size = Vector2(
-		right_width,
+		governance_width,
 		minf(430.0, height - rail_top - 154.0)
 	)
 
@@ -747,6 +769,9 @@ func _refresh_governance_workspace(
 		food,
 		food_capacity,
 	]
+	var forecast: Dictionary = construction_controller.get_city_food_forecast()
+	governance_summary.text += "\n当前日产 %d · 日需 %d · 净额 %+d" % [int(forecast.income), int(forecast.upkeep), int(forecast.net)]
+	governance_summary.tooltip_text = "按当前已完工、连路、在岗建筑估算；日界先付口粮再入库，贸易、军令和事件另计。可建设农田、调岗或贸易处理缺口。"
 	var population: Dictionary = construction_controller.get_population_recovery_read_model()
 	var governance: Dictionary = construction_controller.get_city_governance_read_model()
 	var treatment: Dictionary = Dictionary(population.get("treatment", {}))
@@ -825,10 +850,17 @@ func _refresh_governance_workspace(
 	governance_medical_plus.disabled = int(population.get("available", 0)) <= 0
 	governance_order_minus.disabled = int(population.get("governance_workers", 0)) <= 0
 	governance_order_plus.disabled = int(population.get("available", 0)) <= 0
-	governance_treatment_button.disabled = int(population.get("wounded", 0)) <= 0 or treatment_active
-	governance_treatment_button.text = "治疗进行中 · 占用医疗容量" if treatment_active else "治疗伤员 · 每批最多 6 人"
+	var treatment_preview: Dictionary = construction_controller.preview_wounded_treatment()
+	governance_treatment_button.disabled = not bool(treatment_preview.valid)
+	for button in [governance_production_plus, governance_construction_plus, governance_medical_plus, governance_order_plus]:
+		button.tooltip_text = "没有可用人员；可从其他岗位调回，或等待训练、治疗、安置完成。" if button.disabled else "分配 1 名现有可用人员"
+	for button in [governance_production_minus, governance_construction_minus, governance_medical_minus, governance_order_minus]:
+		button.tooltip_text = "该岗位已无人可调回" if button.disabled else "调回 1 人；会降低该岗位能力"
+	governance_treatment_button.tooltip_text = str(treatment_preview.error) if not bool(treatment_preview.valid) else "只治疗现有伤员，使用当前医舍与真实医疗人员"
+	governance_treatment_button.text = "治疗进行中 · 占用医疗容量" if treatment_active else "治疗 %d 人 · %d 粮" % [int(treatment_preview.count), int(treatment_preview.food_cost)]
 	governance_event_button.visible = StringName(Dictionary(governance.get("active_event", {})).get("phase", &"")) == &"ACTIVE"
 	governance_event_button.disabled = int(population.get("governance_workers", 0)) < 2
+	governance_event_button.tooltip_text = "治理岗位还缺 %d 人" % maxi(2 - int(population.get("governance_workers", 0)), 0) if governance_event_button.disabled else "处置当前事件仍需 2 粮；粮食和住房原因需要另外处理。"
 	if governance_event_button.visible:
 		governance_event_button.text = "处置当前事件 · 粮食 2 · 压力 -18"
 	if not str(governance.get("active_issue", "")).is_empty():
