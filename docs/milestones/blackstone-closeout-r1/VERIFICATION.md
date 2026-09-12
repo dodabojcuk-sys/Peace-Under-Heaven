@@ -82,4 +82,3 @@ checks.
   while economic deadline and social-pressure costs remain real.
 - AGENTS.md and global/project MEMORY.md were not changed. Current state,
   coverage, README, changelog, contract and this evidence report were updated.
-
