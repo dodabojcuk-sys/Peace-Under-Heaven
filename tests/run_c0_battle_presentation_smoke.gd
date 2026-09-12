@@ -127,6 +127,7 @@ func _check_eliminate_projection() -> void:
 func _check_protect_projection() -> void:
 	var setup := _make_session(MISSIONS[1], 20, &"presentation-protect")
 	var session: BattleSession = setup.session
+	_move_protect_enemies_to_objective(session)
 	session.mission_objective_state.protect_target_hp = 300
 	var before := session.get_state_digest()
 	var snapshot := BattlePresentationModel.build_snapshot(
@@ -236,6 +237,7 @@ func _check_scene_selection_and_single_command_path() -> void:
 		20,
 		&"presentation-ui-protect"
 	)
+	_move_protect_enemies_to_objective(protect_setup.session)
 	var protect_snapshot := BattlePresentationModel.build_snapshot(
 		protect_setup.request,
 		protect_setup.session,
@@ -255,9 +257,14 @@ func _check_scene_selection_and_single_command_path() -> void:
 	_check(
 		scene.wagon_panel.visible
 			and scene.wagon_label.text.contains("粮车")
-			and int(scene.wagon_health.value) == 420
-			and scene.front_enemy_count_label.text.contains("攻击粮车"),
-		"护送任务显示固定粮车、生命条及攻击方向"
+			and int(scene.wagon_health.value) == 420,
+		"护送任务显示固定粮车及权威生命条"
+	)
+	_check(
+		scene.front_enemy_marker.visible
+			and scene.wagon_label.text.contains("遭受威胁")
+			and scene.front_enemy_count_label.text.contains("瞭望台完工后显示兵力"),
+		"已抵达保护目标的路线显示威胁，同时在侦察前保留兵力未知"
 	)
 	var scout_setup := _make_session(
 		MISSIONS[2],
@@ -435,6 +442,16 @@ func _make_session(
 		"request": request,
 		"session": BattleSession.new(request),
 	}
+
+
+## Protect-route warnings describe enemies that have actually reached the
+## protected objective. The fixture advances only that positional authority;
+## production code still derives the warning without mutating battle state.
+func _move_protect_enemies_to_objective(session: BattleSession) -> void:
+	for route_id in session.routes:
+		var route: Dictionary = session.routes[route_id]
+		route.enemy_position_fixed = route.distance_fixed
+		session.routes[route_id] = route
 
 
 func _check(condition: bool, description: String) -> void:

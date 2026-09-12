@@ -44,6 +44,9 @@ func _run() -> void:
 	var barricade_button := plan_panel.get_node("BarricadeButton") as Button
 	var spike_trap_button := plan_panel.get_node("SpikeTrapButton") as Button
 	var confirm_button := plan_panel.get_node("ConfirmButton") as Button
+	var squad_controls := battle.get_node("UI/RootPanel/SquadControls") as Control
+	var selected_panel := battle.get_node("UI/RootPanel/SelectedSquadPanel") as Control
+	var start_button := battle.get_node("UI/RootPanel/StartButton") as Button
 	watch_button.emit_signal("pressed")
 	arrow_button.emit_signal("pressed")
 	barricade_button.emit_signal("pressed")
@@ -61,8 +64,23 @@ func _run() -> void:
 		"可见守城工事面板经正式按钮选择侧翼瞭望台、箭塔和拒马"
 	)
 	_check(
+		battle.title_label.text == "黑石城门防守"
+			and battle.status_label.text.contains("黑石守军")
+			and battle.status_label.text.contains("保护黑石城门")
+			and battle.instruction_label.text.contains("消灭全部来袭敌军")
+			and battle.direction_label.text.contains("敌军由北门与东门方向推进")
+			and battle.exit_button.text == "守城已确认",
+		"正式守城显示被保护地点、守军身份、敌军推进方向、保护目标和正确返回语义"
+	)
+	_check(
 		not _action_controls_cover_battlefield(battle, [plan_panel]),
 		"战前工事计划位于独立操作区，不覆盖可见路线"
+	)
+	_check(
+		not _visible_controls_overlap([
+			plan_panel, squad_controls, selected_panel, start_button,
+		]),
+		"守城工事、小队选择、人数路线按钮、当前命令和开始按钮互不重叠"
 	)
 	for viewport_size in [Vector2i(1280, 720), Vector2i(1920, 1080)]:
 		root.size = viewport_size
@@ -260,6 +278,18 @@ func _action_controls_cover_battlefield(battle: C0BattleGraybox, controls: Array
 		var control := control_value as Control
 		if control != null and control.visible and battlefield_rect.intersects(control.get_global_rect()):
 			return true
+	return false
+
+
+func _visible_controls_overlap(controls: Array) -> bool:
+	for left_index in range(controls.size()):
+		var left := controls[left_index] as Control
+		if left == null or not left.visible:
+			continue
+		for right_index in range(left_index + 1, controls.size()):
+			var right := controls[right_index] as Control
+			if right != null and right.visible and left.get_global_rect().intersects(right.get_global_rect()):
+				return true
 	return false
 
 

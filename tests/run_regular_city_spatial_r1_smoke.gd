@@ -191,6 +191,7 @@ func _run() -> void:
 	legacy_v2.garrison = _legacy_garrison_projection(snapshot.garrison)
 	legacy_v2.erase("mainline_level")
 	legacy_v2.erase("build_slot")
+	legacy_v2.erase("war_loop")
 	legacy_v2.city.erase("security")
 	for placement in legacy_v2.placements:
 		for key in [

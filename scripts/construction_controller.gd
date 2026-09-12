@@ -3250,6 +3250,44 @@ func get_macro_siege_battle_result_authority_snapshot(
 	return Dictionary(handoff.get("result_authority_snapshot", {})).duplicate(true)
 
 
+## Source-aware C0 copy reads the existing army, siege and theatre owners. It
+## does not persist a second battle identity or turn field construction into a
+## battle facility.
+func get_macro_siege_player_context(
+	army_id: StringName,
+	city_id: StringName,
+	transaction_id: StringName
+) -> Dictionary:
+	var army := _army_registry.get_army(army_id)
+	var siege := _war_loop_state.get_siege(city_id)
+	var handoff := _war_loop_state.get_wartime_handoff(city_id)
+	if (
+		army.is_empty()
+		or siege.is_empty()
+		or transaction_id == &""
+		or StringName(siege.get("army_id", &"")) != army_id
+		or StringName(handoff.get("transaction_id", &"")) != transaction_id
+	):
+		return {}
+	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	var target := MACRO_MARCH_THEATER.get_point(city_id)
+	var route_id := StringName(macro.get("route_id", &""))
+	var route := MACRO_MARCH_THEATER.get_route(route_id)
+	var source_id := StringName(macro.get("source_point_id", &""))
+	var source := MACRO_MARCH_THEATER.get_point(source_id)
+	return {
+		"army_id": army_id,
+		"order_id": StringName(macro.get("order_id", &"")),
+		"target_city_id": city_id,
+		"target_city_name": str(target.get("display_name", city_id)),
+		"approach_route_id": route_id,
+		"approach_route_name": str(route.get("display_name", route_id)),
+		"source_point_id": source_id,
+		"source_point_name": str(source.get("display_name", source_id)),
+		"departure_food_cost": int(macro.get("food_cost", 0)),
+	}
+
+
 func _on_macro_siege_wartime_returned(_summary: Dictionary) -> void:
 	_formal_battle_scene = null
 	_refresh_city_ui()

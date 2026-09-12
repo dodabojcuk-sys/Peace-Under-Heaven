@@ -21,6 +21,7 @@ const DEBUG_PLAYER_COUNT := 50
 @onready var status_label: Label = $UI/RootPanel/StatusLabel
 @onready var title_label: Label = $UI/RootPanel/Title
 @onready var instruction_label: Label = $UI/RootPanel/Instruction
+@onready var direction_label: Label = $UI/RootPanel/Battlefield/DirectionLabel
 @onready var front_state_label: Label = (
 	$UI/RootPanel/FrontLane/StateLabel
 )
@@ -169,6 +170,7 @@ var _presentation_snapshot: Dictionary = {}
 var _recent_actions: Array[String] = []
 var _pending_wartime_facility_plan: Dictionary = {}
 var _selected_repair_facility_id: StringName = &""
+var _battle_context: Dictionary = {}
 
 
 func _ready() -> void:
@@ -213,11 +215,13 @@ func _ready() -> void:
 		_create_city_fixture()
 	_create_battle_request()
 	if request != null:
+		_battle_context = _build_battle_context()
 		_pending_wartime_facility_plan = request.wartime_facility_plan.duplicate(true)
 		_resume_active_battle_if_available()
 	_create_squad_controls()
 	_apply_northern_visual_palette()
-	_append_recent_action("选择小队，安排战前路线")
+	_append_source_context_feedback()
+	_append_recent_action("选择小队，核对部署路线与有效命令")
 	_refresh_battle_ui()
 	call_deferred("_grab_initial_focus")
 
@@ -547,20 +551,11 @@ func confirm_pending_result() -> Dictionary:
 		confirm_button.grab_focus()
 		return {}
 	_confirmed_summary = summary.duplicate(true)
-	result_label.text = (
-		"%s\n幸存 %d｜伤亡 %d\n%s\n木材 +%d｜粮食 +%d%s%s"
-		% [
-			_outcome_id_text(StringName(summary.outcome)),
-			int(summary.survivor_count),
-			int(summary.casualty_count),
-			_prepared_cost_text(int(summary.get("actual_food_cost", 0))),
-			int(summary.accepted_wood_reward),
-			int(summary.accepted_food_reward),
-			"\n首通奖励已结算"
-				if bool(summary.first_clear_granted)
-				else "",
-			_formation_result_text(summary),
-		]
+	result_label.text = _confirmed_result_text(summary)
+	return_button.text = (
+		"返回黑石战区"
+		if request.source_id == BattleRequest.SOURCE_MACRO_SIEGE
+		else "返回黑石城"
 	)
 	return_button.visible = true
 	return_button.disabled = false
@@ -750,12 +745,12 @@ func _create_squad_controls() -> void:
 		var squad_id := int(squad_snapshot.squad_id)
 		var panel := VBoxContainer.new()
 		panel.name = "Squad%d" % squad_id
-		panel.custom_minimum_size = Vector2(134.0, 148.0)
+		panel.custom_minimum_size = Vector2(134.0, 130.0)
 		squad_controls.add_child(panel)
 
 		var select_button := Button.new()
 		select_button.name = "SelectButton"
-		select_button.custom_minimum_size = Vector2(0.0, 44.0)
+		select_button.custom_minimum_size = Vector2(0.0, 36.0)
 		select_button.text = str(
 			squad_snapshot.get(
 				"display_name",
@@ -769,12 +764,12 @@ func _create_squad_controls() -> void:
 		status.name = "Status"
 		status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		status.custom_minimum_size = Vector2(130.0, 48.0)
+		status.custom_minimum_size = Vector2(130.0, 38.0)
 		panel.add_child(status)
 
 		var route_button := Button.new()
 		route_button.name = "RouteButton"
-		route_button.custom_minimum_size = Vector2(0.0, 44.0)
+		route_button.custom_minimum_size = Vector2(0.0, 36.0)
 		route_button.pressed.connect(_on_route_button_pressed.bind(squad_id))
 		if _is_route_deployment_locked():
 			route_button.disabled = true
@@ -1048,34 +1043,41 @@ func _refresh_battle_ui() -> void:
 		request,
 		coordinator.active_session,
 		presentation_mission,
-		_selected_squad_id
+		_selected_squad_id,
+		_battle_context
 	)
 	_capture_presentation_changes(_presentation_snapshot, next_snapshot)
 	_presentation_snapshot = next_snapshot
 	title_label.text = str(next_snapshot.title)
 	status_label.text = (
-		"战前部署 · 参战 %d 人 · %s"
+		"%s · 战前部署 · 参战 %d 人 · %s"
 		% [
+			_source_identity_text(),
 			request.committed_force.get_committed_total(),
 			(
 				"守城无出征粮草消耗"
 				if request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE
-				else "粮草已锁定 %d" % request.committed_food_cost
+				else (
+					"出征粮已扣 %d · 本场不再扣粮"
+					% int(_battle_context.get("departure_food_cost", 0))
+					if macro_siege_mode
+					else "粮草已锁定 %d" % request.committed_food_cost
+				)
 			),
 		]
 		if request.phase == BattleRequest.PHASE_RESERVED
-		else "%s · %.1f 秒" % [
+		else "%s · %s · %.1f 秒" % [
+			_source_identity_text(),
 			str(next_snapshot.phase_text),
 			float(next_snapshot.elapsed_seconds),
 		]
 	)
 	var objective_text := str(next_snapshot.objective_text)
-	if presentation_mission == null:
-		objective_text = "突破任一城门并击溃该路线守军"
 	instruction_label.text = "目标：%s｜%s" % [
 		objective_text,
 		str(next_snapshot.objective.progress_text),
 	]
+	direction_label.text = _direction_text()
 	var routes: Array = next_snapshot.routes
 	_refresh_route_ui(
 		routes[0],
@@ -1102,15 +1104,7 @@ func _refresh_battle_ui() -> void:
 			int(state.initial_members),
 			str(state.state_text),
 		]
-		_squad_ui[squad_id].route_button.text = (
-			"%s（可调整部署）" % str(state.route_name)
-			if _can_edit_defense_deployment()
-			else (
-				"%s（部署已锁定）" % str(state.route_name)
-				if _uses_prepared_expedition()
-				else str(state.route_name)
-			)
-		)
+		_squad_ui[squad_id].route_button.text = _squad_route_button_text(state)
 		_squad_ui[squad_id].route_button.visible = request.phase == BattleRequest.PHASE_RESERVED
 		_squad_ui[squad_id].route_button.disabled = _is_route_deployment_locked()
 		_squad_ui[squad_id].select_button.text = (
@@ -1230,7 +1224,20 @@ func _refresh_wartime_action_layout() -> void:
 		or wartime_gate_repair_button.visible
 		or wartime_facility_status_label.visible
 	)
-	battlefield_panel.offset_bottom = -218.0 if needs_action_rail else -202.0
+	var planning_with_squads := wartime_plan_panel.visible
+	battlefield_panel.offset_bottom = -302.0 if planning_with_squads else (-218.0 if needs_action_rail else -202.0)
+	if planning_with_squads:
+		wartime_plan_panel.offset_top = -294.0
+		wartime_plan_panel.offset_bottom = -162.0
+		squad_controls.offset_top = -154.0
+		squad_controls.offset_bottom = -16.0
+		$UI/RootPanel/SelectedSquadPanel.offset_top = -294.0
+	else:
+		wartime_plan_panel.offset_top = -194.0
+		wartime_plan_panel.offset_bottom = -62.0
+		squad_controls.offset_top = -188.0
+		squad_controls.offset_bottom = -24.0
+		$UI/RootPanel/SelectedSquadPanel.offset_top = -188.0
 
 
 func _toggle_wartime_facility(kind: StringName) -> void:
@@ -1647,16 +1654,20 @@ func _refresh_exit_ui() -> void:
 		return
 	if request.phase == BattleRequest.PHASE_RESERVED:
 		exit_button.text = (
-			"出征已确认"
-			if _uses_prepared_expedition()
-			else "返回内城"
+			"守城已确认"
+			if request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE
+			else (
+				"出征已确认"
+				if _uses_prepared_expedition()
+				else ("返回战区（保留围城）" if macro_siege_mode else "返回内城")
+			)
 		)
 	elif request.phase == BattleRequest.PHASE_ACTIVE:
-		exit_button.text = "退出战斗"
+		exit_button.text = "撤退并返回战区" if macro_siege_mode else "撤离并返回内城"
 	elif request.phase == BattleRequest.PHASE_RESULT_PENDING:
 		exit_button.text = "请先确认战果"
 	elif request.phase == BattleRequest.PHASE_APPLIED:
-		exit_button.text = "返回内城"
+		exit_button.text = "返回黑石战区" if macro_siege_mode else "返回黑石城"
 	else:
 		exit_button.text = "正在返回"
 	exit_button.disabled = (
@@ -1944,6 +1955,12 @@ func _get_route_name(route_id: StringName) -> String:
 			if route_id == CommittedForceSnapshot.FRONT_ROUTE
 			else effective_mission.side_route_name
 		)
+	if macro_siege_mode:
+		return (
+			"主攻线·%s" % str(_battle_context.get("approach_route_name", "外部攻城道路"))
+			if route_id == CommittedForceSnapshot.FRONT_ROUTE
+			else "预备线·无外部军令"
+		)
 	return (
 		"正门路线"
 		if route_id == CommittedForceSnapshot.FRONT_ROUTE
@@ -1961,13 +1978,14 @@ func _show_pending_result(battle_result: BattleResult) -> void:
 	return_button.visible = false
 	return_button.disabled = true
 	result_label.text = (
-		"%s\n第 %d 战斗刻｜幸存 %d｜伤亡 %d\n%s\n确认后写回城市%s"
+		"%s\n第 %d 战斗刻｜幸存 %d｜伤亡 %d\n%s\n%s%s"
 		% [
 			_outcome_text(battle_result.outcome),
 			battle_result.finished_tick,
 			battle_result.survivor_count,
 			battle_result.casualty_count,
 			_prepared_cost_text(),
+			_pending_result_destination_text(battle_result),
 			_formation_result_text_from_result(battle_result),
 		]
 	)
@@ -2012,6 +2030,126 @@ func _apply_northern_visual_palette() -> void:
 
 func _uses_prepared_expedition() -> bool:
 	return prepared_expedition_request != null and not noticeboard_mission_mode
+
+
+func _build_battle_context() -> Dictionary:
+	if (
+		macro_siege_mode
+		and city_controller != null
+		and request != null
+		and city_controller.has_method("get_macro_siege_player_context")
+	):
+		return city_controller.get_macro_siege_player_context(
+			macro_siege_army_id, macro_siege_city_id, request.transaction_id
+		)
+	return {}
+
+
+func _source_identity_text() -> String:
+	if request == null:
+		return "战斗来源未知"
+	if request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		return "我方攻城 · 原军队 %s" % str(_battle_context.get("army_id", macro_siege_army_id))
+	if request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		return "黑石守军 · 保护黑石城门"
+	return "我方出征"
+
+
+func _append_source_context_feedback() -> void:
+	if request == null:
+		return
+	if request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		_append_recent_action(
+			"%s把原军队从%s送抵%s；C0 两线是城下接近方向，不是新的战区地图" % [
+				str(_battle_context.get("approach_route_name", "外部道路")),
+				str(_battle_context.get("source_point_name", "原驻点")),
+				str(_battle_context.get("target_city_name", "目标城")),
+			]
+		)
+		_append_recent_action("外部道路、桥、驻点与瞭望塔继续留在战区；本场攻城槌和箭塔仅属于本次战斗")
+	elif request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		_append_recent_action("敌军由北门城墙与东门壕沟推进；黑石城门失守会使本次城防归零")
+		_append_recent_action("守城可用瞭望台、箭塔、拒马和刺钉陷阱；均只属于本次防守")
+
+
+func _pending_result_destination_text(battle_result: BattleResult) -> String:
+	if request != null and request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		return (
+			"确认后写回战区：原军队驻扎%s，控制权更新一次"
+			% str(_battle_context.get("target_city_name", "目标城"))
+			if battle_result.outcome == BattleOutcome.Value.VICTORY
+			else "确认后写回战区：原军队按战果撤退或关闭，目标城不被占领"
+		)
+	if request != null and request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		return (
+			"确认后写回黑石城：城门守住，守军战损保留"
+			if battle_result.outcome == BattleOutcome.Value.VICTORY
+			else "确认后写回黑石城：城防按实际失守结果更新"
+		)
+	return "确认后写回城市"
+
+
+func _confirmed_result_text(summary: Dictionary) -> String:
+	var outcome := _outcome_id_text(StringName(summary.get("outcome", &"")))
+	var force_text := "幸存 %d｜伤亡 %d" % [
+		int(summary.get("survivor_count", 0)),
+		int(summary.get("casualty_count", 0)),
+	]
+	if request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		var disposition := (
+			"原军队已驻扎%s；目标城控制权已更新" % str(
+				_battle_context.get("target_city_name", "目标城")
+			)
+			if StringName(summary.get("outcome", &"")) == &"VICTORY"
+			else "原军队已按真实幸存状态进入返程或关闭；目标城未占领"
+		)
+		return "%s\n%s\n行军粮草未重复扣除｜%s%s" % [
+			outcome, force_text, disposition, _formation_result_text(summary),
+		]
+	if request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		var defense_text := (
+			"黑石城门守住；守军战损已保存"
+			if StringName(summary.get("outcome", &"")) == &"VICTORY"
+			else "黑石城门失守；城防按实际结果更新"
+		)
+		return "%s\n%s\n守城无出征粮草消耗｜%s%s" % [
+			outcome, force_text, defense_text, _formation_result_text(summary),
+		]
+	return "%s\n%s\n%s\n木材 +%d｜粮食 +%d%s%s" % [
+		outcome,
+		force_text,
+		_prepared_cost_text(int(summary.get("actual_food_cost", 0))),
+		int(summary.get("accepted_wood_reward", 0)),
+		int(summary.get("accepted_food_reward", 0)),
+		"\n首通奖励已结算" if bool(summary.get("first_clear_granted", false)) else "",
+		_formation_result_text(summary),
+	]
+
+
+func _direction_text() -> String:
+	if request == null:
+		return "战斗方向未建立"
+	if request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		return "我方攻城集结区  →  城门主攻线  →  %s守军" % str(
+			_battle_context.get("target_city_name", "目标城")
+		)
+	if request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
+		return "黑石守军 / 城门保护区  ←  敌军由北门与东门方向推进"
+	return "我方集结区 / 撤离区  ←  敌军据守方向"
+
+
+func _squad_route_button_text(state: Dictionary) -> String:
+	if request != null and request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		return (
+			"主攻线 · 外部军令锁定"
+			if StringName(state.get("route_id", &"")) == CommittedForceSnapshot.FRONT_ROUTE
+			else "预备线 · 外部军令锁定"
+		)
+	if _can_edit_defense_deployment():
+		return "%s · 可调整" % str(state.route_name)
+	if _uses_prepared_expedition():
+		return "%s · 已锁定" % str(state.route_name)
+	return str(state.route_name)
 
 
 func _can_edit_defense_deployment() -> bool:

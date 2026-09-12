@@ -1215,7 +1215,19 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		var war: Dictionary = model.get("war_loop", {})
 		var siege := _siege_for_army(war, StringName(army.get("army_id", &"")))
 		if StringName(army.phase) == ARMY_REGISTRY.PHASE_SIEGING:
-			_detail_label.text = "城门耐久：%d\n守军：%d\n我军可战：%d\n自动先行招降，未降则攻门并清剿守军。" % [int(siege.get("gate_hp", 0)), ceili(float(int(siege.get("defender_total_hp", 0))) / maxf(float(int(siege.get("defender_hp_per_member", 1))), 1.0)), ceili(float(int(siege.get("attacker_total_hp", 0))) / maxf(float(int(siege.get("attacker_hp_per_member", 1))), 1.0))]
+			var approach_route := THEATER.get_route(StringName(macro.get("route_id", &"")))
+			_detail_label.text = "%s围城 · 我方攻城\n原军队：%s · %d 人可战\n来源：%s → %s\n城门耐久：%d｜守军：%d\n进入后沿同一主攻方向作战；胜利原军驻扎，撤退沿原路返程。" % [
+				str(target.get("display_name", macro.target_point_id)),
+				str(army.get("army_id", &"")),
+				ceili(float(int(siege.get("attacker_total_hp", 0))) / maxf(float(int(siege.get("attacker_hp_per_member", 1))), 1.0)),
+				str(approach_route.get("display_name", macro.get("route_id", &""))),
+				str(target.get("display_name", macro.target_point_id)),
+				int(siege.get("gate_hp", 0)),
+				ceili(float(int(siege.get("defender_total_hp", 0))) / maxf(float(int(siege.get("defender_hp_per_member", 1))), 1.0)),
+			]
+			_siege_battle_button.text = "进入%s攻城 · 沿用原军队" % str(
+				target.get("display_name", macro.target_point_id)
+			)
 		else:
 			var blocked_detail := ""
 			if StringName(army.phase) == ARMY_REGISTRY.PHASE_BLOCKED:

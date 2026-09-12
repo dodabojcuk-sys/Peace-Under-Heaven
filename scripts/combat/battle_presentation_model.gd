@@ -12,7 +12,8 @@ static func build_snapshot(
 	request: BattleRequest,
 	session: BattleSession,
 	mission: MissionDefinition,
-	selected_squad_id := -1
+	selected_squad_id := -1,
+	battle_context: Dictionary = {}
 ) -> Dictionary:
 	if request == null or request.committed_force == null:
 		return {}
@@ -24,7 +25,9 @@ static func build_snapshot(
 	var routes: Array[Dictionary] = []
 	for route_id in ROUTE_IDS:
 		routes.append(
-			_build_route(request, session, effective_mission, route_id)
+			_build_route(
+				request, session, effective_mission, route_id, battle_context
+			)
 		)
 
 	var squads: Array[Dictionary] = []
@@ -40,12 +43,8 @@ static func build_snapshot(
 		)
 
 	return {
-		"title": effective_mission.title if effective_mission != null else "北坡防御战",
-		"objective_text": (
-			effective_mission.objective_text
-			if effective_mission != null
-			else "突破两处城门并击溃守军"
-		),
+		"title": _battle_title(request, effective_mission, battle_context),
+		"objective_text": _objective_text(request, effective_mission, battle_context),
 		"phase_text": _phase_text(request.phase),
 		"tick": session.current_tick if session != null else 0,
 		"elapsed_seconds": (
@@ -65,7 +64,8 @@ static func _build_route(
 	request: BattleRequest,
 	session: BattleSession,
 	mission: MissionDefinition,
-	route_id: StringName
+	route_id: StringName,
+	battle_context: Dictionary = {}
 ) -> Dictionary:
 	var initial: Dictionary = request.enemy_force.route_states.get(route_id, {})
 	var distance_fixed := _initial_distance_fixed(mission, route_id)
@@ -103,7 +103,7 @@ static func _build_route(
 				StringName(facilities.get("watch_route_id", &"")),
 			]))
 		)
-	var route_name := _route_name(mission, route_id)
+	var route_name := _route_name(request, mission, route_id, battle_context)
 	var engaged_squads: Array[int] = []
 	if session != null:
 		for squad in session.squads:
@@ -337,8 +337,10 @@ static func _initial_distance_fixed(
 
 
 static func _route_name(
+	request: BattleRequest,
 	mission: MissionDefinition,
-	route_id: StringName
+	route_id: StringName,
+	battle_context: Dictionary = {}
 ) -> String:
 	if mission != null:
 		return (
@@ -346,11 +348,45 @@ static func _route_name(
 			if route_id == CommittedForceSnapshot.FRONT_ROUTE
 			else mission.side_route_name
 		)
+	if request != null and request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		if route_id == CommittedForceSnapshot.FRONT_ROUTE:
+			return "主攻线·%s" % str(
+				battle_context.get("approach_route_name", "外部攻城道路")
+			)
+		return "预备线·无外部军令"
 	return (
 		"正门路线"
 		if route_id == CommittedForceSnapshot.FRONT_ROUTE
 		else "侧门路线"
 	)
+
+
+static func _battle_title(
+	request: BattleRequest,
+	mission: MissionDefinition,
+	battle_context: Dictionary
+) -> String:
+	if mission != null:
+		return mission.title
+	if request != null and request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		return "%s攻城战 · 我方攻城" % str(
+			battle_context.get("target_city_name", "敌城")
+		)
+	return "北坡战斗"
+
+
+static func _objective_text(
+	request: BattleRequest,
+	mission: MissionDefinition,
+	battle_context: Dictionary
+) -> String:
+	if mission != null:
+		return mission.objective_text
+	if request != null and request.source_id == BattleRequest.SOURCE_MACRO_SIEGE:
+		return "突破%s城门并消灭守军；胜利后原军队驻扎，撤退则沿原路返程" % str(
+			battle_context.get("target_city_name", "目标城")
+		)
+	return "突破任一城门并击溃该路线守军"
 
 
 static func _phase_text(phase: StringName) -> String:

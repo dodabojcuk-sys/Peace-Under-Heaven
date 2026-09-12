@@ -1,5 +1,23 @@
 # Changelog
 
+## 2026-09-12 - Source-aware siege and defense continuity
+
+- Replaced the shared fallback battle copy with source-aware Redcliff assault
+  and Blackstone defense identities, objectives, force summaries, directions,
+  victory/failure consequences, and return destinations.
+- Projected the existing macro army, formation strength, target gate, supply,
+  and approach-road identity into C0 without granting unsupported bonuses or
+  moving persistent field works into the battle-session lifecycle.
+- Reflowed the compact C0 action area so facility planning, squad selection,
+  counts, route controls, selected commands, and start action do not overlap.
+- Added continuous graphical journeys for visible field-siege entry through
+  Redcliff occupation/field return and visible city-gate defense through
+  natural facility damage, repair, victory settlement, and city return.
+- Corrected the regular-city schema-2 migration fixture so it removes the
+  later `war_loop` root field before testing the historical snapshot shape.
+- Documented the five-layer source/ownership/return map and kept native-pointer
+  player acceptance open.
+
 ## 2026-09-12 - Effectful macro-siege facility planning
 
 - Restricted new macro-siege facility submissions to the two works that the

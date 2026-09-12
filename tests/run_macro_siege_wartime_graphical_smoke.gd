@@ -27,6 +27,8 @@ func _run() -> void:
 	var city: Node = city_scene.get_node("ConstructionController")
 	city.set_process(false)
 	city.food = 120
+	_check(city_scene.open_macro_march_r0(), "玩家可从常态内城打开正式黑石战区")
+	var macro_screen := city_scene.get_node("UI/MacroMarchR0") as MacroMarchR0
 	var roster: Array[Dictionary] = city.get_formation_roster()
 	var first_leg: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
 	var north_order: Dictionary = city.commit_macro_march_from_city(
@@ -51,7 +53,13 @@ func _run() -> void:
 		0, int(siege_macro.get("total_millis", 0))
 	)
 	var army_id := StringName(siege_army.get("army_id", &""))
-	var entered: bool = city.enter_macro_siege_wartime(army_id, &"redcliff_city")
+	macro_screen._selected_army_id = army_id
+	macro_screen.refresh()
+	await _frames(2)
+	var siege_entry_button := macro_screen._siege_battle_button as Button
+	var entry_visible := siege_entry_button.visible and not siege_entry_button.disabled
+	siege_entry_button.emit_signal("pressed")
+	var entered := entry_visible
 	await _frames(3)
 	var battle := city.get_formal_battle_scene() as C0BattleGraybox
 	if battle == null:
@@ -65,7 +73,20 @@ func _run() -> void:
 	var barricade_button := plan_panel.get_node("BarricadeButton") as Button
 	var spike_trap_button := plan_panel.get_node("SpikeTrapButton") as Button
 	var confirm_button := plan_panel.get_node("ConfirmButton") as Button
+	var squad_controls := battle.get_node("UI/RootPanel/SquadControls") as Control
+	var selected_panel := battle.get_node("UI/RootPanel/SelectedSquadPanel") as Control
+	var start_button := battle.get_node("UI/RootPanel/StartButton") as Button
 	_capture("macro-siege-01-effectful-plan-engine-gui.png")
+	_check(
+		battle.title_label.text.contains("赤崖城攻城战")
+			and battle.title_label.text.contains("我方攻城")
+			and battle.status_label.text.contains(String(army_id))
+			and battle.instruction_label.text.contains("胜利后原军队驻扎")
+			and battle.front_route_name_label.text.contains("赤崖攻城道")
+			and battle.side_route_name_label.text.contains("无外部军令")
+			and battle.exit_button.text.contains("返回战区"),
+		"宏观围城显示真实目标、攻城身份、原军队、外部道路来源和战区返回去向"
+	)
 	_check(
 		entered
 			and plan_panel.visible
@@ -80,6 +101,12 @@ func _run() -> void:
 	_check(
 		not _action_controls_cover_battlefield(battle, [plan_panel]),
 		"宏观围城工事面板位于独立操作区，不覆盖战斗路线"
+	)
+	_check(
+		not _visible_controls_overlap([
+			plan_panel, squad_controls, selected_panel, start_button,
+		]),
+		"宏观围城工事、小队选择、人数路线按钮、当前命令和开始按钮互不重叠"
 	)
 	for viewport_size in [Vector2i(1280, 720), Vector2i(1920, 1080)]:
 		root.size = viewport_size
@@ -115,6 +142,50 @@ func _run() -> void:
 		gate_after == maxi(0, gate_before - BattleSession.SIEGE_RAM_GATE_DAMAGE),
 		"完成后的攻城槌从可见战斗刻写入真实城门耐久"
 	)
+	for squad_value in battle.request.committed_force.squads:
+		var squad_id := int(Dictionary(squad_value).get("squad_id", 0))
+		var select_button := battle.get_node(
+			"UI/RootPanel/SquadControls/Squad%d/SelectButton" % squad_id
+		) as Button
+		select_button.emit_signal("pressed")
+		battle.selected_advance_button.emit_signal("pressed")
+	var battle_result: BattleResult
+	for _tick in range(BattleSession.MAX_BATTLE_TICKS + 2):
+		battle_result = battle.step_battle_for_test(1)
+		if battle_result != null:
+			break
+	_check(
+		battle_result != null and battle_result.outcome == BattleOutcome.Value.VICTORY,
+		"原军队经可见小队选择和推进命令完成同一场赤崖攻城"
+	)
+	if battle_result == null:
+		_finish(city_scene)
+		return
+	_capture("macro-siege-05-victory-pending-engine-gui.png")
+	var summary := battle.confirm_pending_result()
+	await _frames(2)
+	_capture("macro-siege-06-victory-confirmed-engine-gui.png")
+	_check(
+		not summary.is_empty()
+			and battle.return_button.text == "返回黑石战区"
+			and battle.result_label.text.contains("原军队已驻扎赤崖城"),
+		"胜利结算说明原军队去向、目标控制变化和正确返回位置"
+	)
+	battle.return_button.emit_signal("pressed")
+	await _frames(4)
+	_capture("macro-siege-07-returned-war-zone-engine-gui.png")
+	var redcliff: Dictionary = Dictionary(
+		Dictionary(city.get_macro_march_read_model().get("war_loop", {})).get(
+			"cities_by_id", {}
+		)
+	).get(&"redcliff_city", {})
+	_check(
+		city_scene.is_macro_march_r0_open()
+			and macro_screen.visible
+			and StringName(redcliff.get("military_controller_faction_id", &"")) == &"player"
+			and StringName(city.get_army_state(army_id).get("phase", &"")) == ArmyRegistry.PHASE_STATIONED,
+		"确认后回到仍可操作的黑石战区，赤崖控制权和同一原军驻扎均已写回"
+	)
 	print("MACRO_SIEGE_WARTIME_GUI_EVIDENCE ram_button_signal=true arrow_button_signal=true plan_confirm_signal=true")
 	_finish(city_scene)
 
@@ -137,6 +208,18 @@ func _action_controls_cover_battlefield(battle: C0BattleGraybox, controls: Array
 		var control := control_value as Control
 		if control != null and control.visible and battlefield_rect.intersects(control.get_global_rect()):
 			return true
+	return false
+
+
+func _visible_controls_overlap(controls: Array) -> bool:
+	for left_index in range(controls.size()):
+		var left := controls[left_index] as Control
+		if left == null or not left.visible:
+			continue
+		for right_index in range(left_index + 1, controls.size()):
+			var right := controls[right_index] as Control
+			if right != null and right.visible and left.get_global_rect().intersects(right.get_global_rect()):
+				return true
 	return false
 
 
