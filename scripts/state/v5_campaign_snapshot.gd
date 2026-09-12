@@ -3,7 +3,7 @@ extends RefCounted
 
 
 const MACRO_MARCH_THEATER = preload("res://scripts/macro_march/macro_march_theater.gd")
-const SCHEMA_VERSION := 11
+const SCHEMA_VERSION := 12
 const SNAPSHOT_KIND := &"campaign_authoritative"
 const CITY_ID := "blackstone_city"
 const ROOT_KEYS := [
@@ -101,6 +101,20 @@ const EXPEDITION_ATTEMPT_KEYS := [
 	"terminal_result_snapshot",
 	"source_id",
 	"mission_id",
+	"source_patrol_id",
+	"source_force_name",
+	"source_point_id",
+	"source_route_name",
+]
+const V11_EXPEDITION_ATTEMPT_KEYS := [
+	"attempt_id", "mainline_id", "phase", "created_day",
+	"created_day_elapsed_milliseconds", "food_cost", "food_before",
+	"food_after", "committed_total", "selected_formations",
+	"committed_force_snapshot", "enemy_force_snapshot",
+	"city_defense_snapshot", "first_clear_key", "reward_wood",
+	"reward_food", "settled", "result_id", "wartime_facility_plan",
+	"battle_session_snapshot", "terminal_result_snapshot", "source_id",
+	"mission_id",
 ]
 const V10_EXPEDITION_ATTEMPT_KEYS := [
 	"attempt_id", "mainline_id", "phase", "created_day",
@@ -195,7 +209,7 @@ static func validate_structure(
 		)
 	var source_version := int(snapshot.get("schema_version", 0))
 	if (
-		(source_version in [7, 8, 9, 10, SCHEMA_VERSION] and not _has_exact_keys(snapshot, ROOT_KEYS))
+		(source_version in [7, 8, 9, 10, 11, SCHEMA_VERSION] and not _has_exact_keys(snapshot, ROOT_KEYS))
 		or (source_version == 6 and not _has_exact_keys(snapshot, V6_ROOT_KEYS))
 		or (source_version == 5 and not _has_exact_keys(snapshot, V5_ROOT_KEYS))
 		or (source_version == 4 and not _has_exact_keys(snapshot, V4_ROOT_KEYS))
@@ -204,7 +218,7 @@ static func validate_structure(
 		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段不完整或含未知字段")
 	if (
 		typeof(snapshot.schema_version) != TYPE_INT
-		or int(snapshot.schema_version) not in [2, 3, 4, 5, 6, 7, 8, 9, 10, SCHEMA_VERSION]
+		or int(snapshot.schema_version) not in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, SCHEMA_VERSION]
 		or typeof(snapshot.snapshot_kind) != TYPE_STRING_NAME
 		or StringName(snapshot.snapshot_kind) != SNAPSHOT_KIND
 		or typeof(snapshot.city_id) != TYPE_STRING
@@ -269,6 +283,11 @@ static func validate_structure(
 		normalized = migration.snapshot
 	if int(normalized.schema_version) == 10:
 		var migration := _migrate_v10_terminal_result(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if int(normalized.schema_version) == 11:
+		var migration := _migrate_v11_invasion_source(normalized)
 		if not bool(migration.valid):
 			return migration
 		normalized = migration.snapshot
@@ -643,6 +662,23 @@ static func _migrate_v10_terminal_result(snapshot: Dictionary) -> Dictionary:
 		if StringName(attempt.get("phase", &"")) == &"RESULT_PENDING":
 			attempt.phase = &"ACTIVE"
 		attempt.terminal_result_snapshot = {}
+		normalized.expedition_attempt = attempt
+	normalized.schema_version = 11
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _migrate_v11_invasion_source(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V11 CampaignSnapshot 根字段非法")
+	var attempt: Dictionary = Dictionary(normalized.expedition_attempt)
+	if not attempt.is_empty():
+		if not _has_exact_keys(attempt, V11_EXPEDITION_ATTEMPT_KEYS):
+			return _failure(&"INVALID_EXPEDITION_ATTEMPT", "V11 出征尝试字段非法")
+		attempt.source_patrol_id = &""
+		attempt.source_force_name = ""
+		attempt.source_point_id = &""
+		attempt.source_route_name = ""
 		normalized.expedition_attempt = attempt
 	normalized.schema_version = SCHEMA_VERSION
 	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
@@ -1107,14 +1143,21 @@ static func _validate_expedition_attempt(
 		or typeof(attempt.source_id) != TYPE_STRING_NAME
 		or StringName(attempt.source_id) not in [&"FIRST_WAR", &"WARTIME_DEFENSE"]
 		or typeof(attempt.mission_id) != TYPE_STRING_NAME
+		or typeof(attempt.source_patrol_id) != TYPE_STRING_NAME
+		or typeof(attempt.source_force_name) != TYPE_STRING
+		or typeof(attempt.source_point_id) != TYPE_STRING_NAME
+		or typeof(attempt.source_route_name) != TYPE_STRING
 	):
 		return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征尝试领域值非法")
 	var is_defense := StringName(attempt.source_id) == &"WARTIME_DEFENSE"
+	var has_invasion_source := StringName(attempt.source_patrol_id) != &""
 	if (
 		(is_defense and StringName(attempt.mission_id) != &"wartime_defense.blackstone_gate.v0")
 		or (not is_defense and StringName(attempt.mission_id) != &"")
 		or (is_defense and int(attempt.food_cost) != 0)
 		or (not is_defense and int(attempt.food_cost) <= 0)
+		or (has_invasion_source and (not is_defense or StringName(attempt.source_point_id) == &"" or str(attempt.source_force_name).is_empty() or str(attempt.source_route_name).is_empty()))
+		or (not has_invasion_source and (StringName(attempt.source_point_id) != &"" or not str(attempt.source_force_name).is_empty() or not str(attempt.source_route_name).is_empty()))
 	):
 		return _failure(&"INVALID_EXPEDITION_ATTEMPT", "出征来源身份非法")
 	var facility_plan_validation := WartimeFacilityPlan.validate_snapshot(

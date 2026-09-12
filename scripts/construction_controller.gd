@@ -2659,6 +2659,10 @@ func commit_expedition_attempt(formation_ids: Array) -> Dictionary:
 		"terminal_result_snapshot": {},
 		"source_id": &"FIRST_WAR",
 		"mission_id": &"",
+		"source_patrol_id": &"",
+		"source_force_name": "",
+		"source_point_id": &"",
+		"source_route_name": "",
 	}
 	var prior_attempt := _expedition_attempt.duplicate(true)
 	var prior_reservation := _active_battle_reservation.duplicate(true)
@@ -2752,8 +2756,18 @@ func begin_wartime_defense_attempt(formation_ids: Array) -> Dictionary:
 		researched_tech_ids.duplicate(), get_infantry_attack_multiplier(),
 		get_infantry_defense_multiplier(), supply_shortage
 	)
-	var enemy := EnemyForceSnapshot.create_for_mission(
-		attempt_id, current_day, WARTIME_DEFENSE_MISSION
+	_ensure_war_loop_initialized()
+	var invasion := _war_loop_state.field_tactics.get_blackstone_invasion()
+	var uses_field_invasion := StringName(invasion.get("phase", &"")) == FieldTacticsState.INVASION_ARRIVED
+	var enemy := (
+		EnemyForceSnapshot.create_for_mission_count(
+			attempt_id, current_day, WARTIME_DEFENSE_MISSION,
+			int(invasion.get("strength", 0))
+		)
+		if uses_field_invasion
+		else EnemyForceSnapshot.create_for_mission(
+			attempt_id, current_day, WARTIME_DEFENSE_MISSION
+		)
 	)
 	if committed == null or enemy == null:
 		return _expedition_failure(&"DEFENSE_SNAPSHOT", "无法建立守城战斗快照")
@@ -2781,10 +2795,15 @@ func begin_wartime_defense_attempt(formation_ids: Array) -> Dictionary:
 		"terminal_result_snapshot": {},
 		"source_id": BattleRequest.SOURCE_WARTIME_DEFENSE,
 		"mission_id": WARTIME_DEFENSE_MISSION.mission_id,
+		"source_patrol_id": StringName(invasion.get("patrol_id", &"")) if uses_field_invasion else &"",
+		"source_force_name": str(invasion.get("display_name", "")) if uses_field_invasion else "",
+		"source_point_id": StringName(invasion.get("source_point_id", &"")) if uses_field_invasion else &"",
+		"source_route_name": str(invasion.get("known_route_name", "")) if uses_field_invasion else "",
 	}
 	var prior_attempt := _expedition_attempt.duplicate(true)
 	var prior_reservation := _active_battle_reservation.duplicate(true)
 	var prior_sequence := _next_battle_transaction_sequence
+	var prior_field_snapshot := _war_loop_state.field_tactics.get_snapshot()
 	_expedition_attempt = candidate.duplicate(true)
 	_active_battle_reservation = {
 		"transaction_id": attempt_id,
@@ -2792,6 +2811,13 @@ func begin_wartime_defense_attempt(formation_ids: Array) -> Dictionary:
 		"phase": BATTLE_PHASE_RESERVED,
 	}
 	_next_battle_transaction_sequence += 1
+	if uses_field_invasion and not _war_loop_state.field_tactics.mark_invasion_handed_off(
+		StringName(invasion.get("patrol_id", &"")), attempt_id
+	):
+		_expedition_attempt = prior_attempt
+		_active_battle_reservation = prior_reservation
+		_next_battle_transaction_sequence = prior_sequence
+		return _expedition_failure(&"DEFENSE_HANDOFF", "来袭敌军已变化，请返回战区确认")
 	_refresh_city_ui()
 	city_state_changed.emit()
 	var persisted := _persist_expedition_departure(attempt_id)
@@ -2799,6 +2825,7 @@ func begin_wartime_defense_attempt(formation_ids: Array) -> Dictionary:
 		_expedition_attempt = prior_attempt
 		_active_battle_reservation = prior_reservation
 		_next_battle_transaction_sequence = prior_sequence
+		_war_loop_state.field_tactics.restore_snapshot(prior_field_snapshot)
 		_refresh_city_ui()
 		city_state_changed.emit()
 		return _expedition_failure(&"SAVE_FAILED", "守城实例保存失败，编队与资源未改变")
@@ -2807,6 +2834,11 @@ func begin_wartime_defense_attempt(formation_ids: Array) -> Dictionary:
 
 func enter_wartime_defense_battle(formation_ids: Array = []) -> bool:
 	if _expedition_attempt.is_empty():
+		_ensure_war_loop_initialized()
+		var invasion := _war_loop_state.field_tactics.get_blackstone_invasion()
+		if not invasion.is_empty() and StringName(invasion.get("phase", &"")) != FieldTacticsState.INVASION_ARRIVED:
+			_show_placement_feedback("敌军尚未抵达黑石城；请在战区侦察、截击或继续准备")
+			return false
 		var selected_ids := formation_ids.duplicate()
 		if selected_ids.is_empty():
 			for formation in _garrison_state.get_formations():
@@ -5986,6 +6018,41 @@ func get_field_tactics_read_model() -> Dictionary:
 		"stationed_reinforcements_by_point_id": Dictionary(field_snapshot.get("stationed_reinforcements_by_point_id", {})).duplicate(true),
 		"supply_transports_by_id": Dictionary(field_snapshot.get("supply_transports_by_id", {})).duplicate(true),
 		"world_milliseconds": int(field_snapshot.world_milliseconds),
+		"blackstone_invasion": get_blackstone_invasion_read_model(),
+	}
+
+
+func get_blackstone_invasion_read_model() -> Dictionary:
+	_ensure_war_loop_initialized()
+	var invasion := _war_loop_state.field_tactics.get_blackstone_invasion()
+	if invasion.is_empty():
+		return {}
+	var warning_day := int(invasion.get("warning_day", 0))
+	if current_day < warning_day:
+		return {
+			"known": false,
+			"phase": StringName(invasion.get("phase", &"")),
+			"warning_day": warning_day,
+			"activation_day": int(invasion.get("activation_day", 0)),
+		}
+	var patrol_id := StringName(invasion.get("patrol_id", &""))
+	var intel := _war_loop_state.field_tactics.observe_subject(patrol_id)
+	var exact_strength_known := StringName(intel.get("fog_state", FieldTacticsState.FOG_UNOBSERVED)) == FieldTacticsState.FOG_VISIBLE
+	return {
+		"known": true,
+		"patrol_id": patrol_id,
+		"display_name": str(invasion.get("display_name", "来袭敌军")),
+		"phase": StringName(invasion.get("phase", &"")),
+		"source_point_id": StringName(invasion.get("source_point_id", &"")),
+		"source_name": str(MACRO_MARCH_THEATER.get_point(StringName(invasion.get("source_point_id", &""))).get("display_name", "未知来源")),
+		"target_point_id": StringName(invasion.get("target_point_id", &"")),
+		"target_name": str(MACRO_MARCH_THEATER.get_point(StringName(invasion.get("target_point_id", &""))).get("display_name", "黑石城")),
+		"known_route_name": str(invasion.get("known_route_name", "既知道路")),
+		"warning_day": warning_day,
+		"activation_day": int(invasion.get("activation_day", 0)),
+		"exact_strength_known": exact_strength_known,
+		"known_strength": int(intel.get("known_strength", 0)) if exact_strength_known else -1,
+		"fog_state": StringName(intel.get("fog_state", FieldTacticsState.FOG_UNOBSERVED)),
 	}
 
 
@@ -6226,9 +6293,9 @@ func begin_field_road_project(
 	return {"success": true, "project": Dictionary(transaction.local_commit_result.project).duplicate(true), "food_cost": food_cost}
 
 
-func preview_field_watchtower_project(engineer_id: StringName, camp_id: StringName, world_position: Vector2i) -> Dictionary:
+func preview_field_watchtower_project(engineer_id: StringName, camp_id: StringName, world_position: Vector2i, facility_kind: StringName = FieldTacticsState.FACILITY_WATCHTOWER) -> Dictionary:
 	_ensure_war_loop_initialized()
-	var preview := _war_loop_state.field_tactics.preview_watchtower_project(engineer_id, camp_id, world_position)
+	var preview := _war_loop_state.field_tactics.preview_watchtower_project(engineer_id, camp_id, world_position, facility_kind)
 	if not bool(preview.get("valid", false)):
 		return preview
 	var food_cost := int(preview.get("food_cost", 0))
@@ -6240,15 +6307,15 @@ func preview_field_watchtower_project(engineer_id: StringName, camp_id: StringNa
 	return preview
 
 
-func begin_field_watchtower_project(engineer_id: StringName, camp_id: StringName, world_position: Vector2i) -> Dictionary:
+func begin_field_watchtower_project(engineer_id: StringName, camp_id: StringName, world_position: Vector2i, facility_kind: StringName = FieldTacticsState.FACILITY_WATCHTOWER) -> Dictionary:
 	_ensure_war_loop_initialized()
-	var preview := preview_field_watchtower_project(engineer_id, camp_id, world_position)
+	var preview := preview_field_watchtower_project(engineer_id, camp_id, world_position, facility_kind)
 	if not bool(preview.get("valid", false)):
 		return _macro_failure(&"WATCHTOWER_INVALID", str(preview.get("error", "瞭望塔规划无效")))
 	var food_cost := int(preview.get("food_cost", 0))
 	var war_before := _war_loop_state.get_snapshot()
 	var local_commit := func() -> Dictionary:
-		var project := _war_loop_state.field_tactics.begin_watchtower_project(engineer_id, camp_id, world_position)
+		var project := _war_loop_state.field_tactics.begin_watchtower_project(engineer_id, camp_id, world_position, facility_kind)
 		return {"success": not project.is_empty(), "project": project}
 	var transaction := _nation_state.commit_resource_transaction(
 		NationState.BLACKSTONE_CITY_ID,
@@ -6265,6 +6332,37 @@ func begin_field_watchtower_project(engineer_id: StringName, camp_id: StringName
 			[{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": food_cost}],
 			&"field_watchtower_project_rollback")
 		return _macro_failure(&"SAVE_FAILED", "瞭望塔施工存档失败，资源已回滚")
+	return {"success": true, "project": Dictionary(transaction.local_commit_result.project).duplicate(true), "food_cost": food_cost}
+
+
+func preview_field_facility_repair(engineer_id: StringName, facility_id: StringName) -> Dictionary:
+	_ensure_war_loop_initialized()
+	var preview := _war_loop_state.field_tactics.preview_field_facility_repair(engineer_id, facility_id)
+	if not bool(preview.get("valid", false)):
+		return preview
+	preview.affordable = food >= int(preview.get("food_cost", 0))
+	if not bool(preview.affordable):
+		preview.valid = false
+		preview.error = "粮食不足，无法维修外部设施"
+	return preview
+
+
+func begin_field_facility_repair(engineer_id: StringName, facility_id: StringName) -> Dictionary:
+	var preview := preview_field_facility_repair(engineer_id, facility_id)
+	if not bool(preview.get("valid", false)):
+		return _macro_failure(&"FIELD_FACILITY_REPAIR_INVALID", str(preview.get("error", "设施维修无效")))
+	var food_cost := int(preview.get("food_cost", 0))
+	var war_before := _war_loop_state.get_snapshot()
+	var local_commit := func() -> Dictionary:
+		var project := _war_loop_state.field_tactics.begin_field_facility_repair(engineer_id, facility_id)
+		return {"success": not project.is_empty(), "project": project}
+	var transaction := _nation_state.commit_resource_transaction(NationState.BLACKSTONE_CITY_ID, [{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": food_cost}], &"field_facility_repair", local_commit)
+	if not bool(transaction.get("success", false)):
+		return _macro_failure(&"FIELD_FACILITY_REPAIR_TRANSACTION", "设施维修事务未提交")
+	if not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_war_loop_state.restore_snapshot(war_before)
+		_nation_state.commit_resource_transaction(NationState.BLACKSTONE_CITY_ID, [{"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_ADD, "amount": food_cost}], &"field_facility_repair_rollback")
+		return _macro_failure(&"SAVE_FAILED", "设施维修存档失败，资源已回滚")
 	return {"success": true, "project": Dictionary(transaction.local_commit_result.project).duplicate(true), "food_cost": food_cost}
 
 
@@ -6734,6 +6832,7 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		return {}
 	var registry_before := _army_registry.get_snapshot()
 	var war_before := _war_loop_state.get_snapshot()
+	var activated_invasion_ids := _war_loop_state.field_tactics.activate_configured_invasions(current_day)
 	var field_advance := _war_loop_state.field_tactics.advance_world(
 		whole_milliseconds, _macro_army_world_positions(), _macro_march_traces_for_war_step
 	)
@@ -6744,6 +6843,8 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		return encounter_result
 	if not Array(encounter_result.get("encounters", [])).is_empty():
 		field_advance.patrol_encounters = Array(encounter_result.encounters).duplicate(true)
+	if not activated_invasion_ids.is_empty():
+		field_advance.activated_invasion_ids = activated_invasion_ids.duplicate()
 	var supply_settlement := _settle_arrived_supply_transports(
 		Array(field_advance.get("ready_supply_transport_ids", []))
 	)
@@ -6755,6 +6856,12 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 	var supply_checkpoint_required := _war_loop_state.field_tactics.consume_supply_checkpoint_required()
 	var resumed_armies := _resume_macro_marches_on_repaired_roads()
 	var field_checkpoint_required := (
+		not activated_invasion_ids.is_empty()
+		or
+		Array(field_advance.get("arrived_invasion_ids", [])).size() > 0
+		or
+		Array(field_advance.get("facility_events", [])).size() > 0
+		or
 		Array(field_advance.get("completed_project_ids", [])).size() > 0
 		or Array(field_advance.get("opened_road_ids", [])).size() > 0
 		or Array(field_advance.get("engagements", [])).size() > 0
@@ -9081,10 +9188,16 @@ func _apply_durable_expedition_result_atomic(
 			if battle_result.outcome == BattleOutcome.Value.VICTORY
 			else maxi(enemy_count_before - battle_result.enemy_casualties, 0)
 		)
-	elif battle_result.outcome == BattleOutcome.Value.DEFEAT:
+	elif request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
 		# The defense objective itself is authoritative for this R0 loss.  The
 		# long-lived mainline pressure is intentionally not overwritten by it.
-		planned_defense_damage = defense_before
+		if battle_result.outcome == BattleOutcome.Value.DEFEAT:
+			planned_defense_damage = defense_before
+		next_enemy_count = (
+			0
+			if battle_result.outcome == BattleOutcome.Value.VICTORY
+			else maxi(enemy_count_before - battle_result.enemy_casualties, 0)
+		)
 	var roster_after := _garrison_state.get_persistence_snapshot()
 	var infantry_after := 0
 	for count in Dictionary(
@@ -9195,6 +9308,14 @@ func _install_durable_expedition_settlement(
 		city_fallen = battle_result.outcome == BattleOutcome.Value.DEFEAT
 	elif settlement_source == BattleRequest.SOURCE_WARTIME_DEFENSE:
 		city_fallen = battle_result.outcome == BattleOutcome.Value.DEFEAT
+		var source_patrol_id := StringName(_expedition_attempt.get("source_patrol_id", &""))
+		if source_patrol_id != &"" and not _war_loop_state.field_tactics.resolve_invasion_handoff(
+			source_patrol_id,
+			StringName(_expedition_attempt.get("attempt_id", &"")),
+			int(summary.get("enemy_count_after", 0)),
+			StringName(summary.get("outcome", &""))
+		):
+			return {}
 	if bool(summary.get("mainline_cleared", false)):
 		_current_mainline_level.mark_cleared(current_day)
 	_committed_battle_result_ids[battle_result.result_id] = summary.duplicate(true)
@@ -12399,7 +12520,29 @@ func _refresh_first_war_ui() -> void:
 			remaining / 60,
 			remaining % 60,
 		]
-	first_war_intel.text = (
+	var invasion := get_blackstone_invasion_read_model()
+	var invasion_text := ""
+	if bool(invasion.get("known", false)):
+		var invasion_phase := StringName(invasion.get("phase", &""))
+		var phase_text: String = str({
+			FieldTacticsState.INVASION_DORMANT: "集结中",
+			FieldTacticsState.INVASION_MARCHING: "行军中",
+			FieldTacticsState.INVASION_ARRIVED: "已抵达城门",
+			FieldTacticsState.INVASION_HANDED_OFF: "守城实例交战中",
+			FieldTacticsState.INVASION_DEFEATED: "已在战区被消灭",
+			FieldTacticsState.INVASION_RESOLVED: "守城战果已结算",
+		}.get(invasion_phase, "状态待确认"))
+		var strength_text := (
+			"精确兵力 %d" % int(invasion.get("known_strength", 0))
+			if bool(invasion.get("exact_strength_known", false))
+			else "兵力未侦明"
+		)
+		invasion_text = "来袭预警 · %s（%s）\n%s → %s｜%s｜%s\n" % [
+			str(invasion.get("display_name", "来袭敌军")), phase_text,
+			str(invasion.get("source_name", "未知来源")), str(invasion.get("target_name", "黑石城")),
+			str(invasion.get("known_route_name", "既知道路")), strength_text,
+		]
+	var legacy_first_war_text := (
 		"北坡敌情 · %s%s\n敌军 %d｜工事 %d\n"
 		+ "守军 %d｜%s\n粮食 %d／出战需 %d｜%s\n"
 		+ "城防 %d／减损线 %d｜%s\n%s"
@@ -12418,6 +12561,11 @@ func _refresh_first_war_ui() -> void:
 		str(assessment.defense_status),
 		str(assessment.suggestion),
 	]
+	first_war_intel.text = (
+		invasion_text + "黑石守军 %d｜城防 %d\n城门接战前可从战区侦察、截击或建设防线。" % [committed_count, get_city_defense()]
+		if not invasion.is_empty()
+		else legacy_first_war_text
+	)
 	var awaiting_summary := (
 		_first_war_pending_outcome != &""
 		and not _first_war_result_acknowledged
@@ -12429,6 +12577,7 @@ func _refresh_first_war_ui() -> void:
 	first_war_intel.visible = not awaiting_summary
 	enter_first_war_button.visible = (
 		first_war_state == FirstWarState.PENDING
+		and invasion.is_empty()
 		and not retreat_confirmation.visible
 		and not awaiting_summary
 	)
@@ -12438,6 +12587,29 @@ func _refresh_first_war_ui() -> void:
 	# confirmed; this obsolete shortcut must not remain player-reachable.
 	order_retreat_button.visible = false
 	enter_first_war_button.disabled = not can_enter_first_war()
+	var invasion_phase := StringName(invasion.get("phase", &""))
+	enter_wartime_defense_button.text = (
+		"进入黑石城门防守 · 沿用来袭敌军"
+		if invasion_phase == FieldTacticsState.INVASION_ARRIVED
+		else (
+			"黑石守城交战中"
+			if invasion_phase == FieldTacticsState.INVASION_HANDED_OFF
+			else (
+				"本次来袭已结算 · 可继续反攻"
+				if invasion_phase in [FieldTacticsState.INVASION_DEFEATED, FieldTacticsState.INVASION_RESOLVED]
+				else "敌军尚未抵达 · 返回战区处置"
+			)
+		)
+	)
+	enter_wartime_defense_button.disabled = (
+		not _expedition_attempt.is_empty()
+		or (not invasion.is_empty() and invasion_phase != FieldTacticsState.INVASION_ARRIVED)
+	)
+	enter_wartime_defense_button.tooltip_text = (
+		"同一支敌军抵达后才能接战；外部截击造成的实际损失会带入守城"
+		if invasion_phase != FieldTacticsState.INVASION_ARRIVED
+		else "以当前实际守军迎击；敌军兵力来自战区中的同一来袭记录"
+	)
 	order_retreat_button.disabled = true
 	if first_war_state != FirstWarState.PENDING:
 		retreat_confirmation.visible = false
@@ -12465,6 +12637,11 @@ func _refresh_first_war_ui() -> void:
 
 
 func _refresh_current_mainline_entry_ui() -> void:
+	if not get_blackstone_invasion_read_model().is_empty():
+		current_mainline_entry_button.text = "首关目标：守住黑石并从战区反攻"
+		current_mainline_entry_button.tooltip_text = "从黑石城门进入外部战区；本按钮不再生成无来源的北坡战斗"
+		current_mainline_entry_button.disabled = true
+		return
 	if _current_mainline_level.cleared:
 		current_mainline_entry_button.text = "主线已完成 · 压力解除"
 		current_mainline_entry_button.tooltip_text = "当前主线已结算，后续压力已停止"

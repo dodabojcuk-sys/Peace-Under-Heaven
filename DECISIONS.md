@@ -1,5 +1,24 @@
 # Product Successor Decisions
 
+## Blackstone first-invasion ownership
+
+- The first Blackstone invasion is authored in the playable theatre resource
+  and persisted as one `FieldTacticsState` patrol record. R0 deliberately does
+  not add a generic event bus or a UI-owned countdown.
+- Warning knowledge and tactical intel remain distinct. The campaign can reveal
+  a known source, target and broad approach before departure, while exact force
+  strength still requires the existing visibility projection.
+- Arrival transfers the same patrol identity and surviving count into the
+  existing wartime-defense transaction. While handed off, field movement and
+  field-facility effects skip that force; settlement resolves it once.
+- External watchtowers, arrow towers and barricades share the existing durable
+  field project/facility envelope for save compatibility, but carry an explicit
+  `facility_kind`. C0 works stay separate `BattleSession` objects even when
+  Chinese labels overlap.
+- R0 barricades use a persisted one-time traversal delay rather than dynamic
+  rerouting. This matches the current ordered-road patrol model and can be
+  tuned or replaced later without changing facility identity or save ownership.
+
 ## Field Tactics R2 outer-city state
 
 - `FieldTacticsState` is a serializable subrecord of `WarLoopState`, not a

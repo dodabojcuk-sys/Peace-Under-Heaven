@@ -118,10 +118,37 @@ func _run() -> void:
 	var towers: Dictionary = city.get_field_tactics_read_model().get("watchtowers_by_id", {})
 	_capture("campaign-12-tower-complete-engine-gui.png")
 
+	# The same persistent camp supports one facility of each explicit field kind.
+	# These buttons do not create C0 facilities: their projects remain in the
+	# field snapshot and consume the engineer's real travel/work time.
+	macro._selected_specialist_id = engineer_id
+	macro.refresh()
+	macro._arrow_tower_button.pressed.emit()
+	await _frames(2)
+	_click_map(macro, macro._world_to_screen(Vector2(camp.get("world_position", Vector2.ZERO))))
+	_click_map(macro, macro._world_to_screen(Vector2(camp.get("world_position", Vector2.ZERO)) + Vector2(0, 60)))
+	var arrow_draft := macro._watchtower_draft.duplicate(true)
+	var arrow_project := await _confirm_project(macro, city, engineer_id)
+	var arrow_complete := await _advance_project_with_controller_frames(city, macro, StringName(arrow_project.get("project_id", &"")), 160)
+	_capture("campaign-13-field-arrow-tower-complete-engine-gui.png")
+	macro._selected_specialist_id = engineer_id
+	macro.refresh()
+	macro._barricade_button.pressed.emit()
+	await _frames(2)
+	_click_map(macro, macro._world_to_screen(Vector2(camp.get("world_position", Vector2.ZERO))))
+	_click_map(macro, macro._world_to_screen(Vector2(camp.get("world_position", Vector2.ZERO)) + Vector2(40, 80)))
+	var barricade_draft := macro._watchtower_draft.duplicate(true)
+	var barricade_project := await _confirm_project(macro, city, engineer_id)
+	var barricade_complete := await _advance_project_with_controller_frames(city, macro, StringName(barricade_project.get("project_id", &"")), 140)
+	var field_facilities: Dictionary = city.get_field_tactics_read_model().get("watchtowers_by_id", {})
+	print("BLACKSTONE_CAMPAIGN_R0_DEFENSE_GUI_TRACE arrow_draft=%s arrow_project=%s/%s barricade_draft=%s barricade_project=%s/%s facilities=%d status=%s" % [str(not arrow_draft.is_empty()), str(not arrow_project.is_empty()), str(arrow_complete), str(not barricade_draft.is_empty()), str(not barricade_project.is_empty()), str(barricade_complete), field_facilities.size(), macro._status_label.text])
+	_capture("campaign-14-field-defense-line-engine-gui.png")
+
 	_check(camp_preview_visible and camp_complete and camp_id != &"", "正式 GUI 工程计划创建新驻点，并在 Controller 世界帧中经历施工至完工")
 	_check(bridge_preview_visible and bridge_complete, "正式 GUI 跨河工程清楚显示桥段计划、施工中和已开放状态")
 	_check(not first_tower_draft.is_empty() and invalid_clears_draft and not replanned_tower_draft.is_empty() and tower_confirm_visible and tower_complete and towers.size() == 1, "瞭望塔选址按合法 A、无效 B、重新合法 A 的顺序更新可见草稿与实际工程")
-	print("BLACKSTONE_CAMPAIGN_R0_ENGINE_GUI_EVIDENCE pointer_input=true button_action_signal=true controller_frame_ms=100 camps=%d towers=%d" % [city._war_loop_state.field_tactics.camps_by_id.size(), towers.size()])
+	_check(StringName(arrow_draft.get("facility_kind", &"")) == FieldTacticsState.FACILITY_ARROW_TOWER and arrow_complete and StringName(barricade_draft.get("facility_kind", &"")) == FieldTacticsState.FACILITY_BARRICADE and barricade_complete and field_facilities.size() == 3, "正式 GUI 分别选择并完成瞭望、外部火力与外部阻挡三类持久防线")
+	print("BLACKSTONE_CAMPAIGN_R0_ENGINE_GUI_EVIDENCE pointer_input=true button_action_signal=true controller_frame_ms=100 camps=%d facilities=%d" % [city._war_loop_state.field_tactics.camps_by_id.size(), field_facilities.size()])
 	scene.queue_free()
 	await process_frame
 	if failures.is_empty():

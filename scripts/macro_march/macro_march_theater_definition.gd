@@ -21,6 +21,10 @@ const FOREST_GARRISON := &"forest_garrison"
 	"food_cost": 6,
 	"required_milliseconds": 6000,
 	"requires_connected_camp": true,
+	"field_facilities": {
+		&"ARROW_TOWER": {"display_name": "外部箭塔", "food_cost": 8, "required_milliseconds": 8000, "max_durability": 120, "effect_range": 220, "attack_interval_milliseconds": 4000, "damage": 1},
+		&"BARRICADE": {"display_name": "外部拒马", "food_cost": 5, "required_milliseconds": 5000, "max_durability": 160, "effect_range": 42, "route_delay_milliseconds": 8000, "collision_damage": 45},
+	},
 }
 @export var presentation_profile: Dictionary = {
 	"ground_color": Color("7e966c"),

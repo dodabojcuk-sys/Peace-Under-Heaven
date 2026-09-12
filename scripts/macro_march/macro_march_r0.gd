@@ -50,6 +50,7 @@ var _engineering_mode := false
 var _engineering_engineer_id: StringName = &""
 var _engineering_source_point_id: StringName = &""
 var _watchtower_mode := false
+var _field_facility_kind: StringName = FieldTacticsState.FACILITY_WATCHTOWER
 var _watchtower_engineer_id: StringName = &""
 var _watchtower_camp_id: StringName = &""
 var _watchtower_draft: Dictionary = {}
@@ -64,6 +65,7 @@ var _selected_army_id: StringName = &""
 var _selected_point_id: StringName = &""
 var _location_detail_mode := false
 var _selected_damaged_road_id: StringName = &""
+var _selected_field_facility_id: StringName = &""
 var _selected_interrupted_project_id: StringName = &""
 var _last_army_hit_position := Vector2.INF
 var _army_hit_cycle_index := 0
@@ -102,6 +104,9 @@ var _scout_button := Button.new()
 var _engineer_button := Button.new()
 var _side_road_button := Button.new()
 var _watchtower_button := Button.new()
+var _arrow_tower_button := Button.new()
+var _barricade_button := Button.new()
+var _facility_repair_button := Button.new()
 var _resume_project_button := Button.new()
 var _interrupted_project_selector := OptionButton.new()
 var _return_button := Button.new()
@@ -453,7 +458,7 @@ func _build_ui() -> void:
 	_formation_scroll.add_child(_formation_list)
 	_formation_scroll.add_child(_location_garrison_list)
 	add_child(_formation_scroll)
-	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _siege_battle_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
+	for button in [_confirm_button, _block_button, _recover_button, _retreat_button, _siege_battle_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _arrow_tower_button, _barricade_button, _facility_repair_button, _resume_project_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button, _presentation_toggle_button, _overview_button, _focus_subject_button]:
 		button.focus_mode = Control.FOCUS_ALL
 		add_child(button)
 	_interrupted_project_selector.mouse_filter = Control.MOUSE_FILTER_STOP
@@ -469,6 +474,12 @@ func _build_ui() -> void:
 	_side_road_button.text = "工程师拖线修路"
 	_watchtower_button.text = "工程师建瞭望塔"
 	_watchtower_button.visible = false
+	_arrow_tower_button.text = "工程师建外部箭塔"
+	_arrow_tower_button.visible = false
+	_barricade_button.text = "工程师建外部拒马"
+	_barricade_button.visible = false
+	_facility_repair_button.text = "维修所选外部设施 · 3 粮"
+	_facility_repair_button.visible = false
 	_resume_project_button.text = "补派工程师接续所选工程"
 	_restore_default_route_button.text = "恢复默认路线"
 	_restore_default_route_button.visible = false
@@ -496,7 +507,10 @@ func _build_ui() -> void:
 	_scout_button.pressed.connect(_dispatch_scout)
 	_engineer_button.pressed.connect(_dispatch_engineer)
 	_side_road_button.pressed.connect(_build_side_road)
-	_watchtower_button.pressed.connect(_begin_watchtower_mode)
+	_watchtower_button.pressed.connect(_begin_watchtower_mode.bind(FieldTacticsState.FACILITY_WATCHTOWER))
+	_arrow_tower_button.pressed.connect(_begin_watchtower_mode.bind(FieldTacticsState.FACILITY_ARROW_TOWER))
+	_barricade_button.pressed.connect(_begin_watchtower_mode.bind(FieldTacticsState.FACILITY_BARRICADE))
+	_facility_repair_button.pressed.connect(_repair_selected_field_facility)
 	_resume_project_button.pressed.connect(_resume_selected_interrupted_project)
 	_interrupted_project_selector.item_selected.connect(_select_interrupted_project)
 	_return_button.pressed.connect(func():
@@ -518,7 +532,7 @@ func _layout_ui() -> void:
 	var panel_rect := _side_panel_rect()
 	var action_height := 34.0
 	var action_gap := 4.0
-	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _siege_battle_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _resume_project_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button]
+	var action_buttons: Array[Button] = [_confirm_button, _restore_default_route_button, _engineering_undo_button, _engineering_clear_button, _retreat_button, _siege_battle_button, _scout_button, _engineer_button, _side_road_button, _watchtower_button, _arrow_tower_button, _barricade_button, _facility_repair_button, _resume_project_button, _location_details_button, _supply_transport_button, _stationed_reinforcement_button, _return_button]
 	var visible_action_buttons: Array[Button] = []
 	for button in action_buttons:
 		if button.visible:
@@ -748,6 +762,7 @@ func _open_selected_location_detail() -> void:
 		refresh()
 		return
 	_selected_point_id = StringName(location.get("point_id", &""))
+	_selected_field_facility_id = &""
 	_selected_reinforcement_army_id = &""
 	_clear_reinforcement_feedback()
 	_location_detail_mode = true
@@ -761,6 +776,7 @@ func _select_location_detail(point_id: StringName) -> void:
 	if location.is_empty():
 		return
 	_selected_point_id = point_id
+	_selected_field_facility_id = &""
 	_selected_reinforcement_army_id = &""
 	_clear_reinforcement_feedback()
 	_location_detail_mode = true
@@ -792,6 +808,7 @@ func _inspect_location_garrison(army_id: StringName, point_id: StringName) -> vo
 	_selected_reinforcement_army_id = &""
 	_clear_reinforcement_feedback()
 	_selected_specialist_id = &""
+	_selected_field_facility_id = &""
 	_selected_scout_id = &""
 	_selected_formation_ids.clear()
 	var location := _point_from_model(_model(), point_id)
@@ -938,7 +955,12 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		and bool(selected_engineer.get("alive", false))
 		and StringName(selected_engineer.get("project_id", &"")) == &""
 	)
+	_arrow_tower_button.visible = _watchtower_button.visible
+	_barricade_button.visible = _watchtower_button.visible
+	_facility_repair_button.visible = false
 	_watchtower_button.disabled = not _watchtower_mode and _watchtower_button.visible == false
+	_arrow_tower_button.disabled = _watchtower_button.disabled
+	_barricade_button.disabled = _watchtower_button.disabled
 	_resume_project_button.visible = not _first_interrupted_project(projects).is_empty()
 	_resume_project_button.disabled = not _has_idle_engineer(specialists)
 	_restore_default_route_button.visible = not _engineering_mode and _selected_route_road_id != &""
@@ -951,6 +973,20 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 	# currently using to decide whether release is safe.  This reads only the
 	# existing authority preview and deliberately does not alter command state.
 	if _refresh_direct_dispatch_copy(model):
+		return
+	var selected_facility := Dictionary(Dictionary(field.get("watchtowers_by_id", {})).get(_selected_field_facility_id, {}))
+	if not selected_facility.is_empty():
+		var selected_facility_kind := StringName(selected_facility.get("facility_kind", FieldTacticsState.FACILITY_WATCHTOWER))
+		var selected_facility_name := _field_facility_display_name(selected_facility_kind)
+		var facility_durability := int(selected_facility.get("durability", selected_facility.get("max_durability", 0)))
+		var facility_maximum := int(selected_facility.get("max_durability", facility_durability))
+		_set_context_status("已选%s：%s · 耐久 %d/%d" % [selected_facility_name, str(selected_facility.get("state", FieldTacticsState.FACILITY_ACTIVE)), facility_durability, facility_maximum])
+		_detail_label.text = "%s属于外部战区，位置与战损会持续保存。\n%s\n不会继承战时实例同名设施的效果。" % [selected_facility_name, _field_facility_record_effect_copy(selected_facility)]
+		_facility_repair_button.visible = facility_durability < facility_maximum
+		_facility_repair_button.disabled = not _has_idle_engineer(specialists)
+		_watchtower_button.visible = false
+		_arrow_tower_button.visible = false
+		_barricade_button.visible = false
 		return
 	if _scout_target_mode:
 		_confirm_button.visible = false
@@ -1109,8 +1145,9 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		str(_point_from_model(model, StringName(_draft_route.get("target_point_id", &""))).get("display_name", _draft_route.get("target_point_id", &""))),
 		]
 	if _watchtower_mode or not _watchtower_draft.is_empty():
+		var facility_name := str(_watchtower_draft.get("facility_name", _field_facility_display_name(_field_facility_kind)))
 		_confirm_button.visible = true
-		_confirm_button.text = "开工建瞭望塔"
+		_confirm_button.text = "开工建%s" % facility_name
 		_confirm_button.disabled = _watchtower_draft.is_empty()
 		_block_button.visible = false
 		_recover_button.visible = false
@@ -1119,6 +1156,8 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		_engineer_button.visible = false
 		_side_road_button.visible = false
 		_watchtower_button.visible = false
+		_arrow_tower_button.visible = false
+		_barricade_button.visible = false
 		_resume_project_button.visible = false
 		_restore_default_route_button.visible = false
 		_engineering_undo_button.visible = false
@@ -1126,16 +1165,17 @@ func _refresh_copy(model: Dictionary, army: Dictionary) -> void:
 		_interrupted_project_selector.visible = false
 		var tower_camp_name := _point_display_name(model, StringName(_watchtower_draft.get("source_point_id", &"")), "待选择工程驻点")
 		if _watchtower_draft.is_empty():
-			_set_context_status("建瞭望塔：先点击已完工工程驻点，再在范围内选择陆地位置；右键取消不扣资源。")
-			_detail_label.text = "瞭望塔规划\n工程师：%s\n驻点：%s\n请选择驻点附近的可通行陆地。" % [_specialist_role_label(selected_engineer), tower_camp_name]
+			_set_context_status("建%s：先点击已完工工程驻点，再在范围内选择陆地位置；右键取消不扣资源。" % facility_name)
+			_detail_label.text = "%s规划\n工程师：%s\n驻点：%s\n请选择驻点附近的可通行陆地。" % [facility_name, _specialist_role_label(selected_engineer), tower_camp_name]
 		else:
-			_set_context_status("瞭望塔计划待开工；取消不会扣除资源。")
-			_detail_label.text = "瞭望塔施工计划\n驻点：%s\n到场 %0.1f 秒 · 施工 %0.1f 秒 · 粮食 %d\n完工后新增观察范围 %d。" % [
+			_set_context_status("%s计划待开工；取消不会扣除资源。" % facility_name)
+			_detail_label.text = "%s施工计划\n驻点：%s\n到场 %0.1f 秒 · 施工 %0.1f 秒 · 粮食 %d\n%s" % [
+				facility_name,
 				tower_camp_name,
 				float(_watchtower_draft.get("travel_milliseconds", 0)) / 1000.0,
 				float(_watchtower_draft.get("required_milliseconds", 0)) / 1000.0,
 				int(_watchtower_draft.get("food_cost", 0)),
-				int(_watchtower_draft.get("visibility_range", 0)),
+				_field_facility_effect_copy(_watchtower_draft),
 			]
 		return
 	if _engineering_mode or not _engineering_draft.is_empty():
@@ -1568,7 +1608,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			accept_event()
 			return
 	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_RIGHT and event.pressed:
-		if _direct_dispatch_pending or _draw_hold_pending or _is_drawing or _scout_target_mode or _watchtower_mode or not _watchtower_draft.is_empty() or not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty() or _selected_damaged_road_id != &"" or _selected_specialist_id != &"":
+		if _direct_dispatch_pending or _draw_hold_pending or _is_drawing or _scout_target_mode or _watchtower_mode or not _watchtower_draft.is_empty() or not _draft_route.is_empty() or not _engineering_draft.is_empty() or not _draw_points.is_empty() or _selected_damaged_road_id != &"" or _selected_specialist_id != &"" or _selected_field_facility_id != &"":
 			var had_specialist_selection := _selected_specialist_id != &""
 			var had_scout_target_mode := _scout_target_mode
 			_cancel_direct_dispatch("")
@@ -1586,6 +1626,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			_engineering_planned_points.clear()
 			_engineering_strokes.clear()
 			_selected_damaged_road_id = &""
+			_selected_field_facility_id = &""
 			_selected_route_road_id = &""
 			# Cancel discards only the unconfirmed gesture and draft. It retains the
 			# formation selection so the player can immediately draw again, and also
@@ -1641,7 +1682,7 @@ func _on_gui_input(event: InputEvent) -> void:
 				accept_event()
 				return
 			var tower_position := Vector2i(_screen_to_world(event.position))
-			var tower_preview := _dispatch_adapter.preview_field_watchtower_project(_watchtower_engineer_id, _watchtower_camp_id, tower_position) if _dispatch_adapter != null else {}
+			var tower_preview := _dispatch_adapter.preview_field_watchtower_project(_watchtower_engineer_id, _watchtower_camp_id, tower_position, _field_facility_kind) if _dispatch_adapter != null else {}
 			if not bool(tower_preview.get("valid", false)):
 				# A placement attempt is an atomic replacement of the visible plan.
 				# Leaving the old valid draft here let "开工" silently build at A after
@@ -1737,6 +1778,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			_selected_point_id = &""
 			_clear_reinforcement_feedback()
 			_selected_specialist_id = specialist_id
+			_selected_field_facility_id = &""
 			_selected_formation_ids.clear()
 			if StringName(selected_specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_SCOUT:
 				_selected_scout_id = specialist_id
@@ -1760,11 +1802,24 @@ func _on_gui_input(event: InputEvent) -> void:
 				_begin_draw_interaction(event.position, _source_point_id(_model(), command_army))
 				accept_event()
 				return
-		var damaged_road_id := _damaged_road_id_at_screen(_dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}, event.position)
+		var selection_field := _dispatch_adapter.get_field_tactics_read_model() if _dispatch_adapter != null else {}
+		var facility_id := _field_facility_id_at_screen(selection_field, event.position)
+		if facility_id != &"":
+			_selected_field_facility_id = facility_id
+			_selected_army_id = &""
+			_selected_specialist_id = &""
+			_selected_point_id = &""
+			_location_detail_mode = false
+			_status_label.text = "已选中外部设施；右栏显示持久耐久、实际效果与维修入口。"
+			refresh()
+			accept_event()
+			return
+		var damaged_road_id := _damaged_road_id_at_screen(selection_field, event.position)
 		if damaged_road_id != &"":
 			_location_detail_mode = false
 			_selected_point_id = &""
 			_selected_damaged_road_id = damaged_road_id
+			_selected_field_facility_id = &""
 			_status_label.text = "已选中受损道路；可安排空闲工程师前往维修。"
 			refresh()
 			accept_event()
@@ -1777,6 +1832,7 @@ func _on_gui_input(event: InputEvent) -> void:
 			_selected_point_id = &""
 			_clear_reinforcement_feedback()
 			_selected_specialist_id = &""
+			_selected_field_facility_id = &""
 			_selected_formation_ids.clear()
 			_status_label.text = "已选中该军队；续令、撤逃与路线草稿只作用于它。"
 			refresh()
@@ -2560,14 +2616,16 @@ func _confirm_draft() -> void:
 		var tower_result := _dispatch_adapter.begin_field_watchtower_project(
 			StringName(tower_draft.get("engineer_id", &"")),
 			StringName(tower_draft.get("camp_id", &"")),
-			Vector2i(tower_draft.get("world_position", Vector2i.ZERO))
+			Vector2i(tower_draft.get("world_position", Vector2i.ZERO)),
+			StringName(tower_draft.get("facility_kind", FieldTacticsState.FACILITY_WATCHTOWER))
 		)
 		if not bool(tower_result.get("success", false)):
-			_set_status_error(str(tower_result.get("error", "瞭望塔施工失败")))
+			_set_status_error(str(tower_result.get("error", "%s施工失败" % _field_facility_display_name(StringName(tower_draft.get("facility_kind", FieldTacticsState.FACILITY_WATCHTOWER))))))
 			return
+		var completed_kind := StringName(tower_draft.get("facility_kind", FieldTacticsState.FACILITY_WATCHTOWER))
 		_clear_watchtower_draft()
 		_clear_status_error()
-		_status_label.text = "瞭望塔工程已开工；工程师到场并完成施工后才会扩大观察范围。"
+		_status_label.text = "%s工程已开工；工程师到场并完成施工后才会生效。" % _field_facility_display_name(completed_kind)
 		refresh()
 		return
 	if not _engineering_draft.is_empty():
@@ -2777,7 +2835,7 @@ func _build_side_road() -> void:
 	_status_label.text = "需要一名空闲且存活的工程师。"
 
 
-func _begin_watchtower_mode() -> void:
+func _begin_watchtower_mode(facility_kind: StringName = FieldTacticsState.FACILITY_WATCHTOWER) -> void:
 	if _dispatch_adapter == null:
 		return
 	var field := _dispatch_adapter.get_field_tactics_read_model()
@@ -2798,12 +2856,13 @@ func _begin_watchtower_mode() -> void:
 	_engineering_planned_points.clear()
 	_engineering_strokes.clear()
 	_watchtower_mode = true
+	_field_facility_kind = facility_kind
 	_watchtower_engineer_id = StringName(engineer.get("specialist_id", &""))
 	_watchtower_camp_id = &""
 	_watchtower_draft = {}
 	_watchtower_preview_position = Vector2.INF
 	_clear_status_error()
-	_status_label.text = "建瞭望塔：点击已完工工程驻点，再选择驻点范围内的可通行陆地。"
+	_status_label.text = "建%s：点击已完工工程驻点，再选择驻点范围内的可通行陆地。" % _field_facility_display_name(facility_kind)
 	refresh()
 
 
@@ -2817,10 +2876,56 @@ func _camp_id_for_point(camps: Dictionary, point_id: StringName) -> StringName:
 
 func _clear_watchtower_draft() -> void:
 	_watchtower_mode = false
+	_field_facility_kind = FieldTacticsState.FACILITY_WATCHTOWER
 	_watchtower_engineer_id = &""
 	_watchtower_camp_id = &""
 	_watchtower_draft = {}
 	_watchtower_preview_position = Vector2.INF
+
+
+func _field_facility_display_name(facility_kind: StringName) -> String:
+	if facility_kind == FieldTacticsState.FACILITY_ARROW_TOWER:
+		return "外部箭塔"
+	if facility_kind == FieldTacticsState.FACILITY_BARRICADE:
+		return "外部拒马"
+	return "瞭望塔"
+
+
+func _field_facility_effect_copy(draft: Dictionary) -> String:
+	var kind := StringName(draft.get("facility_kind", FieldTacticsState.FACILITY_WATCHTOWER))
+	if kind == FieldTacticsState.FACILITY_ARROW_TOWER:
+		return "射程 %d · 每 %0.1f 秒对范围内真实敌军造成 %d 人损失。" % [int(draft.get("effect_range", 0)), float(draft.get("attack_interval_milliseconds", 0)) / 1000.0, int(draft.get("damage", 0))]
+	if kind == FieldTacticsState.FACILITY_BARRICADE:
+		return "接触半径 %d · 首次阻挡同一敌军 %0.1f 秒并承受碰撞损伤。" % [int(draft.get("effect_range", 0)), float(draft.get("route_delay_milliseconds", 0)) / 1000.0]
+	return "完工后新增观察范围 %d。" % int(draft.get("visibility_range", 0))
+
+
+func _field_facility_record_effect_copy(facility: Dictionary) -> String:
+	var kind := StringName(facility.get("facility_kind", FieldTacticsState.FACILITY_WATCHTOWER))
+	if kind == FieldTacticsState.FACILITY_ARROW_TOWER:
+		return "有效射程 %d；每 %0.1f 秒减少范围内真实敌军 %d 人。" % [int(facility.get("effect_range", 0)), float(facility.get("attack_interval_milliseconds", 0)) / 1000.0, int(facility.get("damage", 0))]
+	if kind == FieldTacticsState.FACILITY_BARRICADE:
+		return "接触半径 %d；每支敌军首次通过时延迟 %0.1f 秒。" % [int(facility.get("effect_range", 0)), float(facility.get("route_delay_milliseconds", 0)) / 1000.0]
+	return "观察范围 %d。" % int(facility.get("visibility_range", 0))
+
+
+func _repair_selected_field_facility() -> void:
+	if _dispatch_adapter == null or _selected_field_facility_id == &"":
+		return
+	var field := _dispatch_adapter.get_field_tactics_read_model()
+	var engineer_id: StringName = &""
+	for specialist_id_value in Dictionary(field.get("specialists_by_id", {})).keys():
+		var specialist := Dictionary(field.specialists_by_id[specialist_id_value])
+		if StringName(specialist.get("role", &"")) == FieldTacticsState.SPECIALIST_ENGINEER and bool(specialist.get("alive", false)) and StringName(specialist.get("phase", &"")) in [FieldTacticsState.SPECIALIST_IDLE, FieldTacticsState.SPECIALIST_BLOCKED] and StringName(specialist.get("project_id", &"")) == &"":
+			engineer_id = StringName(specialist_id_value)
+			break
+	var result: Dictionary = _dispatch_adapter.begin_field_facility_repair(engineer_id, _selected_field_facility_id)
+	if not bool(result.get("success", false)):
+		_set_status_error(str(result.get("error", "外部设施维修未能开始")))
+		return
+	_selected_field_facility_id = &""
+	_status_label.text = "维修工程已开始；设施保持受损状态，直到工程师到场并完成施工。"
+	refresh()
 
 
 func _resume_selected_interrupted_project() -> void:
@@ -2861,6 +2966,14 @@ func _damaged_road_id_at_screen(field: Dictionary, screen_position: Vector2) -> 
 		for index in range(1, points.size()):
 			if _distance_to_segment(screen_position, _world_to_screen(Vector2(points[index - 1])), _world_to_screen(Vector2(points[index]))) <= 14.0:
 				return StringName(route.get("road_id", &""))
+	return &""
+
+
+func _field_facility_id_at_screen(field: Dictionary, screen_position: Vector2) -> StringName:
+	for facility_id_value in Dictionary(field.get("watchtowers_by_id", {})).keys():
+		var facility := Dictionary(field.watchtowers_by_id[facility_id_value])
+		if _world_to_screen(Vector2(facility.get("world_position", Vector2.ZERO))).distance_to(screen_position) <= 22.0:
+			return StringName(facility_id_value)
 	return &""
 
 
@@ -3786,10 +3899,15 @@ func _draw_watchtower_overlay(canvas: Control, _rect: Rect2, field: Dictionary) 
 	for tower_value in Dictionary(field.get("watchtowers_by_id", {})).values():
 		var tower: Dictionary = Dictionary(tower_value)
 		var tower_screen := _world_to_screen(Vector2(tower.get("world_position", Vector2.ZERO)))
-		canvas.draw_circle(tower_screen, 13.0, Color("d9b96d", 0.72))
+		var facility_kind := StringName(tower.get("facility_kind", FieldTacticsState.FACILITY_WATCHTOWER))
+		var facility_color := Color("d9b96d") if facility_kind == FieldTacticsState.FACILITY_WATCHTOWER else (Color("d45f45") if facility_kind == FieldTacticsState.FACILITY_ARROW_TOWER else Color("8d6b45"))
+		if StringName(tower.get("state", FieldTacticsState.FACILITY_ACTIVE)) == FieldTacticsState.FACILITY_DESTROYED:
+			facility_color = Color("6c6862")
+		canvas.draw_circle(tower_screen, 13.0, Color(facility_color, 0.72))
 		canvas.draw_rect(Rect2(tower_screen + Vector2(-4, -18), Vector2(8, 24)), Color("6e513a"), true)
-		canvas.draw_colored_polygon(PackedVector2Array([tower_screen + Vector2(-10, -18), tower_screen + Vector2(0, -29), tower_screen + Vector2(10, -18)]), Color("304e55"))
-		canvas.draw_string(ThemeDB.fallback_font, tower_screen + Vector2(-42, 31), "瞭望塔 · 视野 %d" % int(tower.get("visibility_range", 0)), HORIZONTAL_ALIGNMENT_CENTER, 84, 12, Color("fff0c5"))
+		canvas.draw_colored_polygon(PackedVector2Array([tower_screen + Vector2(-10, -18), tower_screen + Vector2(0, -29), tower_screen + Vector2(10, -18)]), facility_color)
+		var durability_copy := "" if facility_kind == FieldTacticsState.FACILITY_WATCHTOWER else " · %d/%d" % [int(tower.get("durability", 0)), int(tower.get("max_durability", 0))]
+		canvas.draw_string(ThemeDB.fallback_font, tower_screen + Vector2(-50, 31), "%s%s" % [_field_facility_display_name(facility_kind), durability_copy], HORIZONTAL_ALIGNMENT_CENTER, 100, 12, Color("fff0c5"))
 	if not _watchtower_mode:
 		return
 	var camp := Dictionary(Dictionary(field.get("camps_by_id", {})).get(_watchtower_camp_id, {}))

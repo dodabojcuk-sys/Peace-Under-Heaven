@@ -31,9 +31,9 @@ built in the battle scene.
 | Persistent city construction, roads, production, storage, training and research | `ConstructionController`, `NationState`, city road/placement and V5 runners | `blank_map.tscn` city rail | Clarify city-type permissions and connect post-war consequences to later city days | City production/train -> expedition -> return -> next day |
 | Population, medical, disease, seasons and broad social simulation | No authoritative implementation found | None | Not an existing source system; must not invent individual-NPC accounting | Separate focused design/implementation after an accepted rule source is identified |
 | R2 field operations | R2 Field/Macro March smoke, Route A/B, supply/reinforcement/tower persistence | Macro March from city | Preserve completed loop while adding cross-layer hooks | Route A/B plus interrupted/recovered operations |
-| Field construction catalogue | Roads, bridges, camps and watchtowers are authoritative | Engineer map planning | Arrow towers, forts, traps and obstacle rules are not yet an external facility framework | Facility type definition -> project -> real effect -> restore |
+| Field construction catalogue | Roads, bridges, camps, watchtowers, arrow towers and barricades are persistent field facts | Engineer map planning and facility detail/repair action | The R0 observation/fire/blocking line is connected; forts, mines and broader upgrade families remain on the functional backlog | Facility type definition -> project -> real effect/damage -> repair -> restore |
 | Regular/occupied/resource-city capability separation | Theatre point capability/read model and location detail | Map location details | Persistent city type policy needs to be centralised for later city/world work | Occupy -> garrison/reinforce/supply/continue without city-build leakage |
-| Wartime inner city | C0 has a distinct battle scene, two routes, gates, deployment, deterministic battle and atomic settlement | Formal C0 scene; `enter_macro_siege_wartime()` for an existing macro siege; `enter_wartime_defense_battle()` for Blackstone gate defense | A frozen macro request now keeps the original army/order/formation HP through takeover, active play, result-pending recovery and one result writeback. New macro plans expose only the effectful siege ram and arrow tower; defensive watch platforms, barricades and spike traps remain source-aware defense works, while older structural plans stay restorable. Formal macro victory, retreat, survivor defeat and full wipe are covered; a complete defensive campaign with broader facility families remains unverified. | Formal siege handoff -> build -> battle -> independent restore -> victory/retreat/defeat/full-wipe writeback; separate defense construction/interruption/repair chains |
+| Wartime inner city | C0 has distinct assault/defense identities, two routes, gates, deployment, deterministic battle and atomic settlement | Formal C0 scene; `enter_macro_siege_wartime()` for an existing macro siege; Blackstone gate action only after the configured invader arrives | The same sourced field invader now hands its surviving count to one defense transaction and resolves once. Formal macro victory, retreat, survivor defeat and full wipe remain covered. A single unaccelerated human run spanning preparation, defense, recovery and counterattack remains unaccepted. | Sourced warning -> march/interception -> handoff -> defense result; stable siege/counterattack regression; human player journey remains OPEN |
 | Generals, civilian abilities, equipment, technologies and trade | General/tech snapshots affect current C0 force; building/tech definitions exist | City selection/research UI | Civilian/energy, equipment and trade require source-rule inventory before implementation | Each confirmed ability changes one real transaction or battle/field result |
 
 ## First implementation sequence
@@ -50,7 +50,11 @@ built in the battle scene.
    control, siege closure and post-battle disposition. Continue proving
    defensive-campaign outcomes rather than treating the connected entry as a
    new city expedition.
-4. Add further facility types and wider progression only after their confirmed
+4. The first external defense line now uses explicit field facility kinds:
+   watchtowers reveal through existing fog, arrow towers damage one real in-range
+   patrol, and barricades delay one real patrol traversal while taking durable
+   damage. They reuse the field project/save envelope but never inherit C0
+   facility effects. Add further facility types and wider progression only after their confirmed
    source rules are inventoried. The absence of a prior population, disease or
    trade writer is recorded as a real gap, not silently filled by UI counters.
 

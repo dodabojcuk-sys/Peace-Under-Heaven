@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-12 - Sourced Blackstone invasion and persistent defense line
+
+- Added one configured, persisted Redcliff-to-Blackstone invasion with a
+  fog-respecting warning, one-time activation, real road movement and exact
+  surviving-force handoff into the existing wartime-defense transaction.
+- Prevented duplicate field/C0 simulation by moving the same invasion through
+  arrived, handed-off and resolved phases; defense settlement keeps the main
+  city's existing non-occupation damage rules.
+- Added persistent external arrow towers and barricades beside the existing
+  watchtower. Their real range damage or route delay, durability, engineer
+  construction, repair and snapshot recovery remain field facts and do not
+  inherit battle-instance facility effects.
+- Upgraded V5 to schema 12 for explicit defense-source identity, with a
+  conservative schema-11 migration that leaves unknown historical sources
+  empty.
+- Added source/restore/effect integration coverage and isolated GUI evidence
+  for the road, bridge, camp and three-facility field-defense workflow. Human
+  unaccelerated player acceptance remains open.
+
 ## 2026-09-12 - Source-aware siege and defense continuity
 
 - Replaced the shared fallback battle copy with source-aware Redcliff assault

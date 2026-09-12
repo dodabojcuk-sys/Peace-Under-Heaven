@@ -8,6 +8,26 @@ theater_name = "黑石战区·试玩"
 scout_visibility_range = 190
 watchtower_config = {
 "build_radius": 150,
+"field_facilities": {
+&"ARROW_TOWER": {
+"attack_interval_milliseconds": 4000,
+"damage": 1,
+"display_name": "外部箭塔",
+"effect_range": 220,
+"food_cost": 8,
+"max_durability": 120,
+"required_milliseconds": 8000
+},
+&"BARRICADE": {
+"collision_damage": 45,
+"display_name": "外部拒马",
+"effect_range": 42,
+"food_cost": 5,
+"max_durability": 160,
+"required_milliseconds": 5000,
+"route_delay_milliseconds": 8000
+}
+},
 "food_cost": 6,
 "required_milliseconds": 6000,
 "requires_connected_camp": true,
@@ -137,6 +157,19 @@ patrol_configs = Array[Dictionary]([{
 "start_point_id": &"northwatch_garrison",
 "strength": 6,
 "wait_milliseconds": 48000
+}, {
+"activation_day": 5,
+"display_name": "赤崖先遣军",
+"invasion_kind": &"BLACKSTONE_FIRST_INVASION",
+"known_route_name": "赤崖城—北望—黑石城",
+"patrol_id": &"invasion.blackstone.001",
+"route_point_ids": Array[StringName]([&"redcliff_city", &"northwatch_garrison", &"blackstone_city"]),
+"source_point_id": &"redcliff_city",
+"start_point_id": &"redcliff_city",
+"strength": 16,
+"target_point_id": &"blackstone_city",
+"warning_day": 4,
+"wait_milliseconds": 0
 }])
 routes = {
 &"road.blackstone.northwatch.ridge": {
