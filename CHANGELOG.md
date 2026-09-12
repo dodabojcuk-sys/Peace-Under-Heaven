@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-12 - City population development and social pressure R0
+
+- Extended the single aggregate population ledger with orthogonal age/sex,
+  resident sickness, unsettled refugees, demographic progress and explicit
+  conservation across city jobs, training, wounds, armies and specialists.
+- Added calendar-driven births and configurable long-horizon maturation,
+  ageing and warned winter-exposure consequences. Housing adds capacity only.
+- Added one finite, sourced Blackstone refugee case with durable accept, defer,
+  reject, housing-wait and settlement states; carried illness reuses the shared
+  city medical flow.
+- Expanded low security into staged theft, bandit production disruption and
+  local work stoppage with bounded targets, idempotent effects, explicit
+  governance costs and gradual recovery.
+- Upgraded campaign persistence to schema 16 with deterministic V15 migration,
+  strict snapshot validation and three-process recovery coverage. Added focused
+  and Metal engine-GUI checks; human normal-speed acceptance remains open.
+
 ## 2026-09-12 - Wartime spatial battle R1
 
 - Added fixed-tick spatial deployment, map selection and movement/attack/hold/

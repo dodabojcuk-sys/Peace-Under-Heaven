@@ -121,11 +121,14 @@ func _check_real_stationed_replenishment_and_reissue() -> void:
 	var legacy_recruited := duplicate_snapshot.duplicate(true)
 	legacy_recruited.schema_version = 13
 	legacy_recruited.erase("city_governance")
+	legacy_recruited.erase("city_strategy")
 	legacy_recruited.population_recovery.schema_version = 1
 	legacy_recruited.population_recovery.available += int(legacy_recruited.population_recovery.medical_workers) + int(legacy_recruited.population_recovery.governance_workers)
 	legacy_recruited.population_recovery.total_living -= 4
 	legacy_recruited.population_recovery.erase("medical_workers")
 	legacy_recruited.population_recovery.erase("governance_workers")
+	for key in ["children", "elderly", "resident_sick", "unsettled_refugees", "male_count", "female_count", "unknown_sex_count", "growth_progress", "child_age_progress", "adult_age_progress", "elderly_exposure_progress", "next_birth_sequence"]:
+		legacy_recruited.population_recovery.erase(key)
 	var legacy_recruited_validation: Dictionary = city.validate_v5_campaign_snapshot(legacy_recruited)
 	var duplicate: Dictionary = city.replenish_field_stationed_army(&"silverford_city", army_id)
 	var duplicate_after_snapshot: Dictionary = city.export_v5_campaign_snapshot()

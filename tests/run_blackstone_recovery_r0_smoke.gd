@@ -66,9 +66,9 @@ func _run() -> void:
 	_check(not bool(rejected.get("success", false)) and restored.export_v5_campaign_snapshot() == before_bad, "人口守恒被篡改的存档在应用前拒绝且全部权威零写入")
 
 	var ui: Node = scene.get_node("UI/Shell")
-	var population_label: Label = ui.get_node("GovernanceWorkspace/GovernanceMargin/GovernanceContent/PopulationRecoverySummary")
-	var treatment_button: Button = ui.get_node("GovernanceWorkspace/GovernanceMargin/GovernanceContent/WoundedTreatmentButton")
-	_check(population_label.text.contains("人口") and population_label.text.contains("阵亡累计") and treatment_button != null, "常态内城正式经营入口显示人口分配、伤员与治疗操作")
+	var population_label: Label = ui.get_node("GovernanceWorkspace/GovernanceMargin/GovernanceScroll/GovernanceContent/PopulationRecoverySummary")
+	var treatment_button: Button = ui.get_node("GovernanceWorkspace/GovernanceMargin/GovernanceScroll/GovernanceContent/WoundedTreatmentButton")
+	_check(population_label.text.contains("劳动力") and population_label.text.contains("死亡") and treatment_button != null, "常态内城正式经营入口显示人口分配、伤员与治疗操作")
 
 	city._population_recovery.restore_snapshot(population_before_casualties)
 	city._garrison_state.restore_persistence_snapshot(garrison_before_casualties)

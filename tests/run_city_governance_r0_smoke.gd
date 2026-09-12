@@ -77,20 +77,22 @@ func _run() -> void:
 	legacy.population_recovery.available += int(legacy.population_recovery.medical_workers) + int(legacy.population_recovery.governance_workers)
 	legacy.population_recovery.erase("medical_workers")
 	legacy.population_recovery.erase("governance_workers")
+	for key in ["children", "elderly", "resident_sick", "unsettled_refugees", "male_count", "female_count", "unknown_sex_count", "growth_progress", "child_age_progress", "adult_age_progress", "elderly_exposure_progress", "next_birth_sequence"]:
+		legacy.population_recovery.erase(key)
 	var legacy_validation: Dictionary = restored.validate_v5_campaign_snapshot(legacy)
-	_check(bool(legacy_validation.valid) and int(legacy_validation.snapshot.schema_version) == 15 and int(legacy_validation.snapshot.city_governance.diseased_count) == 0 and Array(legacy_validation.snapshot.city_strategy.unlocked_official_ids).is_empty(), "V13 旧档只补保守治理与空战略默认值，不补资源、居民、文官或有利事件")
+	_check(bool(legacy_validation.valid) and int(legacy_validation.snapshot.schema_version) == 16 and int(legacy_validation.snapshot.population_recovery.resident_sick) == 0 and Array(legacy_validation.snapshot.city_strategy.unlocked_official_ids).is_empty(), "V13 旧档只补保守治理、未知人口维度与空战略默认值，不补资源、居民、文官或有利事件")
 	var malformed_legacy: Dictionary = legacy.duplicate(true)
 	malformed_legacy.population_recovery.available = "20"
 	var malformed_legacy_validation: Dictionary = restored.validate_v5_campaign_snapshot(malformed_legacy)
 	_check(not bool(malformed_legacy_validation.valid), "V13 旧档人口字段先校验类型，不通过数值转换接受非法输入")
 	var malformed: Dictionary = snapshot.duplicate(true)
-	malformed.city_governance.diseased_count = 999
+	malformed.population_recovery.resident_sick = 999
 	var before_bad: Dictionary = restored.export_v5_campaign_snapshot()
 	var rejected: Dictionary = restored.restore_v5_campaign_snapshot(malformed)
 	_check(not bool(rejected.success) and restored.export_v5_campaign_snapshot() == before_bad, "非法疾病人口在应用前拒绝且不污染现状")
 
 	var ui: Node = scene.get_node("UI/Shell")
-	_check(ui.get_node("GovernanceWorkspace/GovernanceMargin/GovernanceContent/WellbeingBuildingShortcuts/GovernanceHousingButton") != null and ui.get_node("GovernanceWorkspace/GovernanceMargin/GovernanceContent/WellbeingBuildingShortcuts/GovernanceClinicButton") != null and ui.get_node("GovernanceWorkspace/GovernanceMargin/GovernanceContent/GovernanceEventButton") != null, "现有治理区提供民居、医舍与治安行动入口")
+	_check(ui.get_node("GovernanceWorkspace/GovernanceMargin/GovernanceScroll/GovernanceContent/WellbeingBuildingShortcuts/GovernanceHousingButton") != null and ui.get_node("GovernanceWorkspace/GovernanceMargin/GovernanceScroll/GovernanceContent/WellbeingBuildingShortcuts/GovernanceClinicButton") != null and ui.get_node("GovernanceWorkspace/GovernanceMargin/GovernanceScroll/GovernanceContent/GovernanceEventButton") != null, "现有治理区提供民居、医舍与治安行动入口")
 
 	scene.queue_free()
 	restored_scene.queue_free()

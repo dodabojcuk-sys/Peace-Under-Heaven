@@ -63,6 +63,7 @@ var governance_order_minus: Button
 var governance_order_plus: Button
 var governance_treatment_button: Button
 var governance_event_button: Button
+var governance_refugee_actions: VBoxContainer
 var _governance_workspace_was_visible := false
 var strategy_workspace: PanelContainer
 var strategy_content: VBoxContainer
@@ -313,10 +314,16 @@ func _install_governance_workspace() -> void:
 	margin.add_theme_constant_override("margin_bottom", 6)
 	governance_workspace.add_child(margin)
 
+	var scroll := ScrollContainer.new()
+	scroll.name = "GovernanceScroll"
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	margin.add_child(scroll)
+
 	var content := VBoxContainer.new()
 	content.name = "GovernanceContent"
+	content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	content.add_theme_constant_override("separation", 3)
-	margin.add_child(content)
+	scroll.add_child(content)
 
 	governance_title = Label.new()
 	governance_title.name = "Title"
@@ -415,6 +422,11 @@ func _install_governance_workspace() -> void:
 	clinic_button.pressed.connect(_start_governance_definition.bind(&"building.clinic.t1"))
 	wellbeing_buildings.add_child(clinic_button)
 	content.add_child(wellbeing_buildings)
+
+	governance_refugee_actions = VBoxContainer.new()
+	governance_refugee_actions.name = "RefugeeActions"
+	governance_refugee_actions.add_theme_constant_override("separation", 4)
+	content.add_child(governance_refugee_actions)
 
 	governance_treatment_button = _make_governance_button("治疗伤员")
 	governance_treatment_button.name = "WoundedTreatmentButton"
@@ -664,6 +676,14 @@ func _resolve_governance_event() -> void:
 	construction_controller.resolve_city_governance_event()
 
 
+func _decide_refugee(case_id: StringName, decision: StringName) -> void:
+	construction_controller.decide_refugee_case(case_id, decision)
+
+
+func _settle_refugee(case_id: StringName) -> void:
+	construction_controller.settle_refugee_case(case_id)
+
+
 func _start_governance_definition(definition_id: StringName) -> void:
 	construction_controller.begin_placing_definition(
 		definition_id,
@@ -732,10 +752,16 @@ func _refresh_governance_workspace(
 	var treatment: Dictionary = Dictionary(population.get("treatment", {}))
 	var treatment_active := StringName(treatment.get("phase", &"")) == &"ACTIVE"
 	governance_population_summary.text = (
-		"人口 %d · 可用 %d · 生产 %d · 施工 %d · 医疗 %d · 治理 %d\n驻军与外派 %d · 伤员 %d · 患病 %d · 阵亡累计 %d%s\n%s季 · 健康 %d%% · 住房 %d/%d · 治安 %d"
+		"劳动力 %d · 住房余 %d · 粮食日需 %d · 压力 %d · 待安置 %d\n儿童 %d · 成年 %d · 老年 %d｜岗位 产%d / 施%d / 医%d / 治%d\n军事 %d · 伤%d · 病%d · 难民医疗%d · 死亡%d%s｜%s季 %d%% · 住房%d/%d · 治安%d%s"
 		% [
-			int(population.get("total_living", 0)),
 			int(population.get("available", 0)),
+			int(governance.get("housing_surplus", 0)),
+			int(governance.get("food_required", 0)),
+			int(governance.get("pressure_points", 0)),
+			int(population.get("unsettled_refugees", 0)),
+			int(population.get("children", 0)),
+			int(population.get("adults", 0)),
+			int(population.get("elderly", 0)),
 			int(population.get("production_workers", 0)),
 			int(population.get("construction_workers", 0)),
 			int(population.get("medical_workers", 0)),
@@ -743,6 +769,7 @@ func _refresh_governance_workspace(
 			int(population.get("military", 0)),
 			int(population.get("wounded", 0)),
 			int(governance.get("diseased_count", 0)),
+			int(governance.get("refugee_medical_burden", 0)),
 			int(population.get("fallen", 0)),
 			" · 治疗中 %d/%d" % [int(treatment.get("progress_milliseconds", 0)), int(treatment.get("required_milliseconds", 0))] if treatment_active else "",
 			str(governance.get("season_name", "")),
@@ -750,8 +777,46 @@ func _refresh_governance_workspace(
 			int(population.get("total_living", 0)),
 			int(governance.get("housing_capacity", 0)),
 			int(governance.get("security", 0)),
+			" · 增长受阻：%s" % str(governance.get("growth_blocker", "")) if not str(governance.get("growth_blocker", "")).is_empty() else " · 增长条件满足",
 		]
 	)
+	for child in governance_refugee_actions.get_children():
+		child.queue_free()
+	var refugee_cases: Dictionary = Dictionary(governance.get("refugee_cases_by_id", {}))
+	var refugee_ids := refugee_cases.keys()
+	refugee_ids.sort()
+	for case_id_value in refugee_ids:
+		var case_id := StringName(case_id_value)
+		var refugee_case: Dictionary = Dictionary(refugee_cases[case_id])
+		var phase := StringName(refugee_case.phase)
+		if phase not in [&"PENDING", &"DEFERRED", &"WAITING_HOUSING"]:
+			continue
+		var preview := _make_row_label("%s · %d 人 · 医疗负担 %d · %s" % [str(refugee_case.display_name), int(refugee_case.count), int(refugee_case.medical_burden), "待决定" if phase in [&"PENDING", &"DEFERRED"] else "已接纳，等待住房"])
+		preview.add_theme_color_override("font_color", WARNING)
+		governance_refugee_actions.add_child(preview)
+		var row := HBoxContainer.new()
+		if phase in [&"PENDING", &"DEFERRED"]:
+			var accept := _make_governance_button("接纳")
+			accept.name = "RefugeeAcceptButton"
+			accept.tooltip_text = "人口一次加入待安置组；不会立即成为劳动力。"
+			accept.pressed.connect(_decide_refugee.bind(case_id, &"ACCEPT"))
+			row.add_child(accept)
+			var defer := _make_governance_button("暂缓")
+			defer.tooltip_text = "保持同一来源与人数，不生成新事件。"
+			defer.pressed.connect(_decide_refugee.bind(case_id, &"DEFER"))
+			row.add_child(defer)
+			var reject := _make_governance_button("拒绝")
+			reject.tooltip_text = "关闭该来源；首版没有临时夸大惩罚。"
+			reject.pressed.connect(_decide_refugee.bind(case_id, &"REJECT"))
+			row.add_child(reject)
+		else:
+			var settle := _make_governance_button("完成安置")
+			settle.name = "RefugeeSettleButton"
+			settle.disabled = int(governance.get("housing_shortfall", 0)) > 0
+			settle.tooltip_text = "需要实际住房覆盖全部人口；完成后转为可用成年人。"
+			settle.pressed.connect(_settle_refugee.bind(case_id))
+			row.add_child(settle)
+		governance_refugee_actions.add_child(row)
 	governance_production_minus.disabled = int(population.get("production_workers", 0)) <= 0
 	governance_construction_minus.disabled = int(population.get("construction_workers", 0)) <= 0
 	governance_production_plus.disabled = int(population.get("available", 0)) <= 0
@@ -761,9 +826,11 @@ func _refresh_governance_workspace(
 	governance_order_minus.disabled = int(population.get("governance_workers", 0)) <= 0
 	governance_order_plus.disabled = int(population.get("available", 0)) <= 0
 	governance_treatment_button.disabled = int(population.get("wounded", 0)) <= 0 or treatment_active
-	governance_treatment_button.text = "治疗进行中" if treatment_active else "治疗伤员 · 每批最多 6 人"
+	governance_treatment_button.text = "治疗进行中 · 占用医疗容量" if treatment_active else "治疗伤员 · 每批最多 6 人"
 	governance_event_button.visible = StringName(Dictionary(governance.get("active_event", {})).get("phase", &"")) == &"ACTIVE"
 	governance_event_button.disabled = int(population.get("governance_workers", 0)) < 2
+	if governance_event_button.visible:
+		governance_event_button.text = "处置当前事件 · 粮食 2 · 压力 -18"
 	if not str(governance.get("active_issue", "")).is_empty():
 		issues.push_front(str(governance.active_issue))
 	governance_issue_detail.visible = not issues.is_empty()
