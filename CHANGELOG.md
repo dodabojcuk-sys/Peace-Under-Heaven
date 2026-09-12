@@ -1,5 +1,24 @@
 # Changelog
 
+## 2026-09-12 - Six-slot equipment growth and strategy closeout
+
+- Authored helmet, gloves and accessory content plus a complete six-slot
+  general loadout; retained one second weapon for a real same-slot inheritance
+  flow.
+- Added deterministic training, quality rank-up and destructive experience
+  inheritance with stable ownership, retained over-cap experience, formal
+  attack/defense/mobility effects and atomic save-failure rollback.
+- Macro orders now persist equipment identities and frozen attack/defense
+  values. Active orders keep referenced source items unavailable to
+  inheritance, and siege takeover reads the same immutable values.
+- Expanded the city strategy workspace with selected-object, slot, effect,
+  cost, duration, transaction-result and trade-capacity explanations.
+- Migrated nested city strategy snapshots from schema 1 to schema 2 without
+  granting old campaigns items, experience or quality.
+- Resolved the three Macro March location-detail failures by updating their
+  stale two-formation fixture to survive the authored patrol. Production
+  location, occupation and combat rules were not weakened.
+
 ## 2026-09-12 - Player-usable city strategy support
 
 - Added a separate scrollable city strategy workspace with visible controls for

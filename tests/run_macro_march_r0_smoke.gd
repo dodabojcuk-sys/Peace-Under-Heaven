@@ -553,9 +553,13 @@ func _run_location_detail_contract() -> void:
 		if int(formation.get("member_count", 0)) > 0:
 			available_formations.append(StringName(formation.get("formation_id", &"")))
 	var north_route: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
-	var issued: Dictionary = city.commit_macro_march_from_city([
-		available_formations[0], available_formations[1],
-	], &"northwatch_garrison", StringName(north_route.route_id), Array(north_route.points))
+	# The playable theatre now includes a real patrol before Redcliff. Use every
+	# available formation, as the formal direct route does, so this contract tests
+	# location capabilities after a legal occupation rather than assuming the old
+	# two-formation fixture can survive the current authored battle.
+	var issued: Dictionary = city.commit_macro_march_from_city(
+		available_formations, &"northwatch_garrison", StringName(north_route.route_id), Array(north_route.points)
+	)
 	var army_id := StringName(Dictionary(issued.get("army", {})).get("army_id", &""))
 	var north_wait := 0
 	while north_wait < 40000 and StringName(city._army_registry.get_army(army_id).get("phase", &"")) != ArmyRegistry.PHASE_STATIONED:

@@ -2,12 +2,17 @@ class_name CityStrategyState
 extends RefCounted
 
 
-const SCHEMA_VERSION := 1
+const SCHEMA_VERSION := 2
 const SUPPORT_IDLE := &"IDLE"
 const SUPPORT_ACTIVE := &"ACTIVE"
 const OFFICIAL_IDS := [&"official.steward", &"official.physician", &"official.strategist"]
 const TROOP_EQUIPMENT_IDS := [&"equipment.spear_kit", &"equipment.padded_armor", &"equipment.marching_kit"]
-const GENERAL_EQUIPMENT_IDS := [&"equipment.general.bronze_sword", &"equipment.general.lamellar", &"equipment.general.riding_boots"]
+const GENERAL_EQUIPMENT_IDS := [
+	&"equipment.general.bronze_sword", &"equipment.general.iron_sword",
+	&"equipment.general.scout_helmet", &"equipment.general.lamellar",
+	&"equipment.general.leather_gloves", &"equipment.general.riding_boots",
+	&"equipment.general.command_talisman",
+]
 const EQUIPMENT_IDS := TROOP_EQUIPMENT_IDS + GENERAL_EQUIPMENT_IDS
 const GENERAL_SLOTS := [&"weapon", &"helmet", &"armor", &"gloves", &"boots", &"accessory"]
 const SUPPORT_BY_OFFICIAL := {
@@ -21,6 +26,7 @@ var appointed_official_id := &""
 var campaign_energy := 0
 var active_support := empty_support()
 var owned_equipment_ids: Array[StringName] = []
+var equipment_growth_by_id: Dictionary = {}
 var troop_equipment_by_slot := {&"attack": &"", &"defense": &"", &"mobility": &""}
 var general_equipment_by_general_id: Dictionary = {}
 var trade_day := 0
@@ -35,6 +41,7 @@ func initialize_fresh(rules: CityStrategyRules) -> void:
 	campaign_energy = rules.campaign_energy_max
 	active_support = empty_support()
 	owned_equipment_ids.clear()
+	equipment_growth_by_id.clear()
 	troop_equipment_by_slot = {&"attack": &"", &"defense": &"", &"mobility": &""}
 	general_equipment_by_general_id.clear()
 	trade_day = 0
@@ -47,7 +54,7 @@ static func empty_legacy_snapshot() -> Dictionary:
 	return {
 		"schema_version": SCHEMA_VERSION, "unlocked_official_ids": [],
 		"appointed_official_id": &"", "campaign_energy": 0,
-		"active_support": empty_support(), "owned_equipment_ids": [],
+		"active_support": empty_support(), "owned_equipment_ids": [], "equipment_growth_by_id": {},
 		"troop_equipment_by_slot": {&"attack": &"", &"defense": &"", &"mobility": &""},
 		"general_equipment_by_general_id": {},
 		"trade_day": 0, "used_trade_offer_ids": [],
@@ -91,7 +98,69 @@ func own_equipment(equipment_id: StringName) -> bool:
 		return false
 	owned_equipment_ids.append(equipment_id)
 	owned_equipment_ids.sort()
+	if equipment_id in GENERAL_EQUIPMENT_IDS:
+		equipment_growth_by_id[equipment_id] = {"quality_id": &"COMMON", "experience": 0}
 	return true
+
+
+func train_equipment(equipment_id: StringName, experience_gain: int) -> bool:
+	if experience_gain <= 0 or equipment_id not in owned_equipment_ids or not equipment_growth_by_id.has(equipment_id):
+		return false
+	var growth: Dictionary = Dictionary(equipment_growth_by_id[equipment_id]).duplicate(true)
+	growth.experience = int(growth.experience) + experience_gain
+	equipment_growth_by_id[equipment_id] = growth
+	return true
+
+
+func rank_up_equipment(equipment_id: StringName, quality_order: Array[StringName], experience_per_level: int, level_caps: Dictionary) -> bool:
+	if equipment_id not in owned_equipment_ids or not equipment_growth_by_id.has(equipment_id):
+		return false
+	var growth: Dictionary = Dictionary(equipment_growth_by_id[equipment_id]).duplicate(true)
+	var current_quality := StringName(growth.quality_id)
+	var quality_index := quality_order.find(current_quality)
+	if quality_index < 0 or quality_index + 1 >= quality_order.size():
+		return false
+	var current_cap := int(level_caps.get(current_quality, 0))
+	if equipment_level(equipment_id, experience_per_level, level_caps) < current_cap:
+		return false
+	growth.quality_id = quality_order[quality_index + 1]
+	equipment_growth_by_id[equipment_id] = growth
+	return true
+
+
+func inherit_equipment_experience(target_id: StringName, source_id: StringName, experience_per_level: int) -> bool:
+	if target_id == source_id or target_id not in owned_equipment_ids or source_id not in owned_equipment_ids:
+		return false
+	if not equipment_growth_by_id.has(target_id) or not equipment_growth_by_id.has(source_id):
+		return false
+	if _equipment_slot(target_id) != _equipment_slot(source_id) or is_equipment_assigned(source_id):
+		return false
+	var target: Dictionary = Dictionary(equipment_growth_by_id[target_id]).duplicate(true)
+	var source: Dictionary = Dictionary(equipment_growth_by_id[source_id])
+	# The source contributes all accumulated experience plus one base level. The
+	# uncapped total remains stored and becomes usable after a later rank-up.
+	target.experience = int(target.experience) + int(source.experience) + experience_per_level
+	equipment_growth_by_id[target_id] = target
+	equipment_growth_by_id.erase(source_id)
+	owned_equipment_ids.erase(source_id)
+	return true
+
+
+func equipment_level(equipment_id: StringName, experience_per_level: int, level_caps: Dictionary) -> int:
+	var growth: Dictionary = Dictionary(equipment_growth_by_id.get(equipment_id, {}))
+	if growth.is_empty() or experience_per_level <= 0:
+		return 0
+	var uncapped := 1 + int(growth.experience) / experience_per_level
+	return mini(uncapped, int(level_caps.get(StringName(growth.quality_id), 1)))
+
+
+func is_equipment_assigned(equipment_id: StringName) -> bool:
+	if equipment_id in troop_equipment_by_slot.values():
+		return true
+	for loadout_value in general_equipment_by_general_id.values():
+		if equipment_id in Dictionary(loadout_value).values():
+			return true
+	return false
 
 
 func equip_troops(equipment_id: StringName) -> bool:
@@ -121,8 +190,12 @@ func equip_general(general_id: StringName, equipment_id: StringName) -> bool:
 		return false
 	var slot := {
 		&"equipment.general.bronze_sword": &"weapon",
+		&"equipment.general.iron_sword": &"weapon",
+		&"equipment.general.scout_helmet": &"helmet",
 		&"equipment.general.lamellar": &"armor",
+		&"equipment.general.leather_gloves": &"gloves",
 		&"equipment.general.riding_boots": &"boots",
+		&"equipment.general.command_talisman": &"accessory",
 	}.get(equipment_id, &"") as StringName
 	if slot == &"":
 		return false
@@ -170,6 +243,7 @@ func get_snapshot() -> Dictionary:
 		"campaign_energy": campaign_energy,
 		"active_support": active_support.duplicate(true),
 		"owned_equipment_ids": owned_equipment_ids.duplicate(),
+		"equipment_growth_by_id": equipment_growth_by_id.duplicate(true),
 		"troop_equipment_by_slot": troop_equipment_by_slot.duplicate(true),
 		"general_equipment_by_general_id": general_equipment_by_general_id.duplicate(true),
 		"trade_day": trade_day,
@@ -189,6 +263,7 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 	campaign_energy = int(value.campaign_energy)
 	active_support = Dictionary(value.active_support).duplicate(true)
 	owned_equipment_ids.assign(value.owned_equipment_ids)
+	equipment_growth_by_id = Dictionary(value.equipment_growth_by_id).duplicate(true)
 	troop_equipment_by_slot = Dictionary(value.troop_equipment_by_slot).duplicate(true)
 	general_equipment_by_general_id = Dictionary(value.general_equipment_by_general_id).duplicate(true)
 	trade_day = int(value.trade_day)
@@ -199,16 +274,37 @@ func restore_snapshot(snapshot: Dictionary) -> bool:
 
 
 static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
-	var keys := ["schema_version", "unlocked_official_ids", "appointed_official_id", "campaign_energy", "active_support", "owned_equipment_ids", "troop_equipment_by_slot", "general_equipment_by_general_id", "trade_day", "used_trade_offer_ids", "next_trade_receipt_sequence", "trade_receipts"]
+	if typeof(snapshot.get("schema_version", null)) == TYPE_INT and int(snapshot.schema_version) == 1:
+		var migrated := snapshot.duplicate(true)
+		migrated.schema_version = SCHEMA_VERSION
+		migrated.equipment_growth_by_id = {}
+		for equipment_id_value in Array(migrated.get("owned_equipment_ids", [])):
+			var equipment_id := StringName(equipment_id_value)
+			if equipment_id in GENERAL_EQUIPMENT_IDS:
+				migrated.equipment_growth_by_id[equipment_id] = {"quality_id": &"COMMON", "experience": 0}
+		return validate_snapshot(migrated)
+	var keys := ["schema_version", "unlocked_official_ids", "appointed_official_id", "campaign_energy", "active_support", "owned_equipment_ids", "equipment_growth_by_id", "troop_equipment_by_slot", "general_equipment_by_general_id", "trade_day", "used_trade_offer_ids", "next_trade_receipt_sequence", "trade_receipts"]
 	if snapshot.size() != keys.size():
 		return {"valid": false}
 	for key in keys:
 		if not snapshot.has(key):
 			return {"valid": false}
-	if typeof(snapshot.schema_version) != TYPE_INT or int(snapshot.schema_version) != SCHEMA_VERSION or typeof(snapshot.unlocked_official_ids) != TYPE_ARRAY or typeof(snapshot.appointed_official_id) != TYPE_STRING_NAME or typeof(snapshot.campaign_energy) != TYPE_INT or int(snapshot.campaign_energy) < 0 or typeof(snapshot.active_support) != TYPE_DICTIONARY or typeof(snapshot.owned_equipment_ids) != TYPE_ARRAY or typeof(snapshot.troop_equipment_by_slot) != TYPE_DICTIONARY or typeof(snapshot.general_equipment_by_general_id) != TYPE_DICTIONARY or typeof(snapshot.trade_day) != TYPE_INT or int(snapshot.trade_day) < 0 or typeof(snapshot.used_trade_offer_ids) != TYPE_ARRAY or typeof(snapshot.next_trade_receipt_sequence) != TYPE_INT or int(snapshot.next_trade_receipt_sequence) <= 0 or typeof(snapshot.trade_receipts) != TYPE_ARRAY:
+	if typeof(snapshot.schema_version) != TYPE_INT or int(snapshot.schema_version) != SCHEMA_VERSION or typeof(snapshot.unlocked_official_ids) != TYPE_ARRAY or typeof(snapshot.appointed_official_id) != TYPE_STRING_NAME or typeof(snapshot.campaign_energy) != TYPE_INT or int(snapshot.campaign_energy) < 0 or typeof(snapshot.active_support) != TYPE_DICTIONARY or typeof(snapshot.owned_equipment_ids) != TYPE_ARRAY or typeof(snapshot.equipment_growth_by_id) != TYPE_DICTIONARY or typeof(snapshot.troop_equipment_by_slot) != TYPE_DICTIONARY or typeof(snapshot.general_equipment_by_general_id) != TYPE_DICTIONARY or typeof(snapshot.trade_day) != TYPE_INT or int(snapshot.trade_day) < 0 or typeof(snapshot.used_trade_offer_ids) != TYPE_ARRAY or typeof(snapshot.next_trade_receipt_sequence) != TYPE_INT or int(snapshot.next_trade_receipt_sequence) <= 0 or typeof(snapshot.trade_receipts) != TYPE_ARRAY:
 		return {"valid": false}
 	if not _valid_unique_ids(snapshot.unlocked_official_ids, OFFICIAL_IDS) or not _valid_unique_ids(snapshot.owned_equipment_ids, EQUIPMENT_IDS):
 		return {"valid": false}
+	for equipment_id_value in snapshot.equipment_growth_by_id:
+		if typeof(equipment_id_value) != TYPE_STRING_NAME or StringName(equipment_id_value) not in GENERAL_EQUIPMENT_IDS or StringName(equipment_id_value) not in snapshot.owned_equipment_ids:
+			return {"valid": false}
+		var growth_value = snapshot.equipment_growth_by_id[equipment_id_value]
+		if typeof(growth_value) != TYPE_DICTIONARY:
+			return {"valid": false}
+		var growth: Dictionary = growth_value
+		if growth.size() != 2 or typeof(growth.get("quality_id")) != TYPE_STRING_NAME or StringName(growth.quality_id) not in [&"COMMON", &"FINE", &"ELITE"] or typeof(growth.get("experience")) != TYPE_INT or int(growth.experience) < 0:
+			return {"valid": false}
+	for equipment_id_value in snapshot.owned_equipment_ids:
+		if StringName(equipment_id_value) in GENERAL_EQUIPMENT_IDS and not snapshot.equipment_growth_by_id.has(equipment_id_value):
+			return {"valid": false}
 	if StringName(snapshot.appointed_official_id) != &"" and StringName(snapshot.appointed_official_id) not in snapshot.unlocked_official_ids:
 		return {"valid": false}
 	var support: Dictionary = snapshot.active_support
@@ -237,7 +333,7 @@ static func validate_snapshot(snapshot: Dictionary) -> Dictionary:
 			if not loadout.has(slot) or typeof(loadout[slot]) != TYPE_STRING_NAME:
 				return {"valid": false}
 			var equipment_id := StringName(loadout[slot])
-			if equipment_id != &"" and (equipment_id not in snapshot.owned_equipment_ids or equipment_id not in GENERAL_EQUIPMENT_IDS or assigned_general_items.has(equipment_id)):
+			if equipment_id != &"" and (equipment_id not in snapshot.owned_equipment_ids or equipment_id not in GENERAL_EQUIPMENT_IDS or _equipment_slot(equipment_id) != StringName(slot) or assigned_general_items.has(equipment_id)):
 				return {"valid": false}
 			if equipment_id != &"":
 				assigned_general_items[equipment_id] = true
@@ -285,3 +381,12 @@ static func _valid_unique_ids(values: Array, allowed: Array) -> bool:
 			return false
 		seen[StringName(value)] = true
 	return true
+
+
+static func _equipment_slot(equipment_id: StringName) -> StringName:
+	return {
+		&"equipment.general.bronze_sword": &"weapon", &"equipment.general.iron_sword": &"weapon",
+		&"equipment.general.scout_helmet": &"helmet", &"equipment.general.lamellar": &"armor",
+		&"equipment.general.leather_gloves": &"gloves", &"equipment.general.riding_boots": &"boots",
+		&"equipment.general.command_talisman": &"accessory",
+	}.get(equipment_id, &"") as StringName

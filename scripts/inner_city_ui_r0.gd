@@ -469,7 +469,25 @@ func _close_strategy_workspace() -> void:
 
 func _strategy_action(method: StringName, argument: StringName = &"") -> void:
 	var result: Dictionary = construction_controller.call(method, argument) if argument != &"" else construction_controller.call(method)
-	strategy_feedback.text = "已完成" if bool(result.get("success", false)) else str(result.get("error", "操作失败"))
+	var success_copy: String = str({
+		&"appoint_city_official": "文官任命已更新",
+		&"activate_city_official_support": "文官支援已启用",
+		&"craft_city_equipment": "装备制造完成，尚未自动装配",
+		&"equip_city_troops": "制式装备已装配",
+		&"unequip_city_troops": "制式装备已卸下",
+		&"equip_city_general": "将领装备已装配",
+		&"unequip_city_general": "将领装备已卸下",
+		&"train_city_equipment": "装备培养完成",
+		&"rank_up_city_equipment": "装备升阶完成",
+		&"execute_city_trade": "交易完成并已生成回执",
+	}.get(method, "操作完成"))
+	strategy_feedback.text = success_copy if bool(result.get("success", false)) else str(result.get("error", "操作失败"))
+	_refresh_strategy_workspace.call_deferred(false)
+
+
+func _strategy_inherit_action(target_id: StringName, source_id: StringName) -> void:
+	var result: Dictionary = construction_controller.inherit_city_equipment_experience(target_id, source_id)
+	strategy_feedback.text = "经验继承完成，来源装备已消耗" if bool(result.get("success", false)) else str(result.get("error", "继承失败"))
 	_refresh_strategy_workspace.call_deferred(false)
 
 
@@ -503,7 +521,7 @@ func _refresh_strategy_workspace(clear_feedback := false) -> void:
 	var support_copy := "无支援生效"
 	if StringName(active.get("phase", &"")) == &"ACTIVE" and bool(model.get("active_support_effective", false)):
 		var support_names := {&"PRODUCTION": "生产", &"MEDICAL": "医疗", &"DEFENSE": "防御"}
-		support_copy = "%s支援 · 至第 %d 日" % [str(support_names.get(StringName(active.get("support_type", &"")), "城市")), int(active.get("expires_day", 0))]
+		support_copy = "%s支援生效中 · 剩余 %d 日（第 %d 日边界结束）" % [str(support_names.get(StringName(active.get("support_type", &"")), "城市")), maxi(int(active.get("expires_day", 0)) - construction_controller.current_day, 0), int(active.get("expires_day", 0))]
 	elif StringName(active.get("phase", &"")) == &"ACTIVE":
 		support_copy = "支援已到期 · 等待保存重试"
 	var overview := _make_row_label("关卡能量 %d/3 · %s" % [int(model.get("campaign_energy", 0)), support_copy])
@@ -511,6 +529,7 @@ func _refresh_strategy_workspace(clear_feedback := false) -> void:
 	strategy_content.add_child(overview)
 	strategy_content.add_child(_strategy_section_label("文官任命与支援"))
 	var official_names: Dictionary = Dictionary(model.get("official_names", {}))
+	var support_descriptions: Dictionary = Dictionary(model.get("support_descriptions", {}))
 	for official_id_value in Array(model.get("unlocked_official_ids", [])):
 		var official_id := StringName(official_id_value)
 		var appointed := official_id == StringName(model.get("appointed_official_id", &""))
@@ -519,17 +538,24 @@ func _refresh_strategy_workspace(clear_feedback := false) -> void:
 		button.disabled = appointed
 		button.pressed.connect(_strategy_action.bind(&"appoint_city_official", official_id))
 		strategy_content.add_child(button)
+		var description := _make_row_label("  %s" % str(support_descriptions.get(official_id, "")))
+		description.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		strategy_content.add_child(description)
 	var support_button := _make_governance_button("启用当前文官支援 · 消耗 1 能量")
 	support_button.name = "ActivateOfficialSupportButton"
 	support_button.disabled = int(model.get("campaign_energy", 0)) <= 0 or StringName(active.get("phase", &"")) == &"ACTIVE"
 	support_button.pressed.connect(_strategy_action.bind(&"activate_city_official_support", &""))
 	strategy_content.add_child(support_button)
-	strategy_content.add_child(_strategy_section_label("制式装备 · 城内整备"))
+	strategy_content.add_child(_strategy_section_label("编队制式装备 · 制造与装配分开"))
 	var equipment_names: Dictionary = Dictionary(model.get("equipment_names", {}))
 	var equipment_costs: Dictionary = Dictionary(model.get("equipment_costs", {}))
 	var owned: Array = Array(model.get("owned_equipment_ids", []))
 	var slots: Dictionary = Dictionary(model.get("troop_equipment_by_slot", {}))
 	var general_loadouts: Dictionary = Dictionary(model.get("general_equipment_by_general_id", {}))
+	var growth_models: Dictionary = Dictionary(model.get("equipment_growth_models", {}))
+	var rank_costs: Dictionary = Dictionary(model.get("equipment_rank_costs", {}))
+	var quality_names: Dictionary = Dictionary(model.get("quality_names", {}))
+	var slot_names: Dictionary = Dictionary(model.get("general_slot_names", {}))
 	var selected_general_id := StringName(model.get("selected_general_id", &""))
 	var general_section_added := false
 	for equipment_id_value in CityStrategyState.EQUIPMENT_IDS:
@@ -537,12 +563,16 @@ func _refresh_strategy_workspace(clear_feedback := false) -> void:
 		var owned_item := equipment_id in owned
 		var is_general_item := equipment_id in CityStrategyState.GENERAL_EQUIPMENT_IDS
 		if is_general_item and not general_section_added:
-			strategy_content.add_child(_strategy_section_label("将领装备 · 六槽（首版三件）"))
+			strategy_content.add_child(_strategy_section_label("将领装备 · %s · 六槽" % str(model.get("selected_general_name", "未选择将领"))))
+			var loadout: Dictionary = Dictionary(general_loadouts.get(selected_general_id, CityStrategyState.empty_general_loadout()))
+			for slot in CityStrategyState.GENERAL_SLOTS:
+				var equipped_name := str(equipment_names.get(StringName(loadout.get(slot, &"")), "空"))
+				strategy_content.add_child(_make_row_label("%s：%s" % [str(slot_names.get(slot, slot)), equipped_name]))
 			general_section_added = true
 		var equipped := equipment_id in slots.values() or equipment_id in Dictionary(general_loadouts.get(selected_general_id, {})).values()
 		var copy := ("卸下 · " if equipped else ("装配 · " if owned_item else "制造 · ")) + str(equipment_names.get(equipment_id, equipment_id))
 		if not owned_item:
-			copy += " · 木材 %d" % int(Dictionary(equipment_costs.get(equipment_id, {})).get(&"wood", 0))
+			copy += " · 木材 %d · 制造后需另行装配" % int(Dictionary(equipment_costs.get(equipment_id, {})).get(&"wood", 0))
 		var equipment_button := _make_governance_button(copy)
 		equipment_button.name = "Equipment_%s" % String(equipment_id).replace(".", "_")
 		var method := &"craft_city_equipment"
@@ -553,13 +583,37 @@ func _refresh_strategy_workspace(clear_feedback := false) -> void:
 		equipment_button.disabled = is_general_item and owned_item and selected_general_id == &""
 		equipment_button.pressed.connect(_strategy_action.bind(method, equipment_id))
 		strategy_content.add_child(equipment_button)
+		if is_general_item and owned_item:
+			var growth: Dictionary = Dictionary(growth_models.get(equipment_id, {}))
+			var growth_copy := "%s · Lv.%d/%d · 累计经验 %d · 当前加成 %s" % [
+				str(quality_names.get(StringName(growth.get("quality_id", &"COMMON")), "常备")), int(growth.get("level", 1)), int(growth.get("level_cap", 3)), int(growth.get("experience", 0)), str(float(int(growth.get("effect_permille", 0))) / 10.0) + "%",
+			]
+			strategy_content.add_child(_make_row_label(growth_copy))
+			var train := _make_governance_button("培养 · 木材 4 → 经验 +100")
+			train.name = "Train_%s" % String(equipment_id).replace(".", "_")
+			train.pressed.connect(_strategy_action.bind(&"train_city_equipment", equipment_id))
+			strategy_content.add_child(train)
+			var rank_cost: Dictionary = Dictionary(rank_costs.get(StringName(growth.get("quality_id", &"COMMON")), {}))
+			var rank := _make_governance_button("升阶 · 木材 %d · 保留累计经验" % int(rank_cost.get(&"wood", 0)))
+			rank.name = "Rank_%s" % String(equipment_id).replace(".", "_")
+			rank.disabled = not bool(growth.get("can_rank_up", false))
+			rank.pressed.connect(_strategy_action.bind(&"rank_up_city_equipment", equipment_id))
+			strategy_content.add_child(rank)
+	if &"equipment.general.bronze_sword" in owned and &"equipment.general.iron_sword" in owned:
+		var bronze_growth: Dictionary = Dictionary(growth_models.get(&"equipment.general.bronze_sword", {}))
+		var inherit := _make_governance_button("继承预览 · 青铜佩剑 → 精铁长剑 · 来源将消失")
+		inherit.name = "InheritBronzeSwordToIronSword"
+		inherit.disabled = bool(bronze_growth.get("assigned", false))
+		inherit.tooltip_text = "已装配的来源装备必须先卸下" if inherit.disabled else "目标获得来源累计经验与基础经验；超出当前等级上限的经验会保留"
+		inherit.pressed.connect(_strategy_inherit_action.bind(&"equipment.general.iron_sword", &"equipment.general.bronze_sword"))
+		strategy_content.add_child(inherit)
 	strategy_content.add_child(_strategy_section_label("当日贸易 · 预览后一次成交"))
 	var offers: Dictionary = Dictionary(model.get("trade_offers", {}))
 	for offer_id_value in offers.keys():
 		var offer_id := StringName(offer_id_value)
 		var offer: Dictionary = offers[offer_id]
 		var resource_names := {&"wood": "木材", &"food": "粮食"}
-		var trade_button := _make_governance_button("%d %s → %d %s · 库存 %d/%d" % [int(offer.spend), str(resource_names.get(StringName(offer.spend_id), offer.spend_id)), int(offer.gain), str(resource_names.get(StringName(offer.gain_id), offer.gain_id)), int(offer.get("gain_available", 0)), int(offer.get("gain_capacity", 0))])
+		var trade_button := _make_governance_button("%d %s → %d %s · 成交后 %d/%d · %s" % [int(offer.spend), str(resource_names.get(StringName(offer.spend_id), offer.spend_id)), int(offer.gain), str(resource_names.get(StringName(offer.gain_id), offer.gain_id)), int(offer.get("gain_available", 0)) + int(offer.gain), int(offer.get("gain_capacity", 0)), "今日可交易" if bool(offer.get("can_execute", false)) else str(offer.get("blocked_reason", "不可交易"))])
 		trade_button.name = "Trade_%s" % String(offer_id).replace(".", "_")
 		trade_button.disabled = not bool(offer.get("can_execute", false))
 		trade_button.tooltip_text = str(offer.get("blocked_reason", ""))
@@ -642,8 +696,9 @@ func _layout_strategy_workspace(
 ) -> void:
 	if not is_instance_valid(strategy_workspace):
 		return
-	strategy_workspace.position = Vector2(width - right_width - edge, rail_top + 140.0)
-	strategy_workspace.size = Vector2(right_width, minf(480.0, height - rail_top - 154.0))
+	var strategy_width := minf(maxf(right_width, 430.0), width - edge * 2.0)
+	strategy_workspace.position = Vector2(width - strategy_width - edge, rail_top + 112.0)
+	strategy_workspace.size = Vector2(strategy_width, minf(520.0, height - rail_top - 126.0))
 
 
 func _refresh_governance_workspace(

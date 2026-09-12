@@ -4503,9 +4503,35 @@ func get_city_strategy_read_model() -> Dictionary:
 		and current_day < int(_city_strategy.active_support.get("expires_day", 0))
 	)
 	snapshot.official_names = {&"official.steward": "司仓主簿", &"official.physician": "医政官", &"official.strategist": "守御参军"}
-	snapshot.equipment_names = {&"equipment.spear_kit": "长枪制式", &"equipment.padded_armor": "绵甲制式", &"equipment.marching_kit": "轻行装具", &"equipment.general.bronze_sword": "青铜佩剑", &"equipment.general.lamellar": "将领札甲", &"equipment.general.riding_boots": "骑行战靴"}
+	snapshot.equipment_names = {
+		&"equipment.spear_kit": "长枪制式", &"equipment.padded_armor": "绵甲制式", &"equipment.marching_kit": "轻行装具",
+		&"equipment.general.bronze_sword": "青铜佩剑", &"equipment.general.iron_sword": "精铁长剑",
+		&"equipment.general.scout_helmet": "斥候盔", &"equipment.general.lamellar": "将领札甲",
+		&"equipment.general.leather_gloves": "控缰护手", &"equipment.general.riding_boots": "骑行战靴",
+		&"equipment.general.command_talisman": "军令符佩",
+	}
 	snapshot.equipment_costs = CITY_STRATEGY_RULES.equipment_costs.duplicate(true)
+	snapshot.equipment_training_costs = CITY_STRATEGY_RULES.equipment_training_costs.duplicate(true)
+	snapshot.equipment_rank_costs = CITY_STRATEGY_RULES.equipment_rank_costs.duplicate(true)
+	var growth_models := {}
+	for equipment_id_value in Dictionary(snapshot.equipment_growth_by_id):
+		var equipment_id := StringName(equipment_id_value)
+		var growth: Dictionary = Dictionary(snapshot.equipment_growth_by_id[equipment_id])
+		var level := _city_strategy.equipment_level(equipment_id, CITY_STRATEGY_RULES.equipment_experience_per_level, CITY_STRATEGY_RULES.equipment_level_caps)
+		var cap := int(CITY_STRATEGY_RULES.equipment_level_caps.get(StringName(growth.quality_id), 1))
+		growth.level = level
+		growth.level_cap = cap
+		growth.effect_permille = level * CITY_STRATEGY_RULES.general_equipment_effect_permille
+		growth.can_rank_up = level >= cap and StringName(growth.quality_id) != CITY_STRATEGY_RULES.equipment_quality_order.back()
+		growth.assigned = _city_strategy.is_equipment_assigned(equipment_id)
+		growth_models[equipment_id] = growth
+	snapshot.equipment_growth_models = growth_models
+	snapshot.quality_names = {&"COMMON": "常备", &"FINE": "精制", &"ELITE": "名品"}
+	snapshot.general_slot_names = {&"weapon": "武器", &"helmet": "头盔", &"armor": "护甲", &"gloves": "护手", &"boots": "战靴", &"accessory": "饰物"}
+	snapshot.support_descriptions = {&"official.steward": "生产 +25%，持续至下一城市日", &"official.physician": "医疗容量 +4，持续至下一城市日", &"official.strategist": "下一次冻结的防御参数 +15%"}
 	snapshot.selected_general_id = selected_general_id
+	var selected_general := get_selected_general()
+	snapshot.selected_general_name = selected_general.display_name if selected_general != null else "未选择将领"
 	var offers := CITY_STRATEGY_RULES.trade_offers.duplicate(true)
 	for offer_id_value in offers.keys():
 		var offer: Dictionary = offers[offer_id_value]
@@ -4632,6 +4658,61 @@ func unequip_city_general(equipment_id: StringName) -> Dictionary:
 		return {"success": false, "error": "将领卸装存档失败，原装配已恢复"}
 	_refresh_city_ui()
 	return {"success": true, "strategy": get_city_strategy_read_model()}
+
+
+func train_city_equipment(equipment_id: StringName) -> Dictionary:
+	if is_city_action_locked_for_battle() or equipment_id not in _city_strategy.owned_equipment_ids or not _city_strategy.equipment_growth_by_id.has(equipment_id):
+		return {"success": false, "error": "只能在城市培养已拥有的将领装备"}
+	var before := _city_strategy.get_snapshot()
+	var resources_before := _nation_state.get_shared_resources()
+	var entries: Array[Dictionary] = []
+	for resource_id in CITY_STRATEGY_RULES.equipment_training_costs:
+		entries.append({"resource_id": StringName(resource_id), "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": int(CITY_STRATEGY_RULES.equipment_training_costs[resource_id])})
+	var local_commit := func() -> Dictionary:
+		return {"success": _city_strategy.train_equipment(equipment_id, CITY_STRATEGY_RULES.equipment_training_experience)}
+	if not _commit_national_resources(entries, &"equipment_training", local_commit):
+		_city_strategy.restore_snapshot(before)
+		return {"success": false, "error": "培养资源不足或装备状态已经变化"}
+	if not _persist_city_strategy_checkpoint():
+		_rollback_city_strategy_change(before, resources_before)
+		return {"success": false, "error": "培养存档失败，资源与经验已回滚"}
+	_refresh_city_ui()
+	return {"success": true, "action": &"TRAINED", "equipment_id": equipment_id, "strategy": get_city_strategy_read_model()}
+
+
+func rank_up_city_equipment(equipment_id: StringName) -> Dictionary:
+	var growth: Dictionary = Dictionary(_city_strategy.equipment_growth_by_id.get(equipment_id, {}))
+	if is_city_action_locked_for_battle() or growth.is_empty():
+		return {"success": false, "error": "装备不存在或战斗事务正在锁定城市"}
+	var costs: Dictionary = Dictionary(CITY_STRATEGY_RULES.equipment_rank_costs.get(StringName(growth.quality_id), {}))
+	if costs.is_empty():
+		return {"success": false, "error": "尚未达到升阶条件或已是最高品质"}
+	var before := _city_strategy.get_snapshot()
+	var resources_before := _nation_state.get_shared_resources()
+	var entries: Array[Dictionary] = []
+	for resource_id in costs:
+		entries.append({"resource_id": StringName(resource_id), "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": int(costs[resource_id])})
+	var local_commit := func() -> Dictionary:
+		return {"success": _city_strategy.rank_up_equipment(equipment_id, CITY_STRATEGY_RULES.equipment_quality_order, CITY_STRATEGY_RULES.equipment_experience_per_level, CITY_STRATEGY_RULES.equipment_level_caps)}
+	if not _commit_national_resources(entries, &"equipment_rank_up", local_commit):
+		_city_strategy.restore_snapshot(before)
+		return {"success": false, "error": "需达到当前等级上限，并备齐升阶资源"}
+	if not _persist_city_strategy_checkpoint():
+		_rollback_city_strategy_change(before, resources_before)
+		return {"success": false, "error": "升阶存档失败，品质与资源已回滚"}
+	_refresh_city_ui()
+	return {"success": true, "action": &"RANKED_UP", "equipment_id": equipment_id, "strategy": get_city_strategy_read_model()}
+
+
+func inherit_city_equipment_experience(target_id: StringName, source_id: StringName) -> Dictionary:
+	var before := _city_strategy.get_snapshot()
+	if is_city_action_locked_for_battle() or _army_registry.is_equipment_referenced_by_active_macro_order(source_id) or not _city_strategy.inherit_equipment_experience(target_id, source_id, CITY_STRATEGY_RULES.equipment_experience_per_level):
+		return {"success": false, "error": "仅可消耗同槽、未装配且未占用的将领装备进行经验继承"}
+	if not _persist_city_strategy_checkpoint():
+		_rollback_city_strategy_change(before)
+		return {"success": false, "error": "继承存档失败，来源装备与目标经验已回滚"}
+	_refresh_city_ui()
+	return {"success": true, "action": &"INHERITED", "target_id": target_id, "source_id": source_id, "strategy": get_city_strategy_read_model()}
 
 
 func execute_city_trade(offer_id: StringName) -> Dictionary:
@@ -7124,9 +7205,32 @@ func get_macro_march_route_duration(route_id: StringName) -> int:
 	var duration := _war_loop_state.field_tactics.runtime_route_duration_milliseconds(route_id)
 	if StringName(_city_strategy.troop_equipment_by_slot.get(&"mobility", &"")) == &"equipment.marching_kit":
 		duration = ceili(float(duration) / (1.0 + float(CITY_STRATEGY_RULES.equipment_effect_permille) / 1000.0))
-	if _city_strategy.general_has_equipment(selected_general_id, &"equipment.general.riding_boots"):
-		duration = ceili(float(duration) / (1.0 + float(CITY_STRATEGY_RULES.general_equipment_effect_permille) / 1000.0))
+	var mobility_permille := _general_equipment_effect_permille(&"MOBILITY")
+	if mobility_permille > 0:
+		duration = ceili(float(duration) / (1.0 + float(mobility_permille) / 1000.0))
 	return duration
+
+
+func _get_macro_order_strategy_snapshot() -> Dictionary:
+	var equipment_ids: Array[StringName] = []
+	for equipment_id_value in _city_strategy.troop_equipment_by_slot.values():
+		var equipment_id := StringName(equipment_id_value)
+		if equipment_id != &"" and equipment_id not in equipment_ids:
+			equipment_ids.append(equipment_id)
+	var general_slots: Dictionary = Dictionary(_city_strategy.general_equipment_by_general_id.get(selected_general_id, {}))
+	for equipment_id_value in general_slots.values():
+		var equipment_id := StringName(equipment_id_value)
+		if equipment_id != &"" and equipment_id not in equipment_ids:
+			equipment_ids.append(equipment_id)
+	equipment_ids.sort()
+	return {
+		"equipment_ids": equipment_ids,
+		"general_id": selected_general_id,
+		"tech_ids": researched_tech_ids.duplicate(),
+		"attack_basis_points": roundi(get_infantry_attack_multiplier() * 10000.0),
+		"defense_basis_points": roundi(get_infantry_defense_multiplier() * 10000.0),
+		"supply_shortage": supply_shortage,
+	}
 
 
 func commit_macro_march_from_city(
@@ -7162,10 +7266,12 @@ func commit_macro_march_from_city(
 	var garrison_before := _garrison_state.get_persistence_snapshot()
 	var registry_before := _army_registry.get_snapshot()
 	var duration := get_macro_march_route_duration(route_id)
+	var strategy_snapshot := _get_macro_order_strategy_snapshot()
 	var local_commit := func() -> Dictionary:
 		var army := _army_registry.create_macro_march(
 			&"player", &"blackstone_city", &"blackstone_city", target_point_id,
-			route_id, route_world_points, units, selected, food_cost, duration, route_segments
+			route_id, route_world_points, units, selected, food_cost, duration, route_segments,
+			strategy_snapshot
 		)
 		if army.is_empty() or not _garrison_state.try_extract_selected_formations(selected):
 			_army_registry.restore_snapshot(registry_before, get_unit_definition_ids())
@@ -7215,9 +7321,11 @@ func commit_macro_march_from_station(
 		return _macro_failure(&"FOOD_SHORTAGE", "粮食不足：需要 %d，当前 %d" % [food_cost, food])
 	var registry_before := _army_registry.get_snapshot()
 	var duration := get_macro_march_route_duration(route_id)
+	var strategy_snapshot := _get_macro_order_strategy_snapshot()
 	var local_commit := func() -> Dictionary:
 		var issued := _army_registry.issue_stationed_macro_march(
-			army_id, target_point_id, route_id, route_world_points, food_cost, duration, route_segments
+			army_id, target_point_id, route_id, route_world_points, food_cost, duration, route_segments,
+			strategy_snapshot
 		)
 		return {"success": not issued.is_empty(), "army": issued.duplicate(true)}
 	var transaction := _nation_state.commit_resource_transaction(
@@ -8789,6 +8897,10 @@ func _build_macro_siege_battle_request(
 	transaction_id: StringName
 ) -> BattleRequest:
 	var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+	var strategy: Dictionary = Dictionary(macro.get("strategy_snapshot", {}))
+	var frozen_tech_ids: Array[StringName] = researched_tech_ids.duplicate()
+	if strategy.has("tech_ids"):
+		frozen_tech_ids.assign(Array(strategy.tech_ids))
 	var source_formations: Array = Array(macro.get("formation_snapshots", []))
 	# C0 currently renders a bounded number of independent squad controls. Never
 	# merge or discard a macro formation merely to fit that presentation.
@@ -8813,11 +8925,11 @@ func _build_macro_siege_battle_request(
 		transaction_id,
 		formations,
 		INFANTRY_ROLE,
-		selected_general_id,
-		researched_tech_ids.duplicate(),
-		get_infantry_attack_multiplier(),
-		get_infantry_defense_multiplier(),
-		supply_shortage
+		StringName(strategy.get("general_id", selected_general_id)),
+		frozen_tech_ids,
+		float(strategy.get("attack_basis_points", roundi(get_infantry_attack_multiplier() * 10000.0))) / 10000.0,
+		float(strategy.get("defense_basis_points", roundi(get_infantry_defense_multiplier() * 10000.0))) / 10000.0,
+		bool(strategy.get("supply_shortage", supply_shortage))
 	)
 	if committed == null:
 		return null
@@ -10698,8 +10810,9 @@ func get_infantry_attack_multiplier() -> float:
 		multiplier *= 1.0 + formation.effect_amount
 	if StringName(_city_strategy.troop_equipment_by_slot.get(&"attack", &"")) == &"equipment.spear_kit":
 		multiplier *= 1.0 + float(CITY_STRATEGY_RULES.equipment_effect_permille) / 1000.0
-	if _city_strategy.general_has_equipment(selected_general_id, &"equipment.general.bronze_sword"):
-		multiplier *= 1.0 + float(CITY_STRATEGY_RULES.general_equipment_effect_permille) / 1000.0
+	var general_attack := _general_equipment_effect_permille(&"ATTACK")
+	if general_attack > 0:
+		multiplier *= 1.0 + float(general_attack) / 1000.0
 	return multiplier
 
 
@@ -10710,11 +10823,26 @@ func get_infantry_defense_multiplier() -> float:
 		multiplier *= 1.0 + general.modifier_amount
 	if StringName(_city_strategy.troop_equipment_by_slot.get(&"defense", &"")) == &"equipment.padded_armor":
 		multiplier *= 1.0 + float(CITY_STRATEGY_RULES.equipment_effect_permille) / 1000.0
-	if _city_strategy.general_has_equipment(selected_general_id, &"equipment.general.lamellar"):
-		multiplier *= 1.0 + float(CITY_STRATEGY_RULES.general_equipment_effect_permille) / 1000.0
+	var general_defense := _general_equipment_effect_permille(&"DEFENSE")
+	if general_defense > 0:
+		multiplier *= 1.0 + float(general_defense) / 1000.0
 	if _is_city_support_active(&"DEFENSE"):
 		multiplier *= 1.0 + float(CITY_STRATEGY_RULES.defense_support_permille) / 1000.0
 	return multiplier
+
+
+func _general_equipment_effect_permille(requested_kind: StringName) -> int:
+	var loadout: Dictionary = Dictionary(_city_strategy.general_equipment_by_general_id.get(selected_general_id, {}))
+	var total := 0
+	for equipment_id_value in loadout.values():
+		var equipment_id := StringName(equipment_id_value)
+		if equipment_id == &"":
+			continue
+		var kind := StringName(CITY_STRATEGY_RULES.general_equipment_effect_kinds.get(equipment_id, &""))
+		if kind != requested_kind and kind != &"ATTACK_DEFENSE":
+			continue
+		total += _city_strategy.equipment_level(equipment_id, CITY_STRATEGY_RULES.equipment_experience_per_level, CITY_STRATEGY_RULES.equipment_level_caps) * CITY_STRATEGY_RULES.general_equipment_effect_permille
+	return total
 
 
 func emergency_mobilization() -> bool:

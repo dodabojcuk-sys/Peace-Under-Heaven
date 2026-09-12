@@ -35,7 +35,7 @@ built in the battle scene.
 | Field construction catalogue | Roads, bridges, camps, watchtowers, arrow towers, barricades, forts and minefields are persistent field facts | Engineer map planning and facility detail/repair/upgrade actions | R0 observation/fire/blocking/fortification/mine line is connected; later catalogue expansion and final balance remain | Facility project -> route effect/garrison protection -> damage/consumption -> repair/upgrade -> restore |
 | Regular/occupied/resource-city capability separation | Central theatre capability table merged into every point read model | Map location details and command validation | Blackstone is the long-term city; Silverford retains supply/replenishment without city building; Redcliff remains an occupied garrison after capture | Occupy -> restore -> inspect permissions -> reissue orders without city-build leakage |
 | Wartime inner city | C0 has distinct assault/defense identities, two routes, gates, deployment, deterministic battle and atomic settlement | Formal C0 scene; `enter_macro_siege_wartime()` for an existing macro siege; Blackstone gate action only after the configured invader arrives | The same sourced field invader now hands its surviving count to one defense transaction and resolves once. Formal macro victory, retreat, survivor defeat and full wipe remain covered. A single unaccelerated human run spanning preparation, defense, recovery and counterattack remains unaccepted. | Sourced warning -> march/interception -> handoff -> defense result; stable siege/counterattack regression; human player journey remains OPEN |
-| Generals, civilian abilities, equipment, technologies and trade | General/tech snapshots affect current C0 force; building/tech definitions exist | City selection/research UI | Civil officials, equipment and trade remain the next functional gaps; they require source-rule inventory before implementation | Each confirmed ability changes one real transaction or battle/field result |
+| Generals, civilian abilities, equipment, technologies and trade | Strategy logic, growth/V5 cold restore, formal march/battle snapshots and graphical controls | Separate city strategy workspace | Three officials, six-slot general equipment, deterministic growth/inheritance and two daily trades are formally usable; wider rosters, market simulation and in-battle active commands remain later scope | City input -> support/loadout/growth/trade -> frozen march/battle -> restore |
 
 ## First implementation sequence
 
@@ -59,8 +59,9 @@ built in the battle scene.
    minefields trigger on actual route crossings and preserve discovery and
    consumed charges; level-two upgrades retain the same facility identity and
    do not repair it for free. Population and city governance now use V14
-   authorities; civil officials, equipment and trade remain recorded gaps
-   rather than UI counters.
+   authorities. Civil officials, six-slot equipment growth and authored trade
+   now affect formal city, march and battle transactions rather than UI-only
+   counters; wider content remains separate from this R0.
 
 ## Verification boundary
 

@@ -13,18 +13,41 @@ and medical support last one city day; defense support is frozen into a battle
 request created while it is active. Energy resets only when the whole campaign
 is restarted, never on scene entry, C0 entry or restore.
 
-## Equipment
+## Equipment and growth
 
 Troop equipment is shared by the infantry role rather than instantiated for
 every soldier. The first three pieces provide attack, protection and mobility
 choices. General equipment uses six stable slots: weapon, helmet, armor,
-gloves, boots and accessory. R0 authors one weapon, armor and boots choice and
-leaves the other slots empty instead of filling them with duplicate items.
+gloves, boots and accessory. The first complete set is an iron sword, scout
+helmet, lamellar, leather gloves, riding boots and command talisman. A bronze
+sword remains as a second weapon for a real same-slot inheritance path.
 Items are deterministically crafted from existing resources, have a single
 identity, and cannot be equipped before ownership. Equip and unequip operations
 share the same checkpoint boundary and never consume the owned item. The loadout
 is read when a formal order or battle request freezes its force facts; an active
 field army cannot be retroactively changed by the city screen.
+
+The following are adjustable R0 development rules selected on 2026-09-12:
+
+- general equipment stores a stable item id, quality and cumulative experience;
+  level is derived as `1 + experience / 100`, capped by quality;
+- `COMMON`, `FINE` and `ELITE` cap displayed/effective level at 3, 5 and 8;
+- training costs 4 wood and grants 100 experience without random failure;
+- rank-up is available at the current cap, costs 10 then 18 wood, raises the
+  cap and retains all cumulative experience;
+- inheritance is same-slot only, consumes an unassigned source, and transfers
+  its cumulative experience plus its base-level value in one transaction;
+  experience above the target's current cap is retained;
+- troop-standard equipment remains a shared formation kit; only uniquely
+  owned general equipment uses this growth model.
+- each new macro order freezes its equipment identities and effective combat
+  values. Active orders retain those item references for inheritance, and a
+  later siege takeover uses the frozen values instead of the current city
+  loadout.
+
+Each effective level contributes five percentage points to an authored attack,
+defense or mobility effect. The command talisman contributes to attack and
+defense. Published march and battle facts remain frozen after later training.
 
 ## Player entry
 
@@ -34,6 +57,12 @@ controls to the crowded city summary. Visible controls cover appointment,
 support activation, deterministic crafting, troop/general loadout and authored
 trade. The workspace is a city-management surface and is never reused as a
 wartime-inner-city authority.
+
+Manufacturing and equipping are separate visible states. The workspace names
+the selected general, lists all six slots, and shows quality, effective level,
+cap, cumulative experience, current effect and deterministic costs. Inheritance
+copy explicitly says the source will disappear. Support copy distinguishes an
+action result from a currently active effect and its remaining day boundary.
 
 ## Trade
 

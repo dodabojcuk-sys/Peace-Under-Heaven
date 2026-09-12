@@ -17,8 +17,9 @@ func _run() -> void:
 		workers.append(_run_worker(mode, save_directory))
 	for worker in workers:
 		print("CITY_STRATEGY_WORKER_%s_OUTPUT\n%s" % [worker.mode, worker.output])
-	_check(_workers_passed(workers), "独立进程恢复文官持续效果、装备归属、交易回执与在途军令")
+	_check(_workers_passed(workers), "独立进程恢复文官持续效果、装备成长与来源消耗、交易回执及在途军令")
 	_check(str(workers[1].output).contains("restored_energy=2") and str(workers[2].output).contains("support=IDLE") and str(workers[2].output).contains("receipts=1"), "冷恢复不补能量、不重复交易，效果按城市日历到期")
+	_check(str(workers[0].output).contains("helmet_quality=FINE") and str(workers[0].output).contains("iron_xp=200") and str(workers[0].output).contains("bronze_owned=false"), "跨进程链在保存前真实完成培养、升阶与来源消耗")
 	_remove_tree(save_directory)
 	if failures.is_empty():
 		print("CITY_STRATEGY_R0_PERSISTENCE_SMOKE PASS")

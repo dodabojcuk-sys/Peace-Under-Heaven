@@ -615,7 +615,8 @@ func create_macro_march(
 	formation_snapshots: Array,
 	food_cost: int,
 	duration_milliseconds: int,
-	route_segments: Array = []
+	route_segments: Array = [],
+	strategy_snapshot: Dictionary = {}
 ) -> Dictionary:
 	if (
 		owner_faction_id == &""
@@ -640,7 +641,8 @@ func create_macro_march(
 	_next_army_sequence += 1
 	var macro_march := _build_macro_march(
 		order_id, source_point_id, target_point_id, route_id, route_world_points,
-		formation_snapshots, food_cost, duration_milliseconds, route_segments
+		formation_snapshots, food_cost, duration_milliseconds, route_segments,
+		strategy_snapshot
 	)
 	var army := {
 		"army_id": army_id,
@@ -669,7 +671,8 @@ func issue_stationed_macro_march(
 	route_world_points: Array,
 	food_cost: int,
 	duration_milliseconds: int,
-	route_segments: Array = []
+	route_segments: Array = [],
+	strategy_snapshot: Dictionary = {}
 ) -> Dictionary:
 	var army: Dictionary = _armies_by_id.get(army_id, {})
 	if (
@@ -698,7 +701,8 @@ func issue_stationed_macro_march(
 	army.phase = PHASE_MARCHING
 	army.macro_march = _build_macro_march(
 		order_id, source_point_id, target_point_id, route_id, route_world_points,
-		Array(prior_macro.formation_snapshots), food_cost, duration_milliseconds, route_segments
+		Array(prior_macro.formation_snapshots), food_cost, duration_milliseconds, route_segments,
+		strategy_snapshot
 	)
 	var macro_history: Array = Array(army.get("macro_order_history", [])).duplicate(true)
 	macro_history.append(prior_macro.duplicate(true))
@@ -1135,9 +1139,10 @@ func _build_macro_march(
 	formation_snapshots: Array,
 	food_cost: int,
 	duration_milliseconds: int,
-	route_segments: Array = []
+	route_segments: Array = [],
+	strategy_snapshot: Dictionary = {}
 ) -> Dictionary:
-	return {
+	var macro := {
 		"order_id": order_id,
 		"source_point_id": source_point_id,
 		"target_point_id": target_point_id,
@@ -1154,6 +1159,23 @@ func _build_macro_march(
 		"blocked_transfer": _empty_blocked_transfer(),
 		"phase": PHASE_MARCHING,
 	}
+	if not strategy_snapshot.is_empty():
+		macro.strategy_snapshot = strategy_snapshot.duplicate(true)
+	return macro
+
+
+func is_equipment_referenced_by_active_macro_order(equipment_id: StringName) -> bool:
+	if equipment_id == &"":
+		return false
+	for army_value in _armies_by_id.values():
+		var army: Dictionary = Dictionary(army_value)
+		if StringName(army.get("phase", &"")) in [PHASE_CLOSED, PHASE_STATIONED]:
+			continue
+		var macro: Dictionary = Dictionary(army.get("macro_march", {}))
+		var strategy: Dictionary = Dictionary(macro.get("strategy_snapshot", {}))
+		if equipment_id in Array(strategy.get("equipment_ids", [])):
+			return true
+	return false
 
 
 static func _empty_blocked_transfer() -> Dictionary:
@@ -1205,6 +1227,8 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 		"progress_millis", "total_millis", "blocked_segment_index",
 		"temporary_station_point", "blocked_resume_phase", "blocked_transfer", "phase",
 	]
+	if macro.has("strategy_snapshot"):
+		expected_keys.append("strategy_snapshot")
 	if macro.has("route_segments"):
 		expected_keys.append("route_segments")
 	if macro.size() != expected_keys.size():
@@ -1271,7 +1295,29 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 		and (int(macro.blocked_segment_index) != -1 or StringName(macro.temporary_station_point) != &"")
 	):
 		return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
+	if macro.has("strategy_snapshot") and not _valid_macro_strategy_snapshot(Dictionary(macro.strategy_snapshot)):
+		return {"valid": false, "error_id": &"INVALID_MACRO_MARCH"}
 	return {"valid": true}
+
+
+static func _valid_macro_strategy_snapshot(value: Dictionary) -> bool:
+	var expected_keys := ["equipment_ids", "general_id", "tech_ids", "attack_basis_points", "defense_basis_points", "supply_shortage"]
+	if value.size() != expected_keys.size():
+		return false
+	for key in expected_keys:
+		if not value.has(key):
+			return false
+	if typeof(value.equipment_ids) != TYPE_ARRAY or typeof(value.general_id) != TYPE_STRING_NAME or typeof(value.tech_ids) != TYPE_ARRAY or typeof(value.attack_basis_points) != TYPE_INT or typeof(value.defense_basis_points) != TYPE_INT or typeof(value.supply_shortage) != TYPE_BOOL:
+		return false
+	var seen: Dictionary = {}
+	for equipment_id_value in Array(value.equipment_ids):
+		if typeof(equipment_id_value) != TYPE_STRING_NAME or StringName(equipment_id_value) == &"" or seen.has(StringName(equipment_id_value)):
+			return false
+		seen[StringName(equipment_id_value)] = true
+	for tech_id_value in Array(value.tech_ids):
+		if typeof(tech_id_value) != TYPE_STRING_NAME:
+			return false
+	return int(value.attack_basis_points) > 0 and int(value.defense_basis_points) > 0
 
 
 static func _valid_blocked_transfer(value: Dictionary) -> bool:

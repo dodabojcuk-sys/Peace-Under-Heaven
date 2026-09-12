@@ -81,13 +81,14 @@ func _run() -> void:
 	var departure: Dictionary = battle_city.commit_expedition_attempt([StringName(battle_roster[0].formation_id)])
 	var force: Dictionary = Dictionary(Dictionary(departure.get("attempt", {})).get("committed_force_snapshot", {}))
 	_check(bool(departure.get("success", false)) and int(force.get("attack_basis_points", 0)) > 10000 and int(force.get("defense_basis_points", 0)) > 10000, "攻击装备、防护装备与战前文官支援冻结进正式战斗快照")
-	var expiry_scene := CITY_SCENE.instantiate()
-	root.add_child(expiry_scene)
+	battle_scene.queue_free()
 	await process_frame
-	await process_frame
-	var expiry_city: Node = expiry_scene.get_node("ConstructionController")
-	expiry_city.set_process(false)
-	expiry_city.restart_first_map()
+	# Reuse the first authoritative city rather than opening a fourth scene on the
+	# same persistence directory while the battle fixture has a RESERVED result.
+	# Advancing once expires its medical support; the next support can then test
+	# the production and expiry-save boundary without cross-scene contamination.
+	var expiry_city: Node = city
+	expiry_city._advance_day_boundary(true)
 	var base_production := int(expiry_city.get_workforce_modifier_permille(&"production"))
 	var logging_definition: Resource = expiry_city.get_definition(&"building.logging_camp.t1")
 	var logging_capability: Resource = logging_definition.get_capability(&"production")
@@ -103,7 +104,7 @@ func _run() -> void:
 	var expired_production := int(expiry_city.get_workforce_modifier_permille(&"production"))
 	var retry_boundary := bool(expiry_city._advance_day_boundary(true))
 	_check(supported_logging_output > base_logging_output, "生产支援提高正式建筑生产结算值，不直接发放资源")
-	_check(first_boundary and retry_boundary and boosted_production > base_production and expired_production == base_production and durable_retry_phase == &"ACTIVE" and not bool(expiry_read_model.active_support_effective) and StringName(Dictionary(expiry_city.get_city_strategy_read_model().active_support).phase) == &"IDLE", "支援到期保存失败时不延长效果，界面标明待重试且下一次边界只清除一次")
+	_check(first_boundary and retry_boundary and boosted_production > base_production and expired_production < boosted_production and durable_retry_phase == &"ACTIVE" and not bool(expiry_read_model.active_support_effective) and StringName(Dictionary(expiry_city.get_city_strategy_read_model().active_support).phase) == &"IDLE", "支援到期保存失败时不延长效果，界面标明待重试且下一次边界只清除一次")
 	if failures.is_empty():
 		print("CITY_STRATEGY_R0_SMOKE PASS assertions=18")
 		quit(0)

@@ -412,6 +412,7 @@ static func validate_structure(
 	var strategy_result := CITY_STRATEGY_STATE.validate_snapshot(Dictionary(normalized.city_strategy))
 	if not bool(strategy_result.get("valid", false)):
 		return _failure(&"INVALID_CITY_STRATEGY", "城市战略支持状态校验失败")
+	normalized.city_strategy = Dictionary(strategy_result.snapshot).duplicate(true)
 	var army_result := ArmyRegistry.validate_snapshot(
 		normalized.army_registry,
 		allowed_unit_definition_ids,
