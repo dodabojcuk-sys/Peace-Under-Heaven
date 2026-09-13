@@ -1,5 +1,31 @@
 # 当前状态
 
+## Blackstone causal boundary and playtest candidate R1 (2026-09-13)
+
+The first Redcliff vanguard now resolves its departure from the existing
+persisted patrol record. If Redcliff is player-controlled when the dormant
+record reaches its day-5 departure gate, that record becomes terminal
+`CANCELLED`; a force that already departed, arrived or entered the defense
+transaction continues unchanged. City occupation is committed before
+configured departures within the same authoritative world update, so the tie
+is deterministic across frame partitions and restoration. Save failure rolls
+the cancellation back for a later retry. Victory remains derived only from
+actual Redcliff and Silverford control and does not delete outstanding armies,
+battles or recovery work.
+
+The formal launcher now opens a bounded candidate title with explicit New Game
+and Continue actions, version identity, pause/speed guidance and concise
+scene-appropriate controls. Both actions enter the existing canonical city;
+the city persistence coordinator remains the single V5 owner. A normal fresh
+campaign early-counterattack engine journey occupies Redcliff on day 1, then
+Silverford, and retains the player army while the day-5 vanguard cancellation
+settles. Focused causal, save, campaign, population, war and spatial regressions
+are recorded in the R1 verification package. Human play acceptance remains
+OPEN.
+
+See [the rule contract](docs/design/BLACKSTONE_CAUSAL_PLAYTEST_R1.md) and
+[verification](docs/milestones/blackstone-causal-playtest-r1/VERIFICATION.md).
+
 ## Blackstone first campaign closeout R1 (2026-09-13)
 
 Current work is tracked in

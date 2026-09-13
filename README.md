@@ -9,8 +9,9 @@ V4 派遣主链路冻结，以及 V5-G0 至 V5-G2 的单兵种、驻军、训练
 验收、最终数值与完整美术仍未关闭；V5 的其他后续阶段也不因本候选自动推进。
 
 Current first-campaign behavior and evidence:
-[Blackstone closeout R1](docs/design/BLACKSTONE_FIRST_CAMPAIGN_CLOSEOUT_R1.md) ·
-[normal-start journeys and recovery](docs/milestones/blackstone-closeout-r1/VERIFICATION.md).
+[Blackstone causal candidate R1](docs/design/BLACKSTONE_CAUSAL_PLAYTEST_R1.md) ·
+[candidate verification](docs/milestones/blackstone-causal-playtest-r1/VERIFICATION.md) ·
+[prior closeout](docs/milestones/blackstone-closeout-r1/VERIFICATION.md).
 
 Current wartime spatial behavior and coverage:
 [design](docs/design/WARTIME_SPATIAL_BATTLE_R1.md) ·
@@ -35,9 +36,9 @@ are historical for those sources. Human play acceptance remains open.
 正式本地验收优先双击仓库根目录的 `RUN_CURRENT_TXWZS.command`。启动器会：
 
 - 实时读取 branch、短 commit 和 dirty 状态；
-- 启动 `res://scenes/blank_map.tscn`；
-- 将窗口标识为 `CITY`；
-- 避免为同一 checkout 制造无法区分的重复窗口。
+- 启动 `res://scenes/title_shell.tscn`，提供“继续游戏”和“开始新局”；
+- 将初始窗口标识为 `TITLE`，并在界面显示候选版本身份；
+- 已有候选窗口仍在运行时保留旧进程并拒绝重复启动，避免回归累积长期窗口。
 
 窗口标题中的含义：
 
@@ -45,6 +46,7 @@ are historical for those sources. Human play acceptance remains open.
 - `DEBUG`：调试运行；
 - `DIRTY`：启动时有未提交修改；
 - `UNIDENTIFIED`：未由标准启动器进入；
+- `TITLE`：试玩候选标题入口；
 - `CITY`：城市主场景；
 - `BATTLE-C0`：独立 C0 战斗灰盒。
 
