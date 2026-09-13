@@ -21,7 +21,7 @@ upgrade cannot be resubmitted or removed.
 
 | Layer | Command / runner | Result |
 | --- | --- | --- |
-| Logic and transactions | `run_normal_city_building_growth_r1_smoke.gd` | PASS, 40 assertions |
+| Logic and transactions | `run_normal_city_building_growth_r1_smoke.gd` | PASS, 41 assertions |
 | Cold process recovery | `run_normal_city_building_growth_r1_persistence_smoke.gd` | PASS, active -> complete -> reopened complete across 3 processes |
 | Existing building lifecycle | `run_building_lifecycle_smoke.gd` | PASS |
 | Existing selection/input | `run_building_selection_smoke.gd` | PASS |

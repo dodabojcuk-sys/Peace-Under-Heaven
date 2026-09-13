@@ -19,6 +19,7 @@ func _initialize() -> void:
 
 
 func _run() -> void:
+	root.size = Vector2i(1152, 648)
 	var scene := CITY_SCENE.instantiate()
 	root.add_child(scene)
 	await process_frame
@@ -129,6 +130,27 @@ func _run() -> void:
 	var legacy_result: Dictionary = restored.validate_v5_campaign_snapshot(legacy)
 	_check(bool(legacy_result.valid) and int(legacy_result.snapshot.schema_version) == 17 and StringName(legacy_result.snapshot.placements[0].upgrade_target_definition_id) == &"", "V16 旧档只迁移空升级事实，不免费升级")
 
+	var journey_scene := CITY_SCENE.instantiate()
+	root.add_child(journey_scene)
+	await process_frame
+	await process_frame
+	var journey: Node = journey_scene.get_node("ConstructionController")
+	journey.set_process(false)
+	journey.restart_first_map()
+	var project: Dictionary = journey.start_build_project(&"building.logging_camp.t1")
+	journey.advance_city_time_for_test(180.0)
+	var journey_cell := _find_visible_legal_cell(journey, &"building.logging_camp.t1")
+	var journey_point: Vector2 = journey.map_local_to_screen(journey.cell_to_map_local(journey_cell) + Vector2(40.0, 40.0))
+	var activated: Dictionary = journey.activate_ready_placement(journey_point)
+	var committed: Dictionary = journey.commit_building_from_map_click(journey_point)
+	var journey_id: int = int(committed.get("placement_id", -1))
+	var upgraded: Dictionary = journey.begin_building_upgrade(journey_id)
+	journey.advance_city_time_for_test(360.0)
+	var before_yield: int = journey.wood
+	journey.advance_one_day_for_test()
+	var training_after_yield: Dictionary = journey.request_training()
+	_check(bool(project.success) and bool(activated.success) and bool(committed.success) and bool(upgraded.success) and StringName(journey.get_building_record(journey_id).definition_id) == &"building.logging_camp.t2" and journey.wood > before_yield and bool(training_after_yield.success), "正常新局资源沿正式建造、放置、升级、日收益和训练完成连续经营链")
+
 	if failures.is_empty():
 		print("NORMAL_CITY_BUILDING_GROWTH_R1_SMOKE PASS assertions=%d" % assertions)
 		quit(0)
@@ -156,6 +178,20 @@ func _find_disconnected_cell(city: Node, definition_id: StringName) -> Vector2i:
 			var cell := Vector2i(x, y)
 			var validation: Dictionary = city.evaluate_origin_cell_for_definition(cell, definition, false, false, 0)
 			if bool(validation.get("valid", false)) and StringName(validation.get("connection_state", &"")) == &"disconnected":
+				return cell
+	return Vector2i(-1, -1)
+
+
+func _find_visible_legal_cell(city: Node, definition_id: StringName) -> Vector2i:
+	var definition: Resource = city.get_definition(definition_id)
+	var viewport_size: Vector2 = city.get_viewport().get_visible_rect().size
+	var safe_rect := Rect2(Vector2(260.0, 120.0), Vector2(viewport_size.x - 620.0, viewport_size.y - 160.0))
+	for y in range(35):
+		for x in range(55):
+			var cell := Vector2i(x, y)
+			var validation: Dictionary = city.evaluate_origin_cell_for_definition(cell, definition, false, false, 0)
+			var point: Vector2 = city.map_local_to_screen(city.cell_to_map_local(cell) + Vector2(40.0, 40.0))
+			if bool(validation.get("valid", false)) and StringName(validation.get("connection_state", &"")) == &"connected" and safe_rect.has_point(point) and not city.is_construction_ui_point(point):
 				return cell
 	return Vector2i(-1, -1)
 
