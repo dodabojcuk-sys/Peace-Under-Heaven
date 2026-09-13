@@ -1,5 +1,27 @@
 # 当前状态
 
+## Building growth phase closeout and migration baseline (2026-09-13)
+
+The normal-city building growth phase is closed for engineering migration.
+The 1152x648 upgrade-detail overlap is repaired with a bounded scroll region
+for project facts and a separate minimum-height action container; critical
+text and buttons are no longer hidden or shrunk. Upgrade confirmation now
+names the selected object and transition, for example `农田 Lv.1 → Lv.2`.
+Worker shortage, cancellation terms, completion-save retry and completed L2
+projection are covered in the same three-resolution Engine-GUI runner.
+
+The original `building-growth-*.png` images remain pre-fix evidence. Final
+review images use `building-growth-final-*.png`. The old `木材 200/160` was a
+direct graphical-fixture assignment, not a normal-play resource result; the
+final fixture uses `150/160`. Normal-resource proof remains the separate fresh
+new-game construction -> placement -> upgrade -> yield -> training route.
+
+Implementation checkpoint `a415b7ca3c79ede303f10e0b631a2b3cd78b1f65`
+has tree `8a73cac3ac2bf56a55eebb36152d42bf8600706c`. See the
+[phase verification](docs/milestones/normal-city-building-growth-r1/VERIFICATION.md)
+and [engineering handoff](docs/milestones/normal-city-building-growth-r1/ENGINEERING_HANDOFF.md).
+Human mouse feel, final art and final numerical balance remain OPEN.
+
 ## Normal city building growth and economic benefits R1 (2026-09-13)
 
 Farm, logging camp, warehouse, housing and clinic now have a formal L1-to-L2

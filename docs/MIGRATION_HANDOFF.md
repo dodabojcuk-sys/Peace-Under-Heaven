@@ -1,5 +1,9 @@
 # M4 Migration Handoff
 
+> Current successor: the historical M4/G2 material below remains provenance,
+> but the active pre-migration engineering baseline is now recorded in
+> [Normal City Building Growth R1 Engineering Handoff](milestones/normal-city-building-growth-r1/ENGINEERING_HANDOFF.md).
+
 ## 当前裁决
 
 实际迁移尚未开始；本轮只验证迁移基线能否由 GitHub 独立恢复。

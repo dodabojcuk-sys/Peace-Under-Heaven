@@ -1,3 +1,18 @@
+# Building growth phase closeout — 2026-09-13
+
+- Replaced the overlapping absolute upgrade-progress presentation with a
+  bounded scroll container while preserving the existing detail-node paths
+  and bottom action minimum sizes.
+- Added building name and `Lv.1 → Lv.2` identity to upgrade and cancellation
+  confirmation.
+- Made completion-save failure refresh the selected-building presentation so
+  the retry state is immediately visible.
+- Preserved the original screenshots as pre-fix evidence and added final
+  three-resolution confirmation/progress captures. The earlier `200/160`
+  wood value is documented as a direct graphical fixture, not normal play.
+- Reconfirmed the focused normal-resource route, UI/lifecycle and cold-save
+  coverage without changing building values, campaign rules or save schema.
+
 # Campaign time consistency and strategy comparison R1 — 2026-09-13
 
 - Made configured invasion departure use its canonical world-time boundary,

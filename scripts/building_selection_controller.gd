@@ -94,11 +94,16 @@ var governance_overflow_actions: VBoxContainer
 var governance_manual_action: Button
 var governance_remove_action: Button
 var governance_feedback: Label
+var upgrade_progress_scroll: ScrollContainer
+var upgrade_progress_content: VBoxContainer
+var upgrade_progress_bar: ProgressBar
+var upgrade_progress_label: Label
 var _governance_primary_mode: StringName = &""
 var _hovered_placement_id := -1
 
 
 func _ready() -> void:
+	_install_upgrade_progress_layout()
 	_install_governance_action_group()
 	construction_priority_option.add_item("施工优先级：高", 2)
 	construction_priority_option.set_item_metadata(0, 2)
@@ -456,8 +461,10 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 	var is_constructing := StringName(record.lifecycle_state) == &"constructing"
 	for control in _get_standard_detail_controls():
 		control.visible = not is_command_platform and not is_city_gate
-	construction_progress.visible = not is_command_platform and not is_city_gate and progress_visible
+	var show_upgrade_progress := not is_command_platform and not is_city_gate and bool(detail_state.get("upgrade_active", false))
+	construction_progress.visible = not is_command_platform and not is_city_gate and progress_visible and not show_upgrade_progress
 	prototype_status.visible = construction_progress.visible
+	_sync_upgrade_progress_projection(show_upgrade_progress)
 	first_war_actions.visible = is_command_platform
 	city_gate_actions.visible = is_city_gate
 	remove_button.visible = false
@@ -506,8 +513,9 @@ func _show_selected_presentation() -> void:
 	construction_priority_option.visible = false
 	priority_label.visible = false
 	priority_help.visible = false
-	construction_progress.visible = is_constructing or is_upgrading
-	prototype_status.visible = is_constructing or is_upgrading
+	construction_progress.visible = is_constructing
+	prototype_status.visible = is_constructing
+	_sync_upgrade_progress_projection(is_upgrading)
 	upgrade_status_card.visible = false
 	upgrade_button.visible = false
 	first_war_actions.visible = is_command_platform
@@ -529,6 +537,54 @@ func _show_selected_presentation() -> void:
 
 func _construction_orientation_text(orientation: int) -> String:
 	return ["北", "东", "南", "西"][clampi(orientation, 0, 3)]
+
+
+func _install_upgrade_progress_layout() -> void:
+	upgrade_progress_scroll = ScrollContainer.new()
+	upgrade_progress_scroll.name = "UpgradeProgressScroll"
+	upgrade_progress_scroll.set_anchors_preset(Control.PRESET_FULL_RECT)
+	upgrade_progress_scroll.offset_left = 18.0
+	upgrade_progress_scroll.offset_top = 164.0
+	upgrade_progress_scroll.offset_right = -18.0
+	upgrade_progress_scroll.offset_bottom = -190.0
+	upgrade_progress_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	upgrade_progress_scroll.vertical_scroll_mode = ScrollContainer.SCROLL_MODE_AUTO
+	upgrade_progress_scroll.mouse_filter = Control.MOUSE_FILTER_STOP
+	upgrade_progress_scroll.visible = false
+	detail_panel.add_child(upgrade_progress_scroll)
+
+	upgrade_progress_content = VBoxContainer.new()
+	upgrade_progress_content.name = "UpgradeProgressContent"
+	upgrade_progress_content.custom_minimum_size = Vector2(220.0, 0.0)
+	upgrade_progress_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	upgrade_progress_content.add_theme_constant_override("separation", 8)
+	upgrade_progress_scroll.add_child(upgrade_progress_content)
+
+	upgrade_progress_bar = ProgressBar.new()
+	upgrade_progress_bar.name = "UpgradeProgressBar"
+	upgrade_progress_bar.custom_minimum_size = Vector2(0.0, 16.0)
+	upgrade_progress_bar.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	upgrade_progress_bar.show_percentage = false
+	upgrade_progress_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	upgrade_progress_content.add_child(upgrade_progress_bar)
+
+	upgrade_progress_label = Label.new()
+	upgrade_progress_label.name = "UpgradeProgressLabel"
+	upgrade_progress_label.custom_minimum_size = Vector2(0.0, 96.0)
+	upgrade_progress_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	upgrade_progress_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	upgrade_progress_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	upgrade_progress_content.add_child(upgrade_progress_label)
+
+
+func _sync_upgrade_progress_projection(visible: bool) -> void:
+	if not is_instance_valid(upgrade_progress_scroll):
+		return
+	upgrade_progress_scroll.visible = visible
+	if not visible:
+		return
+	upgrade_progress_bar.value = construction_progress.value
+	upgrade_progress_label.text = prototype_status.text
 
 
 func _install_governance_action_group() -> void:
@@ -737,8 +793,11 @@ func _show_removal_confirmation() -> void:
 
 func _show_upgrade_confirmation() -> void:
 	var build_data: Dictionary = construction_controller.get_building_data(selected_placement_id)
+	var record: Dictionary = construction_controller.get_building_record(selected_placement_id)
 	var active := bool(build_data.get("upgrade_active", false))
-	panel_title.text = "取消升级" if active else "确认升级"
+	var current_level := int(record.get("level", 1))
+	var target_level := current_level + 1
+	panel_title.text = "%s Lv.%d → Lv.%d" % [str(record.get("display_name", "建筑")), current_level, target_level]
 	for control in _get_detail_controls():
 		control.visible = false
 	removal_confirmation.visible = false
@@ -770,6 +829,8 @@ func _get_detail_controls() -> Array[Control]:
 	controls.append_array(_get_standard_detail_controls())
 	if is_instance_valid(governance_action_group):
 		controls.append(governance_action_group)
+	if is_instance_valid(upgrade_progress_scroll):
+		controls.append(upgrade_progress_scroll)
 	return controls
 
 
