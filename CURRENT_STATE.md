@@ -1,5 +1,30 @@
 # 当前状态
 
+## Normal city building growth and economic benefits R1 (2026-09-13)
+
+Farm, logging camp, warehouse, housing and clinic now have a formal L1-to-L2
+upgrade loop through the existing map selection, construction workforce,
+NationState resource transaction and V5 persistence owners. Upgrade costs are
+paid once at confirmation, the original capability remains active during the
+project, and the same placement switches definition only after completion is
+saved. Cancellation refunds the paid cost; start-save and completion-save
+failures roll back or retain a recoverable ready state.
+
+The five L2 capabilities are consumed by the existing daily production,
+storage, housing and shared medical calculations. Production details explain
+base versus actual output and road, workforce and campaign-pressure limits;
+storage and housing upgrades create neither inventory nor residents; clinic
+capacity still requires staff, food and real wounded people. V5 schema 17 adds
+only an optional upgrade target to each placement and migrates V16 buildings
+without upgrading them.
+
+Focused logic, three independent cold processes and Engine-GUI traces at
+1152x648, 1280x720 and 1920x1080 pass. The production-to-training and
+wounded-to-treatment chains use the existing resource/population writers.
+Final art, balance and human interaction feel remain OPEN. See
+[design](docs/design/NORMAL_CITY_BUILDING_GROWTH_R1.md) and
+[verification](docs/milestones/normal-city-building-growth-r1/VERIFICATION.md).
+
 ## Campaign time consistency and strategy comparison R1 (2026-09-13)
 
 World speed is a real-time control rather than a strategic modifier. City
