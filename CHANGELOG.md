@@ -1,3 +1,16 @@
+# Campaign time consistency and strategy comparison R1 — 2026-09-13
+
+- Made configured invasion departure use its canonical world-time boundary,
+  removing speed/frame-size movement that occurred before the departure instant.
+- Documented the single world-frame order, pause/scene/save behavior and the
+  existing source-specific C0 settlement contract.
+- Added a 1x/2x/4x strategic snapshot runner covering city production, training,
+  treatment authorities, army movement, field construction, pause, restore and
+  fixed-step C0 isolation.
+- Corrected journey helpers that bypassed the disabled city root during C0 or
+  used a fixed real-time timeout for a game-date gate. No save schema, campaign
+  balance, victory condition or army value changed.
+
 # Formal candidate usability R1 — 2026-09-13
 
 - Reworked the formal launcher around canonical project/save identities: clean

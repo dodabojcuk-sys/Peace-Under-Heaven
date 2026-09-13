@@ -17,6 +17,10 @@ Current formal candidate usability contract and evidence:
 [design](docs/design/FORMAL_CANDIDATE_USABILITY_R1.md) ·
 [verification](docs/milestones/formal-candidate-usability-r1/VERIFICATION.md).
 
+Current campaign time contract and speed comparison:
+[design](docs/design/CAMPAIGN_TIME_CONSISTENCY_R1.md) ·
+[verification](docs/milestones/campaign-time-consistency-r1/VERIFICATION.md).
+
 Current wartime spatial behavior and coverage:
 [design](docs/design/WARTIME_SPATIAL_BATTLE_R1.md) ·
 [verification and recordings](docs/milestones/wartime-spatial-r1/VERIFICATION.md).

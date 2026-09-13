@@ -1,5 +1,26 @@
 # 当前状态
 
+## Campaign time consistency and strategy comparison R1 (2026-09-13)
+
+World speed is a real-time control rather than a strategic modifier. City
+calendar, resources, construction, training, treatment, army movement and
+field transactions share the existing `ConstructionController` frame and now
+reach the same strategic snapshot at 1x, 2x and 4x. A configured invasion that
+departs inside a frame uses its canonical world-time boundary, so higher speed
+cannot grant it movement from before departure.
+
+Opening C0 freezes the city, armies and field world. Sourced defense and legacy
+expedition confirmation retain their established city-only duration catch-up;
+macro siege adds no catch-up, and no C0 source catches up the field world. The
+normal early-counterattack and prepared-defense routes remain distinct viable
+strategies; no army, economy, save-schema or balance value changed. Accelerated
+journey helpers no longer bypass the disabled city root, and date-gated journey
+timeouts scale from game time instead of fixed wall time.
+
+See [the time contract](docs/design/CAMPAIGN_TIME_CONSISTENCY_R1.md) and
+[verification](docs/milestones/campaign-time-consistency-r1/VERIFICATION.md).
+Human long-hold input, battle feel and player acceptance remain OPEN.
+
 ## Formal candidate usability R1 (2026-09-13)
 
 The formal launcher now identifies the canonical project, full Git commit,
