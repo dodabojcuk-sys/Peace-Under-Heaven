@@ -1,0 +1,84 @@
+{
+  "baseline": {
+    "remote_default_commit": "4d3d3b61e024ab3cea6772df518615fc321d1991",
+    "local_candidate_commit": "0119addb49a9ff6d0af2f5e5136ce97732067b86",
+    "shared_tree": "15f0260d785085016eb11dd0ebb65468b7fd10eb"
+  },
+  "speed_contract": {
+    "game_milliseconds": 740000,
+    "cases": [
+      {"speed": 1, "simulated_real_milliseconds": 740000},
+      {"speed": 2, "simulated_real_milliseconds": 370000},
+      {"speed": 4, "simulated_real_milliseconds": 185000}
+    ],
+    "shared_snapshot": {
+      "day": 5,
+      "day_elapsed_milliseconds": 20000,
+      "field_world_milliseconds": 740000,
+      "food": 33,
+      "wood": 55,
+      "build_state": "READY_TO_PLACE",
+      "training_completed_day": 2,
+      "field_project_phase": "COMPLETE",
+      "player_army_phase": "STATIONED",
+      "player_army_members": 9,
+      "invasion_activated_world_milliseconds": 720000,
+      "invasion_strength": 10,
+      "invasion_move_elapsed_milliseconds": 6704
+    }
+  },
+  "strategies": [
+    {
+      "id": "early_counterattack",
+      "two_city_victory_day": 1,
+      "day_five_invasion_phase": "CANCELLED",
+      "wall_milliseconds_by_speed": {"1": 804746, "2": 444615, "4": 263241},
+      "resource_spend": {
+        "march_orders_food": 9,
+        "daily_external_army_upkeep_food": 12,
+        "construction_wood": 0,
+        "training_food": 0,
+        "treatment_food": 0
+      },
+      "final": {
+        "food": 59,
+        "wood": 100,
+        "city_defense": 10,
+        "initial_military": 20,
+        "added_military": 0,
+        "garrison_survivors": 0,
+        "field_army_survivors": 5,
+        "wounded": 2,
+        "fallen": 13
+      }
+    },
+    {
+      "id": "prepare_defend_recover_counterattack",
+      "victory_day": 5,
+      "victory_day_elapsed_milliseconds": 145348,
+      "wall_milliseconds_at_1x": 947570,
+      "resource_spend": {
+        "construction_wood": 80,
+        "field_defense_food": 13,
+        "training_food": 15,
+        "treatment_food": 4,
+        "march_orders_food": 14
+      },
+      "normal_calendar_net_food_income": 29,
+      "final": {
+        "food": 63,
+        "wood": 20,
+        "city_defense": 10,
+        "initial_military": 20,
+        "added_military": 5,
+        "garrison_survivors": 0,
+        "field_army_survivors": 17,
+        "wounded": 1,
+        "fallen": 7,
+        "road_retained": true,
+        "camp_retained": true,
+        "arrow_tower_retained": true
+      }
+    }
+  ]
+}
