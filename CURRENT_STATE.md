@@ -1,5 +1,32 @@
 # 当前状态
 
+## Formal candidate usability R1 (2026-09-13)
+
+The formal launcher now identifies the canonical project, full Git commit,
+dirty state and canonical save directory before launch. The same clean build
+and save reports and focuses its existing window when macOS can resolve it;
+any second writer for the same save is refused, while different versions may
+coexist through explicit isolated stores. Existing windows are never closed.
+`RUN_ISOLATED_TXWZS.command` is the thin supported isolated-play entry.
+
+The title exposes New, Continue and Exit against the existing V5 persistence
+owner, displays the actual abbreviated commit, and moves full paths and launch
+diagnostics into an on-demand dialog. Native macOS pointer/keyboard inspection
+verified New, construction selection/cancel, worker adjustment, pause/speed,
+normal quit, exact-store reopen and Continue restoration. Native long-hold
+drag duration was not controllable through the available accessibility surface;
+the engine GUI runner covers the real press/hold/move/release path and cancel,
+focus-loss, scroll and blocked-target states without claiming native evidence.
+
+Macro-siege results now explain both local battle casualties and the campaign
+military ledger. The observed early-counterattack result reconciles exactly as
+`20 initial + 0 added = 0 garrison + 5 field + 2 wounded + 13 fallen`; no unit
+is counted twice and no enemy or resource balance was changed. Three target
+resolutions and focused construction, population, persistence, causal, macro
+map and spatial battle regressions pass. Human feel and player acceptance
+remain OPEN. See [design](docs/design/FORMAL_CANDIDATE_USABILITY_R1.md) and
+[verification](docs/milestones/formal-candidate-usability-r1/VERIFICATION.md).
+
 ## Blackstone causal boundary and playtest candidate R1 (2026-09-13)
 
 The first Redcliff vanguard now resolves its departure from the existing

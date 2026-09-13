@@ -1,0 +1,18 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+Metal 3.2 - Forward+ - Using Device #0: Apple - Apple M4 (Apple9)
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+PASS: 玩家可从常态内城打开正式黑石战区
+PASS: 宏观围城显示真实目标、攻城身份、原军队、外部道路来源和战区返回去向
+PASS: 可见宏观围城面板仅显示实际参与攻城的攻城槌和箭塔
+PASS: 宏观围城工事面板位于独立操作区，不覆盖战斗路线
+PASS: 宏观围城工事、小队选择、人数路线按钮、当前命令和开始按钮互不重叠
+PASS: 1280×720 下宏观围城工事面板不覆盖路线
+PASS: 1920×1080 下宏观围城工事面板不覆盖路线
+PASS: 正式按钮确认两项有效攻城工事，建设事务只扣一次木材并启动同一战斗
+PASS: 可见战斗刻真实推进攻城工事；箭塔完工，暴露的攻城槌可被摧毁且不会伪造城门伤害
+PASS: 原军队经可见小队选择和推进命令完成同一场赤崖攻城
+PASS: 胜利结算说明本战损失、完整军籍去向、目标控制变化和正确返回位置
+PASS: 确认后回到仍可操作的黑石战区，赤崖控制权和同一原军驻扎均已写回
+MACRO_SIEGE_WARTIME_GUI_EVIDENCE ram_button_signal=true arrow_button_signal=true plan_confirm_signal=true
+MACRO_SIEGE_WARTIME_GRAPHICAL_SMOKE PASS assertions=12

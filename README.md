@@ -13,6 +13,10 @@ Current first-campaign behavior and evidence:
 [candidate verification](docs/milestones/blackstone-causal-playtest-r1/VERIFICATION.md) ·
 [prior closeout](docs/milestones/blackstone-closeout-r1/VERIFICATION.md).
 
+Current formal candidate usability contract and evidence:
+[design](docs/design/FORMAL_CANDIDATE_USABILITY_R1.md) ·
+[verification](docs/milestones/formal-candidate-usability-r1/VERIFICATION.md).
+
 Current wartime spatial behavior and coverage:
 [design](docs/design/WARTIME_SPATIAL_BATTLE_R1.md) ·
 [verification and recordings](docs/milestones/wartime-spatial-r1/VERIFICATION.md).
@@ -35,18 +39,32 @@ are historical for those sources. Human play acceptance remains open.
 
 正式本地验收优先双击仓库根目录的 `RUN_CURRENT_TXWZS.command`。启动器会：
 
-- 实时读取 branch、短 commit 和 dirty 状态；
+- 实时读取 branch、完整 commit 和 dirty 状态；
 - 启动 `res://scenes/title_shell.tscn`，提供“继续游戏”和“开始新局”；
 - 将初始窗口标识为 `TITLE`，并在界面显示候选版本身份；
 - 优先使用 `/Applications/Godot.app`，不存在时自动使用本工作区已安装的 Godot 4.5.1；
-- 已有候选窗口仍在运行时保留旧进程并拒绝重复启动，避免回归累积长期窗口。
+- 同一干净提交与同一存档已运行时提示并尝试聚焦；
+- 同一存档目录拒绝第二个可写实例，不同版本只有使用不同存档目录时才可并存；
+- 从不自动关闭既有窗口或覆盖旧存档。
+
+需要独立于玩家存档试玩时，双击 `RUN_ISOLATED_TXWZS.command`，或运行：
+
+```sh
+./RUN_CURRENT_TXWZS.command --isolated
+```
+
+启动器会打印隔离存档路径。退出后可按原路径继续：
+
+```sh
+./RUN_CURRENT_TXWZS.command --save-dir /exact/path/printed/by/launcher
+```
 
 窗口标题中的含义：
 
 - `branch@commit`：启动时的 Git 身份；
 - `DEBUG`：调试运行；
 - `DIRTY`：启动时有未提交修改；
-- `UNIDENTIFIED`：未由标准启动器进入；
+- `UNKNOWN`：未由标准启动器进入，或启动身份不完整；
 - `TITLE`：试玩候选标题入口；
 - `CITY`：城市主场景；
 - `BATTLE-C0`：独立 C0 战斗灰盒。

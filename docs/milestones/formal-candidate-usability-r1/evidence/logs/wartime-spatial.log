@@ -1,0 +1,77 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+PASS: existing strategist appointed through city transaction
+PASS: original formations depart through normal army transaction
+PASS: normal city opens external war theatre
+PASS: formal siege entry is available on the war map
+PASS: formal source uses spatial map
+PASS: ram and tower use one existing resource transaction
+PASS: map input selects the visible formation
+PASS: map input creates legal spatial deployment
+PASS: invalid deployment clears previous draft
+PASS: original army activates
+PASS: entry does not charge departure food twice
+PASS: legal staging deployment accepted
+PASS: deployment preserves frozen formations and HP
+PASS: forward deployment rejected
+PASS: full snapshot restores before path checks
+PASS: closed gates disconnect inside from outside
+PASS: cross connection supports real lateral movement
+PASS: invalid target neither spends nor replays stale draft
+PASS: cross-route move accepted without changing source
+PASS: moving position target HP and remaining path restore exactly
+PASS: restore continues identical deterministic movement
+PASS: off-corridor save rejected
+PASS: fresh current schema accepted
+PASS: schema eight active battle migrates
+PASS: migration preserves old HP progress gates and completed work
+PASS: restore current before support tests
+PASS: move command interrupts assigned construction
+PASS: movement buff applies to live target
+PASS: haste affects physical distance per tick
+PASS: support fixture restored
+PASS: side corridor field created
+PASS: field uses physical position
+PASS: leaving corridor removes domain benefit
+PASS: domain expires on battle ticks
+PASS: medical boundary fixture restored
+PASS: medical station repairs partial living HP without resurrection
+PASS: medical station rejects out-of-range target
+PASS: retreat exposure fixture restored
+PASS: retreating formation remains exposed to in-range enemy fire
+PASS: crew casualty fixture restored
+PASS: dead crew cannot complete or continue construction
+PASS: frame comparison restores exact baseline
+PASS: frame comparison restores exact baseline
+PASS: display frame rate preserves fixed ticks movement and damage
+PASS: frame comparison restores exact baseline
+PASS: display frame rate preserves fixed ticks movement and damage
+PASS: two real seconds produce exactly eight battle ticks
+PASS: irregular frame comparison restores baseline
+PASS: irregular render frames preserve exact simulation result
+PASS: full battle frame comparison restores baseline
+PASS: frame comparison reaches actual terminal battle
+PASS: full battle frame comparison restores baseline
+PASS: frame comparison reaches actual terminal battle
+PASS: full terminal HP losses gates and tick match across frame rates
+PASS: full battle frame comparison restores baseline
+PASS: frame comparison reaches actual terminal battle
+PASS: full terminal HP losses gates and tick match across frame rates
+PASS: retreat fixture restored
+PASS: retreat is not instant removal
+PASS: retreat must reach evacuation edge
+PASS: isolated checks restore exact starting session
+PASS: crew travels before ram preparation
+PASS: visible domain command uses shared energy
+PASS: map-selected domain target overrides frozen source route
+PASS: crews reach separate work positions and finish paid works
+PASS: ram damages gate only after physical approach and preparation
+PASS: map gate input submits attack order
+PASS: map gate input submits attack order
+PASS: spatial assault reaches victory
+PASS: result confirmation idempotent
+PASS: same army stationed after victory
+PASS: formal result returns to theatre
+PASS: temporary battle scene released
+WARTIME_SPATIAL_R1 PASS assertions=73

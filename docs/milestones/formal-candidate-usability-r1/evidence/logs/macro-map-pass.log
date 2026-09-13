@@ -1,0 +1,29 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+Metal 3.2 - Forward+ - Using Device #0: Apple - Apple M4 (Apple9)
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+PASS: 图形进程 1152×648 中地点详情与专员提示不重叠
+PASS: 图形进程 1152×648 中 Camera3D 与二维锚点最大误差 0.220 像素
+PASS: 图形进程 1152×648 中道路与桥段按实际端点居中、朝向，最大几何误差 0.0000
+PASS: 图形进程 1152×648 中基础地面保持水平、网格法线与实际几何一致，最大误差 0.00000
+PASS: 图形进程 1280×720 中地点详情与专员提示不重叠
+PASS: 图形进程 1280×720 中 Camera3D 与二维锚点最大误差 0.000 像素
+PASS: 图形进程 1280×720 中道路与桥段按实际端点居中、朝向，最大几何误差 0.0000
+PASS: 图形进程 1280×720 中基础地面保持水平、网格法线与实际几何一致，最大误差 0.00000
+PASS: 图形进程 1920×1080 中地点详情与专员提示不重叠
+PASS: 图形进程 1920×1080 中 Camera3D 与二维锚点最大误差 0.000 像素
+PASS: 图形进程 1920×1080 中道路与桥段按实际端点居中、朝向，最大几何误差 0.0000
+PASS: 图形进程 1920×1080 中基础地面保持水平、网格法线与实际几何一致，最大误差 0.00000
+PASS: 图形进程实例化七项已登记 CC0 自然素材的非空网格；材质分区、非金属运行时变体、落地锚点、合理包围尺寸及相机/点击投影均有效（素材=7，网格=82，锚点=true，落地=true，尺寸=true，材质=true，非金属=true，投影=true）
+BLACKSTONE_ART_RENDER_BASELINE resolution=1280x720 frames=30 mean_process_frame_ms=16.611 peak_process_frame_ms=22.484 draw_calls=694 render_objects=1230 static_memory_bytes=234207205
+PASS: 图形进程记录固定 1280×720 场景的首份帧时、绘制与内存基线；该记录用于后续比较而不宣称性能提升
+PASS: 图形进程在低模模式接收鼠标绘线、确认军令并更新军队位置；选中部队使用旗帜配合既有空心圈而非遮挡模型的实心圆盘，二维/三维切换不重发军令或改写状态
+PASS: 图形入口验证：新局轻点黑石城可只读查看；专员可从敌城视图返回所在地点；快捷派遣成功后显示真实行军；工程完工驻点仍可通过可见按钮查看地点，所有查看快照均无副作用
+PASS: 图形进程通过 GUI 鼠标事件依次选中军队、同城侦察兵与工程师，并从完整界面截图确认低模二维空心圈/角色状态提示出现与取消（军队=1523，侦察兵=2222，工程师=1005，取消=1805 像素变化）；不以私有选中 ID 或没有 SelectionRing 网格代替交互证据
+PASS: 图形进程经 GUI 事件完成工程师选中→绘线与专员选中→城市编队绘线；两种有效草稿都在场景树中显示可用确认按钮，并通过实际按钮输入各只提交一次资源事务
+DRAW_HOLD_INTERACTION tap=true early_cancel=true jitter=true ridge=true preview=true constraint=true endpoint=true draft=true switch=true cancel=true edge=true focus=true offroad=true status=终点必须是另一处驻扎点或可进攻的敌城。
+PASS: 图形进程经按下→移动→松开验证轻点、8 像素拖动阈值、道路候选预览、右键/失焦取消、离路拒绝和按时间推进的边缘滚屏；预览及取消不创建军令或扣粮
+PASS: 图形进程为选中侦察兵和工程师保留旗帜配合空心圈的可见标记，并在低模模式保留松手后的工程草稿、按权威陆路-桥梁-陆路计划显示分段施工
+PASS: 图形进程用连续细小 GUI 移动保留工程转折和实时笔尖；续画撤销整笔而非一个采样点，范围外或水中新驻点在预览即拒绝且不扣资源、不建项目
+PASS: 图形进程经连续 GUI 按下→长按→拖动→松开验证：已有山脊草稿重规划时实时低地预览与面板优先、确认按钮不会提交旧草稿；驻扎军队切换侦察兵后清除仅未确认的发令视图，军令、路线、确认入口与资源均无残留副作用
+MACRO_MARCH_LOW_POLY_GRAPHICAL_SMOKE PASS assertions=22
