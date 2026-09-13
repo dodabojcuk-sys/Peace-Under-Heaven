@@ -11,6 +11,8 @@ const RUNTIME_IDENTITY := preload("res://scripts/runtime_identity.gd")
 @onready var exit_button: Button = %ExitButton
 @onready var status_label: Label = %Status
 @onready var version_label: Label = %Version
+@onready var development_details_button: Button = %DevelopmentDetailsButton
+@onready var development_details_dialog: AcceptDialog = %DevelopmentDetailsDialog
 @onready var new_game_confirmation: ConfirmationDialog = %NewGameConfirmation
 
 var _city_transition_requested := false
@@ -21,6 +23,7 @@ func _ready() -> void:
 	new_game_button.pressed.connect(_on_new_game_pressed)
 	new_game_confirmation.confirmed.connect(_on_new_game_confirmed)
 	exit_button.pressed.connect(_on_exit_pressed)
+	development_details_button.pressed.connect(_toggle_development_details)
 	_refresh_candidate_identity()
 	var can_continue := _has_continuable_campaign()
 	enter_city_button.disabled = not can_continue
@@ -92,11 +95,25 @@ func _has_continuable_campaign() -> bool:
 func _refresh_candidate_identity() -> void:
 	var identity := RUNTIME_IDENTITY.parse_identity(OS.get_cmdline_user_args(), RUNTIME_IDENTITY.SCENE_TITLE)
 	version_label.text = (
-		"试玩候选：Blackstone Causal R1 · %s@%s%s" % [
-			str(identity.get("branch", "")),
-			str(identity.get("commit", "")),
+		"正式试玩候选 R1 · %s%s" % [
+			str(identity.get("commit", "")).substr(0, 12),
 			" · DIRTY" if bool(identity.get("dirty", false)) else "",
 		]
 		if bool(identity.get("identified", false))
-		else "试玩候选：Blackstone Causal R1 · 本地未标识运行"
+		else "正式试玩候选 R1 · UNKNOWN"
 	)
+	development_details_dialog.dialog_text = (
+		"Branch: %s\nCommit: %s\nProject: %s\nSave: %s\nLaunch: %s" % [
+			str(identity.get("branch", "")),
+			str(identity.get("commit", "")),
+			str(identity.get("project_path", "")),
+			str(identity.get("save_directory", "")),
+			str(identity.get("launch_id", "")),
+		]
+		if bool(identity.get("identified", false))
+		else "Branch: UNKNOWN\nCommit: UNKNOWN\nProject: UNKNOWN\nSave: UNKNOWN\nLaunch: UNKNOWN"
+	)
+
+
+func _toggle_development_details() -> void:
+	development_details_dialog.popup_centered(Vector2i(760, 360))

@@ -40,10 +40,12 @@ func _check_title_layout_contract() -> void:
 		var new_game: Button = title.get_node("SafeArea/Center/TitlePanel/Margins/Content/NewGameButton")
 		var help: Label = title.get_node("SafeArea/Center/TitlePanel/Margins/Content/Help")
 		var version: Label = title.get_node("SafeArea/Center/TitlePanel/Margins/Content/Version")
+		var details_button: Button = title.get_node("SafeArea/Center/TitlePanel/Margins/Content/DevelopmentDetailsButton")
+		var details: AcceptDialog = title.get_node("DevelopmentDetailsDialog")
 		var exit: Button = title.get_node("SafeArea/Center/TitlePanel/Margins/Content/ExitButton")
 		var panel: PanelContainer = title.get_node("SafeArea/Center/TitlePanel")
 		var viewport := Rect2(Vector2.ZERO, Vector2(target_size))
-		var controls := [title_label, city_label, version, enter, new_game, help, exit]
+		var controls := [title_label, city_label, version, details_button, enter, new_game, help, exit]
 		_check(
 			title_label.text == "天下无战事"
 				and city_label.text == "黑石城"
@@ -53,10 +55,21 @@ func _check_title_layout_contract() -> void:
 				and help.text.contains("移动或攻击")
 				and help.text.contains("工程入口绘制施工")
 				and help.text.contains("右键或 Esc 取消")
-				and version.text.contains("Blackstone Causal R1")
+				and version.text.contains("正式试玩候选 R1")
+				and version.text.contains("UNKNOWN")
+				and details_button.text == "开发详情"
+				and not details.visible
 				and exit.text == "退出游戏",
 			"%dx%d exposes candidate identity, new/continue and concise operation help" % [target_size.x, target_size.y]
 		)
+		details_button.pressed.emit()
+		_check(
+			details.visible
+				and details.dialog_text.contains("Commit: UNKNOWN")
+				and details_button.text == "开发详情",
+			"%dx%d development details are disclosed only on demand" % [target_size.x, target_size.y]
+		)
+		details.hide()
 		_check(
 			(enter.has_focus() and not enter.disabled) or (new_game.has_focus() and enter.disabled),
 			"%dx%d focuses the first available campaign action" % [target_size.x, target_size.y]

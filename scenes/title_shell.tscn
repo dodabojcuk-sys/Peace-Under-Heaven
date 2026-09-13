@@ -152,9 +152,27 @@ unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.52, 0.67, 0.67, 1)
 theme_override_font_sizes/font_size = 12
-text = "试玩候选：Blackstone Causal R1"
+text = "正式试玩候选 R1 · UNKNOWN"
 horizontal_alignment = 1
 autowrap_mode = 2
+
+[node name="DevelopmentDetailsButton" type="Button" parent="SafeArea/Center/TitlePanel/Margins/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 32)
+layout_mode = 2
+focus_mode = 2
+theme_override_colors/font_color = Color(0.68, 0.77, 0.76, 1)
+theme_override_font_sizes/font_size = 13
+theme_override_styles/normal = SubResource("StyleBoxFlat_secondary_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_secondary_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_secondary_hover")
+text = "开发详情"
+
+[node name="DevelopmentDetailsDialog" type="AcceptDialog" parent="."]
+unique_name_in_owner = true
+title = "候选开发详情"
+dialog_text = "Branch: UNKNOWN\nCommit: UNKNOWN\nProject: UNKNOWN\nSave: UNKNOWN\nLaunch: UNKNOWN"
+ok_button_text = "关闭"
 
 [node name="Spacer" type="Control" parent="SafeArea/Center/TitlePanel/Margins/Content"]
 custom_minimum_size = Vector2(0, 8)
