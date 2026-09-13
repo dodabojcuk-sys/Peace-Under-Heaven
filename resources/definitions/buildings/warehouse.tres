@@ -18,6 +18,7 @@ building_type = "容量建筑"
 description = "木材与粮食容量各增加 120"
 level = 1
 build_days = 1
+next_level_definition_id = &"building.warehouse.t2"
 footprint = Vector2i(2, 2)
 wood_cost = 60
 capabilities = Array[ExtResource("2_capability")]([SubResource("BuildingCapability_storage")])

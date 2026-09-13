@@ -183,6 +183,8 @@ func _check_v15_migration() -> void:
 	var city: Node = fixture.city
 	var legacy: Dictionary = city.export_v5_campaign_snapshot()
 	legacy.schema_version = 15
+	for placement in legacy.placements:
+		placement.erase("upgrade_target_definition_id")
 	for key in ["children", "elderly", "resident_sick", "unsettled_refugees", "male_count", "female_count", "unknown_sex_count", "growth_progress", "child_age_progress", "adult_age_progress", "elderly_exposure_progress", "next_birth_sequence"]:
 		legacy.population_recovery.erase(key)
 	legacy.population_recovery.schema_version = 2
@@ -195,7 +197,7 @@ func _check_v15_migration() -> void:
 	}
 	var result: Dictionary = city.validate_v5_campaign_snapshot(legacy)
 	var migrated: Dictionary = Dictionary(result.get("snapshot", {}))
-	_check(bool(result.valid) and int(migrated.schema_version) == 16 and int(migrated.population_recovery.total_living) == 72 and int(migrated.population_recovery.resident_sick) == 2 and int(migrated.population_recovery.unknown_sex_count) == 72 and int(migrated.population_recovery.available) == 18, "V15 旧档保留总数与岗位，将已知病患从可用成年人迁出并把未知性别明确标记")
+	_check(bool(result.valid) and int(migrated.schema_version) == 17 and int(migrated.population_recovery.total_living) == 72 and int(migrated.population_recovery.resident_sick) == 2 and int(migrated.population_recovery.unknown_sex_count) == 72 and int(migrated.population_recovery.available) == 18, "V15 旧档保留总数与岗位，将已知病患从可用成年人迁出并把未知性别明确标记，不自动创建升级")
 	var malformed_current: Dictionary = city.export_v5_campaign_snapshot()
 	malformed_current.city_governance.active_event.event_id = ""
 	_check(not bool(city.validate_v5_campaign_snapshot(malformed_current).valid), "当前治理快照严格拒绝伪装为稳定 ID 的普通字符串字段")
