@@ -6,7 +6,7 @@ const MACRO_MARCH_THEATER = preload("res://scripts/macro_march/macro_march_theat
 const POPULATION_RECOVERY_STATE = preload("res://scripts/state/population_recovery_state.gd")
 const CITY_GOVERNANCE_STATE = preload("res://scripts/state/city_governance_state.gd")
 const CITY_STRATEGY_STATE = preload("res://scripts/state/city_strategy_state.gd")
-const SCHEMA_VERSION := 16
+const SCHEMA_VERSION := 17
 const SNAPSHOT_KIND := &"campaign_authoritative"
 const CITY_ID := "blackstone_city"
 const LEGACY_SILVERFORD_REINFORCEMENT_TOTAL := 4
@@ -189,6 +189,15 @@ const PLACEMENT_KEYS := [
 	"construction_paid_costs",
 	"construction_priority",
 	"construction_missing_resource_ids",
+	"upgrade_target_definition_id",
+]
+const V16_PLACEMENT_KEYS := [
+	"placement_id", "definition_id", "origin_cell", "lifecycle_state",
+	"built_day", "disabled_until_day", "construction_started_day",
+	"construction_complete_day", "orientation", "construction_state",
+	"construction_progress_milliseconds", "construction_required_milliseconds",
+	"construction_total_costs", "construction_paid_costs",
+	"construction_priority", "construction_missing_resource_ids",
 ]
 const V3_PLACEMENT_KEYS := [
 	"placement_id", "definition_id", "origin_cell", "lifecycle_state",
@@ -253,7 +262,7 @@ static func validate_structure(
 		return _failure(&"INVALID_ROOT", "CampaignSnapshot 根字段不完整或含未知字段")
 	if (
 		typeof(snapshot.schema_version) != TYPE_INT
-		or int(snapshot.schema_version) not in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, SCHEMA_VERSION]
+		or int(snapshot.schema_version) not in [2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, SCHEMA_VERSION]
 		or typeof(snapshot.snapshot_kind) != TYPE_STRING_NAME
 		or StringName(snapshot.snapshot_kind) != SNAPSHOT_KIND
 		or typeof(snapshot.city_id) != TYPE_STRING
@@ -350,6 +359,11 @@ static func validate_structure(
 		normalized.schema_version = 15
 	if int(normalized.schema_version) == 15:
 		var migration := _migrate_v15_population_pressure(normalized)
+		if not bool(migration.valid):
+			return migration
+		normalized = migration.snapshot
+	if int(normalized.schema_version) == 16:
+		var migration := _migrate_v16_building_upgrade_defaults(normalized)
 		if not bool(migration.valid):
 			return migration
 		normalized = migration.snapshot
@@ -944,6 +958,23 @@ static func _migrate_v15_population_pressure(snapshot: Dictionary) -> Dictionary
 		governance.active_event = CITY_GOVERNANCE_STATE.empty_event()
 	normalized.population_recovery = population
 	normalized.city_governance = governance
+	normalized.schema_version = 16
+	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
+
+
+static func _migrate_v16_building_upgrade_defaults(snapshot: Dictionary) -> Dictionary:
+	var normalized := snapshot.duplicate(true)
+	if not _has_exact_keys(normalized, ROOT_KEYS):
+		return _failure(&"INVALID_ROOT", "V16 CampaignSnapshot 根字段非法")
+	for index in range(normalized.placements.size()):
+		var placement_value = normalized.placements[index]
+		if not placement_value is Dictionary:
+			return _failure(&"INVALID_PLACEMENTS", "V16 placement 必须为字典")
+		var placement: Dictionary = placement_value
+		if not _has_exact_keys(placement, V16_PLACEMENT_KEYS):
+			return _failure(&"INVALID_PLACEMENTS", "V16 placement 字段非法")
+		placement.upgrade_target_definition_id = &""
+		normalized.placements[index] = placement
 	normalized.schema_version = SCHEMA_VERSION
 	return {"valid": true, "error_id": &"", "error": "", "snapshot": normalized}
 
@@ -1203,7 +1234,7 @@ static func _validate_placements(
 			or int(placement.orientation) < 0
 			or int(placement.orientation) > 3
 			or typeof(placement.construction_state) != TYPE_STRING_NAME
-			or StringName(placement.construction_state) not in [&"ACTIVE", &"BLOCKED_RESOURCES", &"COMPLETED"]
+			or StringName(placement.construction_state) not in [&"ACTIVE", &"BLOCKED_RESOURCES", &"READY_TO_COMPLETE", &"COMPLETED"]
 			or typeof(placement.construction_progress_milliseconds) != TYPE_INT
 			or typeof(placement.construction_required_milliseconds) != TYPE_INT
 			or int(placement.construction_progress_milliseconds) < 0
@@ -1214,6 +1245,7 @@ static func _validate_placements(
 			or typeof(placement.construction_priority) != TYPE_INT
 			or int(placement.construction_priority) not in [0, 1, 2]
 			or typeof(placement.construction_missing_resource_ids) != TYPE_ARRAY
+			or typeof(placement.upgrade_target_definition_id) != TYPE_STRING_NAME
 		):
 			return _failure(&"INVALID_PLACEMENTS", "placement 身份非法")
 		for day_key in [
@@ -1239,6 +1271,7 @@ static func _validate_placements(
 			or (
 				StringName(placement.lifecycle_state) == &"running"
 				and StringName(placement.construction_state) != &"COMPLETED"
+				and StringName(placement.upgrade_target_definition_id) == &""
 			)
 			or (
 				StringName(placement.lifecycle_state) == &"constructing"
@@ -1246,6 +1279,25 @@ static func _validate_placements(
 			)
 		):
 			return _failure(&"INVALID_PLACEMENTS", "placement 施工状态不一致")
+		var upgrade_target := StringName(placement.upgrade_target_definition_id)
+		if upgrade_target != &"" and (
+			StringName(placement.lifecycle_state) != &"running"
+			or StringName(placement.construction_state) not in [&"ACTIVE", &"READY_TO_COMPLETE"]
+			or int(placement.construction_required_milliseconds) <= 0
+			or (
+				StringName(placement.construction_state) == &"ACTIVE"
+				and int(placement.construction_progress_milliseconds)
+					>= int(placement.construction_required_milliseconds)
+			)
+			or (
+				StringName(placement.construction_state) == &"READY_TO_COMPLETE"
+				and int(placement.construction_progress_milliseconds)
+					!= int(placement.construction_required_milliseconds)
+			)
+			or Dictionary(placement.construction_total_costs)
+				!= Dictionary(placement.construction_paid_costs)
+		):
+			return _failure(&"INVALID_BUILDING_UPGRADE", "建筑升级状态不一致")
 		for resource_id in placement.construction_total_costs:
 			if (
 				StringName(resource_id) not in [&"wood", &"food"]

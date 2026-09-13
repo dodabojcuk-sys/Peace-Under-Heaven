@@ -423,3 +423,15 @@ Road-damage checks start at
   C0 temporary construction remain distinct transactions and lifecycles.
 - Automated accelerated flow and engine-GUI screenshots are implementation
   evidence only. Normal-speed human acceptance remains a separate open gate.
+# 2026-09-13 — Normal city building upgrade transaction
+
+- Building upgrades are state on the existing placement record, not a second
+  building or event ledger. Identity, origin and orientation remain stable.
+- The target definition owns the one-time cost and duration. Existing
+  construction workforce and pressure modifiers advance the project, while
+  the current definition remains the sole capability source until completion.
+- Cancellation uses a full refund for R1 because partial-refund semantics do
+  not exist in the current construction contract. Durability is unchanged.
+- A completion save failure leaves `READY_TO_COMPLETE` on the original level;
+  a later world update retries the same transition. V16 migration adds an
+  empty target only and never infers or grants an upgrade.

@@ -1782,3 +1782,18 @@ contract and verification package for evidence and limits.
   checks. Route A/B, field R2, formal war-loop, invasion and V5 persistence
   regressions remain green. This is implementation evidence, not player
   acceptance.
+# 2026-09-13 — Normal city building growth and economic benefits R1
+
+- Added L2 definitions and formal in-place upgrades for farms, logging camps,
+  warehouses, housing and clinics using existing construction workers and
+  NationState transactions.
+- Kept L1 capability active until completion persistence succeeds; added full
+  cancellation refunds, duplicate guards and rollback/retry behavior for
+  start, cancel and completion save failures.
+- Extended V5 to schema 17 with a conservative empty-upgrade migration from
+  V16, including active and ready-to-complete recovery.
+- Connected the new definitions to central production, storage, housing and
+  medical consumers and exposed real costs, duration, output constraints and
+  progress through the existing building detail flow.
+- Added focused benefit-chain, cold-process and three-resolution graphical
+  evidence. No campaign, battle or balance values changed.

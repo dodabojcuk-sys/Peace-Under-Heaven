@@ -1,0 +1,106 @@
+extends SceneTree
+
+
+const CITY_SCENE: PackedScene = preload("res://scenes/blank_map.tscn")
+const VIEWPORTS: Array[Vector2i] = [Vector2i(1152, 648), Vector2i(1280, 720), Vector2i(1920, 1080)]
+
+var evidence_directory := ""
+var failures: Array[String] = []
+
+
+func _initialize() -> void:
+	if DisplayServer.get_name() == "headless":
+		push_error("NORMAL_CITY_BUILDING_GROWTH_R1_GRAPHICAL_SMOKE requires a graphical Godot process")
+		quit(2)
+		return
+	evidence_directory = _argument_value("--txwzs-building-growth-evidence-dir=")
+	call_deferred("_run")
+
+
+func _run() -> void:
+	for viewport_size in VIEWPORTS:
+		await _check_viewport(viewport_size)
+	if failures.is_empty():
+		print("NORMAL_CITY_BUILDING_GROWTH_R1_GRAPHICAL_SMOKE PASS viewports=%d" % VIEWPORTS.size())
+		quit(0)
+		return
+	for failure in failures:
+		push_error("NORMAL_CITY_BUILDING_GROWTH_R1_GRAPHICAL_SMOKE FAIL: %s" % failure)
+	quit(1)
+
+
+func _check_viewport(viewport_size: Vector2i) -> void:
+	root.size = viewport_size
+	var scene := CITY_SCENE.instantiate()
+	root.add_child(scene)
+	await _frames(4)
+	var city: Node = scene.get_node("ConstructionController")
+	var selection: Node = scene.get_node("BuildingSelectionController")
+	city.set_process(false)
+	city.restart_first_map()
+	city.wood = 200
+	city.food = 100
+	var cell := _find_legal_cell(city, &"building.farm.t1")
+	var placement_id: int = city.place_definition_at_cell(&"building.farm.t1", cell, false, true)
+	selection.select_placement(placement_id)
+	await _frames(2)
+	var panel: Control = scene.get_node("UI/Shell/BuildingDetailPanel")
+	var primary: Button = selection.governance_primary_action
+	primary.emit_signal("pressed")
+	await _frames(2)
+	var confirmation: Control = panel.get_node("UpgradeConfirmation")
+	var confirmation_text: Label = confirmation.get_node("ConfirmationText")
+	var panel_rect := panel.get_global_rect()
+	var valid_confirmation := (
+		placement_id > 0
+		and confirmation.visible
+		and confirmation_text.text.contains("建筑产能")
+		and confirmation_text.text.contains("成本")
+		and panel_rect.position.x >= 0.0
+		and panel_rect.position.y >= 0.0
+		and panel_rect.end.x <= viewport_size.x
+		and panel_rect.end.y <= viewport_size.y
+	)
+	if not valid_confirmation:
+		failures.append("%s 升级确认未完整显示真实成本、能力或边界" % str(viewport_size))
+	_capture("building-growth-confirm-%dx%d.png" % [viewport_size.x, viewport_size.y])
+	(panel.get_node("UpgradeConfirmation/ConfirmUpgradeButton") as Button).emit_signal("pressed")
+	await _frames(2)
+	var progress: ProgressBar = panel.get_node("ConstructionProgress")
+	var status: Label = panel.get_node("PrototypeStatus")
+	if not progress.visible or not status.visible or not status.text.contains("已投入"):
+		failures.append("%s 升级提交后未显示工程进度与投入" % str(viewport_size))
+	_capture("building-growth-progress-%dx%d.png" % [viewport_size.x, viewport_size.y])
+	print("BUILDING_GROWTH_GUI_TRACE viewport=%s confirmation=%s progress=%s panel=%s" % [str(viewport_size), confirmation_text.text.replace("\n", " / "), status.text.replace("\n", " / "), str(panel_rect)])
+	scene.queue_free()
+	await process_frame
+
+
+func _find_legal_cell(city: Node, definition_id: StringName) -> Vector2i:
+	var definition: Resource = city.get_definition(definition_id)
+	for y in range(35):
+		for x in range(55):
+			var cell := Vector2i(x, y)
+			var validation: Dictionary = city.evaluate_origin_cell_for_definition(cell, definition, false, false, 0)
+			if bool(validation.get("valid", false)) and StringName(validation.get("connection_state", &"")) == &"connected":
+				return cell
+	return Vector2i(-1, -1)
+
+
+func _capture(filename: String) -> void:
+	if evidence_directory.is_empty():
+		return
+	DirAccess.make_dir_recursive_absolute(evidence_directory)
+	root.get_texture().get_image().save_png(evidence_directory.path_join(filename))
+
+
+func _frames(count: int) -> void:
+	for _frame in range(maxi(count, 0)):
+		await process_frame
+
+
+func _argument_value(prefix: String) -> String:
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with(prefix):
+			return argument.trim_prefix(prefix)
+	return ""

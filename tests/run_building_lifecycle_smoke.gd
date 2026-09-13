@@ -98,7 +98,7 @@ func _run() -> void:
 			and detail_panel.get_node("GridPosition").text
 				== "朝向：北 · 占地 2 × 2"
 			and detail_panel.get_node("Footprint").text
-				== "下一级：当前切片未开放",
+				== "下一等级：L2",
 		"详情显示核心作用、道路、真实占地和升级边界"
 	)
 
