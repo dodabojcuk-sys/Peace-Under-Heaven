@@ -177,6 +177,13 @@ func load_latest(validator: Callable) -> Dictionary:
 	return _failure(&"ALL_INVALID", "全部 V5 存档代次无效")
 
 
+## Title/menu code may inspect availability, but only the runtime coordinator
+## loads or writes the canonical campaign.
+func has_any_generation() -> bool:
+	var sequences := _list_sequences()
+	return bool(sequences.get("success", false)) and not Array(sequences.get("sequences", [])).is_empty()
+
+
 func load_and_restore(controller: Node) -> Dictionary:
 	var loaded := load_latest(
 		Callable(controller, "validate_v5_campaign_snapshot")

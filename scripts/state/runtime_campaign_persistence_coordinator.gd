@@ -3,6 +3,7 @@ extends Node
 
 
 const SAVE_STORE = preload("res://scripts/state/v5_campaign_save_store.gd")
+const RUNTIME_IDENTITY = preload("res://scripts/runtime_identity.gd")
 const SAVE_DIRECTORY_ARGUMENT_PREFIX := "--txwzs-v5-save-dir="
 const DIRTY_FLUSH_DELAY_SECONDS := 0.5
 
@@ -24,7 +25,10 @@ var _status := {
 }
 
 
-func initialize(controller: Node) -> Dictionary:
+func initialize(
+	controller: Node,
+	start_mode: StringName = RUNTIME_IDENTITY.CAMPAIGN_START_CONTINUE
+) -> Dictionary:
 	if _is_initialized:
 		return get_status()
 	_controller = controller
@@ -49,6 +53,13 @@ func initialize(controller: Node) -> Dictionary:
 		configured_directory if not configured_directory.is_empty() else V5CampaignSaveStore.DEFAULT_DIRECTORY
 	)
 	_status.save_directory = _store.directory_path
+	if start_mode == RUNTIME_IDENTITY.CAMPAIGN_START_NEW:
+		_status.status = "creating_new_campaign_generation"
+		if not flush_now(&"new_campaign_created"):
+			_status.status = "new_campaign_generation_failed"
+		_is_initialized = true
+		_connect_controller()
+		return get_status()
 	var loaded := _store.load_and_restore(_controller)
 	if bool(loaded.get("success", false)):
 		_status = {
@@ -118,7 +129,7 @@ func flush_now(reason: StringName = &"explicit") -> bool:
 		"status": (
 			"created_initial_generation"
 			if reason == &"initial_city_created"
-			else "saved"
+			else ("created_new_campaign_generation" if reason == &"new_campaign_created" else "saved")
 		),
 		"loaded": bool(_status.get("loaded", false)),
 		"recovered": bool(_status.get("recovered", false)),

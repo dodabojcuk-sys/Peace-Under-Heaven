@@ -139,10 +139,20 @@ text = "黑石城"
 horizontal_alignment = 1
 
 [node name="Status" type="Label" parent="SafeArea/Center/TitlePanel/Margins/Content"]
+unique_name_in_owner = true
 layout_mode = 2
 theme_override_colors/font_color = Color(0.65, 0.73, 0.73, 1)
 theme_override_font_sizes/font_size = 14
-text = "城门已开，城务将在进入后自动恢复"
+text = "正在检查黑石战役存档……"
+horizontal_alignment = 1
+autowrap_mode = 2
+
+[node name="Version" type="Label" parent="SafeArea/Center/TitlePanel/Margins/Content"]
+unique_name_in_owner = true
+layout_mode = 2
+theme_override_colors/font_color = Color(0.52, 0.67, 0.67, 1)
+theme_override_font_sizes/font_size = 12
+text = "试玩候选：Blackstone Causal R1"
 horizontal_alignment = 1
 autowrap_mode = 2
 
@@ -161,7 +171,27 @@ theme_override_font_sizes/font_size = 18
 theme_override_styles/normal = SubResource("StyleBoxFlat_primary_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_primary_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_primary_hover")
-text = "进入黑石城"
+text = "继续游戏"
+
+[node name="NewGameButton" type="Button" parent="SafeArea/Center/TitlePanel/Margins/Content"]
+unique_name_in_owner = true
+custom_minimum_size = Vector2(0, 46)
+layout_mode = 2
+focus_mode = 2
+theme_override_colors/font_color = Color(0.95, 1, 0.97, 1)
+theme_override_font_sizes/font_size = 17
+theme_override_styles/normal = SubResource("StyleBoxFlat_primary_normal")
+theme_override_styles/hover = SubResource("StyleBoxFlat_primary_hover")
+theme_override_styles/pressed = SubResource("StyleBoxFlat_primary_hover")
+text = "开始新局"
+
+[node name="Help" type="Label" parent="SafeArea/Center/TitlePanel/Margins/Content"]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.68, 0.77, 0.76, 1)
+theme_override_font_sizes/font_size = 13
+text = "内城：顶部暂停并切换 1× / 2× / 4×\n战区：轻点选兵，按住军队拖向目标以移动或攻击；工程入口绘制施工\n右键或 Esc 取消，返回按钮保留进度"
+horizontal_alignment = 1
+autowrap_mode = 2
 
 [node name="ExitButton" type="Button" parent="SafeArea/Center/TitlePanel/Margins/Content"]
 unique_name_in_owner = true
@@ -174,3 +204,10 @@ theme_override_styles/normal = SubResource("StyleBoxFlat_secondary_normal")
 theme_override_styles/hover = SubResource("StyleBoxFlat_secondary_hover")
 theme_override_styles/pressed = SubResource("StyleBoxFlat_secondary_hover")
 text = "退出游戏"
+
+[node name="NewGameConfirmation" type="ConfirmationDialog" parent="."]
+unique_name_in_owner = true
+title = "开始新的黑石战役"
+dialog_text = "开始新局会写入新的存档代次，并使其成为之后继续游戏的进度。现有存档文件不会被测试或回归脚本删除。"
+ok_button_text = "开始新局"
+cancel_button_text = "返回"

@@ -1,3 +1,22 @@
+# Blackstone causal playtest candidate R1 — 2026-09-13
+
+- Added a terminal cancellation state to the existing sourced Redcliff
+  vanguard. A dormant force cancels only when Redcliff is player-controlled at
+  its departure gate; departed, arrived, handed-off and terminal records retain
+  identity and state.
+- Fixed same-update ordering through the existing city/war transaction flow,
+  including checkpoint rollback and deterministic frame-partition behavior.
+- Preserved control-only two-city victory and post-victory processing of
+  existing armies, battles and recovery tasks.
+- Made early-counterattack siege handoff and settlement accept the surviving
+  non-empty original formations after field losses without inventing units or
+  discarding casualty provenance.
+- Changed the formal launcher to a candidate title with explicit New Game and
+  Continue paths, current build identity and compact pause/speed/control help;
+  V5 persistence remains owned by the city coordinator.
+- Added focused causal/save/entry runners, a normal fresh-campaign early route
+  and responsive title evidence. Human play acceptance remains open.
+
 # Blackstone closeout R1 — 2026-09-13
 
 Fix city calendar frame rounding, pressure-stage countdown, post-victory

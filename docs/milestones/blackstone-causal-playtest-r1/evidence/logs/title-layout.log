@@ -1,0 +1,106 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+Metal 3.2 - Forward+ - Using Device #0: Apple - Apple M4 (Apple9)
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 1152x648 exposes candidate identity, new/continue and concise operation help
+PASS: 1152x648 focuses the first available campaign action
+PASS: 1152x648 keeps Title inside the title panel and viewport
+PASS: 1152x648 keeps CityName inside the title panel and viewport
+PASS: 1152x648 keeps Version inside the title panel and viewport
+PASS: 1152x648 keeps EnterCityButton inside the title panel and viewport
+PASS: 1152x648 keeps NewGameButton inside the title panel and viewport
+PASS: 1152x648 keeps Help inside the title panel and viewport
+PASS: 1152x648 keeps ExitButton inside the title panel and viewport
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 title controls do not overlap
+PASS: 1152x648 Esc leaves the title shell in a stable state
+PASS: 1152x648 title creates no city authority or V5 coordinator
+PASS: 1152x648 candidate title evidence is written
+PASS: 1280x720 exposes candidate identity, new/continue and concise operation help
+PASS: 1280x720 focuses the first available campaign action
+PASS: 1280x720 keeps Title inside the title panel and viewport
+PASS: 1280x720 keeps CityName inside the title panel and viewport
+PASS: 1280x720 keeps Version inside the title panel and viewport
+PASS: 1280x720 keeps EnterCityButton inside the title panel and viewport
+PASS: 1280x720 keeps NewGameButton inside the title panel and viewport
+PASS: 1280x720 keeps Help inside the title panel and viewport
+PASS: 1280x720 keeps ExitButton inside the title panel and viewport
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 title controls do not overlap
+PASS: 1280x720 Esc leaves the title shell in a stable state
+PASS: 1280x720 title creates no city authority or V5 coordinator
+PASS: 1280x720 candidate title evidence is written
+PASS: 1440x900 exposes candidate identity, new/continue and concise operation help
+PASS: 1440x900 focuses the first available campaign action
+PASS: 1440x900 keeps Title inside the title panel and viewport
+PASS: 1440x900 keeps CityName inside the title panel and viewport
+PASS: 1440x900 keeps Version inside the title panel and viewport
+PASS: 1440x900 keeps EnterCityButton inside the title panel and viewport
+PASS: 1440x900 keeps NewGameButton inside the title panel and viewport
+PASS: 1440x900 keeps Help inside the title panel and viewport
+PASS: 1440x900 keeps ExitButton inside the title panel and viewport
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 title controls do not overlap
+PASS: 1440x900 Esc leaves the title shell in a stable state
+PASS: 1440x900 title creates no city authority or V5 coordinator
+PASS: 1440x900 candidate title evidence is written
+PASS: enter-city changes once into the existing canonical city scene
+PASS: repeated enter activation leaves one current city scene rather than duplicate owners
+M1B_PLAYABLE_SHELL_SMOKE: PASS (101 assertions)

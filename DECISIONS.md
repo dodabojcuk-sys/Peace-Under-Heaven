@@ -1,5 +1,29 @@
 # Product Successor Decisions
 
+## Blackstone causal departure and candidate entry R1
+
+- The authored Redcliff vanguard remains one `FieldTacticsState` patrol. A
+  dormant record consults Redcliff's actual military controller only at its
+  configured departure gate and becomes terminal `CANCELLED` when that
+  controller is the player. No parallel event ledger is introduced.
+- `INVADING`, `ARRIVED` and `HANDED_OFF` records have already become real
+  forces or battle transactions. Later occupation cannot cancel or recreate
+  them. Existing terminal records never respawn after time, restore or later
+  control changes.
+- Within one controller update, macro army arrival/occupation settles before
+  configured invasion departure. The city/war state and checkpoint transaction
+  determine the tie; UI refresh, scene timing and frame rate do not.
+- Old saves retain their recorded phase. Missing historical ordering is never
+  inferred: existing non-dormant forces survive, while a dormant force is
+  decided only at its next real departure gate.
+- Two-city victory remains a read of Redcliff and Silverford military control.
+  It does not require a defense battle and does not delete live armies,
+  handoffs, battles or recovery tasks.
+- The title may read only whether the existing V5 store has a generation. New
+  Game and Continue both delegate to the canonical city persistence
+  coordinator; the title does not parse, restore, mutate or delete campaign
+  snapshots.
+
 ## Wartime spatial battlefield ownership
 
 - Use one versioned integer corridor graph in the existing BattleSession for
@@ -174,15 +198,16 @@ Road-damage checks start at
 ## M1B standalone playable shell
 
 - `title_shell.tscn` is the formal player entry and owns only title copy,
-  keyboard focus, a one-shot scene transition, and title-state exit. It never
-  probes, parses, creates, restores, or writes V5 campaign data.
+  a read-only generation-exists probe, keyboard focus, a one-shot scene
+  transition, and title-state exit. It never parses, restores, mutates or
+  writes V5 campaign data.
 - `blank_map.tscn` remains the first and only scene that creates
   `ConstructionController` and composes `RuntimeCampaignPersistenceCoordinator`.
   This keeps automatic V5 recovery and normal WM-close flushing inside the
   existing city lifecycle.
-- The title action is always named `进入黑石城`; no Continue/New Game branch is
-  introduced, so the title cannot become a second save-read authority or imply
-  destructive overwrite semantics.
+- The candidate title exposes explicit Continue and New Game actions. New Game
+  asks for confirmation and publishes a fresh V5 generation through the
+  existing city coordinator; it does not delete prior generation files.
 - The M1B macOS preset is a minimal unsigned Universal debug preset with the
   unique identifier `org.txwzs.heishicheng`. It does not encode an output path,
   certificate, notarization setting, or a second product configuration.

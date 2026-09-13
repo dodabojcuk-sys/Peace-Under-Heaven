@@ -1,0 +1,13 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+PASS: 正式路线建立原军队围城
+PASS: 围城通过正式入口交给战时实例
+PASS: 战时实例激活原军队而非新建部队
+PASS: 通过空间进攻命令接近目标城门
+PASS: 通过空间进攻命令接近目标城门
+PASS: 真实战斗刻达到围城胜利
+PASS: 围城胜利只通过结果事务回写一次
+PASS: 胜利更新一次目标控制权，原军队按规则驻扎
+PASS: 重复确认只返回同一已提交战果，不重复占城或改变原军队
+MACRO_SIEGE_WARTIME_VICTORY_SMOKE PASS assertions=9

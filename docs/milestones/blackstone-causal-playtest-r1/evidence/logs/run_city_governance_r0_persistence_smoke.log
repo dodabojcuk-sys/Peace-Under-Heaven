@@ -1,0 +1,24 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+CITY_GOVERNANCE_WORKER_A_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+GOVERNANCE_A day=4 diseased=4 event=governance.blackstone.000001
+
+CITY_GOVERNANCE_WORKER_B_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+GOVERNANCE_B restored_event=governance.blackstone.000001 resolved=true food=3
+
+CITY_GOVERNANCE_WORKER_C_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED
+GOVERNANCE_C event_phase=IDLE resolved=1 food=3
+
+PASS: 独立进程恢复持续短缺、患病、待治理事件与已解决结果
+PASS: 每个进程先读到上一步事实，再推进且不重复扣粮或重抽事件
+CITY_GOVERNANCE_R0_PERSISTENCE_SMOKE PASS
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNIDENTIFIED

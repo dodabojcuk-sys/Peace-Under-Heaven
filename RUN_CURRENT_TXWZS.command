@@ -7,8 +7,8 @@ umask 077
 repo_path="${0:A:h}"
 godot_bin="${GODOT_BIN:-/Applications/Godot.app/Contents/MacOS/Godot}"
 godot_app="${GODOT_APP:-/Applications/Godot.app}"
-scene_path="res://scenes/blank_map.tscn"
-scene_label="CITY"
+scene_path="res://scenes/title_shell.tscn"
+scene_label="TITLE"
 
 if [[ ! -x "$godot_bin" ]]; then
 	print -u2 "Godot executable not found: $godot_bin"
@@ -86,25 +86,6 @@ is_registered_runtime() {
 	return 0
 }
 
-stop_registered_runtime() {
-	local pid="$1"
-	local launch_id="$2"
-	is_registered_runtime "$pid" "$launch_id" || return 0
-	print "Stopping registered TXWZS runtime PID $pid"
-	kill -TERM "$pid"
-	for _attempt in {1..10}; do
-		kill -0 "$pid" 2>/dev/null || return 0
-		sleep 0.5
-	done
-	if is_registered_runtime "$pid" "$launch_id"; then
-		print "Registered runtime PID $pid ignored TERM; sending KILL"
-		kill -KILL "$pid"
-		return 0
-	fi
-	print -u2 "PID $pid changed identity while stopping; refusing KILL"
-	return 1
-}
-
 find_unregistered_runtime() {
 	local registered_pid="$1"
 	local found=0
@@ -133,7 +114,9 @@ trap release_lock EXIT INT TERM
 previous_pid=$(read_state_value pid)
 previous_launch_id=$(read_state_value launch_id)
 if [[ -n "$previous_pid" && -n "$previous_launch_id" ]]; then
-	if ! stop_registered_runtime "$previous_pid" "$previous_launch_id"; then
+	if is_registered_runtime "$previous_pid" "$previous_launch_id"; then
+		print -u2 "Existing TXWZS candidate remains open: PID $previous_pid"
+		print -u2 "Close that window explicitly before launching another candidate."
 		exit 3
 	fi
 fi
