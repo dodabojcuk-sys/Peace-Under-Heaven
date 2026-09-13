@@ -44,11 +44,23 @@ func _run() -> void:
 	_check(city._war_loop_state.is_level_cleared(), "actual Redcliff and Silverford control completes the campaign once")
 	await _wait_until(func(): return city.current_day >= 5, 190.0, "day-five departure gate")
 	var invasion: Dictionary = city._war_loop_state.field_tactics.get_blackstone_invasion()
+	var personnel: Dictionary = city.get_blackstone_personnel_accounting()
 	_check(
 		StringName(invasion.get("phase", &"")) == FieldTacticsState.INVASION_CANCELLED
 			and city._war_loop_state.is_level_cleared()
 			and not city._army_registry.get_army(army_id).is_empty(),
 		"day-five gate cancels the unlaunched vanguard without deleting victory or the player army"
+	)
+	_check(
+		bool(personnel.get("reconciled", false))
+			and int(personnel.get("initial_military", 0)) == 20
+			and int(personnel.get("added_military", -1)) == 0
+			and int(personnel.get("garrison_survivors", -1)) == 0
+			and int(personnel.get("field_army_survivors", -1)) == 5
+			and int(personnel.get("wounded", -1)) == 2
+			and int(personnel.get("fallen", -1)) == 13
+			and int(personnel.get("accounted_total", -1)) == 20,
+		"personnel accounting explains all 20 initial soldiers without double counting"
 	)
 	print("BLACKSTONE_EARLY_COUNTERATTACK_TRACE %s" % JSON.stringify({
 		"real_duration_milliseconds": Time.get_ticks_msec() - started_milliseconds,
@@ -61,6 +73,7 @@ func _run() -> void:
 		"invasion_phase": invasion.get("phase", &""),
 		"level_cleared": city._war_loop_state.is_level_cleared(),
 		"population": city.get_population_recovery_read_model(),
+		"personnel_accounting": personnel,
 	}))
 	_finish()
 

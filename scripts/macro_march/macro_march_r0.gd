@@ -445,7 +445,7 @@ func _build_ui() -> void:
 	_campaign_label.add_theme_constant_override("outline_size", 4)
 	_status_label.add_theme_font_size_override("font_size", 15)
 	_status_label.add_theme_color_override("font_color", Color("f4f0df"))
-	_detail_label.add_theme_font_size_override("font_size", 14)
+	_detail_label.add_theme_font_size_override("font_size", 13)
 	_detail_label.add_theme_color_override("font_color", Color("3e3428"))
 	_specialist_status_label.add_theme_font_size_override("font_size", 13)
 	_specialist_status_label.add_theme_color_override("font_color", Color("31505a"))
@@ -588,6 +588,8 @@ func _layout_ui() -> void:
 	# Silverford combines transport facts with a selected-garrison replenishment
 	# preview. Reserve enough room for both so actionable formation capacity never
 	# overlaps the actual-garrison list or the bottom action buttons.
+	# The ordinary city detail is seven wrapped lines at the narrow 1152 layout.
+	# Its compact text size preserves the established command-list geometry.
 	var detail_height := 252.0 if _location_detail_mode and _selected_point_id == &"silverford_city" else 132.0
 	_detail_label.position = panel_inner.position
 	_detail_label.size = Vector2(panel_inner.size.x, detail_height)
