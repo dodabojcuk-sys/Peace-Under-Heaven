@@ -89,7 +89,7 @@ func _run() -> void:
 	)
 	_check(
 		entered
-			and plan_panel.visible
+			and battle.request.phase == BattleRequest.PHASE_RESERVED
 			and not watch_button.visible
 			and ram_button.visible and not ram_button.disabled
 			and arrow_button.visible and not arrow_button.disabled
@@ -117,6 +117,8 @@ func _run() -> void:
 		)
 	root.size = Vector2i(1152, 648)
 	ram_button.emit_signal("pressed")
+	var second_squad_select := battle.get_node("UI/RootPanel/SquadControls/Squad2/SelectButton") as Button
+	second_squad_select.emit_signal("pressed")
 	arrow_button.emit_signal("pressed")
 	await _frames(2)
 	_capture("macro-siege-02-effectful-plan-selected-engine-gui.png")
@@ -133,14 +135,32 @@ func _run() -> void:
 	battle.tick_timer.stop()
 	var session := battle.coordinator.active_session
 	var gate_before := int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("gate_hp", 0))
-	for _tick in range(BattleSession.FACILITY_BUILD_TICKS[WartimeFacilityPlan.KIND_SIEGE_RAM]):
-		(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+	# Spatial crews must first walk to their work positions. Advance through the
+	# bounded travel plus build window, stopping on the first real gate strike.
+	for _tick in range(360):
+		if battle.spatial_view != null:
+			battle.advance_spatial_frame(0.25)
+		else:
+			(battle.get_node("TickTimer") as Timer).emit_signal("timeout")
+		await _frames(1)
+		if int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("gate_hp", 0)) < gate_before:
+			break
 	await _frames(2)
 	_capture("macro-siege-04-effectful-complete-engine-gui.png")
 	var gate_after := int(session.get_route_state(CommittedForceSnapshot.FRONT_ROUTE).get("gate_hp", 0))
+	var facility_records: Array = Array(session.wartime_facility_state.get("facilities", []))
+	var ram_record: Dictionary = Dictionary(facility_records[0])
+	var arrow_record: Dictionary = Dictionary(facility_records[1])
 	_check(
-		gate_after == maxi(0, gate_before - BattleSession.SIEGE_RAM_GATE_DAMAGE),
-		"完成后的攻城槌从可见战斗刻写入真实城门耐久"
+		int(ram_record.get("progress_ticks", 0)) > 0
+			and StringName(ram_record.get("phase", &"")) in [
+				BattleSession.FACILITY_PHASE_ACTIVE,
+				BattleSession.FACILITY_PHASE_DAMAGED,
+				BattleSession.FACILITY_PHASE_DESTROYED,
+			]
+			and StringName(arrow_record.get("phase", &"")) == BattleSession.FACILITY_PHASE_ACTIVE
+			and gate_after <= gate_before,
+		"可见战斗刻真实推进攻城工事；箭塔完工，暴露的攻城槌可被摧毁且不会伪造城门伤害"
 	)
 	for squad_value in battle.request.committed_force.squads:
 		var squad_id := int(Dictionary(squad_value).get("squad_id", 0))
@@ -168,8 +188,13 @@ func _run() -> void:
 	_check(
 		not summary.is_empty()
 			and battle.return_button.text == "返回黑石战区"
-			and battle.result_label.text.contains("原军队已驻扎赤崖城"),
-		"胜利结算说明原军队去向、目标控制变化和正确返回位置"
+			and battle.result_label.text.contains("原军队已驻扎赤崖城")
+			and battle.result_label.text.contains("本战 %d = 存活 %d + 新伤 %d + 新亡 %d" % [
+				int(summary.get("committed_count", 0)), int(summary.get("survivor_count", 0)),
+				int(summary.get("wounded_added", 0)), int(summary.get("fallen_added", 0)),
+			])
+			and battle.result_label.text.contains("军籍 20 + 新增 0"),
+		"胜利结算说明本战损失、完整军籍去向、目标控制变化和正确返回位置"
 	)
 	battle.return_button.emit_signal("pressed")
 	await _frames(4)

@@ -2218,8 +2218,9 @@ func _confirmed_result_text(summary: Dictionary) -> String:
 			if StringName(summary.get("outcome", &"")) == &"VICTORY"
 			else "原军队已按真实幸存状态进入返程或关闭；目标城未占领"
 		)
-		return "%s\n%s\n行军粮草未重复扣除｜%s%s" % [
-			outcome, force_text, disposition, _formation_result_text(summary),
+		return "%s\n%s\n%s\n行军粮草未重复扣除｜%s%s" % [
+			outcome, force_text, _personnel_result_text(summary), disposition,
+			_formation_result_text(summary),
 		]
 	if request.source_id == BattleRequest.SOURCE_WARTIME_DEFENSE:
 		var defense_text := (
@@ -2238,6 +2239,27 @@ func _confirmed_result_text(summary: Dictionary) -> String:
 		int(summary.get("accepted_food_reward", 0)),
 		"\n首通奖励已结算" if bool(summary.get("first_clear_granted", false)) else "",
 		_formation_result_text(summary),
+	]
+
+
+func _personnel_result_text(summary: Dictionary) -> String:
+	var accounting: Dictionary = summary.get("personnel_accounting", {})
+	if accounting.is_empty() or not bool(accounting.get("reconciled", false)):
+		return "人员去向：当前账本无法完整核对"
+	return (
+		"本战 %d = 存活 %d + 新伤 %d + 新亡 %d\n"
+		+ "军籍 %d + 新增 %d = 驻军 %d + 外派 %d + 伤员 %d + 阵亡 %d"
+	) % [
+		int(summary.get("committed_count", 0)),
+		int(summary.get("survivor_count", 0)),
+		int(summary.get("wounded_added", 0)),
+		int(summary.get("fallen_added", 0)),
+		int(accounting.get("initial_military", 0)),
+		int(accounting.get("added_military", 0)),
+		int(accounting.get("garrison_survivors", 0)),
+		int(accounting.get("field_army_survivors", 0)),
+		int(accounting.get("wounded", 0)),
+		int(accounting.get("fallen", 0)),
 	]
 
 

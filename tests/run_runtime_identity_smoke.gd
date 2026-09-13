@@ -9,6 +9,7 @@ var failures: Array[String] = []
 func _init() -> void:
 	_test_clean_city_identity()
 	_test_dirty_city_identity()
+	_test_full_commit_identity()
 	_test_battle_identity()
 	_test_unidentified_identity()
 	_test_release_title()
@@ -44,6 +45,20 @@ func _test_dirty_city_identity() -> void:
 	)
 
 
+func _test_full_commit_identity() -> void:
+	var full_commit := "0da50abe317a9941f661c827c5b511917a081f2e"
+	var identity: Dictionary = RUNTIME_IDENTITY_SCRIPT.parse_identity(
+		_identified_args("TITLE", "candidate/r1", full_commit, "0"),
+		"TITLE"
+	)
+	_expect(String(identity.commit) == full_commit, "full launch commit is retained for diagnostics")
+	_expect(
+		RUNTIME_IDENTITY_SCRIPT.build_window_title(identity, true)
+			== "天下无战事 · TITLE · candidate/r1@0da50abe317a · DEBUG",
+		"window title abbreviates the actual full commit to twelve characters"
+	)
+
+
 func _test_battle_identity() -> void:
 	var identity: Dictionary = RUNTIME_IDENTITY_SCRIPT.parse_identity(
 		_identified_args("BATTLE-C0", "main", "7654321", "0"),
@@ -68,7 +83,7 @@ func _test_unidentified_identity() -> void:
 	)
 	_expect(
 		RUNTIME_IDENTITY_SCRIPT.build_window_title(city_identity, true)
-			== "天下无战事 · CITY · DEBUG · UNIDENTIFIED",
+			== "天下无战事 · CITY · DEBUG · UNKNOWN",
 		"direct CITY launch is visibly unidentified"
 	)
 	var battle_identity: Dictionary = RUNTIME_IDENTITY_SCRIPT.parse_identity(
@@ -77,7 +92,7 @@ func _test_unidentified_identity() -> void:
 	)
 	_expect(
 		RUNTIME_IDENTITY_SCRIPT.build_window_title(battle_identity, true)
-			== "天下无战事 · BATTLE-C0 · DEBUG · UNIDENTIFIED",
+			== "天下无战事 · BATTLE-C0 · DEBUG · UNKNOWN",
 		"direct BATTLE-C0 launch remains distinguishable and unidentified"
 	)
 
@@ -103,10 +118,15 @@ func _identified_args(
 	return PackedStringArray([
 		"--txwzs-launcher=1",
 		"--txwzs-scene=%s" % scene,
+		"--txwzs-candidate=FORMAL-CANDIDATE-R1",
 		"--txwzs-branch=%s" % branch,
 		"--txwzs-commit=%s" % commit,
 		"--txwzs-dirty=%s" % dirty,
 		"--txwzs-launch-id=test-launch",
+		"--txwzs-project-key=0123456789abcdef",
+		"--txwzs-save-key=fedcba9876543210",
+		"--txwzs-project-path=/tmp/txwzs-project",
+		"--txwzs-v5-save-dir=/tmp/txwzs-save",
 	])
 
 

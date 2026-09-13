@@ -147,6 +147,7 @@ const TECH_DEFINITIONS: Array[TechNode] = [
 ]
 const BASE_RECRUITMENT_CAP := 50
 const BASE_TRAINING_BATCH := 5
+const BLACKSTONE_INITIAL_MILITARY_COUNT := 20
 const EMERGENCY_MOBILIZATION_FOOD_COST := 30
 const EMERGENCY_MOBILIZATION_INFANTRY := 5
 const SECONDS_PER_DAY := 180.0
@@ -433,7 +434,7 @@ var tech_points: int:
 var _garrison_state: GarrisonState = GARRISON_STATE.new(
 	&"blackstone_city",
 	INFANTRY_ROLE.role_id,
-	20
+	BLACKSTONE_INITIAL_MILITARY_COUNT
 )
 var infantry_count: int:
 	get:
@@ -4515,6 +4516,26 @@ func get_population_recovery_read_model() -> Dictionary:
 	snapshot.adults = _population_recovery.total_living - _population_recovery.children - _population_recovery.elderly
 	snapshot.work_eligible = _population_recovery.available
 	return snapshot
+
+
+func get_blackstone_personnel_accounting() -> Dictionary:
+	var recovery := _population_recovery.get_snapshot()
+	var garrison := infantry_count
+	var field_army := get_committed_world_infantry_total() - garrison
+	var wounded_count := int(recovery.get("wounded", 0))
+	var fallen_count := int(recovery.get("fallen", 0))
+	var accounted_total := garrison + field_army + wounded_count + fallen_count
+	var additions := accounted_total - BLACKSTONE_INITIAL_MILITARY_COUNT
+	return {
+		"initial_military": BLACKSTONE_INITIAL_MILITARY_COUNT,
+		"added_military": maxi(additions, 0),
+		"garrison_survivors": garrison,
+		"field_army_survivors": field_army,
+		"wounded": wounded_count,
+		"fallen": fallen_count,
+		"accounted_total": accounted_total,
+		"reconciled": additions >= 0,
+	}
 
 
 func get_city_season_id(day := -1) -> StringName:
@@ -10911,6 +10932,7 @@ func _apply_macro_siege_battle_result_atomic(
 		"accepted_wood_reward": 0,
 		"accepted_food_reward": 0,
 		"first_clear_granted": false,
+		"personnel_accounting": get_blackstone_personnel_accounting(),
 		"battle_fact_snapshot": battle_result.get_authority_snapshot().duplicate(true),
 	}
 	_committed_battle_result_ids[battle_result.result_id] = summary.duplicate(true)

@@ -1,0 +1,58 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+PASS: 创建隔离 V5 存档目录
+PASS: 正式城市场景可加载
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+PASS: V1 源建立活动训练队列
+PASS: 有效 V1 只读输入确定性迁移为当前 schema、默认北向并补齐永久 roster
+PASS: V1 步兵与训练三字段只迁移到唯一 Garrison roster/TrainingQueue 源
+PASS: V1 迁移产生空军队/结算集合并保留精确时间
+PASS: V2 拒绝会在恢复后复用既有训练 order ID 的倒退序列
+PASS: 重复迁移幂等且不修改 V1 输入
+PASS: 未知 V1 schema 拒绝且不污染 live authority
+PASS: Node 注入在首次写入前拒绝且 live authority 零写入
+PASS: 空训练 V1 确定性迁移为空 TrainingQueue 集合
+PASS: 无 active order 但保留训练历史日的合法 V1 只读迁移成功
+PASS: 训练 sequence 非整数或不可安全持久化时结构化拒绝且零写入
+PASS: 军队 sequence 非整数或不可安全持久化时结构化拒绝且零写入
+PASS: 训练 sequence 非整数或不可安全持久化时结构化拒绝且零写入
+PASS: 军队 sequence 非整数或不可安全持久化时结构化拒绝且零写入
+PASS: 训练 sequence 非整数或不可安全持久化时结构化拒绝且零写入
+PASS: 军队 sequence 非整数或不可安全持久化时结构化拒绝且零写入
+PASS: V2 规范 envelope/checksum/类型 DTO 内存 roundtrip 精确
+PASS: checksum 篡改在领域恢复前拒绝
+PASS: 第一代 V2 经写入、flush、复读、发布和终读成功
+PASS: 成功发布不残留可加载临时文件
+PASS: 训练 MAX-1 restore→create 产生可持久化 exhausted sentinel，后续创建零写入
+PASS: 训练 exhausted sentinel 经正式创建入口结构化失败且全部 authority 零写入
+PASS: 正式 codec 生成 checksum 合法但训练领域非法的隔离代次
+V5_STALE_TRAINING_COUNTEREXAMPLE load=false reused=false old=training.blackstone_city.000001
+PASS: checksum 合法的训练 sequence rollback 经正式 load/restore 边界拒绝且零写入
+PASS: 合法高水位恢复后资源/容量失败零写入，首次成功训练为唯一 .000002
+PASS: 新控制器从磁盘恢复活动训练 stable ID 与精确状态
+PASS: 恢复后的活动训练仍只在正式日边界完成一次
+PASS: V2 保存点包含 active Army stable ID、route/node 和整数进度
+PASS: 军队 MAX-1 restore→create 产生可持久化 exhausted sentinel，后续创建零写入
+PASS: 军队 exhausted sentinel 在 reservation 前失败且 transaction/authority 零写入
+PASS: 正式 codec 生成 checksum 合法但军队领域非法的隔离代次
+V5_STALE_ARMY_COUNTEREXAMPLE load=false reused=false old=army.player.000001
+PASS: checksum 合法的军队 sequence rollback 经正式 load/restore 边界拒绝且零写入
+PASS: 合法高水位恢复后容量/单 active 失败零写入，首次成功军队为唯一 .000002
+PASS: V2 拒绝会在恢复后复用既有 army ID 的倒退序列
+PASS: 第二代不可变发布且第一代仍保留
+PASS: 保存退出后新运行时精确重载在途 ArmyState
+PASS: 跨运行时重载保持 Army ID、事务、组成和进度
+PASS: 注入写入失败不发布新代次
+PASS: 注入发布失败保留旧代次且不留下目标
+PASS: writer lock 不能被偷取或静默删除
+PASS: 建立第三个有效代次
+PASS: 最新坏档明确回退到上一有效代次
+PASS: 未来 storage version 阻断，不降级跳过
+PASS: live apply 中途失败恢复完整 pre-apply authority
+PASS: 终读失败不删除旧代次，加载跳过多个损坏代次恢复
+PASS: 完整 V2 snapshot 不含 Node、像素、camera、UI 或 selection
+PASS: 建立独立冷进程存档目录
+PASS: 三个独立 Godot 进程完成保存、恢复、推进和再恢复
+PASS: 冷进程输出证明 Army 进度只由进程 B 推进一次
+V5_COLD_PROCESS_EXITS A=0 B=0 C=0
+V5_CAMPAIGN_PERSISTENCE_SMOKE PASS
