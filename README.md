@@ -38,6 +38,7 @@ are historical for those sources. Human play acceptance remains open.
 - 实时读取 branch、短 commit 和 dirty 状态；
 - 启动 `res://scenes/title_shell.tscn`，提供“继续游戏”和“开始新局”；
 - 将初始窗口标识为 `TITLE`，并在界面显示候选版本身份；
+- 优先使用 `/Applications/Godot.app`，不存在时自动使用本工作区已安装的 Godot 4.5.1；
 - 已有候选窗口仍在运行时保留旧进程并拒绝重复启动，避免回归累积长期窗口。
 
 窗口标题中的含义：

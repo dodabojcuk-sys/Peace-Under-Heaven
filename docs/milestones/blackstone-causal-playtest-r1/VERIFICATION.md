@@ -62,7 +62,9 @@ the same canonical city and asks the existing persistence coordinator to write
 one fresh generation. The title never becomes a second snapshot owner and no
 regression deletes player generations.
 
-The launcher no longer terminates its previously registered candidate. It
+The launcher prefers `/Applications/Godot.app` and falls back to the workspace
+Godot 4.5.1 installation used by this repository. It no longer terminates its
+previously registered candidate. It
 keeps that process open and refuses a duplicate until the player closes the
 existing window explicitly. Short graphical regressions exit themselves and
 do not leave additional long-running windows.

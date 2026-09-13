@@ -5,8 +5,12 @@ set -o pipefail
 umask 077
 
 repo_path="${0:A:h}"
-godot_bin="${GODOT_BIN:-/Applications/Godot.app/Contents/MacOS/Godot}"
 godot_app="${GODOT_APP:-/Applications/Godot.app}"
+workspace_godot_app="${repo_path:h:h}/codex-tools/godot/4.5.1-stable-standard/Godot.app"
+if [[ -z "${GODOT_APP:-}" && ! -d "$godot_app" && -d "$workspace_godot_app" ]]; then
+	godot_app="$workspace_godot_app"
+fi
+godot_bin="${GODOT_BIN:-$godot_app/Contents/MacOS/Godot}"
 scene_path="res://scenes/title_shell.tscn"
 scene_label="TITLE"
 
