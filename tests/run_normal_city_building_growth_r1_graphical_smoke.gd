@@ -38,7 +38,9 @@ func _check_viewport(viewport_size: Vector2i) -> void:
 	var selection: Node = scene.get_node("BuildingSelectionController")
 	city.set_process(false)
 	city.restart_first_map()
-	city.wood = 200
+	# Layout fixture: enough resources to expose the confirmation without
+	# exceeding the normal 160-capacity warehouse projection.
+	city.wood = 150
 	city.food = 100
 	var cell := _find_legal_cell(city, &"building.farm.t1")
 	var placement_id: int = city.place_definition_at_cell(&"building.farm.t1", cell, false, true)
@@ -51,9 +53,10 @@ func _check_viewport(viewport_size: Vector2i) -> void:
 	var confirmation: Control = panel.get_node("UpgradeConfirmation")
 	var confirmation_text: Label = confirmation.get_node("ConfirmationText")
 	var panel_rect := panel.get_global_rect()
-	var valid_confirmation := (
+	var valid_confirmation: bool = (
 		placement_id > 0
 		and confirmation.visible
+		and selection.panel_title.text == "农田 Lv.1 → Lv.2"
 		and confirmation_text.text.contains("建筑产能")
 		and confirmation_text.text.contains("成本")
 		and panel_rect.position.x >= 0.0
@@ -63,14 +66,43 @@ func _check_viewport(viewport_size: Vector2i) -> void:
 	)
 	if not valid_confirmation:
 		failures.append("%s 升级确认未完整显示真实成本、能力或边界" % str(viewport_size))
-	_capture("building-growth-confirm-%dx%d.png" % [viewport_size.x, viewport_size.y])
+	_capture("building-growth-final-confirm-%dx%d.png" % [viewport_size.x, viewport_size.y])
 	(panel.get_node("UpgradeConfirmation/ConfirmUpgradeButton") as Button).emit_signal("pressed")
 	await _frames(2)
-	var progress: ProgressBar = panel.get_node("ConstructionProgress")
-	var status: Label = panel.get_node("PrototypeStatus")
-	if not progress.visible or not status.visible or not status.text.contains("已投入"):
+	var progress: ProgressBar = selection.upgrade_progress_bar
+	var status: Label = selection.upgrade_progress_label
+	var action_group: Control = selection.governance_action_group
+	var progress_scroll: Control = selection.upgrade_progress_scroll
+	if (
+		not progress.visible
+		or not status.visible
+		or not status.text.contains("已投入")
+		or not progress_scroll.visible
+		or progress_scroll.get_global_rect().intersects(action_group.get_global_rect())
+	):
 		failures.append("%s 升级提交后未显示工程进度与投入" % str(viewport_size))
-	_capture("building-growth-progress-%dx%d.png" % [viewport_size.x, viewport_size.y])
+	_capture("building-growth-final-progress-%dx%d.png" % [viewport_size.x, viewport_size.y])
+	primary.emit_signal("pressed")
+	await _frames(2)
+	if selection.panel_title.text != "农田 Lv.1 → Lv.2" or not confirmation_text.text.contains("取消后返还"):
+		failures.append("%s 活动升级取消确认未显示对象、等级或退款规则" % str(viewport_size))
+	(selection.cancel_upgrade_button as Button).emit_signal("pressed")
+	await _frames(2)
+	var workers: int = int(city.get_population_recovery_read_model().construction_workers)
+	city.adjust_city_workforce(&"construction", -workers)
+	await _frames(2)
+	if not selection.status_badge.text.contains("等待施工人员") or not progress_scroll.visible:
+		failures.append("%s 人员不足状态未保留滚动进度并解释等待条件" % str(viewport_size))
+	city.adjust_city_workforce(&"construction", workers)
+	city.set_building_upgrade_fault_for_test(&"COMPLETION_CHECKPOINT_SAVE_FAILED")
+	city.advance_city_time_for_test(360.0)
+	await _frames(2)
+	if not selection.status_badge.text.contains("等待保存重试") or not progress_scroll.visible:
+		failures.append("%s 完工保存失败未显示可重试状态" % str(viewport_size))
+	city.advance_city_time_for_test(0.0)
+	await _frames(2)
+	if progress_scroll.visible or not selection.target_type.text.contains("粮食 +36/日"):
+		failures.append("%s 完工后未退出进度布局或未显示二级真实能力" % str(viewport_size))
 	print("BUILDING_GROWTH_GUI_TRACE viewport=%s confirmation=%s progress=%s panel=%s" % [str(viewport_size), confirmation_text.text.replace("\n", " / "), status.text.replace("\n", " / "), str(panel_rect)])
 	scene.queue_free()
 	await process_frame

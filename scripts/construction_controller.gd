@@ -4115,6 +4115,8 @@ func _finalize_ready_building_upgrades() -> void:
 		var target := get_definition(StringName(record.upgrade_target_definition_id))
 		if target == null:
 			_building_upgrade_errors_by_placement_id[placement_id] = "升级定义缺失，已停止结算"
+			_refresh_city_ui()
+			city_state_changed.emit()
 			continue
 		record.definition_id = target.definition_id
 		record.template_id = target.definition_id
@@ -4143,6 +4145,8 @@ func _finalize_ready_building_upgrades() -> void:
 		if not bool(checkpoint.get("success", false)):
 			_building_records_by_id[placement_id] = before
 			_building_upgrade_errors_by_placement_id[placement_id] = "完工保存失败，保留原等级并等待重试"
+			_refresh_city_ui()
+			city_state_changed.emit()
 			continue
 		_building_upgrade_errors_by_placement_id.erase(placement_id)
 		_refresh_placed_building_visual(placement_id)
