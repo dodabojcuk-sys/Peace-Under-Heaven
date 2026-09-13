@@ -4,10 +4,15 @@ extends Node
 const TITLE_BASE := "天下无战事"
 const SCENE_CITY := "CITY"
 const SCENE_BATTLE_C0 := "BATTLE-C0"
-const KNOWN_SCENES := [SCENE_CITY, SCENE_BATTLE_C0]
+const SCENE_TITLE := "TITLE"
+const KNOWN_SCENES := [SCENE_TITLE, SCENE_CITY, SCENE_BATTLE_C0]
+const CAMPAIGN_START_CONTINUE := &"CONTINUE"
+const CAMPAIGN_START_NEW := &"NEW"
+const SAVE_DIRECTORY_ARGUMENT_PREFIX := "--txwzs-v5-save-dir="
 
 var current_identity: Dictionary = {}
 var current_title := ""
+var _pending_campaign_start_mode: StringName = CAMPAIGN_START_CONTINUE
 
 
 func _ready() -> void:
@@ -34,11 +39,33 @@ func _detect_current_scene_label() -> String:
 	if scene == null:
 		return "UNKNOWN"
 	var scene_path := String(scene.scene_file_path)
+	if scene_path.ends_with("/title_shell.tscn"):
+		return SCENE_TITLE
 	if scene_path.ends_with("/blank_map.tscn"):
 		return SCENE_CITY
 	if scene_path.ends_with("/c0_battle_graybox.tscn"):
 		return SCENE_BATTLE_C0
 	return "UNKNOWN"
+
+
+func request_campaign_start(mode: StringName) -> bool:
+	if mode not in [CAMPAIGN_START_CONTINUE, CAMPAIGN_START_NEW]:
+		return false
+	_pending_campaign_start_mode = mode
+	return true
+
+
+func consume_campaign_start_mode() -> StringName:
+	var mode := _pending_campaign_start_mode
+	_pending_campaign_start_mode = CAMPAIGN_START_CONTINUE
+	return mode
+
+
+func get_campaign_save_directory_override() -> String:
+	for argument in OS.get_cmdline_user_args():
+		if argument.begins_with(SAVE_DIRECTORY_ARGUMENT_PREFIX):
+			return argument.trim_prefix(SAVE_DIRECTORY_ARGUMENT_PREFIX)
+	return ""
 
 
 static func parse_identity(

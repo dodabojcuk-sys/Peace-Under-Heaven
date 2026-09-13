@@ -54,7 +54,10 @@ func _ready() -> void:
 	# accepted V5 generation store before this root binds presentation listeners.
 	_runtime_persistence = RUNTIME_PERSISTENCE_COORDINATOR.new()
 	add_child(_runtime_persistence)
-	_runtime_persistence.initialize(construction_controller)
+	_runtime_persistence.initialize(
+		construction_controller,
+		get_node("/root/RuntimeIdentity").consume_campaign_start_mode()
+	)
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	construction_controller.construction_interaction_started.connect(
 		_on_construction_interaction_started
