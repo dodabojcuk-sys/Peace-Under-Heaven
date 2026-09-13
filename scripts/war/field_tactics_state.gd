@@ -48,7 +48,9 @@ const INVASION_MARCHING := &"INVADING"
 const INVASION_ARRIVED := &"ARRIVED"
 const INVASION_HANDED_OFF := &"HANDED_OFF"
 const INVASION_DEFEATED := &"DEFEATED"
+const INVASION_CANCELLED := &"CANCELLED"
 const INVASION_RESOLVED := &"RESOLVED"
+const INVASION_CANCELLATION_SOURCE_CONTROLLED := &"SOURCE_CONTROLLED_BEFORE_DEPARTURE"
 const FACILITY_WATCHTOWER := &"WATCHTOWER"
 const FACILITY_ARROW_TOWER := &"ARROW_TOWER"
 const FACILITY_BARRICADE := &"BARRICADE"
@@ -251,7 +253,20 @@ func initialize_from_theater(
 
 
 func activate_configured_invasions(current_day: int) -> Array[StringName]:
+	return Array(
+		resolve_configured_invasion_departures(current_day).activated_invasion_ids,
+		TYPE_STRING_NAME, &"", null
+	)
+
+
+## Departure is the only point where a configured dormant force consults its
+## source controller. After departure, later ownership changes cannot rewind it.
+func resolve_configured_invasion_departures(
+	current_day: int,
+	source_controllers_by_point_id: Dictionary = {}
+) -> Dictionary:
 	var activated: Array[StringName] = []
+	var cancelled: Array[StringName] = []
 	for patrol_id_value in patrols_by_id.keys():
 		var patrol_id := StringName(patrol_id_value)
 		var patrol := Dictionary(patrols_by_id[patrol_id])
@@ -261,12 +276,23 @@ func activate_configured_invasions(current_day: int) -> Array[StringName]:
 			or current_day < int(patrol.get("activation_day", 0))
 		):
 			continue
+		var source_point_id := StringName(patrol.get("source_point_id", &""))
+		if StringName(source_controllers_by_point_id.get(source_point_id, &"")) == &"player":
+			patrol.phase = INVASION_CANCELLED
+			patrol.cancellation_reason = INVASION_CANCELLATION_SOURCE_CONTROLLED
+			patrol.cancelled_day = current_day
+			patrols_by_id[patrol_id] = patrol
+			cancelled.append(patrol_id)
+			continue
 		patrol.phase = INVASION_MARCHING
 		patrol.activated_world_milliseconds = world_milliseconds
 		patrols_by_id[patrol_id] = patrol
 		activated.append(patrol_id)
 	_refresh_intel()
-	return activated
+	return {
+		"activated_invasion_ids": activated,
+		"cancelled_invasion_ids": cancelled,
+	}
 
 
 func get_blackstone_invasion() -> Dictionary:
@@ -2748,11 +2774,11 @@ func advance_world(delta_milliseconds: int, guard_positions_by_army: Dictionary 
 		var patrol_id := StringName(patrol_id_value)
 		var patrol := Dictionary(patrols_by_id[patrol_id])
 		if int(patrol.get("strength", 0)) <= 0:
-			if StringName(patrol.get("invasion_kind", &"")) != &"" and StringName(patrol.get("phase", &"")) not in [INVASION_HANDED_OFF, INVASION_DEFEATED, INVASION_RESOLVED]:
+			if StringName(patrol.get("invasion_kind", &"")) != &"" and StringName(patrol.get("phase", &"")) not in [INVASION_HANDED_OFF, INVASION_DEFEATED, INVASION_CANCELLED, INVASION_RESOLVED]:
 				patrol.phase = INVASION_DEFEATED
 				patrols_by_id[patrol_id] = patrol
 			continue
-		if StringName(patrol.get("phase", &"")) in [INVASION_DORMANT, INVASION_ARRIVED, INVASION_HANDED_OFF, INVASION_DEFEATED, INVASION_RESOLVED]:
+		if StringName(patrol.get("phase", &"")) in [INVASION_DORMANT, INVASION_ARRIVED, INVASION_HANDED_OFF, INVASION_DEFEATED, INVASION_CANCELLED, INVASION_RESOLVED]:
 			continue
 		# Consume all of this world step across wait→move→arrival transitions.
 		# Otherwise a large frame would discard its post-arrival remainder and
@@ -3030,7 +3056,7 @@ func _closest_effective_patrol_id(position: Vector2, effect_range: float) -> Str
 func _patrol_can_receive_field_effect(patrol: Dictionary) -> bool:
 	return int(patrol.get("strength", 0)) > 0 and StringName(patrol.get("phase", &"")) not in [
 		INVASION_DORMANT, INVASION_ARRIVED, INVASION_HANDED_OFF,
-		INVASION_DEFEATED, INVASION_RESOLVED,
+		INVASION_DEFEATED, INVASION_CANCELLED, INVASION_RESOLVED,
 	]
 
 

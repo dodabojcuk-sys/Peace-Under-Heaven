@@ -6939,6 +6939,7 @@ func get_blackstone_campaign_status_text() -> String:
 			FieldTacticsState.INVASION_MARCHING: "来袭途中 · 可截击或回城备防",
 			FieldTacticsState.INVASION_ARRIVED: "敌军抵城 · 城门可接战",
 			FieldTacticsState.INVASION_HANDED_OFF: "守城事务处理中 · 继续原战斗",
+			FieldTacticsState.INVASION_CANCELLED: "赤崖已被控制，本次先遣军出兵取消。",
 			FieldTacticsState.INVASION_RESOLVED: "来袭已结算 · 可治疗、整备与反攻",
 		}.get(phase, "来袭军已消灭 · 可继续行动")
 	var objective := "控制赤崖与银渡 · 第 7 日后经济压力递增"
@@ -6994,7 +6995,8 @@ func get_blackstone_invasion_read_model() -> Dictionary:
 	if invasion.is_empty():
 		return {}
 	var warning_day := int(invasion.get("warning_day", 0))
-	if current_day < warning_day:
+	var invasion_phase := StringName(invasion.get("phase", &""))
+	if current_day < warning_day and invasion_phase != FieldTacticsState.INVASION_CANCELLED:
 		return {
 			"known": false,
 			"phase": StringName(invasion.get("phase", &"")),
@@ -7008,7 +7010,7 @@ func get_blackstone_invasion_read_model() -> Dictionary:
 		"known": true,
 		"patrol_id": patrol_id,
 		"display_name": str(invasion.get("display_name", "来袭敌军")),
-		"phase": StringName(invasion.get("phase", &"")),
+		"phase": invasion_phase,
 		"source_point_id": StringName(invasion.get("source_point_id", &"")),
 		"source_name": str(MACRO_MARCH_THEATER.get_point(StringName(invasion.get("source_point_id", &""))).get("display_name", "未知来源")),
 		"target_point_id": StringName(invasion.get("target_point_id", &"")),
@@ -7019,6 +7021,8 @@ func get_blackstone_invasion_read_model() -> Dictionary:
 		"exact_strength_known": exact_strength_known,
 		"known_strength": int(intel.get("known_strength", 0)) if exact_strength_known else -1,
 		"fog_state": StringName(intel.get("fog_state", FieldTacticsState.FOG_UNOBSERVED)),
+		"cancellation_reason": StringName(invasion.get("cancellation_reason", &"")),
+		"cancelled_day": int(invasion.get("cancelled_day", 0)),
 	}
 
 
@@ -7332,7 +7336,7 @@ func _resolve_field_specialist_action_target(action_kind: StringName, target_id:
 	elif action_kind == FieldTacticsState.ACTION_SNIPER:
 		var patrol := Dictionary(field.patrols_by_id.get(target_id, {}))
 		var intel := Dictionary(field.intel_by_subject_id.get(target_id, {}))
-		if patrol.is_empty() or int(patrol.get("strength", 0)) <= 0 or StringName(patrol.get("phase", &"")) in [FieldTacticsState.INVASION_HANDED_OFF, FieldTacticsState.INVASION_DEFEATED, FieldTacticsState.INVASION_RESOLVED] or StringName(intel.get("fog_state", FieldTacticsState.FOG_UNOBSERVED)) != FieldTacticsState.FOG_VISIBLE:
+		if patrol.is_empty() or int(patrol.get("strength", 0)) <= 0 or StringName(patrol.get("phase", &"")) in [FieldTacticsState.INVASION_HANDED_OFF, FieldTacticsState.INVASION_DEFEATED, FieldTacticsState.INVASION_CANCELLED, FieldTacticsState.INVASION_RESOLVED] or StringName(intel.get("fog_state", FieldTacticsState.FOG_UNOBSERVED)) != FieldTacticsState.FOG_VISIBLE:
 			return {"valid": false, "error": "狙击目标必须是当前已发现且未交接的存活敌军"}
 		var patrol_position := Vector2(patrol.get("world_position", FieldTacticsState.INVALID_WORLD_POSITION))
 		var action_position := patrol_position
@@ -8136,7 +8140,26 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 	var population_before := _population_recovery.get_snapshot()
 	var military_before := _current_military_population()
 	var specialists_before := _current_alive_specialists()
-	var activated_invasion_ids := _war_loop_state.field_tactics.activate_configured_invasions(current_day)
+	var configured_invasion := _war_loop_state.field_tactics.get_blackstone_invasion()
+	var invasion_source_id := StringName(configured_invasion.get("source_point_id", &""))
+	var invasion_source_controllers: Dictionary = {}
+	if invasion_source_id != &"":
+		invasion_source_controllers[invasion_source_id] = StringName(
+			_war_loop_state.get_city(invasion_source_id).get(
+				"military_controller_faction_id", &""
+			)
+		)
+	var invasion_departures := _war_loop_state.field_tactics.resolve_configured_invasion_departures(
+		current_day, invasion_source_controllers
+	)
+	var activated_invasion_ids: Array[StringName] = Array(
+		invasion_departures.get("activated_invasion_ids", []),
+		TYPE_STRING_NAME, &"", null
+	)
+	var cancelled_invasion_ids: Array[StringName] = Array(
+		invasion_departures.get("cancelled_invasion_ids", []),
+		TYPE_STRING_NAME, &"", null
+	)
 	var field_advance := _war_loop_state.field_tactics.advance_world(
 		whole_milliseconds, _macro_army_world_positions(), _macro_march_traces_for_war_step
 	)
@@ -8158,6 +8181,8 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 		field_advance.specialist_action_events = Array(specialist_action_settlement.events).duplicate(true)
 	if not activated_invasion_ids.is_empty():
 		field_advance.activated_invasion_ids = activated_invasion_ids.duplicate()
+	if not cancelled_invasion_ids.is_empty():
+		field_advance.cancelled_invasion_ids = cancelled_invasion_ids.duplicate()
 	var supply_settlement := _settle_arrived_supply_transports(
 		Array(field_advance.get("ready_supply_transport_ids", []))
 	)
@@ -8172,6 +8197,7 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 	var resumed_armies := _resume_macro_marches_on_repaired_roads()
 	var field_checkpoint_required := (
 		not activated_invasion_ids.is_empty()
+		or not cancelled_invasion_ids.is_empty()
 		or
 		Array(field_advance.get("arrived_invasion_ids", [])).size() > 0
 		or
@@ -8340,7 +8366,10 @@ func _resolve_field_patrol_encounters(field_advance: Dictionary) -> Dictionary:
 	for patrol_id_value in field.patrols_by_id.keys():
 		var patrol_id := StringName(patrol_id_value)
 		var patrol: Dictionary = Dictionary(field.patrols_by_id[patrol_id])
-		if int(patrol.get("strength", 0)) <= 0:
+		if (
+			int(patrol.get("strength", 0)) <= 0
+			or StringName(patrol.get("phase", &"")) == FieldTacticsState.INVASION_CANCELLED
+		):
 			continue
 		var resolved_ids: Array = Array(patrol.get("resolved_army_ids", []))
 		var participant_ids: Array[StringName] = []
@@ -9474,18 +9503,22 @@ func _build_macro_siege_battle_request(
 	if source_formations.is_empty() or source_formations.size() > CommittedForceSnapshot.MAX_SQUADS:
 		return null
 	var formations: Array[Dictionary] = []
-	for index in source_formations.size():
-		var source = source_formations[index]
+	for source in source_formations:
 		if not source is Dictionary:
 			return null
 		var formation: Dictionary = Dictionary(source)
+		# A formal early counterattack can suffer a real field interception before
+		# reaching Redcliff. Keep surviving original formations, but do not pass an
+		# already-empty formation to the battle snapshot or invent replacements.
+		if int(formation.get("member_count", 0)) <= 0:
+			continue
 		formations.append({
 			"formation_id": StringName(formation.get("formation_id", &"")),
 			"display_name": str(formation.get("display_name", "军队")),
 			"definition_id": StringName(formation.get("definition_id", &"")),
 			"member_count": int(formation.get("member_count", 0)),
 			"max_members": int(formation.get("max_members", 0)),
-			"squad_id": index + 1,
+			"squad_id": formations.size() + 1,
 			"route_id": CommittedForceSnapshot.FRONT_ROUTE,
 		})
 	var committed := CommittedForceSnapshot.create_from_formations(
@@ -10790,6 +10823,12 @@ func _apply_macro_siege_battle_result_atomic(
 		var formation_id := StringName(formation.get("formation_id", &""))
 		if formation_id == &"" or formations_by_id.has(formation_id):
 			return {}
+		# A field encounter can exhaust one formation before the surviving army
+		# reaches a siege. The zero-count formation remains in ArmyRegistry for
+		# provenance, but it was not committed to this battle and therefore has
+		# no formation result to settle.
+		if int(formation.get("member_count", 0)) <= 0:
+			continue
 		formations_by_id[formation_id] = formation
 	if battle_result.formation_results.size() != formations_by_id.size():
 		return {}
@@ -14030,6 +14069,7 @@ func _refresh_first_war_ui() -> void:
 			FieldTacticsState.INVASION_ARRIVED: "已抵达城门",
 			FieldTacticsState.INVASION_HANDED_OFF: "守城实例交战中",
 			FieldTacticsState.INVASION_DEFEATED: "已在战区被消灭",
+			FieldTacticsState.INVASION_CANCELLED: "赤崖已被控制，本次先遣军出兵取消",
 			FieldTacticsState.INVASION_RESOLVED: "守城战果已结算",
 		}.get(invasion_phase, "状态待确认"))
 		var strength_text := (
@@ -14096,7 +14136,7 @@ func _refresh_first_war_ui() -> void:
 			if invasion_phase == FieldTacticsState.INVASION_HANDED_OFF
 			else (
 				"本次来袭已结算 · 可继续反攻"
-				if invasion_phase in [FieldTacticsState.INVASION_DEFEATED, FieldTacticsState.INVASION_RESOLVED]
+				if invasion_phase in [FieldTacticsState.INVASION_DEFEATED, FieldTacticsState.INVASION_CANCELLED, FieldTacticsState.INVASION_RESOLVED]
 				else "敌军尚未抵达 · 返回战区处置"
 			)
 		)
