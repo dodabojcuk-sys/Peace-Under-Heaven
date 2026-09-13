@@ -1,0 +1,27 @@
+[gd_resource type="Resource" script_class="BuildingDefinition" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/content/building_definition.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/content/building_capability.gd" id="2"]
+
+[sub_resource type="Resource" id="storage"]
+script = ExtResource("2")
+capability_type = &"storage"
+resource_id = &"wood_food"
+amount = 200
+requires_operational = false
+
+[resource]
+script = ExtResource("1")
+definition_id = &"building.warehouse.t2"
+display_name = "仓库"
+building_type = "容量建筑"
+description = "木材与粮食容量各增加 200"
+level = 2
+build_days = 2
+build_catalog_visible = false
+footprint = Vector2i(2, 2)
+wood_cost = 80
+food_cost = 4
+capabilities = Array[ExtResource("2")]([SubResource("storage")])
+body_color = Color(0.53, 0.51, 0.44, 1)
+outline_color = Color(0.25, 0.24, 0.21, 1)

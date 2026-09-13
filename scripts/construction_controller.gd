@@ -71,6 +71,21 @@ const HOUSING_DEFINITION: BuildingDefinition = preload(
 const CLINIC_DEFINITION: BuildingDefinition = preload(
 	"res://resources/definitions/buildings/clinic.tres"
 )
+const LOGGING_CAMP_T2_DEFINITION: BuildingDefinition = preload(
+	"res://resources/definitions/buildings/logging_camp_t2.tres"
+)
+const FARM_T2_DEFINITION: BuildingDefinition = preload(
+	"res://resources/definitions/buildings/farm_t2.tres"
+)
+const WAREHOUSE_T2_DEFINITION: BuildingDefinition = preload(
+	"res://resources/definitions/buildings/warehouse_t2.tres"
+)
+const HOUSING_T2_DEFINITION: BuildingDefinition = preload(
+	"res://resources/definitions/buildings/housing_t2.tres"
+)
+const CLINIC_T2_DEFINITION: BuildingDefinition = preload(
+	"res://resources/definitions/buildings/clinic_t2.tres"
+)
 const EARLY_CITY_SNAPSHOT_V1 = preload(
 	"res://scripts/state/early_city_snapshot_v1.gd"
 )
@@ -538,6 +553,8 @@ var _field_reinforcement_fault_for_test: StringName = &""
 var _field_watchtower_fault_for_test: StringName = &""
 var _wartime_session_checkpoint_fault_for_test: StringName = &""
 var _city_strategy_fault_for_test: StringName = &""
+var _building_upgrade_fault_for_test: StringName = &""
+var _building_upgrade_errors_by_placement_id: Dictionary = {}
 
 
 func _ready() -> void:
@@ -555,6 +572,11 @@ func _ready() -> void:
 	_register_definition(WATCHTOWER_DEFINITION)
 	_register_definition(HOUSING_DEFINITION)
 	_register_definition(CLINIC_DEFINITION)
+	_register_definition(LOGGING_CAMP_T2_DEFINITION)
+	_register_definition(FARM_T2_DEFINITION)
+	_register_definition(WAREHOUSE_T2_DEFINITION)
+	_register_definition(HOUSING_T2_DEFINITION)
+	_register_definition(CLINIC_T2_DEFINITION)
 	_register_strategy_definitions()
 	_register_noticeboard_missions()
 	_register_preset_buildings()
@@ -761,6 +783,14 @@ func _capture_city_layout_runtime_state(for_city_id: StringName) -> void:
 			"disabled_until_day": int(record.disabled_until_day),
 			"construction_started_day": int(record.construction_started_day),
 			"construction_complete_day": int(record.construction_complete_day),
+			"construction_state": StringName(record.construction_state),
+			"construction_progress_milliseconds": int(record.construction_progress_milliseconds),
+			"construction_required_milliseconds": int(record.construction_required_milliseconds),
+			"construction_total_costs": Dictionary(record.construction_total_costs).duplicate(true),
+			"construction_paid_costs": Dictionary(record.construction_paid_costs).duplicate(true),
+			"construction_priority": int(record.construction_priority),
+			"construction_missing_resource_ids": Array(record.construction_missing_resource_ids).duplicate(),
+			"upgrade_target_definition_id": StringName(record.get("upgrade_target_definition_id", &"")),
 		})
 	_city_layout_runtime_states[for_city_id] = {
 		"placements": placements,
@@ -799,6 +829,15 @@ func _restore_city_layout_runtime_state(snapshot: Dictionary) -> bool:
 			int(placement.construction_complete_day)
 		):
 			return false
+		var restored_record: Dictionary = _building_records_by_id.get(int(placement.placement_id), {})
+		for key in [
+			"construction_state", "construction_progress_milliseconds",
+			"construction_required_milliseconds", "construction_total_costs",
+			"construction_paid_costs", "construction_priority",
+			"construction_missing_resource_ids", "upgrade_target_definition_id",
+		]:
+			if placement.has(key):
+				restored_record[key] = placement[key].duplicate(true) if placement[key] is Dictionary or placement[key] is Array else placement[key]
 		max_id = maxi(max_id, int(placement.placement_id) + 1)
 	_next_placement_id = maxi(
 		max_id,
@@ -2284,6 +2323,7 @@ func _reposition_placed_building(
 
 
 func advance_city_time(simulation_delta: float) -> int:
+	_finalize_ready_building_upgrades()
 	if (
 		simulation_delta <= 0.0
 		or city_time_paused
@@ -2334,6 +2374,7 @@ func advance_city_time(simulation_delta: float) -> int:
 			break
 
 	day_elapsed_seconds = float(elapsed_milliseconds) / 1000.0
+	_finalize_ready_building_upgrades()
 	_refresh_time_ui()
 	return advanced_days
 
@@ -3964,7 +4005,12 @@ func _advance_construction_tick() -> void:
 	var ordered_ids := _get_ordered_construction_ids()
 	for placement_id in ordered_ids:
 		var record: Dictionary = _building_records_by_id.get(placement_id, {})
-		if record.is_empty() or StringName(record.lifecycle_state) != &"constructing":
+		if record.is_empty():
+			continue
+		if StringName(record.get("upgrade_target_definition_id", &"")) != &"":
+			_advance_building_upgrade_tick(placement_id, record)
+			continue
+		if StringName(record.lifecycle_state) != &"constructing":
 			continue
 		var required := int(record.construction_required_milliseconds)
 		var progress := int(record.construction_progress_milliseconds)
@@ -4029,6 +4075,79 @@ func _advance_construction_tick() -> void:
 		)
 		if committed:
 			_refresh_placed_building_visual(placement_id)
+
+
+func _advance_building_upgrade_tick(placement_id: int, record: Dictionary) -> void:
+	if StringName(record.construction_state) == &"READY_TO_COMPLETE":
+		return
+	var required := maxi(int(record.construction_required_milliseconds), 1)
+	var progress := int(record.construction_progress_milliseconds)
+	var modifier := floori(float(
+		get_pressure_modifier_permille(&"construction")
+		* get_workforce_modifier_permille(&"construction")
+	) / 1000.0)
+	if modifier <= 0:
+		return
+	var progress_delta := maxi(
+		roundi(float(CONSTRUCTION_TICK_MILLISECONDS * modifier) / 1000.0),
+		1
+	)
+	record.construction_progress_milliseconds = mini(progress + progress_delta, required)
+	record.construction_state = (
+		&"READY_TO_COMPLETE"
+		if int(record.construction_progress_milliseconds) >= required
+		else &"ACTIVE"
+	)
+	_building_upgrade_errors_by_placement_id.erase(placement_id)
+	_refresh_placed_building_visual(placement_id)
+
+
+func _finalize_ready_building_upgrades() -> void:
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if (
+			record.is_empty()
+			or StringName(record.get("upgrade_target_definition_id", &"")) == &""
+			or StringName(record.construction_state) != &"READY_TO_COMPLETE"
+		):
+			continue
+		var before := record.duplicate(true)
+		var target := get_definition(StringName(record.upgrade_target_definition_id))
+		if target == null:
+			_building_upgrade_errors_by_placement_id[placement_id] = "升级定义缺失，已停止结算"
+			continue
+		record.definition_id = target.definition_id
+		record.template_id = target.definition_id
+		record.display_name = target.display_name
+		record.building_type = target.building_type
+		record.description = target.description
+		record.level = target.level
+		record.next_level_definition_id = target.next_level_definition_id
+		record.build_wood_cost = target.wood_cost
+		record.build_food_cost = target.food_cost
+		record.build_days = target.build_days
+		record.requires_road = target.requires_road
+		record.road_anchor_offsets = target.road_anchor_offsets.duplicate()
+		record.construction_state = &"COMPLETED"
+		record.construction_complete_day = current_day
+		record.upgrade_target_definition_id = &""
+		record.prototype_status = "运行中"
+		var checkpoint_failed := _building_upgrade_fault_for_test == &"COMPLETION_CHECKPOINT_SAVE_FAILED"
+		if checkpoint_failed:
+			_building_upgrade_fault_for_test = &""
+		var checkpoint := (
+			{"success": false}
+			if checkpoint_failed
+			else _persist_macro_march_checkpoint()
+		)
+		if not bool(checkpoint.get("success", false)):
+			_building_records_by_id[placement_id] = before
+			_building_upgrade_errors_by_placement_id[placement_id] = "完工保存失败，保留原等级并等待重试"
+			continue
+		_building_upgrade_errors_by_placement_id.erase(placement_id)
+		_refresh_placed_building_visual(placement_id)
+		_enforce_resource_capacity()
+		city_state_changed.emit()
 
 
 func _get_build_slot_next_payment() -> Dictionary:
@@ -4305,7 +4424,10 @@ func _get_ordered_construction_ids() -> Array[int]:
 	var result: Array[int] = []
 	for placement_id in _placement_order:
 		var record: Dictionary = _building_records_by_id.get(placement_id, {})
-		if not record.is_empty() and StringName(record.lifecycle_state) == &"constructing":
+		if not record.is_empty() and (
+			StringName(record.lifecycle_state) == &"constructing"
+			or StringName(record.get("upgrade_target_definition_id", &"")) != &""
+		):
 			result.append(placement_id)
 	result.sort_custom(func(left: int, right: int) -> bool:
 		var left_priority := int(_building_records_by_id[left].construction_priority)
@@ -4323,7 +4445,10 @@ func set_construction_priority(placement_id: int, priority: int) -> bool:
 	]:
 		return false
 	var record: Dictionary = _building_records_by_id.get(placement_id, {})
-	if record.is_empty() or StringName(record.lifecycle_state) != &"constructing":
+	if record.is_empty() or (
+		StringName(record.lifecycle_state) != &"constructing"
+		and StringName(record.get("upgrade_target_definition_id", &"")) == &""
+	):
 		return false
 	record.construction_priority = priority
 	city_state_changed.emit()
@@ -4361,7 +4486,7 @@ func _get_production_amount(
 ) -> int:
 	var amount := production.amount
 	if (
-		definition.definition_id == LOGGING_CAMP_DEFINITION.definition_id
+		String(definition.definition_id).begins_with("building.logging_camp.")
 		and has_tech(&"tech.stone_tools")
 	):
 		var stone_tools := get_tech_definition(&"tech.stone_tools")
@@ -5340,6 +5465,9 @@ func _export_v5_placements() -> Array[Dictionary]:
 			"construction_missing_resource_ids": Array(
 				record.construction_missing_resource_ids
 			).duplicate(),
+			"upgrade_target_definition_id": StringName(
+				record.get("upgrade_target_definition_id", &"")
+			),
 		})
 	return placements
 
@@ -5354,6 +5482,20 @@ func validate_v5_campaign_snapshot(
 	if not bool(structural.valid):
 		return structural
 	var candidate: Dictionary = structural.snapshot
+	for placement_value in candidate.placements:
+		var placement: Dictionary = placement_value
+		var current_definition := get_definition(StringName(placement.definition_id))
+		if current_definition == null:
+			return {"valid": false, "error_id": &"UNKNOWN_BUILDING_DEFINITION", "error": "建筑定义不存在"}
+		var upgrade_target_id := StringName(placement.upgrade_target_definition_id)
+		if upgrade_target_id != &"":
+			var target_definition := get_definition(upgrade_target_id)
+			if (
+				target_definition == null
+				or current_definition.next_level_definition_id != upgrade_target_id
+				or target_definition.level != current_definition.level + 1
+			):
+				return {"valid": false, "error_id": &"INVALID_BUILDING_UPGRADE", "error": "建筑升级目标与当前等级不一致"}
 	var war_probe: WarLoopState = WAR_LOOP_STATE.new()
 	if not war_probe.restore_snapshot(candidate.war_loop):
 		return {
@@ -5816,6 +5958,7 @@ func _apply_validated_v5_campaign_snapshot(
 			"construction_paid_costs": Dictionary(persisted_placement.construction_paid_costs).duplicate(true),
 			"construction_priority": int(persisted_placement.construction_priority),
 			"construction_missing_resource_ids": Array(persisted_placement.construction_missing_resource_ids).duplicate(),
+			"upgrade_target_definition_id": StringName(persisted_placement.upgrade_target_definition_id),
 		}
 		var legacy_placement := persisted_placement.duplicate(true)
 		for key in [
@@ -5827,6 +5970,7 @@ func _apply_validated_v5_campaign_snapshot(
 			"construction_paid_costs",
 			"construction_priority",
 			"construction_missing_resource_ids",
+			"upgrade_target_definition_id",
 		]:
 			legacy_placement.erase(key)
 		compatibility_placements.append(legacy_placement)
@@ -6547,6 +6691,7 @@ func _register_runtime_placement_record(
 		"construction_paid_costs": paid_costs,
 		"construction_priority": CONSTRUCTION_PRIORITY_NORMAL,
 		"construction_missing_resource_ids": [],
+		"upgrade_target_definition_id": &"",
 		"built_day": built_day,
 		"disabled_until_day": disabled_until_day,
 		"node": building,
@@ -11998,6 +12143,211 @@ func get_definition_build_data(definition_id: StringName) -> Dictionary:
 	}
 
 
+func preview_building_upgrade(placement_id: int) -> Dictionary:
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
+	if record.is_empty():
+		return {"valid": false, "error": "建筑不存在"}
+	var current := get_definition(StringName(record.definition_id))
+	if current == null or current.next_level_definition_id == &"":
+		return {"valid": false, "error": "当前建筑没有可用升级"}
+	var target := get_definition(current.next_level_definition_id)
+	if target == null or target.level != current.level + 1:
+		return {"valid": false, "error": "升级定义无效"}
+	var error := ""
+	if is_city_action_locked_for_battle():
+		error = "战斗事务处理中不能升级建筑"
+	elif StringName(record.lifecycle_state) != &"running":
+		error = "建筑尚未完工"
+	elif StringName(record.get("upgrade_target_definition_id", &"")) != &"":
+		error = "同一建筑已有升级工程"
+	elif target.placement_kind != current.placement_kind or target.footprint != current.footprint:
+		error = "升级定义与原建筑占地不兼容"
+	elif _population_recovery.construction_workers <= 0:
+		error = "没有施工人员；先调入至少 1 名施工岗位"
+	elif wood < target.wood_cost or food < target.food_cost:
+		var missing: Array[String] = []
+		if wood < target.wood_cost:
+			missing.append("木材 %d" % (target.wood_cost - wood))
+		if food < target.food_cost:
+			missing.append("粮食 %d" % (target.food_cost - food))
+		error = "资源不足：缺%s" % "、".join(missing)
+	return {
+		"valid": error.is_empty(),
+		"error": error,
+		"placement_id": placement_id,
+		"current_definition_id": current.definition_id,
+		"target_definition_id": target.definition_id,
+		"current_level": current.level,
+		"target_level": target.level,
+		"costs": {&"wood": target.wood_cost, &"food": target.food_cost},
+		"cost_text": _get_definition_cost_text(target),
+		"duration_milliseconds": target.build_days * MILLISECONDS_PER_DAY,
+		"duration_text": "%d 日" % target.build_days,
+		"capability_text": _get_building_upgrade_capability_text(placement_id, current, target),
+		"condition_text": _get_building_upgrade_condition_text(placement_id, current, target),
+	}
+
+
+func begin_building_upgrade(placement_id: int) -> Dictionary:
+	var preview := preview_building_upgrade(placement_id)
+	if not bool(preview.valid):
+		return {"success": false, "error": str(preview.error)}
+	var record: Dictionary = _building_records_by_id[placement_id]
+	var before := record.duplicate(true)
+	var resources_before := _nation_state.get_shared_resources()
+	var target := get_definition(StringName(preview.target_definition_id))
+	var entries: Array[Dictionary] = []
+	if target.wood_cost > 0:
+		entries.append({"resource_id": &"wood", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": target.wood_cost})
+	if target.food_cost > 0:
+		entries.append({"resource_id": &"food", "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": target.food_cost})
+	var costs := {&"wood": target.wood_cost, &"food": target.food_cost}
+	var local_commit := func() -> Dictionary:
+		record.upgrade_target_definition_id = target.definition_id
+		record.construction_started_day = current_day
+		record.construction_complete_day = current_day + target.build_days
+		record.construction_state = &"ACTIVE"
+		record.construction_progress_milliseconds = 0
+		record.construction_required_milliseconds = target.build_days * MILLISECONDS_PER_DAY
+		record.construction_total_costs = costs.duplicate(true)
+		record.construction_paid_costs = costs.duplicate(true)
+		record.construction_priority = CONSTRUCTION_PRIORITY_NORMAL
+		record.construction_missing_resource_ids = []
+		return {"success": true}
+	if not _commit_national_resources(entries, &"building_upgrade_start", local_commit):
+		return {"success": false, "error": "升级资源事务未提交"}
+	var checkpoint_failed := _building_upgrade_fault_for_test == &"START_CHECKPOINT_SAVE_FAILED"
+	if checkpoint_failed:
+		_building_upgrade_fault_for_test = &""
+	var checkpoint := {"success": false} if checkpoint_failed else _persist_macro_march_checkpoint()
+	if not bool(checkpoint.get("success", false)):
+		_building_records_by_id[placement_id] = before
+		_replace_national_resources(resources_before, &"building_upgrade_start_rollback")
+		_building_upgrade_errors_by_placement_id[placement_id] = "升级保存失败，资源和工程已回滚"
+		_refresh_city_ui()
+		return {"success": false, "error": "升级保存失败，资源和工程已回滚"}
+	_building_upgrade_errors_by_placement_id.erase(placement_id)
+	_refresh_placed_building_visual(placement_id)
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {"success": true, "upgrade": preview_building_upgrade_state(placement_id)}
+
+
+func cancel_building_upgrade(placement_id: int) -> Dictionary:
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
+	if record.is_empty() or StringName(record.get("upgrade_target_definition_id", &"")) == &"":
+		return {"success": false, "error": "当前没有可取消的升级"}
+	if is_city_action_locked_for_battle():
+		return {"success": false, "error": "战斗事务处理中不能取消升级"}
+	var before := record.duplicate(true)
+	var paid := Dictionary(record.construction_paid_costs).duplicate(true)
+	var entries: Array[Dictionary] = []
+	for resource_id in paid:
+		if int(paid[resource_id]) > 0:
+			entries.append({"resource_id": StringName(resource_id), "operation": NationState.RESOURCE_OPERATION_ADD, "amount": int(paid[resource_id])})
+	var local_commit := func() -> Dictionary:
+		record.upgrade_target_definition_id = &""
+		record.construction_state = &"COMPLETED"
+		record.construction_progress_milliseconds = 0
+		record.construction_required_milliseconds = 0
+		record.construction_total_costs = {}
+		record.construction_paid_costs = {}
+		record.construction_missing_resource_ids = []
+		record.construction_started_day = 0
+		record.construction_complete_day = int(record.built_day)
+		return {"success": true}
+	if not _commit_national_resources(entries, &"building_upgrade_cancel", local_commit):
+		return {"success": false, "error": "退款失败，升级工程保持不变"}
+	var checkpoint_failed := _building_upgrade_fault_for_test == &"CANCEL_CHECKPOINT_SAVE_FAILED"
+	if checkpoint_failed:
+		_building_upgrade_fault_for_test = &""
+	if checkpoint_failed or not bool(_persist_macro_march_checkpoint().get("success", false)):
+		_building_records_by_id[placement_id] = before
+		var rollback_entries: Array[Dictionary] = []
+		for resource_id in paid:
+			if int(paid[resource_id]) > 0:
+				rollback_entries.append({"resource_id": StringName(resource_id), "operation": NationState.RESOURCE_OPERATION_SPEND, "amount": int(paid[resource_id])})
+		_commit_national_resources(rollback_entries, &"building_upgrade_cancel_rollback")
+		return {"success": false, "error": "取消保存失败，退款和工程已回滚"}
+	_building_upgrade_errors_by_placement_id.erase(placement_id)
+	_refresh_placed_building_visual(placement_id)
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return {"success": true, "refunded": paid}
+
+
+func preview_building_upgrade_state(placement_id: int) -> Dictionary:
+	var record: Dictionary = _building_records_by_id.get(placement_id, {})
+	if record.is_empty():
+		return {}
+	var target_id := StringName(record.get("upgrade_target_definition_id", &""))
+	var required := int(record.construction_required_milliseconds)
+	var progress := int(record.construction_progress_milliseconds)
+	return {
+		"active": target_id != &"",
+		"target_definition_id": target_id,
+		"progress_milliseconds": progress,
+		"required_milliseconds": required,
+		"progress_percent": 0.0 if required <= 0 else float(progress) * 100.0 / float(required),
+		"state": StringName(record.construction_state),
+		"last_error": str(_building_upgrade_errors_by_placement_id.get(placement_id, "")),
+	}
+
+
+func set_building_upgrade_fault_for_test(fault_id: StringName) -> void:
+	_building_upgrade_fault_for_test = fault_id
+
+
+func _get_building_upgrade_capability_text(
+	placement_id: int,
+	current: BuildingDefinition,
+	target: BuildingDefinition
+) -> String:
+	var current_production := current.get_capability(&"production")
+	var target_production := target.get_capability(&"production")
+	if current_production != null and target_production != null:
+		return "建筑产能：%s %d → %d/日；当前实际 %d/日" % [
+			_resource_display_name(current_production.resource_id), current_production.amount,
+			target_production.amount,
+			_get_production_amount(current, current_production) if is_building_operational(placement_id) else 0,
+		]
+	var current_storage := current.get_capability(&"storage")
+	var target_storage := target.get_capability(&"storage")
+	if current_storage != null and target_storage != null:
+		return "单体仓储：%d → %d；城市总容量完工后各 +%d" % [current_storage.amount, target_storage.amount, target_storage.amount - current_storage.amount]
+	var current_housing := current.get_capability(&"housing")
+	var target_housing := target.get_capability(&"housing")
+	if current_housing != null and target_housing != null:
+		return "单体住房：%d → %d；升级不增加居民" % [current_housing.amount, target_housing.amount]
+	var current_medical := current.get_capability(&"medical_capacity")
+	var target_medical := target.get_capability(&"medical_capacity")
+	if current_medical != null and target_medical != null:
+		return "单体医疗容量：%d → %d；仍受医疗人员和共享照护限制" % [current_medical.amount, target_medical.amount]
+	return "%s → %s" % [_get_definition_effect_summary(current), _get_definition_effect_summary(target)]
+
+
+func _get_building_upgrade_condition_text(
+	placement_id: int,
+	current: BuildingDefinition,
+	_target: BuildingDefinition
+) -> String:
+	if current.get_capability(&"production") != null:
+		if not is_building_connected_to_road(placement_id):
+			return "升级可施工；当前未接路，完工后仍需接路才生产"
+		if _population_recovery.production_workers < RECOVERY_RULES.production_workers_for_full_output:
+			return "当前生产人员不足，完工产能仍按实际在岗比例折算"
+		if get_pressure_modifier_permille(&"production") < 1000:
+			return "当前主线压力会继续折减实际产出"
+		return "完工后从下一次日结算使用新产能，仍受仓储上限约束"
+	if current.get_capability(&"storage") != null:
+		return "完工只提高入库上限，不发放木材或粮食"
+	if current.get_capability(&"housing") != null:
+		return "完工只提高住房容量；人口仍按出生、迁入和成长规则变化"
+	if current.get_capability(&"medical_capacity") != null:
+		return "完工提高共享医疗容量；治疗还需要伤员、医疗人员和粮食"
+	return "完工后生效"
+
+
 func get_building_data(placement_id: int) -> Dictionary:
 	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if record.is_empty():
@@ -12013,6 +12363,17 @@ func get_building_data(placement_id: int) -> Dictionary:
 	var progress_text := "已建成"
 	var definition := get_definition(
 		StringName(record.get("definition_id", &""))
+	)
+	var upgrade_target_id := StringName(record.get("upgrade_target_definition_id", &""))
+	var upgrade_preview := preview_building_upgrade(placement_id)
+	var upgrade_target := (
+		get_definition(upgrade_target_id)
+		if upgrade_target_id != &""
+		else (
+			get_definition(definition.next_level_definition_id)
+			if definition != null and definition.next_level_definition_id != &""
+			else null
+		)
 	)
 	if definition != null:
 		var definition_data := get_definition_build_data(
@@ -12057,14 +12418,37 @@ func get_building_data(placement_id: int) -> Dictionary:
 		)
 	return {
 		"level_text": "当前等级：L%d" % level,
-		"next_level_text": "下一等级：当前切片未开放",
+		"next_level_text": (
+			"升级施工中：L%d → L%d" % [level, upgrade_target.level]
+			if upgrade_target_id != &"" and upgrade_target != null
+			else (
+				"下一等级：L%d" % upgrade_target.level
+				if upgrade_target != null
+				else "下一等级：当前已达上限"
+			)
+		),
 		"investment_text": investment_text,
 		"duration_text": duration_text,
 		"effect_text": effect_text,
 		"prerequisite_text": prerequisite_text,
 		"progress_text": progress_text,
 		"status_text": str(status.label),
-		"upgrade_available": false,
+		"upgrade_available": upgrade_target != null,
+		"upgrade_active": upgrade_target_id != &"",
+		"upgrade_valid": bool(upgrade_preview.get("valid", false)),
+		"upgrade_error": str(upgrade_preview.get("error", "")),
+		"upgrade_cost_text": str(upgrade_preview.get("cost_text", "")),
+		"upgrade_duration_text": str(upgrade_preview.get("duration_text", "")),
+		"upgrade_capability_text": (
+			_get_building_upgrade_capability_text(placement_id, definition, upgrade_target)
+			if definition != null and upgrade_target != null
+			else ""
+		),
+		"upgrade_condition_text": (
+			_get_building_upgrade_condition_text(placement_id, definition, upgrade_target)
+			if definition != null and upgrade_target != null
+			else ""
+		),
 		"construction_priority": int(
 			record.get("construction_priority", CONSTRUCTION_PRIORITY_NORMAL)
 		),
@@ -12094,6 +12478,7 @@ func get_building_detail_state(placement_id: int) -> Dictionary:
 			"status_reason_text": "",
 		}
 	var constructing := StringName(record.lifecycle_state) == &"constructing"
+	var upgrading := StringName(record.get("upgrade_target_definition_id", &"")) != &""
 	var required := maxi(int(record.construction_required_milliseconds), 1)
 	var progress := clampi(
 		int(record.construction_progress_milliseconds),
@@ -12106,7 +12491,33 @@ func get_building_detail_state(placement_id: int) -> Dictionary:
 	var primary_status_id: StringName
 	var primary_status_text := ""
 	var status_reason_text := ""
-	if constructing:
+	if upgrading:
+		var upgrade_target := get_definition(StringName(record.upgrade_target_definition_id))
+		var upgrade_error := str(_building_upgrade_errors_by_placement_id.get(placement_id, ""))
+		if not upgrade_error.is_empty():
+			primary_status_id = &"SAVE_RETRY"
+			primary_status_text = "等待保存重试"
+			status_reason_text = upgrade_error
+		elif city_time_paused:
+			primary_status_id = &"GLOBAL_PAUSED"
+			primary_status_text = "升级已暂停"
+			status_reason_text = "恢复时间后继续使用现有施工人员推进"
+		elif _population_recovery.construction_workers <= 0:
+			primary_status_id = &"WAITING_WORKERS"
+			primary_status_text = "等待施工人员"
+			status_reason_text = "调入至少 1 名施工人员后继续；原等级能力仍有效"
+		elif StringName(record.construction_state) == &"READY_TO_COMPLETE":
+			primary_status_id = &"READY_TO_COMPLETE"
+			primary_status_text = "完工待保存"
+			status_reason_text = "保存成功后才切换到新等级"
+		else:
+			primary_status_id = &"UPGRADING"
+			primary_status_text = "升级施工中"
+			status_reason_text = "原 L%d 能力继续生效；%s" % [
+				definition.level,
+				_get_building_upgrade_condition_text(placement_id, definition, upgrade_target),
+			]
+	elif constructing:
 		if city_time_paused:
 			primary_status_id = &"GLOBAL_PAUSED"
 			primary_status_text = "全局暂停"
@@ -12165,13 +12576,16 @@ func get_building_detail_state(placement_id: int) -> Dictionary:
 					shortfall,
 				])
 	var eta_text := "已完成"
-	if constructing:
+	if constructing or upgrading:
 		if StringName(record.construction_state) == &"BLOCKED_RESOURCES":
 			eta_text = "等待材料"
 		elif city_time_paused:
 			eta_text = "恢复时间后计算"
 		else:
-			var modifier := maxi(get_pressure_modifier_permille(&"construction"), 1)
+			var modifier := maxi(floori(float(
+				get_pressure_modifier_permille(&"construction")
+				* get_workforce_modifier_permille(&"construction")
+			) / 1000.0), 1)
 			var effective_remaining := ceili(
 				float(required - progress) * 1000.0 / float(modifier)
 			)
@@ -12206,21 +12620,23 @@ func get_building_detail_state(placement_id: int) -> Dictionary:
 			int(record.footprint.x),
 			int(record.footprint.y),
 		],
-		"progress_visible": constructing,
+		"progress_visible": constructing or upgrading,
 		"progress_percent": progress_percent,
 		"progress_text": "进度：%d%%" % progress_percent,
 		"paid_text": "已投入：%s" % ("无" if paid_parts.is_empty() else "、".join(paid_parts)),
 		"remaining_text": "仍需：%s" % ("无" if remaining_parts.is_empty() else "、".join(remaining_parts)),
 		"missing_text": "缺少：%s" % ("无" if missing_parts.is_empty() else "、".join(missing_parts)),
 		"eta_text": "预计完成：%s" % eta_text,
-		"priority_visible": constructing,
+		"priority_visible": constructing or upgrading,
 		"priority": int(record.construction_priority),
 		"priority_help_text": "材料或施工能力不足时，高优先级先推进。",
 		"base_output_text": "基础产出：%s +%d/日" % [production_resource, base_amount],
 		"actual_output_text": "当前实际：%s +%d/日" % [production_resource, actual_amount],
-		"pressure_effect_text": "影响：主线压力 -%d%%" % (
-			100 - roundi(float(get_pressure_modifier_permille(&"production")) / 10.0)
-		),
+		"pressure_effect_text": "影响：主线压力 %d%% · 生产人员 %d%%" % [
+			roundi(float(get_pressure_modifier_permille(&"production")) / 10.0),
+			roundi(float(get_workforce_modifier_permille(&"production")) / 10.0),
+		],
+		"upgrade_active": upgrading,
 	}
 
 
@@ -12261,7 +12677,10 @@ func get_construction_in_progress_count() -> int:
 		var record: Dictionary = _building_records_by_id.get(placement_id, {})
 		if (
 			not record.is_empty()
-			and StringName(record.lifecycle_state) == &"constructing"
+			and (
+				StringName(record.lifecycle_state) == &"constructing"
+				or StringName(record.get("upgrade_target_definition_id", &"")) != &""
+			)
 		):
 			count += 1
 	return count
@@ -12358,6 +12777,12 @@ func _get_definition_effect_summary(
 	var storage := definition.get_capability(&"storage")
 	if storage != null:
 		return "木材／粮食容量各 +%d" % storage.amount
+	var housing := definition.get_capability(&"housing")
+	if housing != null:
+		return "住房容量 +%d（不直接增加居民）" % housing.amount
+	var medical := definition.get_capability(&"medical_capacity")
+	if medical != null:
+		return "医疗容量 +%d（仍需医疗人员与粮食）" % medical.amount
 	var defense := definition.get_capability(&"defense")
 	if defense != null:
 		return "城防 +%d" % defense.amount
@@ -12579,6 +13004,7 @@ func remove_placed_building(placement_id: int) -> bool:
 		record.is_empty()
 		or record.placement_kind == PLACEMENT_KIND_FIXED
 		or not bool(record.get("removable", false))
+		or StringName(record.get("upgrade_target_definition_id", &"")) != &""
 	):
 		return false
 	var building := record.get("node") as Node2D
@@ -13723,6 +14149,7 @@ func _base_record() -> Dictionary:
 		"construction_paid_costs": {},
 		"construction_priority": CONSTRUCTION_PRIORITY_NORMAL,
 		"construction_missing_resource_ids": [],
+		"upgrade_target_definition_id": &"",
 		"effect_summary": "",
 		"prerequisite_summary": "",
 		"requires_road": false,

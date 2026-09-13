@@ -297,6 +297,7 @@ func _legacy_construction_placement(placement_id: int) -> Dictionary:
 		"construction_paid_costs": {&"wood": 0},
 		"construction_priority": 1,
 		"construction_missing_resource_ids": [],
+		"upgrade_target_definition_id": &"",
 	}
 
 
