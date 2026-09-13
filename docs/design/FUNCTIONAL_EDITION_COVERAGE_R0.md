@@ -37,7 +37,7 @@ separates normal-start journeys, extreme fixtures and human acceptance.
 
 | User requirement | Existing evidence | Formal entry | Gap at this checkpoint | Planned proof |
 | --- | --- | --- | --- | --- |
-| Persistent city construction, roads, production, storage, training and research | `ConstructionController`, `NationState`, city road/placement and V5 runners | `blank_map.tscn` city rail and default governance workspace | Production and construction now consume exclusive workforce allocations; broader production chains remain incomplete | Normal start -> allocate -> train/build -> next day -> save/restore |
+| Persistent city construction, roads, production, storage, training and research | `ConstructionController`, `NationState`, city road/placement and V5 runners | `blank_map.tscn` map selection and default governance workspace | Farm, logging, warehouse, housing and clinic have a real L1-to-L2 transaction and central capability consumer; broader production chains and final balance remain incomplete | Place -> allocate -> upgrade -> next-day benefit -> training/recovery -> cold restore |
 | Population growth, allocation and post-war medical recovery | `PopulationRecoveryState`, battle settlement, `TrainingQueue`, campaign schema 16 | Default city governance workspace | Aggregate age/sex, calendar births, long-horizon transitions, sourced refugees, wounded/fallen and shared treatment are connected; individual residents and final balance remain intentionally absent | Housing -> birth -> age boundaries; refugee decision/settlement; defense casualties -> treatment -> counterattack; cold restore |
 | Food, disease, seasons, housing and recoverable social pressure | `CityGovernanceState`, city calendar, `NationState`, housing/clinic definitions | Existing city governance workspace and normal construction placement | Warning, finite theft, production disruption, local stoppage, explicit intervention and gradual cause recovery are connected; wider authored event catalogue remains later work | Normal and pressure/recovery routes, stable event identity across processes and graphical state trace |
 | R2 field operations | R2 Field/Macro March smoke, Route A/B, supply/reinforcement/tower persistence, specialist action V5 chain | Macro March from city; compact war-specialist menu | Engineer/scout plus medic, saboteur, thief and sniper have formal targets and real persisted effects; wider specialist content and balance remain later work | Route A/B plus interrupted/recovered operations and specialist cold restore |
@@ -71,7 +71,9 @@ separates normal-start journeys, extreme fixtures and human acceptance.
    schema 16 authorities. Civil officials, six-slot equipment growth and
    authored trade
    now affect formal city, march and battle transactions rather than UI-only
-   counters; wider content remains separate from this R0.
+   counters; wider content remains separate from this R0. Normal-city building
+   upgrades add one optional target field in campaign schema 17 and continue to
+   use the original placement, NationState and capability consumers.
 
 ## Verification boundary
 

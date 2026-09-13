@@ -75,7 +75,7 @@ func _run() -> void:
 		Vector2i(20, 20)
 	)
 	var second_placement_id: int = construction._create_runtime_building(
-		Vector2i(35, 23)
+		Vector2i(30, 18)
 	)
 	_check(placed_buildings.get_child_count() == 2, "测试创建两栋已放置建筑")
 	var first_building: Node2D = construction.get_building_node(first_placement_id)
@@ -103,8 +103,8 @@ func _run() -> void:
 		"面板显示伐木场名称")
 	_check(
 		detail_panel.get_node("Footprint").text
-			== "下一级：当前切片未开放",
-		"面板如实显示未开放的升级边界"
+			== "下一等级：L2",
+		"面板如实显示已有升级目标"
 	)
 	_check(
 		detail_panel.get_node("GridPosition").text
@@ -133,19 +133,19 @@ func _run() -> void:
 	upgrade_button.emit_signal("pressed")
 	_check(
 		upgrade_confirmation.visible and selection.is_awaiting_upgrade_confirmation(),
-		"无升级 writer 时仍可查看明确的升级门禁确认"
+		"正式升级入口先显示成本与收益确认"
 	)
 	_check(
 		construction.get_building_record(first_placement_id) == record_before_upgrade
 			and construction.wood == wood_before_upgrade,
-		"升级门禁确认不伪造建筑、资源或存档写入"
+		"只打开升级确认不提前修改建筑、资源或存档"
 	)
 	(detail_panel.get_node("UpgradeConfirmation/CancelUpgradeButton") as Button).emit_signal(
 		"pressed"
 	)
 	_check(
 		not upgrade_confirmation.visible and selection.has_selection(),
-		"升级门禁可取消并返回同一建筑详情"
+		"升级确认可取消并返回同一建筑详情"
 	)
 
 	var second_center := _building_screen_center(

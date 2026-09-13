@@ -47,6 +47,9 @@ const NOTICEBOARD_TEMPLATE_ID := &"noticeboard"
 @onready var upgrade_confirmation: Control = (
 	$"../UI/Shell/BuildingDetailPanel/UpgradeConfirmation"
 )
+@onready var upgrade_confirmation_text: Label = (
+	$"../UI/Shell/BuildingDetailPanel/UpgradeConfirmation/ConfirmationText"
+)
 @onready var confirm_upgrade_button: Button = (
 	$"../UI/Shell/BuildingDetailPanel/UpgradeConfirmation/ConfirmUpgradeButton"
 )
@@ -234,6 +237,9 @@ func is_awaiting_upgrade_confirmation() -> bool:
 func request_upgrade_confirmation() -> void:
 	if not has_selection() or is_awaiting_removal_confirmation():
 		return
+	var build_data: Dictionary = construction_controller.get_building_data(selected_placement_id)
+	if not bool(build_data.get("upgrade_available", false)):
+		return
 	state = SelectionState.UPGRADE_CONFIRM
 	_show_upgrade_confirmation()
 
@@ -248,10 +254,23 @@ func cancel_upgrade_confirmation() -> void:
 func confirm_upgrade_gate() -> void:
 	if not is_awaiting_upgrade_confirmation():
 		return
-	# The current city authority deliberately exposes no building upgrade writer.
-	# This confirmation must never simulate an upgrade, cost, or save mutation.
+	var build_data: Dictionary = construction_controller.get_building_data(selected_placement_id)
+	var result: Dictionary
+	if bool(build_data.get("upgrade_active", false)):
+		result = construction_controller.cancel_building_upgrade(selected_placement_id)
+	else:
+		result = construction_controller.begin_building_upgrade(selected_placement_id)
 	state = SelectionState.SELECTED
+	var record: Dictionary = construction_controller.get_building_record(selected_placement_id)
+	if not record.is_empty():
+		_refresh_detail_panel(record)
 	_show_selected_presentation()
+	governance_feedback.text = (
+		"操作已提交"
+		if bool(result.get("success", false))
+		else str(result.get("error", "操作未完成"))
+	)
+	governance_feedback.visible = true
 
 
 func request_removal_confirmation() -> void:
@@ -403,7 +422,7 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 		"orientation_text",
 		"朝向：%s" % _construction_orientation_text(int(record.get("orientation", 0)))
 	))
-	footprint.text = "下一级：当前切片未开放"
+	footprint.text = str(build_data.next_level_text)
 	var progress_visible := bool(detail_state.get("progress_visible", false))
 	construction_progress.visible = progress_visible
 	construction_progress.value = float(detail_state.get("progress_percent", 0))
@@ -437,9 +456,7 @@ func _refresh_detail_panel(record: Dictionary) -> void:
 	var is_constructing := StringName(record.lifecycle_state) == &"constructing"
 	for control in _get_standard_detail_controls():
 		control.visible = not is_command_platform and not is_city_gate
-	construction_progress.visible = (
-		not is_command_platform and not is_city_gate and progress_visible
-	)
+	construction_progress.visible = not is_command_platform and not is_city_gate and progress_visible
 	prototype_status.visible = construction_progress.visible
 	first_war_actions.visible = is_command_platform
 	city_gate_actions.visible = is_city_gate
@@ -482,13 +499,15 @@ func _show_selected_presentation() -> void:
 		StringName(record.template_id) == CITY_GATE_TEMPLATE_ID
 	)
 	var is_constructing := StringName(record.lifecycle_state) == &"constructing"
+	var build_data: Dictionary = construction_controller.get_building_data(selected_placement_id)
+	var is_upgrading := bool(build_data.get("upgrade_active", false))
 	for control in _get_standard_detail_controls():
 		control.visible = not is_command_platform and not is_city_gate
 	construction_priority_option.visible = false
 	priority_label.visible = false
 	priority_help.visible = false
-	construction_progress.visible = is_constructing
-	prototype_status.visible = is_constructing
+	construction_progress.visible = is_constructing or is_upgrading
+	prototype_status.visible = is_constructing or is_upgrading
 	upgrade_status_card.visible = false
 	upgrade_button.visible = false
 	first_war_actions.visible = is_command_platform
@@ -589,12 +608,25 @@ func _refresh_governance_actions(
 			int(record.placement_id)
 		)
 	)
+	var build_data: Dictionary = construction_controller.get_building_data(int(record.placement_id))
 	governance_feedback.visible = false
 	governance_overflow_actions.visible = false
 	governance_secondary_action.visible = true
 	governance_secondary_action.text = "更多操作"
 	governance_primary_action.visible = true
-	if disconnected:
+	if bool(build_data.get("upgrade_active", false)):
+		_governance_primary_mode = &"upgrade"
+		governance_primary_action.text = "查看或取消升级"
+		governance_primary_action.tooltip_text = str(build_data.get("upgrade_capability_text", "升级施工中"))
+	elif bool(build_data.get("upgrade_available", false)):
+		_governance_primary_mode = &"upgrade"
+		governance_primary_action.text = "升级到下一等级"
+		governance_primary_action.tooltip_text = " · ".join([
+			str(build_data.get("upgrade_cost_text", "")),
+			str(build_data.get("upgrade_duration_text", "")),
+			str(build_data.get("upgrade_capability_text", "")),
+		])
+	elif disconnected:
 		_governance_primary_mode = &"recommend"
 		governance_primary_action.text = "查看接通方案"
 		governance_primary_action.tooltip_text = "只预览唯一最短合法道路，不扣木材"
@@ -616,6 +648,8 @@ func _on_governance_primary_pressed() -> void:
 	if not has_selection():
 		return
 	match _governance_primary_mode:
+		&"upgrade":
+			request_upgrade_confirmation()
 		&"recommend":
 			_show_road_connection_recommendation()
 		&"confirm":
@@ -702,10 +736,27 @@ func _show_removal_confirmation() -> void:
 
 
 func _show_upgrade_confirmation() -> void:
-	panel_title.text = "升级门禁"
+	var build_data: Dictionary = construction_controller.get_building_data(selected_placement_id)
+	var active := bool(build_data.get("upgrade_active", false))
+	panel_title.text = "取消升级" if active else "确认升级"
 	for control in _get_detail_controls():
 		control.visible = false
 	removal_confirmation.visible = false
+	upgrade_confirmation_text.text = (
+		"取消后返还本次已投入资源，建筑保留当前等级。"
+		if active
+		else "\n".join([
+			str(build_data.get("upgrade_capability_text", "")),
+			"成本：%s · 工期：%s" % [
+				str(build_data.get("upgrade_cost_text", "")),
+				str(build_data.get("upgrade_duration_text", "")),
+			],
+			str(build_data.get("upgrade_condition_text", "")),
+			str(build_data.get("upgrade_error", "")),
+		]).strip_edges()
+	)
+	confirm_upgrade_button.text = "确认取消并退款" if active else "确认投入并升级"
+	confirm_upgrade_button.disabled = not active and not bool(build_data.get("upgrade_valid", false))
 	upgrade_confirmation.visible = true
 	detail_panel.visible = true
 

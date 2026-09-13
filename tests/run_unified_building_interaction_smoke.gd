@@ -142,7 +142,7 @@ func _run() -> void:
 		)
 		_check(
 			target_type.text.contains(str(building_data.level_text))
-				and footprint_label.text.contains("下一级：当前切片未开放"),
+			and footprint_label.text.contains("下一等级：当前已达上限"),
 			"详情显示固定建筑真实等级且不伪造升级"
 		)
 		_check(
@@ -164,7 +164,7 @@ func _run() -> void:
 	var first_war_actions: Control = detail_panel.get_node("FirstWarActions")
 	_check(
 		first_war_actions.visible
-			and first_war_actions.get_node("WarIntel").text.contains("北坡敌情")
+			and first_war_actions.get_node("WarIntel").text.contains("黑石守军")
 			and not first_war_actions.get_node("EnterBattleButton").visible,
 		"军令台显示真实首战评估且备战早期不伪造执行入口"
 	)
