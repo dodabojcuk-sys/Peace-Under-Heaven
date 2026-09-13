@@ -6,6 +6,7 @@ var city: Node
 var scene: Node
 var fast := false
 var route := "A"
+var world_speed := 1.0
 var evidence := "/tmp/blackstone-r1-journey"
 var started := 0
 var failures: Array[String] = []
@@ -16,6 +17,7 @@ func _initialize() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--fast": fast = true
 		if arg.begins_with("--route="): route = arg.trim_prefix("--route=")
+		if arg.begins_with("--speed="): world_speed = float(arg.trim_prefix("--speed="))
 		if arg.begins_with("--evidence="): evidence = arg.trim_prefix("--evidence=")
 	call_deferred("run")
 
@@ -29,6 +31,7 @@ func run() -> void:
 	await process_frame
 	city = scene.get_node("ConstructionController")
 	if fast: city.set_process(false)
+	check(city.set_city_time_speed(world_speed), "selected formal world speed")
 	check(city.current_day == 1 and city.food == 80 and city.infantry_count == 20, "normal initial day, food and army")
 	check(city.get_population_recovery_read_model().total_living == 72, "normal population")
 	if not failures.is_empty(): finish(); return
@@ -214,7 +217,12 @@ func wait_until(predicate: Callable, limit: int, label: String) -> void:
 
 func wait_seconds(seconds: float) -> void:
 	if fast:
-		city._process(seconds)
+		# A formal C0 disables the city root in production. Calling `_process`
+		# directly here used to bypass that scene contract and advanced field work
+		# during an accelerated macro battle. The battle driver above owns C0 time;
+		# only an enabled world may consume accelerated real delta.
+		if city.get_formal_battle_scene() == null:
+			city._process(seconds)
 		await process_frame
 	else:
 		await create_timer(seconds).timeout
@@ -224,7 +232,7 @@ func checkpoint(label: String) -> void:
 	var store := V5CampaignSaveStore.new(evidence.path_join(label))
 	var saved := store.save_snapshot(snapshot, city.validate_v5_campaign_snapshot)
 	check(saved.get("success", false), "independent checkpoint " + label)
-	var record := {"node": label, "real_ms": Time.get_ticks_msec() - started, "day": city.current_day, "food": city.food, "wood": city.wood, "population": city.get_population_recovery_read_model(), "invasion": city.get_blackstone_invasion_read_model(), "diagnostics": city.get_campaign_progress_diagnostics()}
+	var record := {"node": label, "real_ms": Time.get_ticks_msec() - started, "day": city.current_day, "day_elapsed_milliseconds": city.get_day_elapsed_milliseconds(), "food": city.food, "wood": city.wood, "city_defense": city.get_city_defense(), "population": city.get_population_recovery_read_model(), "invasion": city.get_blackstone_invasion_read_model(), "last_battle_result": city.get_city_state().last_battle_result_summary, "diagnostics": city.get_campaign_progress_diagnostics()}
 	records.append(record)
 	print("NODE ", JSON.stringify(record))
 	if DisplayServer.get_name() != "headless":
@@ -237,7 +245,7 @@ func check(ok: bool, label: String) -> void:
 	if not ok: failures.append(label)
 
 func finish() -> void:
-	var report := {"route": route, "accelerated_driver": fast, "real_ms": Time.get_ticks_msec() - started, "failures": failures, "nodes": records, "input": "formal Controller commands, connected GUI signals and spatial map events"}
+	var report := {"route": route, "world_speed": world_speed, "accelerated_driver": fast, "real_ms": Time.get_ticks_msec() - started, "failures": failures, "nodes": records, "input": "formal Controller commands, connected GUI signals and spatial map events"}
 	var file := FileAccess.open(evidence.path_join("journey.json"), FileAccess.WRITE)
 	file.store_string(JSON.stringify(report, "\t"))
 	print("BLACKSTONE_CLOSEOUT_JOURNEY ", JSON.stringify({"route": route, "failures": failures, "real_ms": report.real_ms}))
