@@ -8164,14 +8164,23 @@ func _advance_war_loop_elapsed_milliseconds(elapsed_milliseconds: float) -> Dict
 	var configured_invasion := _war_loop_state.field_tactics.get_blackstone_invasion()
 	var invasion_source_id := StringName(configured_invasion.get("source_point_id", &""))
 	var invasion_source_controllers: Dictionary = {}
+	var invasion_departure_world_milliseconds: Dictionary = {}
 	if invasion_source_id != &"":
 		invasion_source_controllers[invasion_source_id] = StringName(
 			_war_loop_state.get_city(invasion_source_id).get(
 				"military_controller_faction_id", &""
 			)
 		)
+	var configured_patrol_id := StringName(configured_invasion.get("patrol_id", &""))
+	var configured_activation_day := int(configured_invasion.get("activation_day", 0))
+	if configured_patrol_id != &"" and configured_activation_day > 0:
+		invasion_departure_world_milliseconds[configured_patrol_id] = (
+			(configured_activation_day - 1) * MILLISECONDS_PER_DAY
+		)
 	var invasion_departures := _war_loop_state.field_tactics.resolve_configured_invasion_departures(
-		current_day, invasion_source_controllers
+		current_day,
+		invasion_source_controllers,
+		invasion_departure_world_milliseconds
 	)
 	var activated_invasion_ids: Array[StringName] = Array(
 		invasion_departures.get("activated_invasion_ids", []),

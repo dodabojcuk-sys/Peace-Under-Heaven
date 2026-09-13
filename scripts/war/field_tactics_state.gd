@@ -263,7 +263,8 @@ func activate_configured_invasions(current_day: int) -> Array[StringName]:
 ## source controller. After departure, later ownership changes cannot rewind it.
 func resolve_configured_invasion_departures(
 	current_day: int,
-	source_controllers_by_point_id: Dictionary = {}
+	source_controllers_by_point_id: Dictionary = {},
+	departure_world_milliseconds_by_patrol_id: Dictionary = {}
 ) -> Dictionary:
 	var activated: Array[StringName] = []
 	var cancelled: Array[StringName] = []
@@ -285,7 +286,21 @@ func resolve_configured_invasion_departures(
 			cancelled.append(patrol_id)
 			continue
 		patrol.phase = INVASION_MARCHING
-		patrol.activated_world_milliseconds = world_milliseconds
+		# The calendar can cross a departure boundary inside one world frame.
+		# Preserve the pre-boundary part as waiting time so a newly activated
+		# invasion consumes only the part of this field step after departure.
+		# Without this offset, a larger 2x/4x frame starts the patrol earlier.
+		var departure_world_milliseconds := maxi(
+			int(departure_world_milliseconds_by_patrol_id.get(
+				patrol_id, world_milliseconds
+			)),
+			world_milliseconds
+		)
+		patrol.wait_remaining_milliseconds = (
+			int(patrol.get("wait_remaining_milliseconds", 0))
+			+ departure_world_milliseconds - world_milliseconds
+		)
+		patrol.activated_world_milliseconds = departure_world_milliseconds
 		patrols_by_id[patrol_id] = patrol
 		activated.append(patrol_id)
 	_refresh_intel()
