@@ -38,10 +38,31 @@ wounded treatment without fallen revival.
 
 ## Graphical evidence
 
-Six Engine-GUI captures under `docs/evidence/normal-city-building-growth-r1/`
-show the formal confirmation and active progress states at each supported
-resolution. The confirmation exposes capability, cost, duration and limiting
-conditions; the active detail shows paid amounts, remaining amounts and ETA.
+The original six `building-growth-confirm-*` and `building-growth-progress-*`
+captures are retained as pre-fix evidence. In particular, the original
+1152x648 progress capture shows the overlap closed by the phase-closeout fix;
+those files are no longer the final passing visual set.
+
+The final six `building-growth-final-confirm-*` and
+`building-growth-final-progress-*` captures show the corrected formal states
+at 1152x648, 1280x720 and 1920x1080. The confirmation names the building and
+level transition and exposes capability, cost, duration and limiting
+conditions. Active project facts occupy a bounded scroll region above the
+minimum-height action group, so paid amount, remainder, ETA, feedback and
+buttons remain accessible without smaller text or hidden facts.
+
+The old `木材 200/160` value came from the graphical runner's direct
+`city.wood = 200` layout fixture. It did not prove that formal gameplay created
+an overflow and must not be used as economy evidence. The final fixture uses
+150 wood within the existing 160 capacity and spends the normal 65-wood
+upgrade cost. No storage/admission rule was changed. The separate 41-assertion
+logic runner proves the normal fresh-new-game formal build, placement, upgrade,
+daily yield and training chain; the graphical runner proves presentation and
+state transitions, not resource acquisition.
+
+The final graphical runner additionally checks active cancellation/refund
+wording, zero construction-worker waiting, completion-save retry and completed
+L2 capability projection at every supported resolution.
 
 This is Engine-GUI and logical evidence, not native mouse evidence or human
 acceptance. Final building art, perceived pacing, click/drag feel and balance
