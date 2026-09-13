@@ -49,6 +49,13 @@ func _check_projection_at_size(viewport_size: Vector2i) -> void:
 	macro.refresh()
 	var presentation: MacroMarchLowPolyPresentation = macro._low_poly_presentation
 	var map_rect := macro._map_rect()
+	_check(
+		macro._detail_label.get_minimum_size().y <= macro._detail_label.size.y
+			and not macro._detail_label.get_global_rect().intersects(
+				macro._specialist_status_label.get_global_rect()
+			),
+		"图形进程 %d×%d 中地点详情与专员提示不重叠" % [viewport_size.x, viewport_size.y]
+	)
 	var max_error := 0.0
 	for anchor in _projection_anchors():
 		var expected := macro._world_to_screen(anchor) - map_rect.position
@@ -614,6 +621,7 @@ func _check_long_hold_draw_interaction() -> void:
 		if candidate != null and not candidate.disabled:
 			formation_button = candidate
 			break
+	var initial_formation_id: StringName = StringName(formation_button.get_meta("formation_id", &"")) if formation_button != null else &""
 	await _click_control_with_gui_input(formation_button)
 	var route: Dictionary = THEATER.get_route(&"road.blackstone.northwatch.ridge")
 	var route_points: Array = Array(route.get("points", []))
@@ -659,8 +667,17 @@ func _check_long_hold_draw_interaction() -> void:
 		and int(city.food) == initial_food and Array(macro._model().get("armies", [])).size() == initial_armies
 	# Switching the command subject discards only this unconfirmed intent. It
 	# cannot leak a road constraint into the next formation's order.
-	await _click_control_with_gui_input(formation_button)
+	macro._formation_scroll.scroll_vertical = 0
+	await process_frame
+	await process_frame
+	var switch_button := _current_formation_button(macro, initial_formation_id)
+	if switch_button != null:
+		macro._formation_scroll.ensure_control_visible(switch_button)
+		await process_frame
+	var switch_formation_id := StringName(switch_button.get_meta("formation_id", &"")) if switch_button != null else &""
+	await _click_control_with_gui_input(switch_button)
 	var subject_switch_clears_route_constraint := macro._draft_route.is_empty() and macro._selected_route_road_id == &""
+	formation_button = _current_formation_button(macro, switch_formation_id)
 	await _click_control_with_gui_input(formation_button)
 
 	# Cancel is a complete terminal state: later mouse movement must not revive
@@ -696,9 +713,10 @@ func _check_long_hold_draw_interaction() -> void:
 	_send_map_release(macro, macro._map_rect().position + Vector2(12, 12))
 	var off_road_is_rejected := macro._draft_route.is_empty() and macro._draw_points.is_empty() \
 		and macro._status_label.text.contains("终点")
-	print("DRAW_HOLD_INTERACTION tap=%s early_cancel=%s preview=%s endpoint=%s draft=%s cancel=%s edge=%s focus=%s offroad=%s status=%s" % [
-		tap_remains_selection, early_drag_cancels, live_route_matches, endpoint_follows_pointer, valid_draft_ready,
-		cancel_stops_following, edge_scroll_uses_elapsed_time, focus_loss_stops_following,
+	print("DRAW_HOLD_INTERACTION tap=%s early_cancel=%s jitter=%s ridge=%s preview=%s constraint=%s endpoint=%s draft=%s switch=%s cancel=%s edge=%s focus=%s offroad=%s status=%s" % [
+		tap_remains_selection, early_drag_cancels, jitter_remains_pending, ridge_marker_visible,
+		live_route_matches, ridge_constraint_matches, endpoint_follows_pointer, valid_draft_ready,
+		subject_switch_clears_route_constraint, cancel_stops_following, edge_scroll_uses_elapsed_time, focus_loss_stops_following,
 		off_road_is_rejected, macro._status_label.text,
 	])
 	_check(
@@ -1095,8 +1113,12 @@ func _click_control_with_gui_input(control: Control) -> void:
 	await process_frame
 
 
-
-
+func _current_formation_button(macro: MacroMarchR0, formation_id: StringName) -> Button:
+	for button_value in macro._formation_buttons:
+		var button := button_value as Button
+		if button != null and StringName(button.get_meta("formation_id", &"")) == formation_id:
+			return button
+	return null
 
 
 func _select_specialist_role_with_gui(
