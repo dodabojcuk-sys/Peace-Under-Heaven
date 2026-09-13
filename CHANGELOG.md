@@ -1,3 +1,17 @@
+# Formal candidate usability R1 — 2026-09-13
+
+- Reworked the formal launcher around canonical project/save identities: clean
+  duplicate candidates focus when possible, same-store writers are rejected,
+  and isolated stores allow version-safe coexistence without closing windows.
+- Added actual full-commit runtime metadata, scene-aware window titles and an
+  on-demand development-details dialog; unidentified runs show `UNKNOWN`.
+- Kept New/Continue/Exit on the existing V5 owner and documented the supported
+  isolated launch/reopen path.
+- Added campaign personnel reconciliation to macro-siege results without
+  changing forces, rewards, casualties, population schema or victory rules.
+- Fixed a compact Macro March detail/specialist-label overlap and expanded
+  interaction/regression evidence. Human player acceptance remains open.
+
 # Blackstone causal playtest candidate R1 — 2026-09-13
 
 - Added a terminal cancellation state to the existing sourced Redcliff

@@ -43,8 +43,14 @@ control or results.
   surviving army proceeds to Silverford and completes the control-only victory.
 - At day 5 the still-dormant vanguard becomes `CANCELLED`; victory and the
   existing player army remain valid.
-- Final observed real duration: 272.493 seconds at formal 4x travel/world speed and
-  1x C0 battle speed. All 14 journey assertions pass.
+- Final observed real duration: 272.356 seconds at formal 4x travel/world speed and
+  1x C0 battle speed. All 15 journey assertions pass.
+- The final campaign military ledger reconciles without overlapping identities:
+  `20 initial + 0 added = 0 garrison + 5 surviving field army + 2 wounded +
+  13 fallen`. The five field survivors and thirteen fallen therefore do not
+  by themselves imply a population-accounting defect; the two wounded complete
+  the twenty-person ledger. This is an explanation of the observed result, not
+  a balance approval.
 
 This journey exposed and fixed a real continuity issue: a field-exhausted
 zero-count formation remains in ArmyRegistry for provenance but cannot become
@@ -77,7 +83,7 @@ PNG evidence is stored beside this report under `evidence/`.
 Final logs are stored under `evidence/logs/`.
 
 Final focused totals include causal boundary 10/10, candidate save entry 6/6,
-responsive title 101/101, normal early route 14/14, sourced invasion 17/17,
+responsive title 125/125, normal early route 15/15, sourced invasion 17/17,
 recovery 9/9, War Loop 16/16 plus formal timing 10/10, macro handoff 31/31,
 macro victory 9/9, city governance 26/26, population pressure 42/42 and
 wartime spatial battle 73/73. The associated multi-process V5, arrival,
@@ -99,9 +105,10 @@ for the prior 1x evidence or human play.
 
 - Automated journeys and engine-rendered images are engineering evidence, not
   native-pointer feel, Founder review or human player acceptance.
-- Balance is not declared final. The early route succeeds with five soldiers
-  remaining and thirteen fallen in this deterministic run, so it is playable
-  but deliberately costly.
+- Balance is not declared final. The deterministic early route ends with five
+  field survivors, two wounded and thirteen fallen from the initial twenty;
+  without a comparison journey this proves neither good value nor excessive
+  cost.
 - No release build, distribution package or production deployment is part of
   this candidate.
 - `AGENTS.md` and project/global `MEMORY.md` are unchanged.

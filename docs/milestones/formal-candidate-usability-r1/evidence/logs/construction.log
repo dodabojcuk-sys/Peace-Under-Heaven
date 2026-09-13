@@ -1,0 +1,67 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+PASS: 主场景可以加载
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+PASS: 场景只有一套 MapWorld
+PASS: 场景只有一套 Camera2D
+PASS: 网格为 40 世界单位
+PASS: 伐木场占地为 2 x 2
+PASS: 2 x 2 占地包含四个格
+PASS: 启动时注册七个固定预置建筑
+PASS: 固定预置建筑写入世界格占用
+PASS: 右侧建造入口主动接收 UI 鼠标事件
+PASS: 右侧建造入口打开模板列表
+PASS: 模板列表显示当前正式建筑
+PASS: SUPERSEDED_BY_R0C：伐木场模板进入唯一场外建造位
+PASS: zoom 0.6 下屏幕与 MapWorld 坐标可往返
+PASS: zoom 0.6 下仍吸附到同一世界网格
+PASS: zoom 1.0 下屏幕与 MapWorld 坐标可往返
+PASS: zoom 1.0 下仍吸附到同一世界网格
+PASS: zoom 1.6 下屏幕与 MapWorld 坐标可往返
+PASS: zoom 1.6 下仍吸附到同一世界网格
+PASS: 建造入口进入 placing
+PASS: placing 状态显示预览
+PASS: 安全区域预览有效
+PASS: 第一次待放置成品有效落地
+PASS: 首次放置在固定占用基线上增加四个格
+PASS: 首次放置在统一权威记录中增加一条运行时记录
+PASS: 首次放置创建一个世界节点
+PASS: 确认使用当前可见预览的同一网格 intent
+PASS: 已占用位置继续由统一合法性判为无效
+PASS: 无 ready token 时重复点击被拒绝
+PASS: 无效确认不改变 occupied_cells
+PASS: 取消后回到 idle
+PASS: 取消后预览消失
+PASS: 取消不删除已放置建筑
+PASS: 与 TopStatusBar 投影重叠时无效
+PASS: TopStatusBar 重叠由实际 UI rect 判定
+PASS: TopStatusBar 下方左键确认不会放置
+PASS: 与 CityBar 投影重叠时无效
+PASS: CityBar 重叠由实际 UI rect 判定
+PASS: CityBar 下方左键确认不会放置
+PASS: 与 MinimapPlaceholder 投影重叠时无效
+PASS: MinimapPlaceholder 重叠由实际 UI rect 判定
+PASS: MinimapPlaceholder 下方左键确认不会放置
+PASS: 与 ConstructionEntryPanel 投影重叠时无效
+PASS: ConstructionEntryPanel 重叠由实际 UI rect 判定
+PASS: ConstructionEntryPanel 下方左键确认不会放置
+PASS: 所有 UI 遮挡无效确认均不改变权威记录
+PASS: 所有 UI 遮挡无效确认均不改变 occupied_cells
+PASS: UI 遮挡不会把世界格写入 occupied_cells
+PASS: 移动相机后仍指向同一世界格
+PASS: 同一世界格移入安全可见区后可重新确认
+PASS: Esc 通过唯一输入入口取消
+PASS: Esc 取消后预览消失
+PASS: 右键通过唯一输入入口取消
+PASS: 左键路由测试位置有效
+PASS: placing 地图左键直接创建一栋建筑
+PASS: placing 左键不移动 Camera2D
+PASS: 左键成功后清除 ghost 与临时旋转状态
+PASS: idle 状态保留原左键阈值拖动路径
+PASS: idle 拖动松开立即停止
+PASS: placing 状态保留中键 Camera2D 拖动
+PASS: placing 中键松开立即停止
+PASS: placing 状态保留滚轮缩放
+CONSTRUCTION_PLACEMENT_SMOKE PASS
+WARNING: ObjectDB instances leaked at exit (run with --verbose for details).
+   at: cleanup (core/object/object.cpp:2514)
