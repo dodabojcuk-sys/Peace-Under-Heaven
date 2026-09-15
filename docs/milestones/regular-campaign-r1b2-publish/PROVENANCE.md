@@ -26,3 +26,20 @@ record, and the publish-lineage entry in `CURRENT_STATE.md`.
 No source commit is a second parent. Existing gameplay code, scenes, runtime
 assets, tests, small evidence, save ownership and schema are copied as one exact
 snapshot from the source tree.
+
+## Verification
+
+Verification used a fresh archive extraction of the publish commit, with no
+pre-existing `.godot` import cache and a distinct explicit save directory for
+every runner.
+
+- fresh Godot 4.5.1 editor import and script registration: pass;
+- R1B.2 normal graphical input loop: pass;
+- regular-campaign services and resource isolation: 11/11 pass;
+- theater/city round trip and cold context: 16/16 pass;
+- campaign time/frame split and pause behavior: 23/23 pass;
+- publish tree comparison and `git diff --check`: pass.
+
+The graphical loop reported Godot's existing ObjectDB leak warning at process
+shutdown after all assertions passed; it did not write to the player save or
+change the exit status.
