@@ -36,6 +36,9 @@ var _selected_formation_ids: Array[StringName] = []
 var _feedback_override := ""
 var _sidebar_scroll_reset_pending := false
 var _departure_food_draft := 30
+# R1C 收尾：区分"首次默认预选"与"玩家主动修改过的草稿"。玩家点击任一编队
+# 复选框后，周期刷新不再自动回填全选，玩家主动清空的选择得以保持。
+var _departure_draft_touched := false
 var _departure_wood_draft := 55
 var _departure_food_spin: SpinBox
 var _departure_wood_spin: SpinBox
@@ -630,7 +633,7 @@ func _on_building_clicked(id: StringName) -> void:
 
 
 func _toggle_formation(id: StringName, on: bool) -> void:
-	print("R1C_DEBUG toggle id=", id, " on=", on)
+	_departure_draft_touched = true
 	if on and id not in _selected_formation_ids:
 		_selected_formation_ids.append(id)
 	elif not on:
@@ -729,7 +732,11 @@ func _ensure_selection_is_valid() -> void:
 		army_ids.append(StringName(army.get("army_id", army.get("id", ""))))
 	if not _selected_army_id.is_empty() and _selected_army_id not in army_ids:
 		_selected_army_id = &""
-	if String(_model.get("phase", "")) == "PREPARATION" and _selected_formation_ids.is_empty():
+	if (
+		String(_model.get("phase", "")) == "PREPARATION"
+		and _selected_formation_ids.is_empty()
+		and not _departure_draft_touched
+	):
 		for value in _array(_dict(_model.get("home", {})).get("formations", [])):
 			var formation := _dict(value)
 			var id := StringName(formation.get("id", formation.get("formation_id", "")))

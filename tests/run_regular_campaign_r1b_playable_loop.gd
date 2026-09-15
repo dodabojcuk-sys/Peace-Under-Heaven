@@ -41,7 +41,10 @@ func _run() -> void:
 			if parts.size() == 2:
 				root.size = Vector2i(int(parts[0]), int(parts[1]))
 	DirAccess.make_dir_recursive_absolute(output_directory)
-	root.size = Vector2i(1280, 720) if root.size.x == 0 else root.size
+	# R1C 4.2：参数解析后无条件设置明确目标尺寸并读回核对，
+	# 不依赖 Godot 项目窗口的非零默认值（此前 1152x648 默认值曾掩盖尺寸设置失效）。
+	root.size = Vector2i(1280, 720)
+	print("R1C_DEBUG window size set to ", root.size)
 
 	# ---- 标题：常规关卡-新开局（真实按钮点击；失败则回退直接建城） ----
 	var title := TITLE_SCENE.instantiate()
@@ -129,8 +132,13 @@ func _run() -> void:
 		if formation_key in view._selected_formation_ids:
 			expected_formations[formation_key] = int(formation.get("member_count", formation.get("count", 0)))
 	# 应用会自动预勾选全部可用编队；玩家可取消勾选。验证草稿可改、可持久：
+	# R1C 3.2：确认按钮/复选框位于侧栏折叠线以下，点击前先滚到底部（每次都重设，
+	# 因为 900ms 重建会把滚动恢复到点击前的位置）。
+	var scroll_sidebar_bottom := func() -> void:
+		view._sidebar.scroll_vertical = int(view._sidebar.get_v_scroll_bar().max_value)
+		await _hold_frames(3)
 	if formation_check != null:
-		await _scroll_sidebar_to(formation_check)
+		await scroll_sidebar_bottom.call()
 		formation_check = _find_enabled_check_button(view)
 		await _click_control(formation_check)
 		await process_frame
@@ -139,10 +147,11 @@ func _run() -> void:
 	await _hold_frames(10)
 	view.refresh(true)
 	await process_frame
+	await scroll_sidebar_bottom.call()
 	_expect(view._selected_formation_ids.size() == pre_count - 1, "draft survives refresh (scroll/state preserved)")
 	depart_button = _find_button(view, "确认首批投入 · 进入战役")
 	if depart_button != null:
-		await _scroll_sidebar_to(depart_button)
+		await scroll_sidebar_bottom.call()
 		depart_button = _find_button(view, "确认首批投入 · 进入战役")
 	_expect(depart_button != null and not depart_button.disabled, "confirm unlocks after checking a formation")
 	if depart_button != null and not depart_button.disabled:
@@ -394,8 +403,12 @@ func _run() -> void:
 	if place_button != null:
 		await _click_control(place_button)
 		await _hold_frames(10)
-		# 放置模式：依次尝试主城空草坪坐标，任一成功（按钮消失）即完成
-		for attempt_point in [Vector2(640, 560), Vector2(450, 480), Vector2(700, 650), Vector2(240, 450)]:
+		# 放置模式：依次尝试主城空草坪候选格（含 R1B.2 验证成功的 745,365 点族），
+		# 任一点完成（入口按钮消失）即止
+		for attempt_point in [
+			Vector2(745, 365), Vector2(785, 365), Vector2(705, 365), Vector2(745, 425),
+			Vector2(640, 560), Vector2(450, 480), Vector2(700, 650), Vector2(240, 450),
+		]:
 			await _click_position(attempt_point)
 			await _hold_frames(6)
 			if _find_button_prefix(scene, "放置伐木场") == null:
