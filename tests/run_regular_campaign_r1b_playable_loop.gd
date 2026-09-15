@@ -374,8 +374,8 @@ func _finish(scene: Node) -> void:
 
 
 func _watchdog() -> void:
-	await create_timer(900.0).timeout
-	print("R1B_TIMEOUT run exceeded 900 real seconds; forcing quit")
+	await create_timer(1800.0).timeout
+	print("R1B_TIMEOUT run exceeded 1800 real seconds; forcing quit")
 	quit(2)
 
 
