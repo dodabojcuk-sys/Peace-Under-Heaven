@@ -100,6 +100,36 @@ func get_campaign_save_directory_override() -> String:
 	return ""
 
 
+func _enter_tree() -> void:
+	# R1C 测试隔离门禁：带此标志启动的实例（游戏或 runner）必须在实例化任何
+	# 场景前证明存档目录已被显式隔离；未传、路径不符或回退默认目录时拒绝启动。
+	# 普通玩家启动不带该标志，默认 user:// 行为完全不变。
+	var require_isolated := false
+	var override := ""
+	for argument in OS.get_cmdline_user_args():
+		if argument == "--txwzs-require-isolated-save":
+			require_isolated = true
+		elif argument.begins_with(SAVE_DIRECTORY_ARGUMENT_PREFIX):
+			override = argument.trim_prefix(SAVE_DIRECTORY_ARGUMENT_PREFIX)
+	if not require_isolated:
+		return
+	var rejection := ""
+	if override.is_empty():
+		rejection = "缺少 --txwzs-v5-save-dir=<绝对路径>"
+	elif override == "user://saves/v5_campaign/blackstone_city" or override.begins_with("user://"):
+		rejection = "不允许指向默认玩家存档目录"
+	elif not override.is_absolute_path():
+		rejection = "存档目录必须是绝对路径"
+	else:
+		var make_result := DirAccess.make_dir_recursive_absolute(override)
+		if make_result != OK:
+			rejection = "存档目录不可创建（错误码 %d）" % make_result
+	if not rejection.is_empty():
+		push_error("TXWZS 启动门禁拒绝：" + rejection)
+		print("TXWZS_SAVE_GATE rejected: ", rejection, " override='", override, "'")
+		get_tree().quit(3)
+
+
 static func parse_identity(
 	user_args: PackedStringArray,
 	fallback_scene := "UNKNOWN"

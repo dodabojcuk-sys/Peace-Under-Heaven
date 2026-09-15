@@ -92,10 +92,12 @@ func _install_regular_campaign_entry() -> void:
 	_regular_campaign_button.pressed.connect(_on_regular_campaign_pressed)
 
 	# R1B.2：入口说明常显——「开始新局 / 常规关卡候选」的区别不再靠玩家猜。
+	# R1B.2/R1C：入口说明与真实行为一致——常规新局落在黑石城永久主城备战。
 	_regular_campaign_hint = Label.new()
 	_regular_campaign_hint.name = "RegularCampaignEntryHint"
 	_regular_campaign_hint.text = (
-		"常规战役：创建独立候选进度，直接进入青原前线城体验战时建设；\n不影响已有存档。想从黑石城经营开始，请用「开始新局」。"
+		"常规战役：创建独立候选进度，从黑石城永久主城开始备战，"
+		+ "逐步派兵支援前线；\n不影响已有存档。"
 	)
 	_regular_campaign_hint.add_theme_font_size_override("font_size", 12)
 	_regular_campaign_hint.add_theme_color_override("font_color", Color(0.72, 0.78, 0.78))

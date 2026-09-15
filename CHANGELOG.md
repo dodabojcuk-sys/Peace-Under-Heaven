@@ -1,3 +1,20 @@
+# Regular Campaign R1C formal playthrough — 2026-09-15
+
+- Test isolation gate: `--txwzs-require-isolated-save` refuses to start unless
+  `--txwzs-v5-save-dir=` points at an explicit non-default directory; normal
+  player launches are unchanged.
+- Regular candidate new games land on the permanent main city in PREPARATION;
+  the title entry copy now matches this behavior.
+- Departure form: committed-formation summary readout; drafts survive refresh
+  and scroll; the deployed army set matches the confirmed formation set.
+- Wartime staffing guidance (built-but-unstaffed warning plus one-click
+  "assign 4 workers") and neutral early-settlement copy verified in flow.
+- Full player path verified at two window sizes with 41 assertions, including
+  march, rejected surrender, siege capture of both target cities, automatic
+  victory, settlement confirmation and continued home-city management.
+- Cold restore of a completed campaign keeps buildings, usage totals and
+  resource stock stable without duplicate rewards.
+
 
 # Regular Campaign R1A army and engagement presentation — 2026-09-14
 

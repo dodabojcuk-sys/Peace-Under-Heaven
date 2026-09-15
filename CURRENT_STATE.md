@@ -1,5 +1,27 @@
 # 当前状态
 
+## Regular Campaign R1C formal playthrough (2026-09-15)
+
+A fresh regular campaign now walks the full player path through the real
+entry chain, verified at 1280x720 and 1152x648 with isolated test saves
+(41 automated assertions, cold-restore and siege-restore regressions included):
+
+Title candidate entry lands on the permanent main city in PREPARATION; the
+campaign view opens from the top-bar action; the departure form pre-checks
+available formations, keeps editable drafts across refresh and scroll, and the
+confirmed formation set deploys exactly one army per formation. The wartime
+inner city keeps numbered plots, farm construction, road connection and the
+first-staffing guidance; deployed armies march to Redcliff and Silverford,
+rejected surrenders escalate to siege, both cities are captured, and the level
+auto-generates a pending settlement whose confirmation returns survivors and
+resources to the same permanent city for continued management.
+
+A test-isolation startup gate (`--txwzs-require-isolated-save` +
+`--txwzs-v5-save-dir=`) refuses to start test instances without an explicit
+non-default save directory; the default player store is untouched. Known
+remaining gap: the in-city object detail panel shows staffing state but the
+one-click staffing shortcut currently lives in the theater build tab.
+
 ## Regular Campaign R1B.2 publish lineage (2026-09-15)
 
 Daily development continues on
