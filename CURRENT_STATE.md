@@ -22,6 +22,20 @@ non-default save directory; the default player store is untouched. Known
 remaining gap: the in-city object detail panel shows staffing state but the
 one-click staffing shortcut currently lives in the theater build tab.
 
+### R1C 收尾纠正（2026-09-15 同批）
+
+存档隔离门禁强化：拒绝重复 `--txwzs-v5-save-dir` 参数（统一 first-wins 解析）、
+词法规范化 `.`/`..`/尾斜杠、保护清单覆盖默认玩家存档树/TXWZS_BACKUP/旧试玩快照、
+测试实例限定 `/tmp/txwzs-` 输出区；拒绝路径不落盘。反例矩阵 11/11 通过
+（含保护目录内容+元数据哨兵）。出征军队与确认编队逐项对应（ID、人数、
+编队快照）。取消勾选的编队在 900ms 刷新后仍会回到全选（草稿丢失，已改用
+`set_pressed_no_signal` 重建，待复验）。冷恢复改为与落盘前 facts 逐项比较：
+粮食闲置消耗合法漂移外，`summary.fallen`、`food_return` 在恢复后闲置期间
+继续变化，需开发判断是否二次结算写入。内城选中农田的原详情面板已内置
+连接/派工动作（复用 `_refresh_regular_campaign_actions`），1152×648 下
+部分控件可达性仍待处理。完整连续录像因 Movie Maker 节奏问题未交付，
+以 41 项断言日志与关键帧截图代替。
+
 ## Regular Campaign R1B.2 publish lineage (2026-09-15)
 
 Daily development continues on

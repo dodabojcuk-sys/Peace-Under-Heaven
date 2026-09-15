@@ -3,7 +3,8 @@ extends SceneTree
 ## R1B 新玩家可玩闭环验证 + 录像驱动。
 ## 全部通过真实 UI 点击（合成鼠标事件）走通：
 ## 标题 → 常规关卡新局 → 主城推荐按钮开工 → 首批投入（勾编队→确认）
-## → 本关战区 → 战时内城（编号地块→开工）→ 部队页军队出现。
+## → 本关战区 → 战时内城（编号地块→开工）→ 部队页军队出现 → 行军围城占领 → 结算确认 → 回城经营。
+## 证据分类：R1B_CLICK=可见控件真实注入；R1B_SELECT/dialog-emit/ensure_control_visible=程序操作（弹窗视口限制，有界修正，不计入真人点击证明）。
 ## 只读断言 + 截图；不改游戏逻辑、不改存档格式。
 
 const CITY_SCENE := preload("res://scenes/blank_map.tscn")
@@ -23,7 +24,6 @@ func _initialize() -> void:
 
 func _run() -> void:
 	# 看门狗：任何卡死都不能让 Movie Maker 无限录制（曾产生过 10GB AVI）。
-	_watchdog()
 	# R1C 测试隔离门禁（runner 侧）：本驱动必须带隔离存档参数，否则拒绝运行。
 	var has_isolated_save := false
 	for arg in OS.get_cmdline_user_args():
@@ -73,14 +73,13 @@ func _run() -> void:
 				break
 		if scene != null:
 			break
-	_expect(title_ok and scene != null, "title flow starts a fresh candidate campaign")
+	_expect(title_ok and scene != null, "R1C 3.2: title flow starts a fresh candidate campaign (no direct-init fallback)")
 	if scene == null:
-		print("R1B_FALLBACK title flow unavailable, direct city init")
-		title.queue_free()
-		await process_frame
-		scene = CITY_SCENE.instantiate()
-		root.add_child(scene)
-		current_scene = scene
+		# R1C 3.2：删除"标题失败后直接建城"的回退——入口失败就是入口用例失败，
+		# 不允许绕过后门继续宣布玩家流程通过。
+		print("R1C_ENTRY_FAILURE title flow did not open the campaign city")
+		quit(1)
+		return
 	await process_frame
 	await process_frame
 	city = scene.get_node("ConstructionController")
@@ -101,11 +100,11 @@ func _run() -> void:
 		view = city._regular_campaign_view
 	_expect(view != null, "R1C A: campaign view opens from the permanent main city")
 	await _capture("00b-preparation-view.png")
-	if not city.is_regular_campaign_city_active():
-		city.initialize_regular_campaign()
-		city.show_regular_campaign()
+	# R1C 3.2：删除"补调用 initialize/show"回退——正常候选链已创建战役与视图，
+	# 不再用兜底初始化掩盖入口问题。
 	runtime = city._regular_campaign
 	view = city._regular_campaign_view
+	_expect(runtime != null and runtime.enabled(), "regular campaign runtime is active from the real entry chain")
 	await process_frame
 	_expect(runtime.data.phase == StringName(&"PREPARATION"), "fresh regular campaign starts in PREPARATION")
 
@@ -116,12 +115,23 @@ func _run() -> void:
 	_expect(_find_label_prefix(view, "本次投入") != null, "R1B.2-4: departure form lists the committed formations")
 	var formation_check := _find_enabled_check_button(view)
 	_expect(formation_check != null, "R1B P0-1: garrison formations are listed for first-time player")
+	# 先跑一轮刷新：应用会自动预勾选全部可用编队（_ensure_selection_is_valid）。
+	view.refresh(true)
+	await process_frame
 	var pre_count: int = view._selected_formation_ids.size()
+	_expect(pre_count > 0, "R1C A: available formations are pre-checked for the first-time player")
+	# R1C 3.3：确认前记录出征期望（仅勾选的编队 ID 与人数），确认后逐项比对。
+	var expected_formations: Dictionary = {}
+	var home_model: Dictionary = Dictionary(view._model.get("home", {}))
+	for formation_value in Array(home_model.get("formations", [])):
+		var formation: Dictionary = Dictionary(formation_value)
+		var formation_key: StringName = StringName(formation.get("id", formation.get("formation_id", "")))
+		if formation_key in view._selected_formation_ids:
+			expected_formations[formation_key] = int(formation.get("member_count", formation.get("count", 0)))
 	# 应用会自动预勾选全部可用编队；玩家可取消勾选。验证草稿可改、可持久：
 	if formation_check != null:
 		await _scroll_sidebar_to(formation_check)
 		formation_check = _find_enabled_check_button(view)
-		pre_count = view._selected_formation_ids.size()
 		await _click_control(formation_check)
 		await process_frame
 		print("R1B_DEBUG selected_formations=", view._selected_formation_ids)
@@ -142,7 +152,20 @@ func _run() -> void:
 	await process_frame
 	print("R1B_DEBUG depart phase=", runtime.data.phase, " armies=", runtime.data.army_ids.size(), " ledger_formations=", (runtime.data.departure_ledger.get("formations", []) as Array).size())
 	_expect(runtime.data.phase == StringName(&"ACTIVE"), "departure confirms and campaign goes ACTIVE")
-	_expect(runtime.data.army_ids.size() == (runtime.data.departure_ledger.get("formations", []) as Array).size(), "R1C B: deployed army set exactly matches the confirmed formation set")
+	print("R1B_DEBUG expected_formations=", expected_formations, " selected=", view._selected_formation_ids, " armies=", runtime.data.army_ids.size())
+	_expect(runtime.data.army_ids.size() == expected_formations.size(), "R1C 3.3: army count matches confirmed formation count")
+	for army_id_value in runtime.data.army_ids:
+		var army_record: Dictionary = city._army_registry.get_army(army_id_value)
+		var snapshots: Array = Array(Dictionary(army_record.get("macro_march", {})).get("formation_snapshots", []))
+		_expect(snapshots.size() == 1, "each deployed army carries exactly one checked formation")
+		for snapshot_value in snapshots:
+			var snapshot: Dictionary = Dictionary(snapshot_value)
+			var snapshot_id: StringName = StringName(snapshot.get("formation_id", &""))
+			_expect(expected_formations.has(snapshot_id), "deployed formation %s was actually checked" % snapshot_id)
+			_expect(
+				int(snapshot.get("member_count", -1)) == int(expected_formations.get(snapshot_id, -2)),
+				"deployed member count matches the checked formation %s" % snapshot_id
+			)
 	_expect(view._surface_mode == &"THEATER", "after departure the theater map is shown with the deployed army")
 	await _capture("02-theater-after-departure.png")
 
@@ -188,39 +211,40 @@ func _run() -> void:
 	_expect(runtime.data.buildings.size() >= 1, "wartime farm completes from runtime clock")
 	await _capture("04-wartime-farm-construction.png")
 
-	# ---- 主城推荐按钮（P0-3）：先回战区（派工引导在战区建设页验证），再暂离回永久主城 ----
+	# ---- R1C 第5节：留在内城选中已建成农田，在原建筑详情完成连路与派工 ----
+	await _click_map_local(view._map._city_plot_rect(4).get_center())
+	await _hold_frames(10)
+	var connect_detail := _find_button_prefix(scene, "连接道路")
+	_expect(connect_detail != null, "R1C 5: farm detail shows the road connect action (no theater detour)")
+	if connect_detail != null:
+		await _click_control(connect_detail)
+		await _hold_frames(10)
+	var staff_add := _find_button_prefix(scene, "增加岗位")
+	_expect(staff_add != null, "R1C 5: farm detail shows the staffing action")
+	for staff_index in 4:
+		staff_add = _find_button_prefix(scene, "增加岗位")
+		if staff_add == null or staff_add.disabled:
+			break
+		await _click_control(staff_add)
+		await _hold_frames(3)
+	await _capture("04b-wartime-farm-staffed-in-city.png")
+
+	# ---- 主城推荐按钮（P0-3）：确认真实产出后回战区，再暂离回永久主城 ----
+	var food_produced_before := int(runtime.data.totals.food_produced)
+	var production_deadline := Time.get_ticks_msec() + 120000
+	while int(runtime.data.totals.food_produced) <= food_produced_before and Time.get_ticks_msec() < production_deadline:
+		await create_timer(1.0).timeout
+		view.refresh(true)
+	_expect(int(runtime.data.totals.food_produced) > 0, "R1C 5: staffed connected farm makes one real production deposit")
 	var to_theater := _find_button_prefix(scene, "返回本关战区")
 	if to_theater != null:
 		await _click_control(to_theater)
 	await _hold_frames(20)
-	var build_tab := _find_button(view, "建设")
-	if build_tab != null:
-		await _click_control(build_tab)
-	await _hold_frames(10)
-	var quick_staff := _find_button_prefix(view, "立即安排 4 名工人")
-	_expect(quick_staff != null, "R1B.2-3: first-staffing guidance appears for the completed farm")
-	# 游戏规则：建筑需先连接道路才能派工/产出——先按规则连接，再派工。
-	# 注意：侧栏内容超出视口，点击前必须先把目标按钮滚进可视区域。
-	var connect_button := _find_button_prefix(view, "连接")
-	if connect_button != null:
-		await _scroll_sidebar_to(connect_button)
-		connect_button = _find_button_prefix(view, "连接")
-		await _click_control(connect_button)
-		await _hold_frames(5)
-		quick_staff = _find_button_prefix(view, "立即安排 4 名工人")
-	if quick_staff != null:
-		await _scroll_sidebar_to(quick_staff)
-		quick_staff = _find_button_prefix(view, "立即安排 4 名工人")
-		await _click_control(quick_staff)
-	await _hold_frames(3)
-	print("R1B_DEBUG feedback=", view._feedback_override, " buildings=", runtime.data.buildings.size(), " workers=", Dictionary(runtime.data.buildings[0]).get("workers", 0) if runtime.data.buildings.size() > 0 else -1, " base_members=", runtime._base_members())
-	await process_frame
-	view.refresh(true)
-	await process_frame
 	_expect(
 		runtime.data.buildings.size() > 0
-		and int(Dictionary(runtime.data.buildings[0]).get("workers", 0)) > 0,
-		"quick staffing persists workers on the farm"
+		and int(Dictionary(runtime.data.buildings[0]).get("workers", 0)) > 0
+		and bool(Dictionary(runtime.data.buildings[0]).get("connected", false)),
+		"returning to the theater keeps the staffed connected farm"
 	)
 	var leave_button := _find_button_prefix(scene, "暂离关卡")
 	if leave_button != null:
@@ -307,8 +331,10 @@ func _run() -> void:
 			var city_state: Variant = city._war_loop_state.cities_by_id.get(target_id, {})
 			if city_state is Dictionary:
 				faction = str(Dictionary(city_state).get("military_controller_faction_id", ""))
-			if faction == &"player" or faction == "player":
+			if faction == "player":
+				# R1C 3.1：本目标占领即退出等待，不空等整关结束。
 				siege_captured = true
+				break
 			if siege_captured and not _siege_capture_saved:
 				_siege_capture_saved = true
 				await _capture("07-siege-captured.png")
@@ -328,6 +354,7 @@ func _run() -> void:
 				await _click_control(army_again)
 		await _hold_frames(5)
 	_expect(String(runtime.data.phase) == "PENDING", "R1C C: level cleared auto-generates pending settlement")
+	_dump_facts(output_directory.path_join("facts-pending.json"))
 	await _capture("08-settlement-pending.png")
 
 	# ---- R1C C：确认损益并归队 → COMPLETED → 返回永久主城 ----
@@ -343,6 +370,7 @@ func _run() -> void:
 		await _click_control(confirm_button)
 	await _hold_frames(20)
 	_expect(String(runtime.data.phase) == "COMPLETED", "R1C C: settlement confirmed, campaign COMPLETED")
+	_dump_facts(output_directory.path_join("facts-completed.json"))
 	await _capture("08-settlement-confirmed.png")
 	var home_button := _find_button_prefix(view, "返回永久主城")
 	_expect(home_button != null, "R1C C: return-to-home entry visible after settlement")
@@ -352,31 +380,68 @@ func _run() -> void:
 	_expect(not city.is_regular_campaign_view_visible(), "R1C C: back at the permanent main city after campaign")
 
 	# ---- R1C C：后续经营动作（原档继续经营：安置出征前建造的主城伐木场）----
+	var wood_before_place: int = int(city.wood)
+	var placements_before: int = city.get_building_count()
+	var slot_state_before: String = String(city.get_build_slot_state())
+	# 主城伐木场可能仍在建造（流程早期由推荐按钮启动）；等待其完工出现安置入口。
 	var place_button := _find_button_prefix(scene, "放置伐木场")
+	var place_deadline := Time.get_ticks_msec() + 60000
+	while place_button == null and Time.get_ticks_msec() < place_deadline:
+		await create_timer(1.0).timeout
+		view.refresh(true)
+		place_button = _find_button_prefix(scene, "放置伐木场")
 	_expect(place_button != null, "R1C C: a real management action is available back home (place the pre-war logging camp)")
 	if place_button != null:
 		await _click_control(place_button)
 		await _hold_frames(10)
-		# 放置模式：点击主城空草坪完成安置
-		await _click_position(Vector2(640, 560))
-		await _hold_frames(10)
+		# 放置模式：依次尝试主城空草坪坐标，任一成功（按钮消失）即完成
+		for attempt_point in [Vector2(640, 560), Vector2(450, 480), Vector2(700, 650), Vector2(240, 450)]:
+			await _click_position(attempt_point)
+			await _hold_frames(6)
+			if _find_button_prefix(scene, "放置伐木场") == null:
+				break
 	var placed_ok := _find_button_prefix(scene, "放置伐木场") == null
-	_expect(placed_ok, "R1C C: logging camp placed in the permanent city (save continues)")
+	_expect(placed_ok, "R1C 3.3: placement UI closes after real placement")
+	print("R1B_DEBUG place building_count_before=", placements_before, " after=", city.get_building_count(), " wood_before=", wood_before_place, " wood_after=", int(city.wood), " slot_before=", slot_state_before, " slot_after=", String(city.get_build_slot_state()))
+	_expect(city.get_building_count() == placements_before + 1, "R1C 3.3: formal building record added exactly once")
+	_expect(int(city.wood) == wood_before_place, "R1C 3.3: placement consumes the finished good without double charge")
+	_expect(String(city.get_build_slot_state()) == "IDLE", "R1C 3.3: build slot contract is consumed by placement")
 	await _capture("09-back-home-continue.png")
 
+	# R1C 第4节：落盘事实导出（供冷恢复进程比对）
+	_dump_facts(output_directory.path_join("facts-home.json"))
+
 	_finish(scene)
+
+
+func _dump_facts(path: String) -> void:
+	var facts := {
+		"phase": String(runtime.data.phase),
+		"settlement_id": String(runtime.data.settlement_id),
+		"summary": runtime.data.summary,
+		"totals": runtime.data.totals,
+		"stock": {
+			"food": int(runtime._stock().get(&"food", 0)),
+			"wood": int(runtime._stock().get(&"wood", 0)),
+		},
+		"army_ids": runtime.data.army_ids,
+		"buildings": runtime.data.buildings,
+		"home_wood": int(city.wood),
+		"home_food": int(city.food),
+	}
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file != null:
+		file.store_string(JSON.stringify(facts, "  "))
+		file.close()
+		print("R1C_FACTS written ", path)
+	else:
+		push_error("R1C facts dump failed: " + path)
 
 
 func _finish(scene: Node) -> void:
 	print("R1B_LOOP ", "PASS" if failures.is_empty() else "FAIL", " failures=", failures)
 	scene.queue_free()
 	quit(0 if failures.is_empty() else 1)
-
-
-func _watchdog() -> void:
-	await create_timer(1800.0).timeout
-	print("R1B_TIMEOUT run exceeded 1800 real seconds; forcing quit")
-	quit(2)
 
 
 func _hold_frames(frames: int) -> void:

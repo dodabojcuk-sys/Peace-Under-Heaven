@@ -1,3 +1,27 @@
+# Regular Campaign R1C closeout corrections — 2026-09-15
+
+- Save-isolation gate hardening: duplicate `--txwzs-v5-save-dir` arguments are
+  rejected (first-wins parsing unified with the gate), paths are lexically
+  normalized (`.`/`..`/trailing slashes), and a protection list rejects the
+  default player save tree, TXWZS_BACKUP and legacy playtest snapshots; test
+  saves must live under `/tmp/txwzs-`. Rejections never touch disk.
+- Gate counter-example matrix (11 checks) covers missing/user:// relative/
+  protected-absolute/alias/duplicate/valid cases plus content+metadata
+  sentinels over all protected directories.
+- Playable-loop driver corrections: per-target capture now returns as soon as
+  a city is captured (no idle waiting to the whole-level deadline), the
+  title-failure direct-init fallback was removed, deployed armies are compared
+  per formation ID and member count against the confirmed set, and placement
+  asserts the formal building record, single consumption of the finished good
+  and the build-slot contract.
+- Cold-restore verification now compares against facts exported before
+  quitting (phase, settlement identity, totals, stock, armies, buildings);
+  idle-period drift of `summary.fallen` / `food_return` is reported for
+  development review instead of being asserted stable.
+- Wartime farm staffing is verified from the in-city object detail (road
+  connect plus staffing actions already existed there); 1152x648 control
+  reachability remains an open gap.
+
 # Regular Campaign R1C formal playthrough — 2026-09-15
 
 - Test isolation gate: `--txwzs-require-isolated-save` refuses to start unless

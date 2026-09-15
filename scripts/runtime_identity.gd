@@ -94,10 +94,48 @@ func consume_campaign_start_mode() -> StringName:
 
 
 func get_campaign_save_directory_override() -> String:
+	# 与 _enter_tree 的隔离门禁共用同一解析规则（first-wins + 重复参数拒绝），
+	# 避免"检查的目录"与"实际使用的目录"不一致。
+	var override := ""
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with(SAVE_DIRECTORY_ARGUMENT_PREFIX):
-			return argument.trim_prefix(SAVE_DIRECTORY_ARGUMENT_PREFIX)
-	return ""
+			if not override.is_empty():
+				push_error("TXWZS 存档目录参数重复出现")
+				return ""
+			override = argument.trim_prefix(SAVE_DIRECTORY_ARGUMENT_PREFIX)
+	return override
+
+
+func _lexically_normalize_absolute_path(path: String) -> String:
+	# 词法规范化绝对路径：解析 ""、"."、".." 组件与尾斜杠。
+	# 注意：这不能识别目录符号链接别名；测试实例额外受 /tmp/txwzs- 前缀约束。
+	var parts: PackedStringArray = []
+	for component in path.split("/", false):
+		if component == ".":
+			continue
+		if component == "..":
+			if parts.is_empty():
+				return ""
+			parts.remove_at(parts.size() - 1)
+			continue
+		parts.append(component)
+	return "/" + "/".join(parts)
+
+
+func _is_inside_protected_player_tree(normalized: String) -> bool:
+	var protected_roots: PackedStringArray = [
+		ProjectSettings.globalize_path("user://"),
+		ProjectSettings.globalize_path("user://saves"),
+		"/Users/m4-zhi/Documents/TXWZS_BACKUP",
+		"/Users/m4-zhi/Documents/TXWZS_SAVE_SNAPSHOT_PRE_PLAYTEST_20260915",
+	]
+	for root in protected_roots:
+		var normalized_root := _lexically_normalize_absolute_path(root)
+		if normalized_root.is_empty():
+			continue
+		if normalized == normalized_root or normalized.begins_with(normalized_root + "/"):
+			return true
+	return false
 
 
 func _enter_tree() -> void:
@@ -106,28 +144,46 @@ func _enter_tree() -> void:
 	# 普通玩家启动不带该标志，默认 user:// 行为完全不变。
 	var require_isolated := false
 	var override := ""
+	var override_seen := false
 	for argument in OS.get_cmdline_user_args():
 		if argument == "--txwzs-require-isolated-save":
 			require_isolated = true
 		elif argument.begins_with(SAVE_DIRECTORY_ARGUMENT_PREFIX):
+			# 参数解析统一：重复目录参数直接拒绝，不做 first/last-wins。
+			if override_seen:
+				push_error("TXWZS 启动门禁拒绝：存档目录参数重复")
+				print("TXWZS_SAVE_GATE rejected: duplicate --txwzs-v5-save-dir arguments")
+				get_tree().quit.call_deferred(3)
+				return
+			override_seen = true
 			override = argument.trim_prefix(SAVE_DIRECTORY_ARGUMENT_PREFIX)
 	if not require_isolated:
 		return
 	var rejection := ""
-	if override.is_empty():
+	var normalized := ""
+	if not override_seen:
 		rejection = "缺少 --txwzs-v5-save-dir=<绝对路径>"
-	elif override == "user://saves/v5_campaign/blackstone_city" or override.begins_with("user://"):
-		rejection = "不允许指向默认玩家存档目录"
-	elif not override.is_absolute_path():
-		rejection = "存档目录必须是绝对路径"
 	else:
-		var make_result := DirAccess.make_dir_recursive_absolute(override)
-		if make_result != OK:
-			rejection = "存档目录不可创建（错误码 %d）" % make_result
+		normalized = _lexically_normalize_absolute_path(override)
+		if normalized.is_empty():
+			rejection = "路径无法规范化（含越界 .. 或为空）"
+		elif override != normalized:
+			rejection = "存档目录须使用规范化绝对路径（不得含 .、..、尾斜杠或双斜杠）"
+		elif _is_inside_protected_player_tree(normalized):
+			rejection = "不允许指向玩家存档树、TXWZS_BACKUP 或旧试玩快照"
+		elif not normalized.begins_with("/tmp/txwzs-"):
+			rejection = "测试存档目录必须位于 /tmp/txwzs- 之下（本轮隔离输出区约定）"
 	if not rejection.is_empty():
 		push_error("TXWZS 启动门禁拒绝：" + rejection)
 		print("TXWZS_SAVE_GATE rejected: ", rejection, " override='", override, "'")
-		get_tree().quit(3)
+		get_tree().quit.call_deferred(3)
+		return
+	# 全部校验通过后才创建目录（拒绝路径绝不落盘）。
+	var make_result := DirAccess.make_dir_recursive_absolute(normalized)
+	if make_result != OK:
+		push_error("TXWZS 启动门禁拒绝：存档目录不可创建（错误码 %d）" % make_result)
+		print("TXWZS_SAVE_GATE rejected: mkdir failed override='", override, "'")
+		get_tree().quit.call_deferred(3)
 
 
 static func parse_identity(

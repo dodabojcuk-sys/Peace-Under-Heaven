@@ -386,7 +386,8 @@ func _build_departure_form() -> void:
 			var count := int(formation.get("member_count", formation.get("count", 0)))
 			var check := CheckButton.new()
 			check.text = "%s · %d 人" % [str(formation.get("display_name", formation_id)), count]
-			check.button_pressed = formation_id in _selected_formation_ids
+			# R1C 收尾：重建用无信号赋值，避免 900ms 刷新把玩家取消的编队重新勾回。
+			check.set_pressed_no_signal(formation_id in _selected_formation_ids)
 			check.disabled = count <= 0
 			check.add_theme_font_size_override("font_size", 16)
 			check.toggled.connect(func(on: bool): _toggle_formation(formation_id, on))
@@ -629,6 +630,7 @@ func _on_building_clicked(id: StringName) -> void:
 
 
 func _toggle_formation(id: StringName, on: bool) -> void:
+	print("R1C_DEBUG toggle id=", id, " on=", on)
 	if on and id not in _selected_formation_ids:
 		_selected_formation_ids.append(id)
 	elif not on:
