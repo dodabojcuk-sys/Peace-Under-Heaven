@@ -1,0 +1,14 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+PASS: 正式城市场景可加载
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+PASS: 读取投影无城市写入、无状态事件且源状态指纹不变
+PASS: 一城国家投影包含稳定国家、城市和资源身份
+PASS: 唯一城市快照精确投影，资源只读取一次
+PASS: 相同权威状态重复读取结果稳定且不改变源状态
+PASS: 调用方修改嵌套投影不能反向改变城市权威
+PASS: 既有城市 writer 可建立训练订单
+PASS: 新读取立即反映既有 writer，旧投影仍保持深度隔离
+PASS: 缺失城市权威明确失败且不伪造默认城市
+PASS: 非法城市权威明确失败且不补零
+P0_01_NATIONAL_READ_MODEL_SMOKE PASS

@@ -1,0 +1,94 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+Metal 3.2 - Forward+ - Using Device #0: Apple - Apple M4 (Apple9)
+
+Movie Maker mode enabled, recording movie at 20 FPS...
+TXWZS_RUNTIME_IDENTITY 天下无战事 · TITLE · DEBUG · UNKNOWN
+PASS normal title entry opens confirmation
+PASS normal title confirmation opens the city scene
+TXWZS_RUNTIME_IDENTITY 天下无战事 · CITY · DEBUG · UNKNOWN
+PASS fresh regular campaign starts on the established city main screen
+PASS normal MapWorld and original UI shell are the host
+PASS regular preparation owns the mainline entry instead of legacy Blackstone
+PASS regular preparation does not enable old Blackstone objectives or deadlines: 青原战役 · 常规关卡备战 / 首批投入尚未确认，永久主城资产不会自动带入 / 青原目标：清除前线威胁并确认归队 / 进入青原战区 · 确认首批投入
+R1A_INPUT_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/full-battle-20260914/00-normal-entry-main-city.png pixels=(1280, 720)
+PASS original top bar exposes the campaign theater entry
+PASS theater opens from the original city screen
+PASS departure remains available in the theater preparation surface
+PASS normal theater control submits departure once
+R1A_INPUT_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/full-battle-20260914/01-theater-after-departure.png pixels=(1280, 720)
+PASS theater drag does not misfire city entry
+PASS map click enters the licensed wartime city
+PASS wartime city replaces the preview with the established main viewport
+PASS wartime city opens at the established operational scale
+PASS wartime city action uses the current theater instead of permanent dispatch eligibility
+PASS wartime city never exposes the permanent no-formation prompt
+R1A_INPUT_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/full-battle-20260914/02-wartime-main-city.png pixels=(1280, 720)
+PASS the normal operational camera includes a real farm plot outside persistent UI rails
+PASS the visible farm plot shares the formal camera and hit transform: (380.0, 440.0)
+PASS original construction entry exposes legal plots only while building
+PASS real map plot opens the original construction catalog
+PASS catalog action starts the authoritative farm project
+PASS existing selection controller opens the built farm detail
+PASS detail keeps the same authoritative farm building id
+PASS the real farm record owns an in-world selectable visual
+PASS the formal MapWorld farm uses the preserved farm texture
+PASS built farm detail exposes road connection
+PASS road and job operations persist on the campaign building
+PASS detail operations do not reset the camera
+R1A_INPUT_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/full-battle-20260914/03-connected-staffed-farm.png pixels=(1280, 720)
+PASS original pan and zoom operate in the wartime city
+PASS building hit testing follows the transformed map
+PASS original top bar retains the campaign pause control
+R1A_INPUT_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/full-battle-20260914/04-pan-zoom-selection.png pixels=(1280, 720)
+PASS original top bar exposes return to the same theater
+PASS top-bar return opens the same theater
+PASS route transition does not advance campaign time
+PASS formal theater input submits one existing in-campaign movement order
+PASS theater map re-enters the same licensed city
+PASS theater round trip restores the same city camera
+PASS theater round trip preserves the same building and jobs
+R1A_INPUT_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/full-battle-20260914/05-round-trip-restored.png pixels=(1280, 720)
+PASS same wartime city returns to its theater before temporary leave
+PASS existing temporary-leave control is available
+PASS temporary leave restores the permanent main city
+PASS permanent city continues the same regular campaign without legacy mode copy
+PASS campaign continues from the existing main-screen entry
+PASS temporary leave does not redispatch, re-charge, or advance the campaign
+PASS the formal departure retains all three real formations
+PASS stacked formal marker selects the intended second formation
+PASS same-point formations can be selected separately instead of always using the first
+PASS map input orders the selected formation to Silverford
+PASS Silverford surrenders first without ending the whole campaign
+R1A_INPUT_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/full-battle-20260914/06-silverford-surrendered-redcliff-remains.png pixels=(1280, 720)
+PASS map input orders the same identified formation to Redcliff
+PASS Redcliff rejects surrender and starts an actual siege
+PASS formal theater projects the authoritative attacker, gate and defender state
+R1A_INPUT_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/full-battle-20260914/07-redcliff-siege-start.png pixels=(1280, 720)
+PASS clicking the selected army exits command mode
+PASS active combat permits a normal wartime-city round trip
+PASS entering the city preserves the same engagement
+PASS pause stops the engagement without duplicate progression
+PASS city returns to the same active theater
+PASS theater return keeps engagement identity
+PASS gate breach remains an in-progress battle while defenders survive
+PASS gate zero is not misreported as campaign victory
+R1A_INPUT_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/full-battle-20260914/08-redcliff-gate-breached-defenders-remain.png pixels=(1280, 720)
+PASS defenders are resolved before control changes and the full objective completes
+PASS the observed engagement produces real casualties
+R1A_INPUT_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/full-battle-20260914/09-victory-pending-settlement.png pixels=(1280, 720)
+PASS pending result exposes the formal confirmation control
+PASS formal confirmation completes settlement once
+PASS actual returned resources match the settlement receipt
+PASS completed result exposes the formal return-to-city control
+PASS confirmation returns to permanent-city operation
+PASS completed result cannot replay survivor or resource handover
+R1A_FULL_BATTLE_SETTLEMENT {"after_confirm":{"fallen":2,"food_return":66,"food_return_actual":66,"handover":"确认结算时完成归队交接；并非路线运输","kind":"VICTORY","local_people":0,"retained_food":0,"retained_wood":0,"survivors":17,"totals":{"food_in":30,"food_produced":44,"food_used":8,"wood_in":55,"wood_produced":0,"wood_used":47},"wood_return":8,"wood_return_actual":8,"wounded":1},"assault_army":"army.player.000002","before_confirm":{"fallen":2,"food_return":66,"handover":"确认结算时完成归队交接；并非路线运输","kind":"VICTORY","local_people":0,"survivors":17,"totals":{"food_in":30,"food_produced":44,"food_used":8,"wood_in":55,"wood_produced":0,"wood_used":47},"wood_return":8,"wounded":1},"home_food":110,"home_wood":53,"reserve_army":"army.player.000003","snapshot_valid":true}
+R1A_INPUT_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/full-battle-20260914/10-permanent-city-after-settlement.png pixels=(1280, 720)
+R1A_INPUT_JOURNEY PASS failures=[]
+--------------------------------------------------------------------------------
+Done recording movie at path: /Users/m4-zhi/Documents/codex-workspace/txwzs-regular-campaign-r1a-theater-entry/docs/milestones/regular-campaign-r1a-theater-entry/evidence/full-battle-20260914/qingyuan-full-input-original.avi
+930 frames at 20 FPS (movie length: 00:00:46:10), recorded in 00:00:21 (219% of real-time speed).
+CPU render time: 0.19 seconds (average: 0.21 ms/frame)
+GPU render time: 0.00 seconds (average: 0.00 ms/frame)
+Encoding time: 3.45 seconds (average: 3.71 ms/frame)
+--------------------------------------------------------------------------------

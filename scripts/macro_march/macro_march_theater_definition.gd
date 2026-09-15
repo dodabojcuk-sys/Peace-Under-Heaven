@@ -10,6 +10,7 @@ const SILVERFORD_CITY := &"silverford_city"
 const FOREST_GARRISON := &"forest_garrison"
 
 
+@export var regular_campaign := false
 @export var theater_name := "黑石战区"
 @export var scout_visibility_range := 2
 # Field watchtowers are deliberately authored as theatre rules.  They do not
@@ -113,6 +114,8 @@ const FOREST_GARRISON := &"forest_garrison"
 
 
 func get_location_capability(point_id: StringName) -> Dictionary:
+	if regular_campaign:
+		return {"capability_id": &"TEMPORARY_CITY" if point_id == BLACKSTONE_CITY else &"REST_POINT", "allows_inner_city_actions": false, "allows_long_term_construction": false, "allows_temporary_construction": point_id == BLACKSTONE_CITY, "allows_garrison": true, "allows_reissue_orders": true, "allows_supply_transfer": point_id == SILVERFORD_CITY, "allows_local_replenishment": point_id == SILVERFORD_CITY}
 	if point_id == BLACKSTONE_CITY:
 		return {
 			"capability_id": &"LONG_TERM_CITY",

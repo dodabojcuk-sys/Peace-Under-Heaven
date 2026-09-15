@@ -1,0 +1,18 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+PASS: formal blank-map scene exposes the ConstructionController
+PASS: normal controller initialization starts Regular Campaign R1
+PASS: controller exposes one enabled regular-campaign runtime
+PASS: fresh regular campaign begins from the normal controller roster and zero mainline elapsed time
+PASS: departure transfers one existing force and one local food/wood scope without duplicating soldiers or supplies
+PASS: single-army active state remains a valid canonical campaign snapshot after entry
+PASS: the transferred force reaches the regular campaign base through its normal initial movement
+PASS: completed local farm remains a valid canonical campaign snapshot
+PASS: farm completion uses timed local construction payments instead of granting a free productive building
+PASS: only connected staffed farm produces local food, and its stationed workers block moving their only army
+PASS: releasing workers permits a normal in-campaign movement order without a new home dispatch
+PASS: withdrawal creates a pending settlement without rewinding the authoritative mainline clock
+PASS: retry restores attempt-owned facts while preserving elapsed mainline pressure and advancing only the attempt identity
+PASS: confirmed withdrawal returns the original force once; repeating confirmation is a zero-write idempotence guard
+REGULAR_CAMPAIGN_R1_SMOKE PASS assertions=14

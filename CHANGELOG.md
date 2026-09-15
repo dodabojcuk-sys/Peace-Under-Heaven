@@ -1,3 +1,63 @@
+
+# Regular Campaign R1A army and engagement presentation — 2026-09-14
+
+- Reused the established low-poly soldier and flag presentation for stationed,
+  marching and engaging formations, with matching separated hit anchors for
+  stacked armies.
+- Added a read-only aggregate engagement projection from the real WarLoop
+  siege: attacker-target relation, live gate/breach state, current combat-ready
+  counts and explicitly labeled entry count.
+- Made surrender success, surrender refusal, gate breach with surviving
+  defenders, pause/continue, terminal cleanup and cold restore visually
+  truthful without adding combat, clock, registry or save ownership.
+- Added focused normal-1x, two-resolution, cold-restore and unchanged-outcome
+  verification. Human response-time and mouse-feel acceptance remain open.
+
+# Regular Campaign R1A spatial correction — 2026-09-13
+
+- Replaced six always-visible card rectangles with terrain-backed spatial hit
+  areas that reveal their bounds only for selection or construction.
+- Restored complete city framing, south gate, old-city road proportions,
+  inhabited scale and distinct city-scale facility silhouettes at both target
+  resolutions.
+- Made disconnected entrances show a gap and connected entrances show a solid
+  road spur using the same R1 connection fact and command.
+- Removed internal IDs, permille values and implementation caveats from normal
+  player copy; production now names its actual three-minute cycle.
+- Added lower-row reachability, viewport-fit, disconnected-state and paced
+  theater-return coverage without changing campaign rules or persistence.
+
+# Regular Campaign R1A — 2026-09-13
+
+- Added an isolated R1A launcher and title identity from the verified R1 report
+  commit without touching the existing R1 candidate or its save.
+- Replaced the construction-slot-only presentation with a city-sized spatial
+  surface containing wall, gate, roads, six clickable plots and distinct farm,
+  logging, warehouse and clinic silhouettes.
+- Bound selection, highlights, progress, roads, workers and output to the real
+  R1 building records; build, connect and staffing still use R1 commands.
+- Added city/theater round trips, compact persistent frontline information and
+  expandable pressure details without changing R1 rules or save ownership.
+- Added focused city, building-type and continuous UI-input journeys plus
+  responsive visual evidence. Human player acceptance remains open.
+
+# Regular Campaign R1 — 2026-09-13
+
+- Added the isolated regular-campaign title entry and verified local launcher.
+- Connected finite paid wartime construction, staffing, roads, local supply,
+  finite local training, actual casualty treatment and same-army command changes.
+- Added meal-before-harvest warning, bounded adaptive mainline pressure and
+  time-based enemy growth from finite sources without gate repair or revival.
+- Extended V5 to schema 18 using the existing inventory/army/population/save
+  owners; added attempt retry, pending outcomes, unique confirmation and safe
+  overflow claim. Legacy schema17 migration is synthetic-test only.
+- Repaired timed-building zero-payment ledgers, pressure cache validation,
+  canceled order reservations, fractional clock rounding, input drafts and
+  campaign map marker selection/readability discovered during integration.
+- Added normal fast/slow journeys, focused regression, independent-process
+  recovery, adversarial pressure/food and transaction-fault verification.
+  See the milestone handoff for final evidence and remaining acceptance gates.
+
 # Building growth phase closeout — 2026-09-13
 
 - Replaced the overlapping absolute upgrade-progress presentation with a

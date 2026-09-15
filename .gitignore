@@ -16,3 +16,7 @@ build/
 
 # OS noise
 .DS_Store
+
+# GitHub publish lineage: keep original recordings in external evidence backup.
+/docs/milestones/regular-campaign-art-r1/evidence/normal-flow/r1-art-closeout-realtime-input.avi
+/docs/milestones/regular-campaign-r1a-theater-entry/evidence/full-battle-20260914/qingyuan-full-input-original.avi

@@ -2,6 +2,7 @@ extends SceneTree
 
 
 const CITY_SCENE: PackedScene = preload("res://scenes/blank_map.tscn")
+const V5_CAMPAIGN_SNAPSHOT := preload("res://scripts/state/v5_campaign_snapshot.gd")
 const PAIRS: Array[Array] = [
 	[&"building.farm.t1", &"building.farm.t2"],
 	[&"building.logging_camp.t1", &"building.logging_camp.t2"],
@@ -47,7 +48,7 @@ func _run() -> void:
 		_check(bool(city.begin_building_upgrade(placement_id).success), "升级一次扣费并建立唯一工程")
 		_check(not bool(city.begin_building_upgrade(placement_id).success), "活动升级拒绝重复提交")
 	var active_snapshot: Dictionary = city.export_v5_campaign_snapshot()
-	_check(int(active_snapshot.schema_version) == 17, "活动升级进入 V17 权威快照")
+	_check(int(active_snapshot.schema_version) == V5_CAMPAIGN_SNAPSHOT.SCHEMA_VERSION, "活动升级进入当前权威快照")
 	_check(city.get_resource_capacity(&"wood") == wood_capacity_before and city.get_city_housing_capacity() == housing_before and city.get_city_medical_capacity() == medical_before, "施工期间继续使用原等级能力")
 	city.advance_city_time_for_test(180.0)
 	_check(city.get_resource_capacity(&"wood") == wood_capacity_before, "未完工不提前提高仓储")
@@ -120,6 +121,8 @@ func _run() -> void:
 
 	var legacy := active_snapshot.duplicate(true)
 	legacy.schema_version = 16
+	legacy.erase("regular_campaign")
+	legacy.erase("scoped_resources")
 	for placement in legacy.placements:
 		placement.erase("upgrade_target_definition_id")
 		placement.construction_state = &"COMPLETED"
@@ -128,7 +131,7 @@ func _run() -> void:
 		placement.construction_total_costs = {}
 		placement.construction_paid_costs = {}
 	var legacy_result: Dictionary = restored.validate_v5_campaign_snapshot(legacy)
-	_check(bool(legacy_result.valid) and int(legacy_result.snapshot.schema_version) == 17 and StringName(legacy_result.snapshot.placements[0].upgrade_target_definition_id) == &"", "V16 旧档只迁移空升级事实，不免费升级")
+	_check(bool(legacy_result.valid) and int(legacy_result.snapshot.schema_version) == V5_CAMPAIGN_SNAPSHOT.SCHEMA_VERSION and StringName(legacy_result.snapshot.placements[0].upgrade_target_definition_id) == &"", "V16 旧档只迁移空升级事实，不免费升级")
 
 	var journey_scene := CITY_SCENE.instantiate()
 	root.add_child(journey_scene)

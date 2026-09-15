@@ -1,0 +1,15 @@
+Command:
+GODOT=/Users/m4-zhi/Documents/codex-tools/godot/4.5.1-stable-standard/Godot.app/Contents/MacOS/Godot
+"$GODOT" --headless --path . --script res://tests/run_regular_campaign_rules_r1_smoke.gd
+
+Result (2026-09-13):
+REGULAR_CAMPAIGN_RULES_R1_SMOKE PASS assertions=17
+
+Covered pure-rule cases: actual-yield farm distinction; negative-stock first
+unpaid meal; meal-before-harvest gap; negative-net runway threshold; confirmed,
+deduplicated, clamped history; deliberate 25-minute preparation; dispatched
+forces; monotonic pressure; finite campaign-wide combat-loss credit; equal
+15-second/long-advance credit accounting; fact-sensitive capped preparation;
+stage-four floors; and external pause-time ownership.
+It also covers a new wound expanding the bounded promise between two scheduled
+assessments while retaining the prior raw-late observation for credit accounting.

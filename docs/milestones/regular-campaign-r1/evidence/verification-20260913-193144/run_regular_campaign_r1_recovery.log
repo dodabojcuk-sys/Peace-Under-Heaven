@@ -1,0 +1,72 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+REGULAR_RECOVERY_WORKER_A_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_RECOVERY_A legacy17=true rollback_depart=true construction=true time=32000
+
+REGULAR_RECOVERY_WORKER_B_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_RECOVERY_B restored_construction=true warning=true risk=WARNING time=932000 food=10
+
+REGULAR_RECOVERY_WORKER_C_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_RECOVERY_C restored_warning=true malformed_rejected=true pending=true rollback_confirm=true time=932000 fallen=0 armies=[{ "id": "army.player.000001", "phase": "STATIONED", "members": 7 }, { "id": "army.player.000002", "phase": "STATIONED", "members": 7 }, { "id": "army.player.000003", "phase": "STATIONED", "members": 6 }] scope=10/10 pressure=0
+
+REGULAR_RECOVERY_WORKER_D_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_RECOVERY_D departed=true silverford_enemy=true first_order=true first_loss=true before_second=true time=810000 fallen=2 wounded=2 growth=1 credit=240000 second_members=7
+
+REGULAR_RECOVERY_WORKER_E_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_RECOVERY_E restored_first_loss=true withdrawn=true confirmed=true phase=PREPARATION time=810000 fallen=0 wounded=0
+
+REGULAR_RECOVERY_WORKER_F_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_RECOVERY_F restored_settlement=true duplicate_confirm_rejected=true phase=PREPARATION time=810000
+
+REGULAR_RECOVERY_WORKER_G_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_RECOVERY_G departed=true high_pressure=true shortage=true growth_consumed=true time=5400000 pressure=4 growth=14 reserve=92 fallen=20 wounded=0
+
+REGULAR_RECOVERY_WORKER_H_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_RECOVERY_H restored_high_pressure=true retry=true kept_mainline_pressure=true phase=ACTIVE time=5400000 pressure=4 growth_before_retry=14
+
+REGULAR_RECOVERY_WORKER_I_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_RECOVERY_I departed=true first_order=true combat_loss=true credit_consumed=true time=3000000 credit=0/240000
+
+REGULAR_RECOVERY_WORKER_J_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_RECOVERY_J restored_credit_consumed=true retry_kept_credit=true phase=ACTIVE time=3000000 credit=240000
+
+PASS: A/B/C 均在同一隔离目录完成真实冷启动恢复
+PASS: 第二、三个进程各自先读取前一进程的施工与供粮预警事实
+PASS: D/E/F 跨进程保留战损、待结算和确认后的唯一性
+PASS: 第二次交战前的真实战损和确认后的不可重复结算均经冷恢复核对
+PASS: G/H 跨进程保留高压、敌方整备和断粮后果
+PASS: 高压与已消费敌方整备事件在新进程中恢复后才执行重试
+PASS: I/J 跨进程保留已消费的有限战损恢复缓冲
+PASS: 已消费的战损恢复缓冲在新进程恢复后才允许重试
+REGULAR_CAMPAIGN_R1_RECOVERY PASS assertions=2
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN

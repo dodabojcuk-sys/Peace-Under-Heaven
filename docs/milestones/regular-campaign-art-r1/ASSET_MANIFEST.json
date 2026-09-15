@@ -1,0 +1,30 @@
+{
+  "task": "TXWZS_ART_ASSETS_R1_20260914",
+  "baseline": "36469ea02a0cb4ab84fe6caccb71d7f8e5456251",
+  "code_model": "gpt-6-astra",
+  "image_tool": "built-in image_gen",
+  "image_backend_version": "not exposed by tool",
+  "requests_used": 6,
+  "requests_allowed": 8,
+  "initial_requests_used": 5,
+  "revision_requests_used": 1,
+  "revision_requests_allowed": 2,
+  "closeout": {
+    "baseline": "74166de60cf30894729a55698cf2c83ee54810ad",
+    "additional_image_requests": 0,
+    "normal_input_video": "docs/milestones/regular-campaign-art-r1/evidence/normal-flow/r1-art-closeout-realtime-input.avi"
+  },
+  "runtime_buildings": [
+    {"kind": "FARM", "path": "assets/regular_campaign/art_r1/runtime/farm.png", "size": [256, 192], "source": "farm-alpha-revision.png", "alpha": true},
+    {"kind": "LOGGING", "path": "assets/regular_campaign/art_r1/runtime/logging.png", "size": [256, 192], "source": "logging.png", "alpha": true},
+    {"kind": "WAREHOUSE", "path": "assets/regular_campaign/art_r1/runtime/warehouse.png", "size": [256, 192], "source": "warehouse.png", "alpha": true},
+    {"kind": "CLINIC", "path": "assets/regular_campaign/art_r1/runtime/clinic.png", "size": [256, 192], "source": "clinic.png", "alpha": true}
+  ],
+  "runtime_icons": "assets/regular_campaign/art_r1/runtime/icons/",
+  "unused_generation": "assets/regular_campaign/art_r1/source/icon-effects-atlas-unused.png",
+  "animations": [
+    "construction dust gated by an active unpaused project",
+    "farm crop sway gated by built, connected, staffed and unpaused state",
+    "actual production delta popup gated by positive authoritative totals delta"
+  ]
+}

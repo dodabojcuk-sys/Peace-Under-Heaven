@@ -1,0 +1,26 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+PASS: normal scene provides the regular campaign controller
+PASS: regular campaign initializes
+PASS: one ordinary home formation departs with authored supplies
+PASS: clinic uses normal construction and road payment before the injury journey
+PASS: locally trained Silverford members count in pressure strength even though the population-conservation offset excludes them
+PASS: normal Redcliff combat and withdrawal create a real tracked-origin wound
+PASS: combat wounded and fallen remain outside pressure strength while the snapshot stays on the strict pressure schema
+WOUNDED_RATION_TRACE cycle=1 elapsed=512500->692500 phase=ACTIVE paused=false food=14->12 wounded=1->1
+WOUNDED_RATION_TRACE cycle=2 elapsed=692500->872500 phase=ACTIVE paused=false food=12->10 wounded=1->1
+WOUNDED_RATION_TRACE cycle=3 elapsed=872500->1052500 phase=ACTIVE paused=false food=10->8 wounded=1->1
+WOUNDED_RATION_TRACE cycle=4 elapsed=1052500->1232500 phase=ACTIVE paused=false food=8->6 wounded=1->1
+WOUNDED_RATION_TRACE cycle=5 elapsed=1232500->1412500 phase=ACTIVE paused=false food=6->4 wounded=1->1
+WOUNDED_RATION_TRACE cycle=6 elapsed=1412500->1592500 phase=ACTIVE paused=false food=4->2 wounded=1->1
+WOUNDED_RATION_TRACE cycle=7 elapsed=1592500->1772500 phase=ACTIVE paused=false food=2->0 wounded=1->1
+WOUNDED_RATION_TRACE cycle=8 elapsed=1772500->1952500 phase=ACTIVE paused=false food=0->0 wounded=1->1
+WOUNDED_RATION_TRACE cycle=9 elapsed=1952500->2132500 phase=ACTIVE paused=false food=0->0 wounded=1->1
+WOUNDED_RATION_TRACE cycle=10 elapsed=2132500->2312500 phase=ACTIVE paused=false food=0->0 wounded=1->1
+WOUNDED_RATION_TRACE cycle=11 elapsed=2312500->2492500 phase=ACTIVE paused=false food=0->0 wounded=1->1
+WOUNDED_RATION_TRACE cycle=12 elapsed=2492500->2672500 phase=ACTIVE paused=false food=0->0 wounded=1->1
+WOUNDED_RATION_TRACE cycle=13 elapsed=2672500->2852500 phase=ACTIVE paused=false food=0->0 wounded=1->1
+WOUNDED_RATION_TRACE cycle=14 elapsed=2852500->3032500 phase=ACTIVE paused=false food=0->0 wounded=1->0
+PASS: continued unpaid real rations convert stranded wounded to fallen without a ghost treatment order, conservation break, or dead members counted as strength
+REGULAR_CAMPAIGN_R1_WOUNDED_SUPPLY PASS assertions=8

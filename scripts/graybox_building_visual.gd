@@ -33,9 +33,14 @@ var selected := false
 var hovered := false
 var disabled := false
 var show_entrance_marker := false
+var art_enabled := false
+var construction_effect_active := false
+var work_effect_active := false
+var simulation_paused := false
 
 var _presentation_stage: StringName = &"completed"
 var _construction_pulse := 0.0
+var _effect_time := 0.0
 var _visual_nodes_ready := false
 
 
@@ -96,6 +101,44 @@ func update_presentation(
 	queue_redraw()
 
 
+func set_art_texture(texture: Texture2D) -> void:
+	_ensure_visual_nodes()
+	var sprite := get_node("ArtSprite") as Sprite2D
+	sprite.texture = texture
+	art_enabled = texture != null
+	if art_enabled:
+		var world_size := Vector2(footprint) * GRID_SIZE
+		var texture_size := texture.get_size()
+		var scale_factor := minf(world_size.x / maxf(texture_size.x, 1.0), world_size.y / maxf(texture_size.y, 1.0))
+		sprite.position = world_size * 0.5
+		sprite.scale = Vector2.ONE * scale_factor
+	_apply_presentation_state()
+
+
+func set_activity_state(construction_active: bool, work_active: bool, paused: bool) -> void:
+	construction_effect_active = construction_active
+	work_effect_active = work_active
+	simulation_paused = paused
+	set_process((construction_effect_active or work_effect_active) and not simulation_paused)
+	_apply_presentation_state()
+	queue_redraw()
+
+
+func show_deposit(amount: int, resource_label: String) -> void:
+	if amount <= 0:
+		return
+	var popup := get_node("DepositPopup") as Label
+	popup.text = "+%d %s" % [amount, resource_label]
+	popup.position = Vector2(footprint.x * GRID_SIZE * 0.5 - 36.0, -8.0)
+	popup.modulate = Color(1.0, 0.88, 0.38, 1.0)
+	popup.visible = true
+	var tween := create_tween()
+	tween.set_parallel(true)
+	tween.tween_property(popup, "position:y", -34.0, 1.2)
+	tween.tween_property(popup, "modulate:a", 0.0, 1.2)
+	tween.chain().tween_callback(func(): popup.visible = false)
+
+
 func set_presentation_progress(new_progress: float) -> void:
 	presentation_progress = clampf(new_progress, 0.0, 1.0)
 	_presentation_stage = _get_stage_for_progress()
@@ -140,14 +183,34 @@ func _ready() -> void:
 
 
 func _process(delta: float) -> void:
-	if lifecycle_state != &"constructing":
+	if simulation_paused:
 		return
+	_effect_time = fmod(_effect_time + delta, 10.0)
 	_construction_pulse = fmod(_construction_pulse + delta, 1.8)
 	var marker := get_node_or_null("ConstructionMarker") as Line2D
 	if marker != null and marker.visible:
 		var pulse := 0.78 + 0.22 * sin(_construction_pulse * TAU / 1.8)
 		marker.modulate.a = pulse
+	var farm_work_lines := get_node_or_null("FarmWorkLines") as Node2D
+	if farm_work_lines != null and farm_work_lines.visible:
+		var world_size := Vector2(footprint) * GRID_SIZE
+		for index in range(4):
+			var line := farm_work_lines.get_child(index) as Line2D
+			var sway := sin(_effect_time * 2.2 + index * 0.8) * 3.5
+			var x := world_size.x * (0.24 + index * 0.17)
+			line.points = PackedVector2Array([Vector2(x, world_size.y * 0.34), Vector2(x + sway, world_size.y * 0.18)])
 	queue_redraw()
+
+
+func _draw() -> void:
+	if simulation_paused:
+		return
+	var world_size := Vector2(footprint) * GRID_SIZE
+	if construction_effect_active:
+		for index in range(3):
+			var phase := fmod(_effect_time * 0.8 + float(index) * 0.31, 1.0)
+			var p := Vector2(world_size.x * (0.28 + 0.22 * index), world_size.y * 0.72 - phase * 24.0)
+			draw_circle(p, 3.0 + phase * 5.0, Color(0.78, 0.69, 0.52, 0.42 * (1.0 - phase)))
 
 
 func _ensure_visual_nodes() -> void:
@@ -157,6 +220,11 @@ func _ensure_visual_nodes() -> void:
 	var state_plate := Polygon2D.new()
 	state_plate.name = "StatePlate"
 	add_child(state_plate)
+	var art_sprite := Sprite2D.new()
+	art_sprite.name = "ArtSprite"
+	art_sprite.centered = true
+	art_sprite.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	add_child(art_sprite)
 	var shadow := Polygon2D.new()
 	shadow.name = "Shadow"
 	add_child(shadow)
@@ -249,6 +317,25 @@ func _ensure_visual_nodes() -> void:
 	label.add_theme_constant_override("shadow_offset_x", 1)
 	label.add_theme_constant_override("shadow_offset_y", 1)
 	add_child(label)
+	var deposit_popup := Label.new()
+	deposit_popup.name = "DepositPopup"
+	deposit_popup.visible = false
+	deposit_popup.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	deposit_popup.add_theme_font_size_override("font_size", 16)
+	deposit_popup.add_theme_color_override("font_outline_color", PALETTE.SHADOW_DEEP)
+	deposit_popup.add_theme_constant_override("outline_size", 3)
+	deposit_popup.size = Vector2(72.0, 24.0)
+	deposit_popup.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	add_child(deposit_popup)
+	var farm_work_lines := Node2D.new()
+	farm_work_lines.name = "FarmWorkLines"
+	for index in range(4):
+		var line := Line2D.new()
+		line.width = 2.0
+		line.antialiased = true
+		line.default_color = Color(0.95, 0.80, 0.25, 0.72)
+		farm_work_lines.add_child(line)
+	add_child(farm_work_lines)
 
 
 func _rebuild_geometry() -> void:
@@ -436,26 +523,35 @@ func _apply_presentation_state() -> void:
 	var construction_marker := get_node("ConstructionMarker") as Line2D
 	var label_back := get_node("LabelBack") as Polygon2D
 	var label := get_node("Label") as Label
+	var art_sprite := get_node("ArtSprite") as Sprite2D
+	var farm_work_lines := get_node("FarmWorkLines") as Node2D
+	art_sprite.visible = art_enabled and not is_road
+	art_sprite.modulate.a = (
+		clampf((presentation_progress - 0.52) / 0.48, 0.0, 1.0)
+		if is_constructing
+		else 1.0
+	)
+	farm_work_lines.visible = work_effect_active and not simulation_paused and definition_id == &"farm"
 	state_plate.visible = (
 		not is_road and (selected or hovered or is_disabled or is_disconnected)
 	)
-	shadow.visible = not is_road
-	foundation.visible = true
-	body.visible = not is_road
-	side.visible = not is_road
-	roof.visible = not is_road
-	roof_trim.visible = not is_road
-	detail.visible = not is_road
-	farm_rows.visible = not is_road and definition_id == &"building.farm.t1"
-	entrance.visible = not is_road
+	shadow.visible = not is_road and not art_enabled
+	foundation.visible = not art_enabled or is_constructing
+	body.visible = not is_road and not art_enabled
+	side.visible = not is_road and not art_enabled
+	roof.visible = not is_road and not art_enabled
+	roof_trim.visible = not is_road and not art_enabled
+	detail.visible = not is_road and not art_enabled
+	farm_rows.visible = not is_road and not art_enabled and definition_id == &"building.farm.t1"
+	entrance.visible = not is_road and not art_enabled
 	entrance_marker.visible = (
 		not is_road and (show_entrance_marker or is_disconnected)
 	)
-	construction_marker.visible = not is_road and is_constructing
-	outline.visible = not is_road
-	icon_back.visible = not is_road
-	icon_glyph.visible = not is_road
-	icon_lines.visible = not is_road
+	construction_marker.visible = not is_road and is_constructing and not art_enabled
+	outline.visible = not is_road and (selected or hovered or is_disabled or is_disconnected or is_constructing)
+	icon_back.visible = not is_road and not art_enabled
+	icon_glyph.visible = not is_road and not art_enabled
+	icon_lines.visible = not is_road and not art_enabled
 	var uses_flag := _uses_command_flag()
 	flag_pole.visible = not is_road and uses_flag
 	flag.visible = not is_road and uses_flag
@@ -464,7 +560,7 @@ func _apply_presentation_state() -> void:
 	label.visible = not is_road and (selected or is_constructing or is_fixed)
 	label_back.visible = label.visible
 	label.text = (
-		"%s\n施工中 · %s" % [display_name, _stage_label()]
+		"%s\n%s · %s" % [display_name, "施工中" if construction_effect_active else "施工暂停", _stage_label()]
 		if is_constructing
 		else display_name
 	)
@@ -476,7 +572,9 @@ func _apply_presentation_state() -> void:
 	elif is_disconnected:
 		resting_body = resting_body.lerp(PALETTE.ROAD_SURFACE, 0.24)
 	foundation.color = (
-		PALETTE.ROAD_EDGE
+		PALETTE.GROUND_WARM.darkened(0.08)
+		if is_constructing and art_enabled
+		else PALETTE.ROAD_EDGE
 		if is_constructing
 		else PALETTE.ROAD_SURFACE
 	)

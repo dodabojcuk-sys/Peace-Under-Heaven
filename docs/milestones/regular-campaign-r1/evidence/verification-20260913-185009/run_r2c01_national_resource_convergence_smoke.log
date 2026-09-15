@@ -1,0 +1,79 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+SCRIPT ERROR: Parse Error: Cannot infer the type of "actual_military" variable because the value doesn't have a set type.
+          at: GDScript::reload (res://scripts/regular_campaign/regular_campaign_runtime.gd:624)
+SCRIPT ERROR: Compile Error: Failed to compile depended scripts.
+          at: GDScript::reload (res://scripts/construction_controller.gd:0)
+ERROR: Failed to load script "res://scripts/construction_controller.gd" with error "Compilation failed".
+   at: load (modules/gdscript/gdscript.cpp:3041)
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+PASS: 生产组合入口只暴露同一个 NationState 和两个稳定城市
+PASS: 两座城市读取同一国家共享余额
+PASS: 城市资源视图是深度隔离快照
+PASS: blackstone 与 riverbend 的可写局部状态实例双向隔离
+PASS: 城市局部状态查询不暴露可写引用
+PASS: NationState 拒绝复制现有驻军 authority
+PASS: blackstone 消费后 riverbend 立即看到同一余额
+PASS: riverbend 变更后 blackstone 立即看到同一余额
+PASS: 无效 city ID 原子拒绝
+PASS: 无效 resource ID 原子拒绝
+PASS: 零数量原子拒绝
+PASS: 负数量原子拒绝
+PASS: 非整数数量原子拒绝
+PASS: 余额不足原子拒绝
+PASS: 局部提交拒绝时资源、队列和全部事件保持零部分写入
+PASS: 施工增量消费经 NationState 事务入口
+PASS: 日结增减经 NationState 原子事务入口
+PASS: 训练消费经 NationState 事务入口
+PASS: 科研消费经 NationState 事务入口
+SCRIPT ERROR: Invalid call. Nonexistent function 'validate_snapshot' in base 'GDScript'.
+          at: validate_v5_campaign_snapshot (res://scripts/construction_controller.gd:5767)
+          GDScript backtrace (most recent call first):
+              [0] validate_v5_campaign_snapshot (res://scripts/construction_controller.gd:5767)
+              [1] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5648)
+              [2] read (res://scripts/state/persistent_nation_state_v1.gd:33)
+              [3] _check_p0_01_and_v5_compatibility (res://tests/run_r2c01_national_resource_convergence_smoke.gd:287)
+              [4] _run (res://tests/run_r2c01_national_resource_convergence_smoke.gd:50)
+SCRIPT ERROR: Invalid access to property or key 'valid' on a base object of type 'Dictionary'.
+          at: export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5649)
+          GDScript backtrace (most recent call first):
+              [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5649)
+              [1] read (res://scripts/state/persistent_nation_state_v1.gd:33)
+              [2] _check_p0_01_and_v5_compatibility (res://tests/run_r2c01_national_resource_convergence_smoke.gd:287)
+              [3] _run (res://tests/run_r2c01_national_resource_convergence_smoke.gd:50)
+ERROR: FAIL: P0-01 保持一城接口并从 NationState 读取共享资源
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_r2c01_national_resource_convergence_smoke.gd:406)
+       [1] _check_p0_01_and_v5_compatibility (res://tests/run_r2c01_national_resource_convergence_smoke.gd:288)
+       [2] _run (res://tests/run_r2c01_national_resource_convergence_smoke.gd:50)
+SCRIPT ERROR: Invalid call. Nonexistent function 'validate_snapshot' in base 'GDScript'.
+          at: validate_v5_campaign_snapshot (res://scripts/construction_controller.gd:5767)
+          GDScript backtrace (most recent call first):
+              [0] validate_v5_campaign_snapshot (res://scripts/construction_controller.gd:5767)
+              [1] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5648)
+              [2] _check_p0_01_and_v5_compatibility (res://tests/run_r2c01_national_resource_convergence_smoke.gd:295)
+              [3] _run (res://tests/run_r2c01_national_resource_convergence_smoke.gd:50)
+SCRIPT ERROR: Invalid access to property or key 'valid' on a base object of type 'Dictionary'.
+          at: export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5649)
+          GDScript backtrace (most recent call first):
+              [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5649)
+              [1] _check_p0_01_and_v5_compatibility (res://tests/run_r2c01_national_resource_convergence_smoke.gd:295)
+              [2] _run (res://tests/run_r2c01_national_resource_convergence_smoke.gd:50)
+ERROR: FAIL: V5 blackstone 旧字段只承载 NationState 资源投影
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _check (res://tests/run_r2c01_national_resource_convergence_smoke.gd:406)
+       [1] _check_p0_01_and_v5_compatibility (res://tests/run_r2c01_national_resource_convergence_smoke.gd:296)
+       [2] _run (res://tests/run_r2c01_national_resource_convergence_smoke.gd:50)
+SCRIPT ERROR: Invalid access to property or key 'city' on a base object of type 'Dictionary'.
+          at: _check_p0_01_and_v5_compatibility (res://tests/run_r2c01_national_resource_convergence_smoke.gd:306)
+          GDScript backtrace (most recent call first):
+              [0] _check_p0_01_and_v5_compatibility (res://tests/run_r2c01_national_resource_convergence_smoke.gd:306)
+              [1] _run (res://tests/run_r2c01_national_resource_convergence_smoke.gd:50)
+ERROR: String formatting error: not all arguments converted during string formatting.
+   at: validated_evaluate (core/variant/variant_op.h:953)
+   GDScript backtrace (most recent call first):
+       [0] _finish (res://tests/run_r2c01_national_resource_convergence_smoke.gd:414)
+       [1] _run (res://tests/run_r2c01_national_resource_convergence_smoke.gd:54)
+R2C01_NATIONAL_RESOURCE_CONVERGENCE_SMOKE FAIL: %s

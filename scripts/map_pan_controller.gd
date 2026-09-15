@@ -8,6 +8,7 @@ const ZOOM_STEP := 0.1
 const RUNTIME_PERSISTENCE_COORDINATOR = preload(
 	"res://scripts/state/runtime_campaign_persistence_coordinator.gd"
 )
+const RUNTIME_IDENTITY = preload("res://scripts/runtime_identity.gd")
 
 @onready var camera: Camera2D = $Camera2D
 @onready var map_board: Control = $MapWorld/MapBoard
@@ -47,16 +48,26 @@ var macro_march_open := false
 var _city_camera_position := Vector2.ZERO
 var _city_camera_zoom := Vector2.ONE
 var _runtime_persistence: Node
+var _regular_campaign_camera_initialized := false
 
 
 func _ready() -> void:
 	# ConstructionController owns the canonical city state. Wire the already
 	# accepted V5 generation store before this root binds presentation listeners.
+	var runtime_identity := get_node("/root/RuntimeIdentity")
+	var start_mode: StringName = runtime_identity.consume_campaign_start_mode()
+	var starts_regular_campaign := start_mode == RUNTIME_IDENTITY.CAMPAIGN_START_REGULAR
+	# The title's REGULAR marker is only an ephemeral routing instruction.  Seed
+	# the canonical controller before the NEW generation is created, so the first
+	# checkpoint contains the regular state without loading an older generation.
+	if starts_regular_campaign and not construction_controller.initialize_regular_campaign():
+		push_error("Regular campaign initialization was rejected before persistence")
+		return
 	_runtime_persistence = RUNTIME_PERSISTENCE_COORDINATOR.new()
 	add_child(_runtime_persistence)
 	_runtime_persistence.initialize(
 		construction_controller,
-		get_node("/root/RuntimeIdentity").consume_campaign_start_mode()
+		RUNTIME_IDENTITY.CAMPAIGN_START_NEW if starts_regular_campaign else start_mode
 	)
 	get_viewport().size_changed.connect(_on_viewport_size_changed)
 	construction_controller.construction_interaction_started.connect(
@@ -89,6 +100,7 @@ func _ready() -> void:
 	call_deferred("_initialize_camera")
 	call_deferred("_refresh_minimap")
 	call_deferred("_resume_persisted_expedition_if_needed")
+	call_deferred("_show_regular_campaign_if_enabled")
 
 
 func _notification(what: int) -> void:
@@ -140,6 +152,12 @@ func persist_macro_march_checkpoint() -> Dictionary:
 
 
 func _input(event: InputEvent) -> void:
+	# `_input` runs before a Control's GUI handling.  Let the regular overlay own
+	# the event while it is visible so a click on a campaign road never also pans
+	# the hidden permanent-city map.  When the overlay is hidden, normal city
+	# interaction resumes while the controller's regular clock keeps running.
+	if _is_regular_campaign_view_visible():
+		return
 	if OS.is_debug_build() and event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_F8:
 		print("BLACKSTONE_PROGRESS_DIAGNOSTICS ", JSON.stringify(construction_controller.get_campaign_progress_diagnostics()))
 		get_viewport().set_input_as_handled()
@@ -252,9 +270,18 @@ func _handle_construction_input(event: InputEvent) -> void:
 			_stop_drag()
 			get_viewport().set_input_as_handled()
 		elif event.button_index == MOUSE_BUTTON_LEFT and event.pressed:
-			# R0B: the physical map click is the single building commit action.
-			# The controller revalidates this exact pointer position before writing.
-			construction_controller.commit_building_from_map_click(event.position)
+			if (
+				construction_controller.has_method("is_regular_campaign_city_active")
+				and bool(construction_controller.call("is_regular_campaign_city_active"))
+				and construction_controller.is_choosing_template()
+			):
+				# The campaign entry first reveals its existing legal plots; the next
+				# map click selects one through the shared selection/hit controller.
+				building_selection_controller.handle_map_click(event.position)
+			else:
+				# R0B: the physical map click is the single building commit action.
+				# The controller revalidates this exact pointer position before writing.
+				construction_controller.commit_building_from_map_click(event.position)
 			get_viewport().set_input_as_handled()
 	elif event is InputEventMouseMotion:
 		if construction_controller.is_road_placing():
@@ -583,6 +610,10 @@ func is_campaign_world_map_open() -> bool:
 
 
 func open_macro_march_r0() -> bool:
+	if construction_controller._regular_campaign != null and construction_controller._regular_campaign.enabled():
+		_city_camera_position = camera.position
+		_city_camera_zoom = camera.zoom
+		return construction_controller.show_regular_campaign_theater()
 	if (
 		macro_march_open
 		or world_map_open
@@ -695,6 +726,64 @@ func _handle_world_map_input(event: InputEvent) -> void:
 func _resume_persisted_expedition_if_needed() -> void:
 	if construction_controller.has_method("resume_persisted_expedition"):
 		construction_controller.resume_persisted_expedition()
+
+
+func _show_regular_campaign_if_enabled() -> void:
+	# Restored regular data is authoritative; a normal city save leaves this
+	# property null.  The view itself remains presentation-only and is created by
+	# ConstructionController, after persistence has finished its one restore/new
+	# generation decision.
+	var regular: Variant = construction_controller.get("_regular_campaign")
+	if (
+		regular != null
+		and regular is Object
+		and regular.has_method("enabled")
+		and bool(regular.call("enabled"))
+		and construction_controller.has_method("show_regular_campaign")
+	):
+		var model := Dictionary(regular.call("get_read_model"))
+		if StringName(model.get("phase", &"")) == &"PREPARATION":
+			construction_controller.show_regular_campaign_home_entry()
+		else:
+			construction_controller.show_regular_campaign()
+
+
+func _is_regular_campaign_view_visible() -> bool:
+	return (
+		construction_controller.has_method("is_regular_campaign_view_visible")
+		and bool(construction_controller.call("is_regular_campaign_view_visible"))
+	)
+
+
+func present_regular_campaign_city() -> void:
+	city_map_world.visible = true
+	city_ui_shell.visible = true
+	macro_march_entry_button.text = "返回本关战区"
+	macro_march_entry_button.tooltip_text = "返回同一青原战区；不重新出征、不补给、不推进额外时间"
+	if not _regular_campaign_camera_initialized:
+		_regular_campaign_camera_initialized = true
+		camera.zoom = Vector2.ONE
+		camera.position = construction_controller.get_layout_camera_focus()
+		_city_camera_position = camera.position
+		_city_camera_zoom = camera.zoom
+	_clamp_camera()
+	_refresh_minimap()
+
+
+func present_permanent_city() -> void:
+	macro_march_entry_button.text = "外城军令"
+	macro_march_entry_button.tooltip_text = "进入黑石外城宏观军令战区"
+	_clamp_camera()
+	_refresh_minimap()
+
+
+func present_regular_campaign_home_entry() -> void:
+	city_map_world.visible = true
+	city_ui_shell.visible = true
+	macro_march_entry_button.text = "进入青原战区"
+	macro_march_entry_button.tooltip_text = "从当前永久主城进入本关准备；投入只允许确认一次"
+	_clamp_camera()
+	_refresh_minimap()
 
 
 func _on_world_map_noticeboard_requested() -> void:

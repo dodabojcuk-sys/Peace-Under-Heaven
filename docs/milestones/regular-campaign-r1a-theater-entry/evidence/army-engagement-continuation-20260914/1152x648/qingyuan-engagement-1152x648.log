@@ -1,0 +1,24 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+Metal 3.2 - Forward+ - Using Device #0: Apple - Apple M4 (Apple9)
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · CITY · DEBUG · UNKNOWN
+PASS regular campaign initializes in an isolated store
+PASS compressed setup uses the existing departure transaction
+PASS compressed setup submits the existing Silverford order
+PASS compressed setup submits the existing Redcliff order
+PASS real-time segment begins from the actual rejected-surrender siege
+PASS capture saved: 00-realtime-siege-start.png
+R1A_REALTIME_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/army-engagement-continuation-20260914/1152x648/00-realtime-siege-start.png pixels=(1152, 648)
+PASS player-visible 1x and pause controls are available
+R1A_REALTIME_SEGMENT_START {"attacker_count":7,"attempt_ms":186500,"defender_count":6,"gate_hp":170,"siege_tick":1,"speed":1.0}
+PASS visible pause freezes combat actions and campaign time
+PASS capture saved: 01-realtime-paused.png
+R1A_REALTIME_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/army-engagement-continuation-20260914/1152x648/01-realtime-paused.png pixels=(1152, 648)
+PASS normal-time playback reaches breached gate while defenders remain
+PASS capture saved: 02-realtime-gate-breached.png
+R1A_REALTIME_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/army-engagement-continuation-20260914/1152x648/02-realtime-gate-breached.png pixels=(1152, 648)
+PASS normal-time controller process reaches the existing pending result
+PASS capture saved: 03-realtime-engagement-finished.png
+R1A_REALTIME_IMAGE docs/milestones/regular-campaign-r1a-theater-entry/evidence/army-engagement-continuation-20260914/1152x648/03-realtime-engagement-finished.png pixels=(1152, 648)
+R1A_REALTIME_SEGMENT_END {"battle_game_ms":4250,"completion_frames_after_breach":195,"gate_breach_frames_after_continue":39,"paused_frames":24,"phase":"PENDING","summary":{"fallen":2,"food_return":26,"handover":"确认结算时完成归队交接；并非路线运输","kind":"VICTORY","local_people":0,"survivors":17,"totals":{"food_in":30,"food_produced":0,"food_used":4,"wood_in":55,"wood_produced":0,"wood_used":0},"wood_return":55,"wounded":1},"visible_unpaused_game_ms":4000}
+R1A_REALTIME_ENGAGEMENT PASS failures=[]

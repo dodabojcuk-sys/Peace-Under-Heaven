@@ -1,0 +1,10 @@
+{
+  "command": [
+    "/Users/m4-zhi/Documents/codex-workspace/txwzs-regular-campaign-r1/RUN_REGULAR_CAMPAIGN_R1.command",
+    "--save-dir",
+    "/tmp/txwzs-regular-unmarked-rejection-proof"
+  ],
+  "exit_code": 1,
+  "message": "Refusing an unmarked save directory; use the exact directory from this launcher\n",
+  "passed": true
+}

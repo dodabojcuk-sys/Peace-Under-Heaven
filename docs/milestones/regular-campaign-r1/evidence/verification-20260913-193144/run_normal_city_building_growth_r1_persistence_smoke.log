@@ -1,0 +1,24 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+BUILDING_GROWTH_WORKER_A_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+BUILDING_GROWTH_A day=1 state=PASS
+
+BUILDING_GROWTH_WORKER_B_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+BUILDING_GROWTH_B day=3 state=PASS
+
+BUILDING_GROWTH_WORKER_C_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+BUILDING_GROWTH_C day=3 state=PASS
+
+PASS: 三个独立进程依次恢复升级中、完成事务和二级终态
+PASS: 退出重开保持同一世界日期与完工事实
+NORMAL_CITY_BUILDING_GROWTH_R1_PERSISTENCE_SMOKE PASS
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN

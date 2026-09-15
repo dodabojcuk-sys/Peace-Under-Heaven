@@ -1,0 +1,27 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+PASS normal initial force
+PASS equal 180s at fps/speed [30, 1.0]
+PASS pause advances no campaign owner
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+PASS normal initial force
+PASS equal 180s at fps/speed [60, 1.0]
+PASS pause advances no campaign owner
+PASS normal initial force
+PASS equal 180s at fps/speed [60, 2.0]
+PASS pause advances no campaign owner
+PASS normal initial force
+PASS equal 180s at fps/speed [30, 4.0]
+PASS pause advances no campaign owner
+PASS normal initial force
+PASS equal 180s at fps/speed [0, 1.0]
+PASS pause advances no campaign owner
+PASS starvation starts from paid finite food
+PASS warning before exhaustion has no fabricated casualty
+PASS repeated actual unpaid rations cause real permanent-pending losses
+PASS retry restores attempt loss only and retains elapsed
+PASS finite dynamic buffer reaches terminal pressure
+PASS terminal pressure denies nonessential local construction
+PASS time growth consumes finite authored enemy reserve
+PASS long-delay terminal state remains valid
+REGULAR_CAMPAIGN_R1_TIME PASS checks=23

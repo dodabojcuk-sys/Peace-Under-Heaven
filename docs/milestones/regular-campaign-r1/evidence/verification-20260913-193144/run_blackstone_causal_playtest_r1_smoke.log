@@ -1,0 +1,15 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+PASS: day 3 Redcliff occupation cancels the same dormant invasion at departure
+PASS: cancelled invasion stays terminal across later days and source recapture
+PASS: day 4 Redcliff occupation cancels the same dormant invasion at departure
+PASS: cancelled invasion stays terminal across later days and source recapture
+CAUSAL_TIE_TRACE phases=[&"CANCELLED", &"CANCELLED", &"CANCELLED"] strengths=[16, 16, 16] controllers=[&"player", &"player", &"player"]
+PASS: same-update macro occupation wins the departure tie for whole, split and irregular frames
+PASS: departed invasion keeps identity, strength and forward movement after Redcliff occupation
+PASS: active defense handoff remains the same frozen battle transaction after source capture
+PASS: cancelled original record restores without regeneration or a parallel event ledger
+PASS: failed cancellation checkpoint rolls back the record and a later retry commits once
+PASS: control-only victory settles once while cancelled threat and existing player army remain legal
+BLACKSTONE_CAUSAL_PLAYTEST_R1_SMOKE PASS assertions=10

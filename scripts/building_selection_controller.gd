@@ -134,6 +134,15 @@ func handle_map_click(screen_position: Vector2) -> void:
 
 	var placement_id := get_placement_id_at_screen_position(screen_position)
 	if placement_id < 0:
+		if (
+			construction_controller.has_method("get_regular_campaign_plot_at_screen_position")
+			and construction_controller.has_method("select_regular_campaign_plot")
+		):
+			var plot := int(construction_controller.call("get_regular_campaign_plot_at_screen_position", screen_position))
+			if plot >= 0:
+				clear_selection()
+				construction_controller.call("select_regular_campaign_plot", plot)
+				return
 		clear_selection()
 	else:
 		select_placement(placement_id)
@@ -178,6 +187,8 @@ func select_placement(placement_id: int) -> void:
 		return
 
 	construction_controller.cancel_build_interaction()
+	if construction_controller.has_method("select_regular_campaign_placement"):
+		construction_controller.call("select_regular_campaign_placement", placement_id)
 	if selected_placement_id >= 0 and selected_placement_id != placement_id:
 		construction_controller.set_building_diagnostic_visible(
 			selected_placement_id,
@@ -657,6 +668,12 @@ func _refresh_governance_actions(
 ) -> void:
 	if not is_instance_valid(governance_action_group):
 		return
+	if (
+		construction_controller.has_method("is_regular_campaign_city_active")
+		and bool(construction_controller.call("is_regular_campaign_city_active"))
+	):
+		_refresh_regular_campaign_actions(record)
+		return
 	var requires_road := bool(record.get("requires_road", false))
 	var disconnected: bool = (
 		requires_road
@@ -700,10 +717,54 @@ func _refresh_governance_actions(
 	)
 
 
+func _refresh_regular_campaign_actions(record: Dictionary) -> void:
+	var connected := bool(record.get("connected", false))
+	var workers := int(record.get("workers", 0))
+	governance_feedback.visible = false
+	governance_overflow_actions.visible = false
+	governance_manual_action.visible = false
+	governance_remove_action.visible = false
+	governance_primary_action.visible = true
+	governance_secondary_action.visible = true
+	governance_primary_action.disabled = false
+	governance_secondary_action.disabled = false
+	if not connected:
+		_governance_primary_mode = &"regular_connect"
+		governance_primary_action.text = "连接道路 · 木材 2"
+		governance_primary_action.tooltip_text = "提交本关现有 connect 命令"
+	else:
+		_governance_primary_mode = &"regular_worker_add"
+		governance_primary_action.text = "增加岗位 · 当前 %d/4" % workers
+		governance_primary_action.disabled = workers >= 4
+		governance_primary_action.tooltip_text = "驻地军人不能同时生产和出战"
+	governance_secondary_action.text = "减少岗位 · 当前 %d/4" % workers
+	governance_secondary_action.disabled = workers <= 0
+
+
+func _show_regular_campaign_action_result(value: Variant) -> void:
+	var result := Dictionary(value) if value is Dictionary else {}
+	governance_feedback.text = str(
+		result.get("message", "操作已提交")
+		if bool(result.get("success", false))
+		else result.get("error", "操作未完成")
+	)
+	governance_feedback.visible = true
+	var record: Dictionary = construction_controller.get_building_record(selected_placement_id)
+	if not record.is_empty():
+		_refresh_detail_panel(record)
+		_show_selected_presentation()
+
+
 func _on_governance_primary_pressed() -> void:
 	if not has_selection():
 		return
 	match _governance_primary_mode:
+		&"regular_connect":
+			_show_regular_campaign_action_result(construction_controller.call("regular_campaign_connect_building", selected_placement_id))
+		&"regular_worker_add":
+			_show_regular_campaign_action_result(construction_controller.call("regular_campaign_adjust_workers", selected_placement_id, 1))
+		&"regular_worker_remove":
+			_show_regular_campaign_action_result(construction_controller.call("regular_campaign_adjust_workers", selected_placement_id, -1))
 		&"upgrade":
 			request_upgrade_confirmation()
 		&"recommend":
@@ -729,6 +790,9 @@ func _on_governance_primary_pressed() -> void:
 
 
 func _on_governance_secondary_pressed() -> void:
+	if _governance_primary_mode in [&"regular_connect", &"regular_worker_add", &"regular_worker_remove"]:
+		_show_regular_campaign_action_result(construction_controller.call("regular_campaign_adjust_workers", selected_placement_id, -1))
+		return
 	if _governance_primary_mode == &"confirm":
 		_begin_manual_road_planning()
 		return

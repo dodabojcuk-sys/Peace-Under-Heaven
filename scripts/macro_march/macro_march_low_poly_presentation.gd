@@ -29,6 +29,7 @@ var _static_root := Node3D.new()
 var _road_root := Node3D.new()
 var _point_root := Node3D.new()
 var _army_root := Node3D.new()
+var _engagement_root := Node3D.new()
 var _specialist_root := Node3D.new()
 var _patrol_root := Node3D.new()
 var _project_root := Node3D.new()
@@ -65,6 +66,7 @@ func _ready() -> void:
 	_world.add_child(_road_root)
 	_world.add_child(_point_root)
 	_world.add_child(_army_root)
+	_world.add_child(_engagement_root)
 	_world.add_child(_specialist_root)
 	_world.add_child(_patrol_root)
 	_world.add_child(_project_root)
@@ -109,6 +111,7 @@ func sync(
 	# Positions and progress change every world tick, while point ownership rarely
 	# changes. Keep the visual actors synchronized independently of point rebuilds.
 	_sync_armies(Array(model.get("armies", [])))
+	_sync_engagements(Array(model.get("sieges", [])))
 	_sync_specialists(Dictionary(field.get("specialists_by_id", {})))
 	_sync_patrols(Dictionary(field.get("visible_patrols_by_id", {})))
 	_sync_projects(Dictionary(field.get("projects_by_id", {})), Dictionary(field.get("specialists_by_id", {})))
@@ -573,6 +576,7 @@ func _add_field_watchtower(parent: Node3D, position: Vector2) -> void:
 
 func _sync_armies(armies: Array) -> void:
 	var seen: Dictionary = {}
+	var stacked: Dictionary = {}
 	for army_value in armies:
 		var army: Dictionary = Dictionary(army_value)
 		var army_id := StringName(army.get("army_id", &""))
@@ -586,17 +590,76 @@ func _sync_armies(armies: Array) -> void:
 			_army_root.add_child(node)
 			_army_nodes[army_id] = node
 		var state := _army_motion_state(army)
-		node.position = _ground_position(Vector2(state.get("world_position", Vector2.ZERO)), 2.2)
+		var world_position := Vector2(state.get("world_position", Vector2.ZERO))
+		var presentation := Dictionary(army.get("presentation", {}))
+		var screen_offset := Vector2.ZERO
+		if bool(presentation.get("separate_stacked_actor", false)):
+			var stack_key := "%d:%d" % [roundi(world_position.x), roundi(world_position.y)]
+			var stack_index := int(stacked.get(stack_key, 0))
+			stacked[stack_key] = stack_index + 1
+			screen_offset = Vector2(28.0, -42.0 - float(stack_index) * 28.0)
+		node.position = _ground_position(world_position, 2.2) + _screen_offset_on_ground(screen_offset)
+		node.set_meta("authoritative_world_position", world_position)
+		node.set_meta("presentation_screen_offset", screen_offset)
 		var count := _army_member_count(army)
 		var selected := army_id == _selected_army_id
-		var signature := "%s:%d:%s" % [String(army.get("phase", &"")), count, selected]
+		var presentation_state := StringName(presentation.get("state", army.get("phase", &"")))
+		var signature := "%s:%d:%s:%s" % [String(presentation_state), count, selected, str(screen_offset)]
 		if _army_visual_signatures.get(army_id, "") != signature:
 			_army_visual_signatures[army_id] = signature
 			_clear_children(node)
-			_add_unit_group(node, Color("d44d3f"), Color("f4d476"), count, "Army")
+			_add_army_group(node, count, presentation_state)
 			if selected:
 				_add_selection_marker(node, count, false)
 	_remove_absent_nodes(_army_nodes, _army_visual_signatures, seen)
+
+
+func _sync_engagements(sieges: Array) -> void:
+	# Active siege data is already aggregate. These actors explain the real
+	# army-to-city relation without inventing individual targets or hit writers.
+	_clear_children(_engagement_root)
+	if _theater == null:
+		return
+	for siege_value in sieges:
+		var siege := Dictionary(siege_value)
+		if StringName(siege.get("phase", &"")) != &"SIEGING":
+			continue
+		var city: Dictionary = _theater.get_point(StringName(siege.get("city_id", &"")))
+		if city.is_empty():
+			continue
+		var engagement := Node3D.new()
+		engagement.name = "Engagement_%s" % String(siege.get("siege_id", &""))
+		engagement.position = _ground_position(Vector2(city.get("world_position", Vector2.ZERO)), 3.0)
+		engagement.set_meta("attack_source_army_id", StringName(siege.get("army_id", &"")))
+		engagement.set_meta("presentation_grain", StringName(siege.get("presentation_grain", &"AGGREGATE")))
+		_engagement_root.add_child(engagement)
+
+		var defenders := Node3D.new()
+		defenders.name = "CurrentDefenders"
+		defenders.position = _screen_offset_on_ground(Vector2(30.0, 5.0))
+		engagement.add_child(defenders)
+		var defender_count := int(siege.get("defender_count", 0))
+		if defender_count > 0:
+			_add_unit_group(defenders, Color("774038"), Color("c85e4f"), defender_count, "Defender")
+
+		var gate := Node3D.new()
+		gate.name = "BreachedGate" if bool(siege.get("gate_breached", false)) else ("DamagedGate" if int(siege.get("gate_hp", 0)) < int(siege.get("gate_max_hp", siege.get("gate_hp", 0))) else "IntactGate")
+		gate.position = _screen_offset_on_ground(Vector2(2.0, 10.0))
+		engagement.add_child(gate)
+		if bool(siege.get("gate_breached", false)):
+			_add_box(gate, Vector3(10.0, 4.0, 3.0), Vector3(-7.0, 2.0, 0), Color("4b3028"), "BrokenGateLeft")
+			_add_box(gate, Vector3(10.0, 4.0, 3.0), Vector3(7.0, 2.0, 0), Color("4b3028"), "BrokenGateRight")
+		else:
+			var gate_color := Color("8d4f3e") if gate.name == "DamagedGate" else Color("4c3730")
+			_add_box(gate, Vector3(21.0, 13.0, 3.0), Vector3(0, 6.5, 0), gate_color, "GateState")
+
+		# Tick parity is sourced from WarLoop. Pause freezes the tick, so this
+		# aggregate contact cue also freezes without using a presentation clock.
+		var contact := Node3D.new()
+		contact.name = "AggregateContact"
+		contact.position = _screen_offset_on_ground(Vector2(-12.0 if int(siege.get("tick", 0)) % 2 == 0 else -7.0, 4.0))
+		engagement.add_child(contact)
+		_add_marker_box(contact, Vector3(9.0, 2.0, 2.0), Vector3.ZERO, Color("f4b94c"), "AttackRelation")
 
 
 func _sync_specialists(specialists: Dictionary) -> void:
@@ -727,13 +790,36 @@ func _partial_route_points(points: Array, fraction: float) -> Array:
 
 
 func _add_unit_group(parent: Node3D, coat: Color, banner: Color, count: int, node_name: String) -> void:
-	var member_count := clampi(count, 1, 5)
+	var member_count := clampi(count, 0, 5)
 	for index in range(member_count):
 		var offset := Vector3(float(index % 3 - 1) * 4.0, 0.0, float(index / 3) * 4.5)
 		_add_cylinder(parent, 1.5, 1.8, 6.0, offset + Vector3(0, 3, 0), coat, 6, "%sSoldier" % node_name)
 		_add_sphere(parent, 1.9, offset + Vector3(0, 7.2, 0), Color("f0c59f"), "%sHead" % node_name)
 	_add_box(parent, Vector3(1.1, 19.0, 1.1), Vector3(8, 9.5, 0), Color("382c29"), "%sFlagPole" % node_name)
 	_add_box(parent, Vector3(9.0, 5.0, 0.8), Vector3(12, 15.0, 0), banner, "%sFlag" % node_name)
+
+
+func _add_army_group(parent: Node3D, count: int, state: StringName) -> void:
+	var formation := Node3D.new()
+	formation.name = "ArmyFormation_%s" % String(state)
+	parent.add_child(formation)
+	var member_count := clampi(count, 1, 5)
+	for index in range(member_count):
+		var offset: Vector3
+		match state:
+			&"MARCHING", &"RETURNING", &"RETREATING":
+				offset = Vector3(float(index % 2) * 6.5 - 3.25, 0.0, float(index / 2) * 6.0)
+			&"ENGAGING", &"SIEGING":
+				offset = Vector3(float(index) * 5.8 - float(member_count - 1) * 2.9, 0.0, 0.0)
+			_:
+				offset = Vector3(float(index % 3 - 1) * 6.0, 0.0, float(index / 3) * 6.0)
+		_add_cylinder(formation, 2.0, 2.3, 9.0, offset + Vector3(0, 4.5, 0), Color("c74b3e"), 6, "ArmySoldier")
+		_add_sphere(formation, 2.5, offset + Vector3(0, 10.2, 0), Color("f0c59f"), "ArmyHead")
+		_add_box(formation, Vector3(1.0, 5.5, 1.0), offset + Vector3(3.0, 6.2, 0), Color("46362f"), "ArmySpear")
+	if state == &"STATIONED":
+		_add_cylinder(formation, 8.5, 8.5, 0.8, Vector3(0, 0.4, 0), Color("435b51"), 18, "StationedBase")
+	_add_box(formation, Vector3(1.4, 27.0, 1.4), Vector3(11.0, 13.5, 0), Color("382c29"), "ArmyFlagPole")
+	_add_box(formation, Vector3(14.0, 7.0, 1.0), Vector3(18.0, 22.0, 0), Color("f4d476"), "ArmyFlag")
 
 
 func _add_specialist(parent: Node3D, role: StringName) -> void:
@@ -856,10 +942,22 @@ func _point_along_route(points: Array, progress: float) -> Vector2:
 
 
 func _army_member_count(army: Dictionary) -> int:
+	var presentation := Dictionary(army.get("presentation", {}))
+	if typeof(presentation.get("current_count", null)) == TYPE_INT:
+		return maxi(0, int(presentation.current_count))
 	var total := 0
 	for formation_value in Array(Dictionary(army.get("macro_march", {})).get("formation_snapshots", [])):
 		total += int(Dictionary(formation_value).get("member_count", 0))
 	return total
+
+
+func _screen_offset_on_ground(screen_offset: Vector2) -> Vector3:
+	if screen_offset.is_zero_approx():
+		return Vector3.ZERO
+	var zoom := maxf(float(size.y) / maxf(_camera.size, 0.01), 0.01)
+	var world_y := screen_offset.y / (OBLIQUE_Y_SCALE * zoom)
+	var world_x := screen_offset.x / zoom - OBLIQUE_X_SKEW * world_y
+	return _ground_position(Vector2(world_x, world_y), 0.0) - _ground_position(Vector2.ZERO, 0.0)
 
 
 func _road_state_signature(roads: Dictionary) -> String:

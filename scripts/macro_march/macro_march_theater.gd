@@ -6,6 +6,7 @@ const DEFINITION_SCRIPT = preload("res://scripts/macro_march/macro_march_theater
 const PLAYABLE_DEFINITION_PATH := "res://resources/macro_march/blackstone_playable_r2.tres"
 
 static var _definition_mode := &"PLAYABLE"
+static var _regular_definition: MacroMarchTheaterDefinition
 static var _playable_definition: MacroMarchTheaterDefinition
 static var _regression_definition: MacroMarchTheaterDefinition = DEFINITION_SCRIPT.new()
 
@@ -19,10 +20,20 @@ static func use_regression_definition_for_tests() -> void:
 
 
 static func get_definition_id() -> StringName:
+	if _definition_mode == &"REGULAR":
+		return &"regular_campaign_r1"
 	return &"blackstone_playable_r2" if _definition_mode == &"PLAYABLE" else &"blackstone_regression_r2"
 
 
+static func use_regular_definition() -> void:
+	_definition_mode = &"REGULAR"
+
+
 static func _current_definition():
+	if _definition_mode == &"REGULAR":
+		if _regular_definition == null:
+			_regular_definition = load("res://resources/macro_march/regular_campaign_r1.tres")
+		return _regular_definition
 	if _definition_mode == &"REGRESSION":
 		return _regression_definition
 	if _playable_definition == null:

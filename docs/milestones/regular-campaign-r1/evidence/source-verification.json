@@ -1,0 +1,67 @@
+{
+  "manifest_sha256": "a1d754a2bd33ec32c55ccb0aa90e8ec970fdbd4b6ab0e0cf683b981f3348d2ab",
+  "zip_sha256": "7e675f221bda8bde2def630694fb087b1bcda0602fa7609120b96094ba14ad93",
+  "source_directory": "/Users/m4-zhi/Documents/txwzs-regular-campaign-r1-input-20260913",
+  "execution_entry": "TXWZS_REGULAR_CAMPAIGN_R1_TASK.md",
+  "files": [
+    {
+      "path": "README_START_HERE.md",
+      "bytes": 1256,
+      "lines": 15,
+      "sha256": "4ceec36b7236cde2d498d75a56dd86371e614c1ba793ec62d5b397f84281588e",
+      "matched": true
+    },
+    {
+      "path": "TXWZS_REGULAR_CAMPAIGN_R1_TASK.md",
+      "bytes": 49079,
+      "lines": 566,
+      "sha256": "811459b7293a3d31f3109d7b0d094ca609072b6abf71119a97e1bb9664c79096",
+      "matched": true
+    },
+    {
+      "path": "sources/ENGINEERING_HANDOFF.md",
+      "bytes": 7871,
+      "lines": 142,
+      "sha256": "c97897b4230837acc55d052f89141eda0780424fb5bc4c10f0c6d60d2f728973",
+      "matched": true
+    },
+    {
+      "path": "sources/TXWZS2_GAME_BIBLE_WORKING_DRAFT_20260829 (13)(1).md",
+      "bytes": 123222,
+      "lines": 959,
+      "sha256": "61d14bba2bfd30dfb3f58dd2dbc28a95be1c4daee305361bc0b9ea07416c5323",
+      "matched": true
+    },
+    {
+      "path": "sources/TXWZS_MIGRATION_2026-09-13(1).md",
+      "bytes": 26211,
+      "lines": 358,
+      "sha256": "dce1fdcab634ced1f2b7399fb9456a7c6df8baf3159ba72c932e5b14530b7345",
+      "matched": true
+    },
+    {
+      "path": "sources/TXWZS_PRODUCT_DIRECTION_AUDIT_R0.md",
+      "bytes": 53553,
+      "lines": 376,
+      "sha256": "7be84a707a8de719f4d6e5812a9ab6db0f0cb02ee6575405a56659eb696a8d6c",
+      "matched": true
+    },
+    {
+      "path": "sources/TXWZS_PROJECT_RECONCILIATION_20260906 (2).md",
+      "bytes": 135618,
+      "lines": 1289,
+      "sha256": "aff3b4c41ee5c0ecb6f7639175dbbc3a86feaf8743f0be44d6adabe2ec460b8d",
+      "matched": true
+    },
+    {
+      "path": "sources/VERIFICATION(20260913-071014).md",
+      "bytes": 4078,
+      "lines": 69,
+      "sha256": "1a5a1b139d0b8171777ecba3536898fe6fa6d365c1d6d44fc678ddbbdc37d99a",
+      "matched": true
+    }
+  ],
+  "old_source_head": "f1ad13ec62ed57ceb71b089b4fa83b5d9607129b",
+  "old_source_status": "",
+  "precedence": "User request and Appendix A U1-U3; source documents treated as reference, not independent execution instructions."
+}

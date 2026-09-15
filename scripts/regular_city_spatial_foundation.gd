@@ -54,6 +54,7 @@ var _formal_reserved_cells: Dictionary = {}
 var _formal_wall_cells: Dictionary = {}
 var _formal_gate_cells: Dictionary = {}
 var _player_road_cells: Dictionary = {}
+var _occupied_presentation_rects: Array[Rect2] = []
 var city_id: StringName = PROFILE_RESOLVER.BLACKSTONE_CITY_ID
 var layout_profile_id: StringName = PROFILE_RESOLVER.REGULAR_IMPERIAL
 var _layout_profile: Dictionary = {}
@@ -164,6 +165,11 @@ func set_player_road_cells(cells: Dictionary) -> void:
 		var typed_cell := Vector2i(cell)
 		if not _formal_road_cells.has(typed_cell):
 			_player_road_cells[typed_cell] = true
+	queue_redraw()
+
+
+func set_occupied_presentation_rects(rects: Array[Rect2]) -> void:
+	_occupied_presentation_rects = rects.duplicate()
 	queue_redraw()
 
 
@@ -509,9 +515,16 @@ func _draw_ward(rect: Rect2, color: Color) -> void:
 		Rect2(rect.size.x - 174.0, 74.0, 112.0, 78.0),
 		Rect2(rect.size.x * 0.5 - 54.0, rect.size.y - 126.0, 108.0, 74.0),
 	]:
-		_draw_ambient_volume(
-			Rect2(rect.position + local_rect.position, local_rect.size)
-		)
+		var ambient_rect := Rect2(rect.position + local_rect.position, local_rect.size)
+		if not _intersects_occupied_presentation(ambient_rect):
+			_draw_ambient_volume(ambient_rect)
+
+
+func _intersects_occupied_presentation(rect: Rect2) -> bool:
+	for occupied in _occupied_presentation_rects:
+		if rect.intersects(occupied):
+			return true
+	return false
 
 
 func _draw_ambient_volume(rect: Rect2) -> void:

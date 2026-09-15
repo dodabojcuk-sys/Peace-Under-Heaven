@@ -1,0 +1,55 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+REGULAR_FAULT_WORKER_CONSTRUCTION_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_FAULT_CONSTRUCTION paid_partial=true rollback_exact=true paused=true no_half_scope=true no_half_runtime=true completed_after_resume=true before_progress=88000 changed=[]
+PASS: paid farm remains genuinely under construction before its failing checkpoint
+PASS: failed completion checkpoint restores the entire last saved paid construction snapshot and pauses
+PASS: clearing the hook and resuming completes the same farm only through a successful checkpoint
+REGULAR_CAMPAIGN_R1_FAULTS PASS checks=3
+
+PASS: construction tick-fault worker exits only after all rollback assertions pass
+REGULAR_FAULT_WORKER_PRESSURE_PROBE_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_FAULT_PRESSURE_PROBE departed=true pre_stage_seconds=2805
+PASS: normal low-food simulation finds its first pressure-stage checkpoint
+REGULAR_CAMPAIGN_R1_FAULTS PASS checks=1
+
+PASS: pressure_probe tick-fault worker exits only after all rollback assertions pass
+REGULAR_FAULT_WORKER_PRESSURE_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_FAULT_PRESSURE departed=true pre_stage_seconds=2805 before_stage=0 rollback_exact=true paused=true no_half_stage=true resumed_stage=1
+PASS: finite eight-food departure reaches the authored first pressure boundary from stage zero
+PASS: failed pressure-stage checkpoint publishes no elapsed-time or pressure half state
+PASS: the same successful 15-second checkpoint advances the pressure stage after explicit resume
+REGULAR_CAMPAIGN_R1_FAULTS PASS checks=3
+
+PASS: pressure tick-fault worker exits only after all rollback assertions pass
+REGULAR_FAULT_WORKER_COMBAT_PROBE_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_FAULT_COMBAT_PROBE departed=true move=true pre_loss_seconds=780
+PASS: normal Redcliff command finds its next real-combat-loss checkpoint
+REGULAR_CAMPAIGN_R1_FAULTS PASS checks=1
+
+PASS: combat_probe tick-fault worker exits only after all rollback assertions pass
+REGULAR_FAULT_WORKER_COMBAT_OUTPUT
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+REGULAR_FAULT_COMBAT departed=true move=true pre_loss_seconds=780 before_losses=0 rollback_exact=true paused=true no_half_losses=true resumed_losses=4
+PASS: normal Redcliff command exposes a deterministic next real-combat-loss checkpoint
+PASS: failed combat checkpoint restores army, war and casualty authority with no published loss
+PASS: the same successful checkpoint applies the observed real combat loss once
+REGULAR_CAMPAIGN_R1_FAULTS PASS checks=3
+
+PASS: combat tick-fault worker exits only after all rollback assertions pass
+REGULAR_CAMPAIGN_R1_FAULTS PASS checks=5
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN

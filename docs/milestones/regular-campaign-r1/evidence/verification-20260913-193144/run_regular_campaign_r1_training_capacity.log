@@ -1,0 +1,8 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+TRAINING_CAPACITY_SYNTHETIC_FIXTURE farms=8,9 garrison=20 departure=true accepted=true settled=true scoped_food=35
+PASS: a real home farm, settled future residents, and the full original garrison start the capacity boundary journey
+PASS: home training stops at the 50-member recruitment/command budget minus the 20-member return reservation
+PASS: the reserved return capacity lets normal confirmation settle all original soldiers without a permanent queue deadlock
+REGULAR_CAMPAIGN_R1_TRAINING_CAPACITY PASS assertions=3

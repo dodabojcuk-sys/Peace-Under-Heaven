@@ -8,8 +8,13 @@ const SCENE_TITLE := "TITLE"
 const KNOWN_SCENES := [SCENE_TITLE, SCENE_CITY, SCENE_BATTLE_C0]
 const CAMPAIGN_START_CONTINUE := &"CONTINUE"
 const CAMPAIGN_START_NEW := &"NEW"
+## Ephemeral title-to-city routing only.  This flag is deliberately consumed
+## before persistence starts and is never parsed from, or recorded in, a save.
+const CAMPAIGN_START_REGULAR := &"REGULAR"
 const SAVE_DIRECTORY_ARGUMENT_PREFIX := "--txwzs-v5-save-dir="
 const CANDIDATE_VERSION_FORMAL_R1 := "FORMAL-CANDIDATE-R1"
+const CANDIDATE_VERSION_REGULAR_R1 := "REGULAR-CAMPAIGN-R1"
+const CANDIDATE_VERSION_REGULAR_R1A := "REGULAR-CAMPAIGN-R1A"
 
 var current_identity: Dictionary = {}
 var current_title := ""
@@ -72,7 +77,11 @@ func _detect_current_scene_label() -> String:
 
 
 func request_campaign_start(mode: StringName) -> bool:
-	if mode not in [CAMPAIGN_START_CONTINUE, CAMPAIGN_START_NEW]:
+	if mode not in [
+		CAMPAIGN_START_CONTINUE,
+		CAMPAIGN_START_NEW,
+		CAMPAIGN_START_REGULAR,
+	]:
 		return false
 	_pending_campaign_start_mode = mode
 	return true
@@ -124,7 +133,7 @@ static func parse_identity(
 	var identified := (
 		String(values.launcher) == "1"
 		and scene in KNOWN_SCENES
-		and String(values.candidate) == CANDIDATE_VERSION_FORMAL_R1
+		and String(values.candidate) in [CANDIDATE_VERSION_FORMAL_R1, CANDIDATE_VERSION_REGULAR_R1, CANDIDATE_VERSION_REGULAR_R1A]
 		and not String(values.branch).is_empty()
 		and commit.length() in [7, 40]
 		and commit.is_valid_hex_number()

@@ -117,6 +117,15 @@ const POPULATION_RECOVERY_STATE = preload(
 )
 const CITY_GOVERNANCE_STATE = preload("res://scripts/state/city_governance_state.gd")
 const CITY_STRATEGY_STATE = preload("res://scripts/state/city_strategy_state.gd")
+const REGULAR_CAMPAIGN_RUNTIME = preload(
+	"res://scripts/regular_campaign/regular_campaign_runtime.gd"
+)
+const REGULAR_CAMPAIGN_VIEW = preload(
+	"res://scripts/regular_campaign/regular_campaign_view.gd"
+)
+const REGULAR_CAMPAIGN_CITY_HOST = preload(
+	"res://scripts/regular_campaign/regular_campaign_city_host.gd"
+)
 const CITY_GOVERNANCE_RULES: CityGovernanceRules = preload(
 	"res://resources/war/blackstone_city_governance_r0.tres"
 )
@@ -546,6 +555,17 @@ var _war_loop_state: WarLoopState = WAR_LOOP_STATE.new()
 var _war_loop_frame_remainder_milliseconds := 0.0
 var _macro_march_frame_remainders_by_order: Dictionary = {}
 var _macro_march_traces_for_war_step: Dictionary = {}
+# The regular campaign remains controller-owned state. Its CanvasLayer is only
+# a projection; it never owns time, resources, personnel, or persistence.
+var _regular_campaign: RegularCampaignRuntime
+var _regular_campaign_canvas: CanvasLayer
+var _regular_campaign_view: RegularCampaignView
+var _regular_campaign_city_host: RegularCampaignCityHost
+var _regular_campaign_city_active := false
+var _regular_campaign_selected_plot := -1
+var _permanent_placed_buildings_visible := true
+var _regular_campaign_host_refresh_accum := 0.0
+var _regular_campaign_road_cells: Dictionary = {}
 # Test-only fault seams verify Field transaction rollback after an existing
 # NationState commit. They are never serialized and production code has no caller.
 var _field_supply_fault_for_test: StringName = &""
@@ -601,7 +621,7 @@ func _ready() -> void:
 	confirm_road_button.pressed.connect(confirm_road_preview)
 	cancel_placement_button.pressed.connect(cancel_placing)
 	build_slot_primary_button.pressed.connect(_on_build_slot_primary_pressed)
-	build_slot_cancel_button.pressed.connect(cancel_build_project)
+	build_slot_cancel_button.pressed.connect(_on_build_slot_cancel_requested)
 	pause_button.pressed.connect(toggle_city_time_paused)
 	time_speed_option.item_selected.connect(_on_time_speed_selected)
 	recruit_button.pressed.connect(queue_training)
@@ -676,6 +696,190 @@ func get_active_city_id() -> StringName:
 
 func get_active_city_name() -> String:
 	return CITY_LAYOUT_PROFILE_RESOLVER.city_name(_active_city_id)
+
+
+## Starts the authored regular-campaign state before the V5 coordinator creates
+## a new generation. The title and view only request this transition; all
+## durable facts remain on this controller and its existing authorities.
+func initialize_regular_campaign() -> bool:
+	if _regular_campaign != null and _regular_campaign.enabled():
+		return true
+	if (
+		not _active_battle_reservation.is_empty()
+		or not _active_army_dispatch_reservation.is_empty()
+		or not _active_army_encounter.is_empty()
+	):
+		return false
+	_regular_campaign = REGULAR_CAMPAIGN_RUNTIME.new(self)
+	_regular_campaign.initialize_new()
+	return _regular_campaign.enabled()
+
+
+## Shows the campaign surface selected by the persisted view context. Theater
+## and preparation use the campaign overlay; a licensed wartime city uses the
+## established MapWorld, camera, selection and UI shell below it.
+func show_regular_campaign() -> bool:
+	if _regular_campaign == null or not _regular_campaign.enabled():
+		return false
+	var context := Dictionary(_regular_campaign.get_read_model().get("view_context", {}))
+	if StringName(context.get("surface", &"THEATER")) == &"CITY":
+		return show_regular_campaign_city()
+	deactivate_regular_campaign_city()
+	if not is_instance_valid(_regular_campaign_canvas):
+		_regular_campaign_canvas = CanvasLayer.new()
+		_regular_campaign_canvas.name = "RegularCampaignCanvas"
+		_regular_campaign_canvas.layer = 20
+		_regular_campaign_view = REGULAR_CAMPAIGN_VIEW.new()
+		_regular_campaign_view.name = "RegularCampaignView"
+		_regular_campaign_canvas.add_child(_regular_campaign_view)
+		var scene := get_tree().current_scene
+		if scene == null:
+			_regular_campaign_canvas.queue_free()
+			_regular_campaign_canvas = null
+			_regular_campaign_view = null
+			return false
+		scene.add_child(_regular_campaign_canvas)
+		_regular_campaign_view.configure(_regular_campaign, self)
+		_regular_campaign_view.campaign_closed.connect(_on_regular_campaign_view_closed)
+	_regular_campaign_view.show_campaign()
+	return true
+
+
+func show_regular_campaign_city() -> bool:
+	if _regular_campaign == null or not _regular_campaign.enabled():
+		return false
+	var model := _regular_campaign.get_read_model()
+	var context := Dictionary(model.get("view_context", {}))
+	if StringName(context.get("surface", &"")) != &"CITY":
+		return false
+	if is_instance_valid(_regular_campaign_view):
+		_regular_campaign_view.hide()
+	if not is_instance_valid(_regular_campaign_city_host):
+		_regular_campaign_city_host = REGULAR_CAMPAIGN_CITY_HOST.new()
+		_regular_campaign_city_host.name = "RegularCampaignCityHost"
+		_regular_campaign_city_host.z_index = 3
+		map_world.add_child(_regular_campaign_city_host)
+	if not _regular_campaign_city_active:
+		_permanent_placed_buildings_visible = placed_buildings.visible
+	placed_buildings.visible = false
+	_regular_campaign_city_active = true
+	_regular_campaign_host_refresh_accum = 0.0
+	_regular_campaign_city_host.visible = true
+	_regular_campaign_city_host.sync(model)
+	_regular_campaign_city_host.set_selected_plot(_regular_campaign_selected_plot)
+	# R1B：可建设空地的编号虚线框在战时内城常显——玩家随时能看到“编号的空地”在哪里。
+	_regular_campaign_city_host.set_buildable_plots_visible(true)
+	_sync_regular_campaign_city_roads(model)
+	var root := get_parent()
+	if root != null and root.has_method("present_regular_campaign_city"):
+		root.call("present_regular_campaign_city")
+	_refresh_city_ui()
+	city_state_changed.emit()
+	construction_presentation_changed.emit()
+	return true
+
+
+func deactivate_regular_campaign_city() -> void:
+	if not _regular_campaign_city_active:
+		return
+	var selection := get_parent().get_node_or_null("BuildingSelectionController")
+	if selection != null and selection.has_method("clear_selection"):
+		selection.call("clear_selection")
+	_regular_campaign_city_active = false
+	_regular_campaign_selected_plot = -1
+	if is_instance_valid(_regular_campaign_city_host):
+		_regular_campaign_city_host.visible = false
+	placed_buildings.visible = _permanent_placed_buildings_visible
+	city_spatial_foundation.set_player_road_cells(get_player_road_cells())
+	var root := get_parent()
+	if root != null and root.has_method("present_permanent_city"):
+		root.call("present_permanent_city")
+	cancel_build_interaction()
+	_refresh_city_ui()
+	city_state_changed.emit()
+	construction_presentation_changed.emit()
+
+
+func show_regular_campaign_theater() -> bool:
+	if not _is_regular_campaign_active():
+		return false
+	if StringName(_regular_campaign.data.get("phase", &"")) == &"PREPARATION":
+		return show_regular_campaign()
+	var result := _regular_campaign.command(&"view", {"surface": &"THEATER"})
+	if not bool(result.get("success", false)):
+		return false
+	deactivate_regular_campaign_city()
+	return show_regular_campaign()
+
+
+func show_regular_campaign_home_entry() -> bool:
+	if not _is_regular_campaign_active():
+		return false
+	deactivate_regular_campaign_city()
+	if is_instance_valid(_regular_campaign_view):
+		_regular_campaign_view.hide()
+	var root := get_parent()
+	if root != null and root.has_method("present_regular_campaign_home_entry"):
+		root.call("present_regular_campaign_home_entry")
+	_refresh_city_ui()
+	city_state_changed.emit()
+	return true
+
+
+func is_regular_campaign_city_active() -> bool:
+	return _regular_campaign_city_active
+
+
+func get_regular_campaign_read_model() -> Dictionary:
+	if not _is_regular_campaign_active():
+		return {}
+	return _regular_campaign.get_read_model()
+
+
+func refresh_regular_campaign_city() -> void:
+	if not _regular_campaign_city_active or not is_instance_valid(_regular_campaign_city_host):
+		return
+	var model := _regular_campaign.get_read_model()
+	_regular_campaign_city_host.sync(model)
+	_sync_regular_campaign_city_roads(model)
+	_refresh_city_ui()
+
+
+func _sync_regular_campaign_city_roads(model: Dictionary) -> void:
+	var road_cells: Dictionary = {}
+	for value in Array(Dictionary(model.get("local", {})).get("buildings", [])):
+		var record := Dictionary(value)
+		if not bool(record.get("connected", false)):
+			continue
+		var plot := int(record.get("plot", -1))
+		if plot < 0 or plot >= REGULAR_CAMPAIGN_CITY_HOST.PLOT_CELLS.size():
+			continue
+		var cell := Vector2i(REGULAR_CAMPAIGN_CITY_HOST.PLOT_CELLS[plot])
+		var start_y := cell.y + Vector2i(REGULAR_CAMPAIGN_CITY_HOST.PLOT_FOOTPRINTS[plot]).y
+		var target_y := 13 if cell.y < 13 else 14
+		var step := 1 if start_y <= target_y else -1
+		for y in range(start_y, target_y + step, step):
+			road_cells[Vector2i(cell.x + 1, y)] = true
+	city_spatial_foundation.set_player_road_cells(road_cells)
+	_regular_campaign_road_cells = road_cells
+
+
+func is_regular_campaign_view_visible() -> bool:
+	return (
+		_is_regular_campaign_active()
+		and is_instance_valid(_regular_campaign_canvas)
+		and _regular_campaign_canvas.visible
+		and is_instance_valid(_regular_campaign_view)
+		and _regular_campaign_view.visible
+	)
+
+
+func _on_regular_campaign_view_closed() -> void:
+	_refresh_city_ui()
+
+
+func _is_regular_campaign_active() -> bool:
+	return _regular_campaign != null and _regular_campaign.enabled()
 
 
 func get_layout_profile_id() -> StringName:
@@ -973,6 +1177,14 @@ func _commit_national_resource_targets(
 
 
 func _process(delta: float) -> void:
+	if _is_regular_campaign_active():
+		_regular_campaign.advance(delta)
+		if _regular_campaign_city_active:
+			_regular_campaign_host_refresh_accum += delta
+			if _regular_campaign_host_refresh_accum >= 0.25:
+				_regular_campaign_host_refresh_accum = 0.0
+				refresh_regular_campaign_city()
+		return
 	advance_city_time(delta * city_time_speed)
 	var macro_before := get_macro_march_armies()
 	_advance_all_macro_marches_seconds(delta)
@@ -1134,6 +1346,16 @@ func _build_slot_result(
 
 
 func open_construction_menu() -> void:
+	if _regular_campaign_city_active:
+		state = ConstructionState.CHOOSING_TEMPLATE
+		_selected_definition = null
+		_refresh_construction_catalog_ui()
+		_sync_construction_ui()
+		if is_instance_valid(_regular_campaign_city_host):
+			_regular_campaign_city_host.set_buildable_plots_visible(true)
+		construction_interaction_started.emit()
+		construction_presentation_changed.emit()
+		return
 	if is_choosing_template() or is_city_action_locked_for_battle():
 		return
 	state = ConstructionState.CHOOSING_TEMPLATE
@@ -1283,6 +1505,8 @@ func cancel_build_interaction() -> void:
 	preview_conflict_mark.visible = false
 	_reset_road_draft()
 	_sync_construction_ui()
+	if _regular_campaign_city_active and is_instance_valid(_regular_campaign_city_host):
+		_regular_campaign_city_host.set_buildable_plots_visible(false)
 	construction_presentation_changed.emit()
 
 
@@ -2034,6 +2258,8 @@ func get_road_draft_snapshot() -> Dictionary:
 
 
 func get_player_road_cells() -> Dictionary:
+	if _regular_campaign_city_active:
+		return _regular_campaign_road_cells.duplicate()
 	var result: Dictionary = {}
 	for placement_id in _placement_order:
 		var record: Dictionary = _building_records_by_id.get(placement_id, {})
@@ -2327,7 +2553,7 @@ func advance_city_time(simulation_delta: float) -> int:
 	if (
 		simulation_delta <= 0.0
 		or city_time_paused
-		or is_first_war_time_blocked()
+		or (not _is_regular_campaign_active() and is_first_war_time_blocked())
 	):
 		return 0
 
@@ -2655,6 +2881,9 @@ func get_expedition_preparation_model(
 
 
 func open_expedition_preparation() -> bool:
+	if _is_regular_campaign_active():
+		_show_placement_feedback("常规战役已接管出征；请在战役界面调整部队")
+		return false
 	if not can_enter_first_war():
 		_show_placement_feedback(get_first_war_entry_blocked_reason())
 		return false
@@ -2930,6 +3159,8 @@ func begin_wartime_defense_attempt(formation_ids: Array) -> Dictionary:
 
 
 func enter_wartime_defense_battle(formation_ids: Array = []) -> bool:
+	if _is_regular_campaign_active():
+		return false
 	if _expedition_attempt.is_empty():
 		_ensure_war_loop_initialized()
 		var invasion := _war_loop_state.field_tactics.get_blackstone_invasion()
@@ -3323,6 +3554,12 @@ func _on_campaign_status_input(event: InputEvent) -> void:
 
 
 func _on_current_mainline_entry_pressed() -> void:
+	if _is_regular_campaign_active():
+		if _regular_campaign_city_active:
+			show_regular_campaign_theater()
+		else:
+			show_regular_campaign()
+		return
 	if has_resumable_expedition():
 		resume_persisted_expedition()
 		return
@@ -3341,6 +3578,8 @@ func get_formal_battle_scene() -> C0BattleGraybox:
 
 
 func enter_macro_siege_wartime(army_id: StringName, city_id: StringName) -> bool:
+	if _is_regular_campaign_active():
+		return false
 	_ensure_war_loop_initialized()
 	if is_instance_valid(_formal_battle_scene) or army_id == &"" or city_id == &"":
 		return false
@@ -3485,6 +3724,8 @@ func hide_noticeboard_panel() -> void:
 func can_start_noticeboard_mission(mission_id: StringName) -> bool:
 	var mission := get_noticeboard_mission_definition(mission_id)
 	return (
+		not _is_regular_campaign_active()
+		and
 		mission != null
 		and not uses_blackstone_campaign()
 		and mission.is_valid()
@@ -3499,6 +3740,8 @@ func can_start_noticeboard_mission(mission_id: StringName) -> bool:
 
 
 func start_noticeboard_mission(mission_id: StringName) -> bool:
+	if _is_regular_campaign_active():
+		return false
 	if not can_start_noticeboard_mission(mission_id):
 		return false
 	var mission := get_noticeboard_mission_definition(mission_id)
@@ -3707,7 +3950,8 @@ func _advance_day_boundary(
 	if not _can_complete_training_for_day(current_day + 1):
 		return false
 	current_day += 1
-	_current_mainline_level.advance_to_day(current_day)
+	if not _is_regular_campaign_active():
+		_current_mainline_level.advance_to_day(current_day)
 	var construction_completed := _complete_construction_for_current_day()
 	var maintenance_required := get_maintenance_food_cost()
 	var maintenance_paid := mini(food, maintenance_required)
@@ -3838,15 +4082,16 @@ func _advance_day_boundary(
 		"refugee_arrivals": _count_refugees_arriving_on_day(current_day),
 		"health_permille": _city_governance.health_permille,
 	}
-	_apply_mainline_pressure_for_current_day()
-	_update_threat_for_current_day(true)
+	if not _is_regular_campaign_active():
+		_apply_mainline_pressure_for_current_day()
+		_update_threat_for_current_day(true)
 	_clear_expired_production_stops()
-	if current_day == 9:
+	if not _is_regular_campaign_active() and current_day == 9:
 		_capture_readiness_checkpoint()
 	_rebuild_daily_report()
 	if accepted_wood < wood_income or accepted_food < food_income:
 		last_daily_report += "（容量封顶）"
-	if not allow_battle_settlement:
+	if not _is_regular_campaign_active() and not allow_battle_settlement:
 		_update_first_war_state_for_current_day()
 	var strategy_before := _city_strategy.get_snapshot()
 	if _city_strategy.expire_support_for_day(current_day) and not _persist_city_strategy_checkpoint():
@@ -3944,6 +4189,9 @@ func _can_complete_training_for_day(boundary_day: int) -> bool:
 	if future_total > get_effective_command_limit():
 		_last_training_failure_id = &"TRAINING_COMPLETION_COMMAND_LIMIT"
 		return false
+	if future_total > _garrison_training_capacity():
+		_last_training_failure_id = &"TRAINING_COMPLETION_RETURN_RESERVE"
+		return false
 	return true
 
 
@@ -3951,8 +4199,10 @@ func _complete_training_for_current_day() -> int:
 	var order := _training_queue.get_due_order(current_day)
 	if order.is_empty():
 		return 0
+	if not _regular_training_completion_ready(StringName(order.order_id)):
+		return 0
 	var quantity := int(order.quantity)
-	var capacity := mini(recruitment_cap, get_effective_command_limit())
+	var capacity := _garrison_training_capacity()
 	var garrison_before := _garrison_state.get_persistence_snapshot()
 	var queue_before := _training_queue.get_snapshot()
 	var population_before := _population_recovery.get_snapshot()
@@ -3975,8 +4225,63 @@ func _complete_training_for_current_day() -> int:
 		_population_recovery.restore_snapshot(population_before)
 		_last_training_failure_id = &"TRAINING_COMPLETION_COMMIT"
 		return 0
+	_clear_regular_training_progress(StringName(order.order_id))
 	_last_training_failure_id = &""
 	return quantity
+
+
+## Home recruitment retains its existing paid queue and population reservation.
+## During a regular campaign only its completion progress is weighted by the
+## runtime's read-only home-food forecast and pressure state; a slow batch does
+## not block the day boundary or spend its food a second time.
+func _regular_training_completion_ready(order_id: StringName) -> bool:
+	if not _is_regular_campaign_active():
+		return true
+	var progress_by_order: Dictionary = Dictionary(
+		_regular_campaign.data.get("home_training_progress", {})
+	).duplicate(true)
+	var progress := maxi(int(progress_by_order.get(order_id, 0)), 0)
+	progress += get_pressure_modifier_permille(&"basic_training")
+	if progress < 1000:
+		progress_by_order[order_id] = progress
+		_regular_campaign.data["home_training_progress"] = progress_by_order
+		return false
+	progress_by_order.erase(order_id)
+	_regular_campaign.data["home_training_progress"] = progress_by_order
+	return true
+
+
+func _clear_regular_training_progress(order_id: StringName) -> void:
+	if not _is_regular_campaign_active():
+		return
+	var progress_by_order: Dictionary = Dictionary(
+		_regular_campaign.data.get("home_training_progress", {})
+	).duplicate(true)
+	if progress_by_order.erase(order_id):
+		_regular_campaign.data["home_training_progress"] = progress_by_order
+
+
+func _garrison_formation_capacity() -> int:
+	var capacity := 0
+	for formation_value in _garrison_state.get_formations():
+		capacity += int(Dictionary(formation_value).get("max_members", 0))
+	return capacity
+
+
+## Training remains inside the existing recruitment and command budgets. A
+## regular attempt additionally reserves room for home-origin living members
+## and wounded who will later enter this garrison through treatment.
+func _garrison_training_capacity() -> int:
+	var total_capacity := mini(
+		recruitment_cap,
+		mini(get_effective_command_limit(), _garrison_formation_capacity())
+	)
+	if not _is_regular_campaign_active():
+		return total_capacity
+	return maxi(
+		0,
+		total_capacity - _regular_campaign.home_return_capacity_reservation()
+	)
 
 
 func _complete_construction_for_current_day() -> int:
@@ -4014,7 +4319,10 @@ func _advance_construction_tick() -> void:
 			continue
 		var required := int(record.construction_required_milliseconds)
 		var progress := int(record.construction_progress_milliseconds)
-		var modifier := floori(float(get_pressure_modifier_permille(&"construction") * get_workforce_modifier_permille(&"construction")) / 1000.0)
+		var modifier := floori(float(
+			_regular_construction_modifier_permille(record)
+			* get_workforce_modifier_permille(&"construction")
+		) / 1000.0)
 		if modifier <= 0:
 			continue
 		var progress_delta := maxi(
@@ -4083,7 +4391,7 @@ func _advance_building_upgrade_tick(placement_id: int, record: Dictionary) -> vo
 	var required := maxi(int(record.construction_required_milliseconds), 1)
 	var progress := int(record.construction_progress_milliseconds)
 	var modifier := floori(float(
-		get_pressure_modifier_permille(&"construction")
+		_regular_construction_modifier_permille(record)
 		* get_workforce_modifier_permille(&"construction")
 	) / 1000.0)
 	if modifier <= 0:
@@ -4165,7 +4473,11 @@ func _get_build_slot_next_payment() -> Dictionary:
 			"missing_ids": [],
 			"shortages": [],
 		}
-	var modifier := floori(float(get_pressure_modifier_permille(&"construction") * get_workforce_modifier_permille(&"construction")) / 1000.0)
+	var modifier := floori(float(
+		_regular_construction_modifier_permille({
+			"definition_id": StringName(_build_slot.get("definition_id", &"")),
+		}) * get_workforce_modifier_permille(&"construction")
+	) / 1000.0)
 	if modifier <= 0:
 		return {
 			"next_progress": progress,
@@ -4399,7 +4711,9 @@ func _get_build_slot_eta_text() -> String:
 		return "恢复时间后重新计算"
 	if slot_state != BUILD_SLOT_PRODUCING:
 		return ""
-	var modifier := maxi(get_pressure_modifier_permille(&"construction"), 1)
+	var modifier := maxi(_regular_construction_modifier_permille({
+		"definition_id": StringName(_build_slot.get("definition_id", &"")),
+	}), 1)
 	var remaining_effective := maxi(
 		int(_build_slot.required_milliseconds)
 		- int(_build_slot.progress_milliseconds),
@@ -4460,6 +4774,27 @@ func set_construction_priority(placement_id: int, priority: int) -> bool:
 
 
 func get_pressure_modifier_permille(channel_id: StringName) -> int:
+	if _is_regular_campaign_active():
+		var regular: Dictionary = _regular_campaign.data
+		var pressure: Dictionary = Dictionary(regular.get("pressure", {}))
+		if channel_id == &"construction":
+			return clampi(int(pressure.get("construction_permille", 1000)), 0, 1000)
+		if channel_id == &"population_growth":
+			return clampi(int(pressure.get("growth_permille", 1000)), 0, 1000)
+		if channel_id == &"basic_training":
+			var forecast: Dictionary = _regular_campaign.home_food_forecast()
+			return clampi(
+				mini(
+					int(pressure.get("basic_training_permille", 1000)),
+					int(forecast.get("training_permille", 1000))
+				),
+				0,
+				1000
+			)
+		# A warning slows new growth/training. It never applies a second
+		# production penalty to home farms, which would manufacture the famine
+		# the forecast is meant to warn about.
+		return 1000
 	var value := 1000
 	if not is_campaign_pressure_cleared():
 		if channel_id == &"construction":
@@ -4482,6 +4817,46 @@ func get_pressure_modifier_permille(channel_id: StringName) -> int:
 	]:
 		value = maxi(value, MAINLINE_PRESSURE_PROFILE.essential_floor_permille)
 	return value
+
+
+func _regular_construction_modifier_permille(record: Dictionary) -> int:
+	if not _is_regular_campaign_active():
+		return get_pressure_modifier_permille(&"construction")
+	var pressure: Dictionary = Dictionary(_regular_campaign.data.get("pressure", {}))
+	var nonessential := clampi(
+		int(pressure.get("nonessential_construction_permille", 1000)),
+		0,
+		1000
+	)
+	if nonessential > 0:
+		return nonessential
+	var definition_id := StringName(record.get("upgrade_target_definition_id", &""))
+	if definition_id == &"":
+		definition_id = StringName(record.get("definition_id", &""))
+	if String(definition_id).begins_with("building.farm."):
+		var forecast: Dictionary = _regular_campaign.home_food_forecast()
+		if _regular_operational_building_count("building.farm.") < 2 and int(forecast.get("yield", 0)) < int(forecast.get("consumption", 0)):
+			return 350
+	if String(definition_id).begins_with("building.clinic."):
+		if _regular_operational_building_count("building.clinic.") < 1 and _population_recovery.wounded > 0:
+			return 350
+	if String(definition_id).begins_with("building.logging_camp."):
+		if _regular_operational_building_count("building.logging_camp.") < 1 and wood < 45:
+			return 350
+	return 0
+
+
+func _regular_operational_building_count(definition_prefix: String) -> int:
+	var count := 0
+	for placement_id in _placement_order:
+		var record: Dictionary = _building_records_by_id.get(placement_id, {})
+		if (
+			not record.is_empty()
+			and String(record.get("definition_id", &"")).begins_with(definition_prefix)
+			and is_building_operational(placement_id)
+		):
+			count += 1
+	return count
 
 
 func _get_production_amount(
@@ -4621,6 +4996,8 @@ func _current_military_population() -> int:
 			continue
 		for count in Dictionary(army.get("units_by_definition_id", {})).values():
 			total += int(count)
+	if _is_regular_campaign_active():
+		total += _regular_campaign.population_offset()
 	return total
 
 
@@ -4764,7 +5141,12 @@ func _count_refugees_arriving_on_day(day: int) -> int:
 func _advance_city_demography(food_ok: bool, housing_surplus: int) -> Dictionary:
 	var result := {"births": 0, "matured": 0, "aged": 0, "deaths": 0}
 	if food_ok and housing_surplus > 0 and _city_governance.health_permille >= CITY_GOVERNANCE_RULES.growth_health_threshold_permille and _population_recovery.resident_sick == 0:
-		_population_recovery.growth_progress += CITY_GOVERNANCE_RULES.growth_progress_per_day
+		var growth_progress := floori(
+			float(CITY_GOVERNANCE_RULES.growth_progress_per_day)
+			* float(get_pressure_modifier_permille(&"population_growth"))
+			/ 1000.0
+		)
+		_population_recovery.growth_progress += growth_progress
 		if _population_recovery.growth_progress >= CITY_GOVERNANCE_RULES.birth_progress_required and _population_recovery.record_birth():
 			_population_recovery.growth_progress -= CITY_GOVERNANCE_RULES.birth_progress_required
 			result.births = 1
@@ -5415,6 +5797,12 @@ func export_v5_campaign_snapshot() -> Dictionary:
 		"population_recovery": _population_recovery.get_snapshot(),
 		"city_governance": _city_governance.get_snapshot(),
 		"city_strategy": _city_strategy.get_snapshot(),
+		"regular_campaign": (
+			_regular_campaign.get_snapshot()
+			if _regular_campaign != null and _regular_campaign.enabled()
+			else {}
+		),
+		"scoped_resources": _nation_state.get_scoped_resources(),
 	}
 	var validation := validate_v5_campaign_snapshot(snapshot)
 	if not bool(validation.valid):
@@ -5534,6 +5922,24 @@ func validate_v5_campaign_snapshot(
 			continue
 		for count_value in Dictionary(candidate_army.get("units_by_definition_id", {})).values():
 			candidate_military += int(count_value)
+	var regular_campaign: Dictionary = Dictionary(candidate.get("regular_campaign", {}))
+	var regular_validation: Dictionary = RegularCampaignRuntime.validate_snapshot(
+		regular_campaign,
+		Dictionary(candidate.get("scoped_resources", {})),
+		Dictionary(candidate.army_registry),
+		false,
+		int(Dictionary(candidate.population_recovery).get("wounded", 0))
+	)
+	if not bool(regular_validation.get("valid", false)):
+		return {
+			"valid": false,
+			"error_id": &"INVALID_REGULAR_CAMPAIGN",
+			"error": str(regular_validation.get("error", "常规关卡快照非法")),
+		}
+	if not regular_campaign.is_empty():
+		candidate_military += RegularCampaignRuntime.snapshot_population_offset(
+			regular_campaign
+		)
 	var candidate_specialists := 0
 	for specialist_value in war_probe.field_tactics.specialists_by_id.values():
 		if bool(Dictionary(specialist_value).get("alive", false)):
@@ -5547,6 +5953,8 @@ func validate_v5_campaign_snapshot(
 		return sequence_validation
 	var mainline: Dictionary = candidate.mainline_level
 	if (
+		regular_campaign.is_empty()
+		and (
 		StringName(mainline.level_id) != MAINLINE_PRESSURE_PROFILE.level_id
 		or int(mainline.deadline_day) != MAINLINE_PRESSURE_PROFILE.deadline_day
 		or (
@@ -5555,6 +5963,7 @@ func validate_v5_campaign_snapshot(
 				!= MAINLINE_PRESSURE_PROFILE.get_stage_id(
 					int(candidate.city.current_day)
 				)
+		)
 		)
 	):
 		return {
@@ -6084,6 +6493,30 @@ func _apply_validated_v5_campaign_snapshot(
 			"error_id": &"ARMY_APPLY_FAILED",
 			"error": "ArmyRegistry 恢复失败",
 		}
+	if not _nation_state.hydrate_scoped_resources(
+		Dictionary(snapshot.get("scoped_resources", {}))
+	):
+		return {
+			"success": false,
+			"error_id": &"SCOPED_RESOURCES_APPLY_FAILED",
+			"error": "作用域资源恢复失败",
+		}
+	var restored_regular_campaign: Dictionary = Dictionary(
+		snapshot.get("regular_campaign", {})
+	)
+	if not restored_regular_campaign.is_empty():
+		# Select the regular theater before the WarLoop restore/ensure path can
+		# materialize legacy Blackstone patrol defaults.
+		if _regular_campaign == null:
+			_regular_campaign = REGULAR_CAMPAIGN_RUNTIME.new(self)
+		_regular_campaign.restore(restored_regular_campaign)
+	else:
+		if is_instance_valid(_regular_campaign_view):
+			_regular_campaign_view.hide()
+		_regular_campaign = null
+		# The theater selector is process-global; a legacy restore must reset it
+		# before WarLoop can query Blackstone points or patrol defaults.
+		MACRO_MARCH_THEATER.use_playable_definition()
 	if not _war_loop_state.restore_snapshot(snapshot.war_loop):
 		return {
 			"success": false,
@@ -6648,9 +7081,14 @@ func _register_runtime_placement_record(
 		total_costs[&"wood"] = definition.wood_cost
 	if construction_cost_enabled and definition.food_cost > 0:
 		total_costs[&"food"] = definition.food_cost
+	# A timed placement has not paid anything yet, but its ledger must retain a
+	# zero entry for every declared cost.  V5 uses matching key sets to prove
+	# that a cold restore cannot silently add or omit a resource obligation.
 	var paid_costs: Dictionary = {}
-	if starts_completed:
-		paid_costs = total_costs.duplicate(true)
+	for resource_id in total_costs:
+		paid_costs[resource_id] = (
+			int(total_costs[resource_id]) if starts_completed else 0
+		)
 	record.merge({
 		"placement_id": placement_id,
 		"placement_kind": definition.placement_kind,
@@ -7094,12 +7532,16 @@ func uses_blackstone_campaign() -> bool:
 
 
 func is_campaign_pressure_cleared() -> bool:
+	if _is_regular_campaign_active():
+		return _regular_campaign.data.phase == &"COMPLETED"
 	if uses_blackstone_campaign():
 		return _war_loop_state.is_level_cleared()
 	return _current_mainline_level.cleared
 
 
 func get_blackstone_campaign_status_text() -> String:
+	if _is_regular_campaign_active():
+		return _regular_campaign_status_text()
 	var invasion := get_blackstone_invasion_read_model()
 	var phase := StringName(invasion.get("phase", &""))
 	var threat := "准备期 · 第 %d 日预警 / 第 %d 日出发" % [int(invasion.get("warning_day", 4)), int(invasion.get("activation_day", 5))]
@@ -7116,6 +7558,177 @@ func get_blackstone_campaign_status_text() -> String:
 	if _war_loop_state.is_level_cleared():
 		objective = "双城目标达成 · 可继续经营、驻扎与续令"
 	return objective + "\n" + threat
+
+
+func _regular_campaign_status_text() -> String:
+	var phase := StringName(_regular_campaign.data.get("phase", &"PREPARATION"))
+	if _regular_campaign.data.phase == &"COMPLETED":
+		return "青原战役已完成 · 主线压力解除\n可继续经营、治疗并领取结算暂存物资"
+	if phase == &"PENDING":
+		return "青原战果待确认 · 暂离不会提交永久损失\n返回本关战区核对并确认结算"
+	var pressure: Dictionary = _regular_campaign.data.pressure
+	if phase == &"PREPARATION":
+		return "青原战役 · 常规关卡备战\n首批投入尚未确认，永久主城资产不会自动带入"
+	return "青原战役 · 主线 %d 分钟 · 压力 %d/4\n准备缓冲约 %d 分钟，按真实兵力、供粮和恢复调整" % [
+		int(_regular_campaign.data.mainline_elapsed_ms) / 60000,
+		int(pressure.get("stage", 0)),
+		int(pressure.get("promised_window_ms", 1800000)) / 60000,
+	]
+
+
+func get_regular_campaign_plot_at_screen_position(screen_position: Vector2) -> int:
+	if not _regular_campaign_city_active or not is_instance_valid(_regular_campaign_city_host):
+		return -1
+	var world_position := map_world.get_global_transform_with_canvas().affine_inverse() * screen_position
+	return _regular_campaign_city_host.get_plot_at_world_position(world_position)
+
+
+func select_regular_campaign_plot(plot: int) -> bool:
+	if not _regular_campaign_city_active or plot < 0:
+		return false
+	_regular_campaign_selected_plot = plot
+	_regular_campaign_city_host.set_selected_plot(plot)
+	open_construction_menu()
+	return true
+
+
+func select_regular_campaign_placement(placement_id: int) -> void:
+	if not _regular_campaign_city_active or not is_instance_valid(_regular_campaign_city_host):
+		return
+	var record := _regular_campaign_city_host.get_record(placement_id)
+	if record.is_empty():
+		return
+	_regular_campaign_selected_plot = int(record.get("plot", -1))
+	_regular_campaign_city_host.set_selected_plot(_regular_campaign_selected_plot)
+
+
+func regular_campaign_adjust_workers(placement_id: int, delta: int) -> Dictionary:
+	var record := get_building_record(placement_id)
+	if record.is_empty():
+		return {"success": false, "error": "建筑不存在"}
+	var next_count := clampi(int(record.get("workers", 0)) + delta, 0, 4)
+	var result := _regular_campaign.command(&"workers", {
+		"building_id": StringName(record.get("id", &"")),
+		"count": next_count,
+	})
+	refresh_regular_campaign_city()
+	city_state_changed.emit()
+	return result
+
+
+func regular_campaign_connect_building(placement_id: int) -> Dictionary:
+	var record := get_building_record(placement_id)
+	if record.is_empty():
+		return {"success": false, "error": "建筑不存在"}
+	var result := _regular_campaign.command(&"connect", {
+		"building_id": StringName(record.get("id", &"")),
+	})
+	refresh_regular_campaign_city()
+	city_state_changed.emit()
+	return result
+
+
+func _regular_campaign_start_build(kind: StringName) -> Dictionary:
+	if not _regular_campaign_city_active or _regular_campaign_selected_plot < 0:
+		return {"success": false, "error": "请先在城市地图选择空建设位"}
+	var result := _regular_campaign.command(&"build", {
+		"point_id": &"blackstone_city",
+		"kind": kind,
+		"plot": _regular_campaign_selected_plot,
+	})
+	if bool(result.get("success", false)):
+		state = ConstructionState.IDLE
+		if is_instance_valid(_regular_campaign_city_host):
+			_regular_campaign_city_host.set_buildable_plots_visible(false)
+	refresh_regular_campaign_city()
+	city_state_changed.emit()
+	construction_presentation_changed.emit()
+	return result
+
+
+func _get_regular_campaign_building_data(placement_id: int) -> Dictionary:
+	var record := get_building_record(placement_id)
+	if record.is_empty():
+		return {}
+	var kind := StringName(record.get("kind", &""))
+	var definition: BuildingDefinition = load(REGULAR_CAMPAIGN_RUNTIME.DEFINITIONS.get(kind, ""))
+	var constructing := StringName(record.get("lifecycle_state", &"")) == &"constructing"
+	return {
+		"level_text": "本关设施",
+		"next_level_text": "岗位 %d/4" % int(record.get("workers", 0)),
+		"investment_text": "木材 %d · 粮食 %d" % [int(record.get("wood_cost", definition.wood_cost if definition != null else 0)), int(record.get("food_cost", definition.food_cost if definition != null else 0))],
+		"duration_text": "施工 90 秒",
+		"effect_text": _regular_campaign_building_effect(kind, int(record.get("workers", 0))),
+		"prerequisite_text": "接通道路并安排岗位后生效",
+		"progress_text": "施工中" if constructing else "已建成",
+		"status_text": "施工中" if constructing else "已建成",
+		"upgrade_available": false,
+		"upgrade_active": false,
+		"construction_priority": CONSTRUCTION_PRIORITY_NORMAL,
+	}
+
+
+func _get_regular_campaign_building_detail_state(placement_id: int) -> Dictionary:
+	var record := get_building_record(placement_id)
+	if record.is_empty():
+		return {}
+	var constructing := StringName(record.get("lifecycle_state", &"")) == &"constructing"
+	var connected := bool(record.get("connected", false))
+	var workers := int(record.get("workers", 0))
+	var required := maxi(int(record.get("required_ms", 1)), 1)
+	var progress := clampi(int(record.get("progress_ms", required if not constructing else 0)), 0, required)
+	var primary_id := &"CONSTRUCTING" if constructing else (&"COMPLETED_DISCONNECTED" if not connected else (&"WAITING_WORKERS" if workers <= 0 else &"PRODUCING"))
+	var status_text := "施工中"
+	var reason_text := "材料按进度投入；缺料或压力门禁会保留当前进度。"
+	if not constructing:
+		status_text = "未连接道路" if not connected else ("等待岗位" if workers <= 0 else "真实产出中")
+		reason_text = "连接道路并安排驻地岗位后生效。" if not connected or workers <= 0 else "当前产出由本关权威周期结算。"
+	return {
+		"primary_status_id": primary_id,
+		"primary_status_text": status_text,
+		"status_reason_text": reason_text,
+		"effect_text": _regular_campaign_building_effect(StringName(record.get("kind", &"")), workers),
+		"road_text": "道路：%s" % ("已连接" if connected else "未连接 · 接通消耗木材 2"),
+		"orientation_text": "本关许可建设位 · 占地 %d × %d" % [int(Vector2i(record.get("footprint", Vector2i.ONE)).x), int(Vector2i(record.get("footprint", Vector2i.ONE)).y)],
+		"progress_visible": constructing,
+		"progress_percent": float(progress) * 100.0 / float(required),
+		"progress_text": "进度：%d%%" % floori(float(progress) * 100.0 / float(required)),
+		"paid_text": "已投入：木材 %d · 粮食 %d" % [int(record.get("paid_wood", 0)), int(record.get("paid_food", 0))],
+		"remaining_text": "剩余材料按实际进度扣除",
+		"eta_text": "预计完成：%s" % ("暂停/受阻后顺延" if constructing else "已完成"),
+		"priority_visible": false,
+		"upgrade_active": false,
+	}
+
+
+func _regular_campaign_building_effect(kind: StringName, workers: int) -> String:
+	match kind:
+		&"FARM": return "每 3 分钟最多产粮 22 · 当前岗位 %d/4" % workers
+		&"LOGGING": return "每 3 分钟最多产木 18 · 当前岗位 %d/4" % workers
+		&"WAREHOUSE": return "本地粮木容量提高 120"
+		&"CLINIC": return "处理真实伤员 · 当前岗位 %d/4" % workers
+	return "本关设施"
+
+
+func _regular_campaign_building_name(kind: StringName) -> String:
+	return {
+		&"FARM": "农田",
+		&"LOGGING": "伐木场",
+		&"WAREHOUSE": "仓储",
+		&"CLINIC": "医舍",
+	}.get(kind, "设施")
+
+
+func _on_build_slot_cancel_requested() -> void:
+	if _regular_campaign_city_active:
+		var result := _regular_campaign.command(&"cancel_build")
+		if not bool(result.get("success", false)):
+			_show_placement_feedback(str(result.get("error", "没有可取消工程")))
+		refresh_regular_campaign_city()
+		city_state_changed.emit()
+		construction_presentation_changed.emit()
+		return
+	cancel_build_project()
 
 
 func get_city_food_forecast() -> Dictionary:
@@ -7759,6 +8372,8 @@ func begin_field_facility_upgrade(engineer_id: StringName, facility_id: StringNa
 
 
 func assign_field_fortress_garrison(facility_id: StringName, army_id: StringName) -> Dictionary:
+	if _is_regular_campaign_active():
+		return _macro_failure(&"REGULAR_CAMPAIGN_ACTIVE", "常规战役已接管关内军令")
 	_ensure_war_loop_initialized()
 	var army := _army_registry.get_army(army_id)
 	var positions := _macro_army_world_positions()
@@ -7780,6 +8395,8 @@ func assign_field_fortress_garrison(facility_id: StringName, army_id: StringName
 
 
 func release_field_fortress_garrison(facility_id: StringName, army_id: StringName = &"") -> Dictionary:
+	if _is_regular_campaign_active():
+		return _macro_failure(&"REGULAR_CAMPAIGN_ACTIVE", "常规战役已接管关内军令")
 	_ensure_war_loop_initialized()
 	var war_before := _war_loop_state.get_snapshot()
 	if not _war_loop_state.field_tactics.release_fortress_garrison(facility_id, army_id):
@@ -7966,6 +8583,8 @@ func commit_macro_march_from_city(
 	route_id: StringName,
 	route_world_points: Array
 ) -> Dictionary:
+	if _is_regular_campaign_active():
+		return _macro_failure(&"REGULAR_CAMPAIGN_ACTIVE", "常规战役已接管关内军令；请在战役界面调整部队")
 	if (
 		not _active_battle_reservation.is_empty()
 		or _army_registry.has_active_non_macro_army()
@@ -8026,6 +8645,8 @@ func commit_macro_march_from_station(
 	route_id: StringName,
 	route_world_points: Array
 ) -> Dictionary:
+	if _is_regular_campaign_active():
+		return _macro_failure(&"REGULAR_CAMPAIGN_ACTIVE", "常规战役已接管关内军令；请在战役界面调整部队")
 	_ensure_war_loop_initialized()
 	var army := _army_registry.get_army(army_id)
 	if army.is_empty() or StringName(army.phase) != ArmyRegistry.PHASE_STATIONED:
@@ -9081,6 +9702,8 @@ func _macro_segment_at_progress(macro: Dictionary) -> int:
 
 
 func request_macro_siege_retreat(city_id: StringName = &"") -> Dictionary:
+	if _is_regular_campaign_active():
+		return _macro_failure(&"REGULAR_CAMPAIGN_ACTIVE", "常规战役没有旧攻城撤逃军令")
 	var war_before := _war_loop_state.get_snapshot()
 	var registry_before := _army_registry.get_snapshot()
 	var target_city_id := city_id
@@ -9154,6 +9777,8 @@ func block_macro_march_at_segment(
 	progress_before_segment_millis: int,
 	temporary_station_point: StringName
 ) -> Dictionary:
+	if _is_regular_campaign_active():
+		return _macro_failure(&"REGULAR_CAMPAIGN_ACTIVE", "常规战役已接管关内军令")
 	var army_before := _army_registry.get_army(army_id)
 	if army_before.is_empty() or not is_macro_march_route_blocked(
 		StringName(Dictionary(army_before.macro_march).route_id)
@@ -9175,6 +9800,8 @@ func block_macro_march_at_segment(
 
 
 func resume_blocked_macro_march(army_id: StringName, order_id: StringName) -> Dictionary:
+	if _is_regular_campaign_active():
+		return _macro_failure(&"REGULAR_CAMPAIGN_ACTIVE", "常规战役已接管关内军令")
 	var registry_before := _army_registry.get_snapshot()
 	var result := _army_registry.resume_blocked_macro_march(army_id, order_id)
 	if result.is_empty():
@@ -11406,6 +12033,8 @@ func _get_training_failure_id(
 		return &"RECRUITMENT_CAPACITY"
 	if future_total > get_effective_command_limit():
 		return &"COMMAND_LIMIT"
+	if future_total > _garrison_training_capacity():
+		return &"RETURN_CAPACITY_RESERVED"
 	var food_cost := quantity * INFANTRY_ROLE.recruit_food_per_unit
 	if food < food_cost:
 		return &"INSUFFICIENT_FOOD"
@@ -11507,6 +12136,7 @@ func get_training_blocked_reason() -> Dictionary:
 		&"SUPPLY_SHORTAGE": "供给不足，训练暂停",
 		&"RECRUITMENT_CAPACITY": "驻军已达征募容量",
 		&"COMMAND_LIMIT": "驻军将超过指挥上限",
+		&"RETURN_CAPACITY_RESERVED": "常规远征归队与伤员治疗已预留驻军容量",
 		&"INSUFFICIENT_FOOD": "粮食还缺 %d" % maxi(get_training_batch_size() * INFANTRY_ROLE.recruit_food_per_unit - food, 0),
 		&"INSUFFICIENT_AVAILABLE_POPULATION": "可用人口还缺 %d；可调整生产、施工、医疗或治理岗位" % maxi(get_training_batch_size() - _population_recovery.available, 0),
 	}
@@ -12353,6 +12983,8 @@ func _get_building_upgrade_condition_text(
 
 
 func get_building_data(placement_id: int) -> Dictionary:
+	if _regular_campaign_city_active:
+		return _get_regular_campaign_building_data(placement_id)
 	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if record.is_empty():
 		return {}
@@ -12463,6 +13095,8 @@ func get_building_data(placement_id: int) -> Dictionary:
 
 
 func get_building_detail_state(placement_id: int) -> Dictionary:
+	if _regular_campaign_city_active:
+		return _get_regular_campaign_building_detail_state(placement_id)
 	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if record.is_empty():
 		return {}
@@ -12587,7 +13221,7 @@ func get_building_detail_state(placement_id: int) -> Dictionary:
 			eta_text = "恢复时间后计算"
 		else:
 			var modifier := maxi(floori(float(
-				get_pressure_modifier_permille(&"construction")
+				_regular_construction_modifier_permille(record)
 				* get_workforce_modifier_permille(&"construction")
 			) / 1000.0), 1)
 			var effective_remaining := ceili(
@@ -12647,7 +13281,7 @@ func get_building_detail_state(placement_id: int) -> Dictionary:
 func _get_next_construction_payment(record: Dictionary) -> Dictionary:
 	var required := maxi(int(record.construction_required_milliseconds), 1)
 	var progress := int(record.construction_progress_milliseconds)
-	var modifier := get_pressure_modifier_permille(&"construction")
+	var modifier := _regular_construction_modifier_permille(record)
 	var next_progress := mini(
 		progress + maxi(roundi(float(CONSTRUCTION_TICK_MILLISECONDS * modifier) / 1000.0), 1),
 		required
@@ -12863,6 +13497,8 @@ func get_building_count() -> int:
 
 
 func get_placement_ids() -> Array[int]:
+	if _regular_campaign_city_active and is_instance_valid(_regular_campaign_city_host):
+		return _regular_campaign_city_host.get_placement_ids()
 	return _placement_order.duplicate()
 
 
@@ -12879,6 +13515,8 @@ func is_cell_occupied(cell: Vector2i) -> bool:
 
 
 func get_building_record(placement_id: int) -> Dictionary:
+	if _regular_campaign_city_active and is_instance_valid(_regular_campaign_city_host):
+		return _regular_campaign_city_host.get_record(placement_id)
 	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if record.is_empty():
 		return {}
@@ -12905,6 +13543,9 @@ func get_building_record(placement_id: int) -> Dictionary:
 
 
 func set_building_diagnostic_visible(placement_id: int, visible: bool) -> void:
+	if _regular_campaign_city_active and is_instance_valid(_regular_campaign_city_host):
+		_regular_campaign_city_host.set_diagnostic_visible(placement_id, visible)
+		return
 	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if record.is_empty():
 		return
@@ -12916,6 +13557,8 @@ func set_building_diagnostic_visible(placement_id: int, visible: bool) -> void:
 
 
 func get_building_node(placement_id: int) -> CanvasItem:
+	if _regular_campaign_city_active and is_instance_valid(_regular_campaign_city_host):
+		return _regular_campaign_city_host.get_visual(placement_id)
 	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if record.is_empty():
 		return null
@@ -12924,6 +13567,8 @@ func get_building_node(placement_id: int) -> CanvasItem:
 
 
 func get_placement_id_for_node(building: CanvasItem) -> int:
+	if _regular_campaign_city_active and is_instance_valid(_regular_campaign_city_host):
+		return _regular_campaign_city_host.get_placement_id_for_node(building)
 	if not is_instance_valid(building) or not building.has_meta("placement_id"):
 		return -1
 	var placement_id := int(building.get_meta("placement_id"))
@@ -12981,6 +13626,8 @@ func is_building_operational(placement_id: int) -> bool:
 
 
 func is_building_connected_to_road(placement_id: int) -> bool:
+	if _regular_campaign_city_active and is_instance_valid(_regular_campaign_city_host):
+		return bool(_regular_campaign_city_host.get_record(placement_id).get("connected", false))
 	var record: Dictionary = _building_records_by_id.get(placement_id, {})
 	if record.is_empty() or not bool(record.requires_road):
 		return not record.is_empty()
@@ -13458,6 +14105,17 @@ func _on_build_entry_pressed() -> void:
 
 
 func _on_definition_button_pressed(definition_id: StringName) -> void:
+	if _regular_campaign_city_active:
+		var kind: StringName = {
+			LOGGING_CAMP_DEFINITION.definition_id: &"LOGGING",
+			FARM_DEFINITION.definition_id: &"FARM",
+			WAREHOUSE_DEFINITION.definition_id: &"WAREHOUSE",
+			WATCHTOWER_DEFINITION.definition_id: &"CLINIC",
+		}.get(definition_id, &"")
+		var result := _regular_campaign_start_build(kind)
+		if not bool(result.get("success", false)):
+			_show_placement_feedback(str(result.get("error", "建造命令未被接受")))
+		return
 	begin_placing_definition(definition_id, get_viewport().get_mouse_position())
 
 
@@ -14194,6 +14852,34 @@ func _can_pay_definition(definition: BuildingDefinition) -> bool:
 
 
 func _sync_construction_ui() -> void:
+	if _regular_campaign_city_active:
+		var local := Dictionary(_regular_campaign.get_read_model().get("local", {}))
+		var project := Dictionary(local.get("project", {}))
+		construction_entry_panel.visible = not _detail_panel_active
+		build_entry_button.visible = project.is_empty()
+		build_entry_button.text = "战时建设"
+		build_entry_button.disabled = false
+		build_slot_content.visible = not project.is_empty()
+		build_mode_status.visible = not project.is_empty()
+		placement_orientation_label.visible = false
+		rotate_placement_button.visible = false
+		confirm_road_button.visible = false
+		cancel_placement_button.visible = false
+		construction_preview.visible = false
+		if not project.is_empty():
+			var required := maxi(int(project.get("required_ms", 1)), 1)
+			var progress := clampi(int(project.get("progress_ms", 0)), 0, required)
+			var percent := float(progress) * 100.0 / float(required)
+			build_mode_status.text = "%s · %d%%" % [_regular_campaign_building_name(StringName(project.get("kind", &""))), floori(percent)]
+			build_slot_progress.visible = true
+			build_slot_progress.value = percent
+			build_slot_detail.visible = true
+			build_slot_detail.text = "已投入：木材 %d/%d · 粮食 %d/%d\n缺料或施工门禁会保留当前进度" % [int(project.get("paid_wood", 0)), int(project.get("wood_cost", 0)), int(project.get("paid_food", 0)), int(project.get("food_cost", 0))]
+			build_slot_primary_button.visible = false
+			build_slot_cancel_button.visible = true
+			build_slot_cancel_button.text = "取消工程并退还实际投入"
+		construction_menu.visible = not _detail_panel_active and state == ConstructionState.CHOOSING_TEMPLATE
+		return
 	construction_entry_panel.visible = not _detail_panel_active
 	var slot_state := get_build_slot_state()
 	var show_slot := slot_state != BUILD_SLOT_IDLE and state != ConstructionState.PLACING
@@ -14332,6 +15018,31 @@ func _sync_construction_ui() -> void:
 
 
 func _refresh_construction_catalog_ui() -> void:
+	if _regular_campaign_city_active:
+		road_button.visible = false
+		var model := _regular_campaign.get_read_model()
+		var local := Dictionary(model.get("local", {}))
+		var plot_occupied := false
+		for value in Array(local.get("buildings", [])):
+			if int(Dictionary(value).get("plot", -1)) == _regular_campaign_selected_plot:
+				plot_occupied = true
+				break
+		var blocked := _regular_campaign_selected_plot < 0 or plot_occupied or not Dictionary(local.get("project", {})).is_empty()
+		var entries := [
+			[logging_camp_button, &"LOGGING"],
+			[farm_button, &"FARM"],
+			[warehouse_button, &"WAREHOUSE"],
+			[watchtower_button, &"CLINIC"],
+		]
+		for entry in entries:
+			var button := entry[0] as Button
+			var kind := StringName(entry[1])
+			var definition: BuildingDefinition = load(REGULAR_CAMPAIGN_RUNTIME.DEFINITIONS[kind])
+			button.visible = true
+			button.disabled = blocked
+			button.text = "%s · 木%d 粮%d · 施工90秒\n%s" % [_regular_campaign_building_name(kind), definition.wood_cost, definition.food_cost, _regular_campaign_building_effect(kind, 0)]
+			button.tooltip_text = "只提交本关固定建设位命令；不会启动永久城市建造队列"
+		return
 	var catalog_entries := [
 		[road_button, ROAD_DEFINITION],
 		[logging_camp_button, LOGGING_CAMP_DEFINITION],
@@ -14396,6 +15107,40 @@ func _refresh_construction_catalog_ui() -> void:
 
 
 func _refresh_city_ui() -> void:
+	if _regular_campaign_city_active:
+		var model := _regular_campaign.get_read_model()
+		var local := Dictionary(model.get("local", {}))
+		var forecast := Dictionary(local.get("forecast", {}))
+		resource_summary.text = "前线资源  木材 %d/%d · 粮食 %d/%d" % [
+			int(local.get("wood", 0)), int(local.get("capacity", 0)),
+			int(local.get("food", 0)), int(local.get("capacity", 0)),
+		]
+		_refresh_time_ui()
+		var mainline_ms := int(model.get("mainline_elapsed_ms", 0))
+		var attempt_ms := int(model.get("attempt_elapsed_ms", 0))
+		time_summary.text = "主线 %d:%02d\n本次 %d:%02d" % [
+			mainline_ms / 60000, (mainline_ms / 1000) % 60,
+			attempt_ms / 60000, (attempt_ms / 1000) % 60,
+		]
+		time_summary.tooltip_text = "主线历时持续计入本关；本次关内历时只表示当前出征。永久日历由永久主城单独显示。"
+		var risk := StringName(forecast.get("risk_id", &"STABLE"))
+		daily_report.text = "%s · 产出 %d / 消耗 %d / 净值 %+d" % [
+			{&"STABLE": "供给稳定", &"WARNING": "供给预警", &"SHORTAGE": "实际缺粮"}.get(risk, "供给评估"),
+			int(forecast.get("yield", 0)), int(forecast.get("consumption", 0)), int(forecast.get("net", 0)),
+		]
+		alert_summary.text = _regular_campaign_status_text()
+		var project := Dictionary(local.get("project", {}))
+		if not project.is_empty() and not bool(project.get("advancing", true)):
+			alert_summary.text = "施工已停止 · 材料或压力门禁%s\n进度保留，条件恢复后继续" % (
+				" · 实际缺粮" if risk == &"SHORTAGE" else ""
+			)
+		elif risk == &"SHORTAGE":
+			alert_summary.text = "实际缺粮 · 产出 %d / 消耗 %d\n打开本关任务详情查看供给与岗位" % [
+				int(forecast.get("yield", 0)), int(forecast.get("consumption", 0)),
+			]
+		_refresh_construction_catalog_ui()
+		_sync_construction_ui()
+		return
 	resource_summary.text = "木材 %d/%d · 粮食 %d/%d" % [
 		wood,
 		get_resource_capacity(&"wood"),
@@ -14403,6 +15148,9 @@ func _refresh_city_ui() -> void:
 		get_resource_capacity(&"food"),
 	]
 	_refresh_time_ui()
+	time_summary.text = "永久日历\n第 %d 日 %02d:%02d" % [
+		current_day, floori(day_elapsed_seconds) / 60, floori(day_elapsed_seconds) % 60,
+	]
 	daily_report.text = last_daily_report
 	var threat_state := get_threat_state()
 	var mainline := get_mainline_pressure_state()
@@ -14426,6 +15174,8 @@ func _refresh_city_ui() -> void:
 	)
 	if uses_blackstone_campaign():
 		alert_summary.text = get_blackstone_campaign_status_text()
+	if _is_regular_campaign_active():
+		alert_summary.text = _regular_campaign_status_text()
 	_refresh_first_war_ui()
 	threat_detail.text = (
 		"城防 %d\n当前敌军 %d · 工事 %d\n%s"
@@ -14639,6 +15389,19 @@ func _refresh_first_war_ui() -> void:
 
 
 func _refresh_current_mainline_entry_ui() -> void:
+	if _is_regular_campaign_active():
+		var model := _regular_campaign.get_read_model()
+		var phase := StringName(model.get("phase", &"PREPARATION"))
+		var context := Dictionary(model.get("view_context", {}))
+		var surface := StringName(context.get("surface", &"PREPARATION"))
+		current_mainline_entry_button.disabled = false
+		current_mainline_entry_button.text = {
+			&"PREPARATION": "进入青原战区 · 确认首批投入",
+			&"PENDING": "青原战果待确认",
+			&"COMPLETED": "查看青原战役结算",
+		}.get(phase, "返回本关战区" if _regular_campaign_city_active or surface == &"CITY" else "查看青原战区")
+		current_mainline_entry_button.tooltip_text = _regular_campaign_status_text()
+		return
 	if uses_blackstone_campaign():
 		current_mainline_entry_button.text = "继续原战斗" if has_resumable_expedition() else "查看战区 · 赤崖 / 银渡"
 		current_mainline_entry_button.tooltip_text = get_blackstone_campaign_status_text() + "\n点击定位已知来袭来源；侦察、工程和直接出兵均可选。"

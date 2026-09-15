@@ -52,6 +52,8 @@ class CityRuntimeState extends RefCounted:
 		_local_state = value.duplicate(true)
 
 
+var _scoped_resources: Dictionary = {}
+
 var _shared_resources: Dictionary = DEFAULT_SHARED_RESOURCES.duplicate(true)
 var _city_states: Dictionary = {}
 var _next_transaction_sequence := 1
@@ -294,3 +296,53 @@ func _failure(error_id: StringName, error: String) -> Dictionary:
 		"error_id": error_id,
 		"error": error,
 	}
+
+
+## Campaign inventory is held by the same resource authority as the home stock.
+func get_scoped_resources() -> Dictionary:
+	return _scoped_resources.duplicate(true)
+
+
+func get_scope(scope_id: StringName) -> Dictionary:
+	return Dictionary(_scoped_resources.get(scope_id, {})).duplicate(true)
+
+
+func hydrate_scoped_resources(scopes: Dictionary) -> bool:
+	for id in scopes:
+		if typeof(id) != TYPE_STRING_NAME or id == &"" or not scopes[id] is Dictionary:
+			return false
+		var values: Dictionary = scopes[id]
+		if values.keys().size() != 2:
+			return false
+		for resource in [&"food", &"wood"]:
+			if typeof(values.get(resource)) != TYPE_INT or int(values[resource]) < 0 or int(values[resource]) > MAX_EXACT_INTEGER:
+				return false
+	_scoped_resources = scopes.duplicate(true)
+	return true
+
+
+## All scopes are preflighted before publication. Empty scope means permanent stock.
+func commit_scoped_transaction(entries: Array[Dictionary], reason: StringName) -> Dictionary:
+	if reason == &"" or entries.is_empty():
+		return _failure(&"EMPTY_TRANSACTION", "物资事务为空")
+	var home := get_shared_resources()
+	var scopes := get_scoped_resources()
+	for entry in entries:
+		var scope := StringName(entry.get("scope_id", &""))
+		var resource := StringName(entry.get("resource_id", &""))
+		var delta = entry.get("delta", null)
+		if resource not in [&"food", &"wood"] or typeof(delta) != TYPE_INT:
+			return _failure(&"INVALID_ENTRY", "物资事务非法")
+		if scope != &"" and not scopes.has(scope):
+			scopes[scope] = {&"food": 0, &"wood": 0}
+		var balance: Dictionary = home if scope == &"" else scopes[scope]
+		var after := int(balance[resource]) + int(delta)
+		if after < 0 or after > MAX_EXACT_INTEGER:
+			return _failure(&"INSUFFICIENT_RESOURCE", "可用物资不足或溢出")
+		balance[resource] = after
+	_shared_resources = home
+	_scoped_resources = scopes
+	var transaction := {"transaction_sequence": _next_transaction_sequence, "reason": reason, "entries": entries.duplicate(true)}
+	_next_transaction_sequence += 1
+	resource_transaction_committed.emit(transaction)
+	return {"success": true, "error": ""}

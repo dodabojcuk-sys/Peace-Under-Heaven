@@ -1,0 +1,15 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+PASS: normal scene provides the regular campaign controller
+PASS: regular campaign initializes
+PASS: one ordinary home formation departs with authored supplies
+PASS: clinic uses normal construction and road payment before the injury journey
+PASS: locally trained Silverford members count in pressure strength even though the population-conservation offset excludes them
+PASS: normal Redcliff combat and withdrawal create a real home-origin wound
+PASS: combat wounded and fallen remain outside pressure strength while the snapshot stays on the strict pressure schema
+ERROR: REGULAR_CAMPAIGN_R1_WOUNDED_SUPPLY FAIL: continued unpaid real rations convert stranded wounded to fallen without a ghost treatment order, conservation break, or dead members counted as strength
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _finish (res://tests/run_regular_campaign_r1_wounded_supply.gd:219)
+       [1] _run (res://tests/run_regular_campaign_r1_wounded_supply.gd:135)

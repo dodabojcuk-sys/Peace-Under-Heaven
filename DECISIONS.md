@@ -1,5 +1,43 @@
 # Product Successor Decisions
 
+## Regular Campaign R1A: wartime city projection boundary (2026-09-13)
+
+- The R1 runtime remains authoritative for local projects, buildings, stock,
+  workers, roads, production and time. R1A stores only transient view selection.
+- The six R1 plots become spatial inputs without expanding capacity or defining
+  the final city-building contract.
+- Walls, gate and command hall are presentation and explicitly grant no defense,
+  collision or production effects.
+- The permanent-city controller is not copied or embedded. R1A reads the local
+  records and submits build, connect and staffing through existing R1 commands.
+- Theater overview remains available, while the inner city is the default
+  construction surface. C0 ownership and all R1 balance rules remain intact.
+
+## Regular Campaign R1: current task authority (2026-09-13)
+
+- Appendix A U2/U3 in the verified Regular Campaign task is authoritative for
+  this mode. The earlier Foreign Relief Loop and product audit are references,
+  not execution gates or a mandatory rescue design.
+- One 250ms clock advances the permanent city, local production/food, movement,
+  continuous WarLoop combat and adaptive assessment. C0 entry is guarded while
+  this mode owns the theater, avoiding two concurrent combat consumers.
+- NationState holds both home and disjoint local food/wood. ArmyRegistry owns
+  actual people. Pending casualty origins are metadata until one confirmation.
+  No second inventory, army, permanent population or save owner is introduced.
+- The authored first campaign uses honest default timing; only confirmed
+  mainline elapsed enters clamped historical correction. Recovery credit and
+  preparedness tolerance have lifetime bounds. No fixed calendar-day sanction
+  is introduced. Extreme delay restricts nonessential construction while
+  need-based, paid, finite recovery remains possible.
+- Retry restores only the attempt and retains permanent progress and elapsed
+  pressure. Settlement uses explicit handover, not a claimed physical return
+  route. Full home storage leaves excess in the same scoped stock for later
+  claim. Local recruits remain local.
+- Candidate values, repaired counterexamples and verification limitations are
+  recorded in the milestone DESIGN/HANDOFF/EVIDENCE documents. No future map or
+  mandatory reinforcement/convoy system is implied by this decision.
+
+
 ## Blackstone causal departure and candidate entry R1
 
 - The authored Redcliff vanguard remains one `FieldTacticsState` patrol. A

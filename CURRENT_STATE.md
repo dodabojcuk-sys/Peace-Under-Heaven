@@ -1,5 +1,214 @@
 # 当前状态
 
+## Regular Campaign R1B.2 publish lineage (2026-09-15)
+
+Daily development continues on
+`codex/txwzs-regular-campaign-r1b2-publish`. This branch is a single-parent
+snapshot based on the safe remote checkpoint
+`f1ad13ec62ed57ceb71b089b4fa83b5d9607129b`; its complete source snapshot is
+`7f1bff27d9185453b5e2f2bce2ecb9de5167d027` on the preserved historical branch
+`codex/txwzs-regular-campaign-r1a-theater-entry`.
+
+The publish snapshot differs from that source only by two externally backed-up
+non-runtime AVI recordings, exact ignore rules for those paths, this status
+entry, and the publish provenance record. It does not merge the historical
+branch, so its oversized recording blobs are not ancestors of daily work.
+
+R1B.2 closes five onboarding breaks without changing gameplay rules or the main
+city layout: candidate-entry explanation, reachable first commitment with an
+explicit formation summary, numbered build plots, first staffing guidance, and
+neutral early-settlement wording. The existing runtime, resource, combat,
+clock, save-schema and permanent-city authorities remain unchanged.
+
+## Regular Campaign R1A army and engagement presentation (2026-09-14)
+
+The Qingyuan theater now presents each authoritative formation as an existing
+low-poly soldier/flag group with distinct stationed, marching and engaging
+states. Stacked formations retain separate, matching visual and hit anchors.
+During a real siege, the theater shows the actual army-to-city relation, live
+gate state, current combat-capable attacker/defender counts and an explicitly
+labeled entry count. Gate breach remains visible while defenders survive, and
+the engagement presentation clears when the WarLoop siege ends.
+
+`WarLoopState`, the regular-campaign runtime, `ArmyRegistry`, the campaign
+clock and the existing save remain the only gameplay authorities. The added
+projection is read-only and aggregate: it creates no soldier AI, pathfinding,
+collision damage, second battle loop or save data. Pause freezes the tick-based
+contact motion; cold restore projects the current siege once without replaying
+old damage or breach events.
+
+The normal title journey passes at 1152x648 and 1280x720 with the unchanged
+17 survivors / 1 wounded / 2 fallen and 66 food / 8 wood settlement. A separate
+normal-1x segment records a 4.25-second Redcliff battle, including pause,
+continue and gate-breached-with-defenders state without runner clock advance.
+This short response window and human mouse-feel/Founder acceptance remain open.
+See the [handoff](docs/milestones/regular-campaign-r1a-theater-entry/HANDOFF.md)
+and [evidence](docs/milestones/regular-campaign-r1a-theater-entry/EVIDENCE.md).
+
+## Regular Campaign R1A context and asset closeout (2026-09-14)
+
+The restored main-city screen now projects its top-bar action, objective and
+status from the active regular-campaign phase before considering the legacy
+Blackstone mode. Preparation, theater, wartime city, pending result and
+completed states therefore keep Qingyuan context; the wartime-city action
+returns to the same theater and never falls through to the permanent-city
+no-formation message. Permanent calendar, campaign mainline time and current
+attempt time are labeled separately from their existing facts.
+
+The four preserved building textures are now verified through the formal
+MapWorld host, including authoritative building id, world coordinate, camera
+transform, hit projection and shared detail selection. Empty legal plots are
+shown only during the existing construction interaction. Normal title input at
+1152x648 and 1280x720 covers a visible farm, construction, road, staffing,
+production, pan/zoom selection, one theater movement order, same-city return
+and temporary leave/continue without repeating time or the departure ledger.
+Cold restore remains idempotent. No gameplay rule, asset, save schema or state
+owner changed.
+
+## Regular Campaign R1A main-city restoration (2026-09-14)
+
+Regular campaigns now start on the established permanent-city screen, enter
+the Qingyuan theater through its existing top-bar route, and host the licensed
+wartime city in the same MapWorld, Camera2D, UI shell, minimap and selection
+controllers. The former left-city-preview plus persistent-management layout is
+no longer the wartime-city operating surface. First entry uses the original
+1:1 operational scale; pan, zoom, transformed hit testing, detail operations,
+resize and theater round trips preserve the camera.
+
+The campaign runtime remains the only local resource, building, job, time and
+save authority. Existing construction, road, staffing and real production
+commands are adapted through the original catalog/detail controls without
+creating permanent-city records or spending permanent-city resources. The
+theater renderer, four existing art sources, graybox fallback, duplicate-draw
+suppression and stopped-construction rules remain in place.
+
+Normal-title input journeys pass at 1152x648 and 1280x720. The 1280x720 MP4
+covers city/theater navigation, construction, road connection, worker
+assignment, production, pan/zoom selection and same-city restoration. Focused
+route, resource, recovery, time, rules and original city input regressions pass.
+Human mouse-feel, Founder acceptance, long-term balance, push, merge and deploy
+remain open. See the [handoff](docs/milestones/regular-campaign-r1a-theater-entry/HANDOFF.md)
+and [evidence](docs/milestones/regular-campaign-r1a-theater-entry/EVIDENCE.md).
+
+## Regular Campaign Art Assets R1 closeout (2026-09-14)
+
+The wartime city art closeout removes the overlapping ambient house volume and
+persistent ordinary-state outlines without deleting or moving authoritative
+buildings. Art-enabled buildings suppress only their replaced graybox subject;
+the shared graybox fallback remains unchanged for other callers. Texture feet,
+logical footprints, hit targets and road entrances retain the same plot
+coordinates.
+
+Early construction now shows the foundation rather than mature crops, and its
+effect stops when the real project is paused or cannot advance with current
+materials. Production feedback still comes from positive authoritative produced
+totals and does not replay on re-entry or a cold presentation baseline. The
+normal-input closeout recording uses visible pause/4x controls and the regular
+controller process path, without direct runtime advancement. The permanent-city
+growth regression passes 41/41 after correcting stale V17/V16 fixtures; no save
+schema or permanent-city runtime code changed. Closeout image requests: 0; Art
+R1 cumulative image requests: 6/8.
+
+## Regular Campaign Art Assets R1 (2026-09-14)
+
+The established R1A wartime city now renders generated, distinct farm, logging,
+warehouse and clinic textures through the shared data-free building visual.
+Construction dust, staffed-farm work and production deposit feedback are gated
+by the existing project, pause, road, worker and authoritative production-total
+facts. The shared component retains its graybox fallback for permanent-city and
+other callers. The established city/theater scenes, camera, roads, resources,
+clock and save owners are unchanged.
+
+Focused R1 rules, city input, four-building, theater-entry/cold-context and two-
+resolution visual checks pass. The permanent-city growth runner retains 39
+passing assertions and two stale V17/V16 schema-version assertions. Generated
+sources, runtime textures, call provenance, previews and normal-input evidence
+are indexed in [verification](docs/milestones/regular-campaign-art-r1/VERIFICATION.md).
+Human visual acceptance remains open; nothing was pushed, merged or deployed.
+
+## Regular Campaign R1A original scene integration (2026-09-14)
+
+The regular-campaign theater now instantiates the established low-poly macro
+presentation and formal theater definition, including their existing terrain,
+river, route, city, army and Kenney environment assets. Its render projection
+and hit testing share `project_world_to_viewport()`, while the R1 runtime remains
+the only command, clock and save owner.
+
+The wartime inner city now instantiates the established 2200x1400 city spatial
+foundation, graybox building visuals and minimap. Current R1 project/building
+IDs, progress, roads and jobs drive those components directly. The original
+permanent-city and macro controllers are not started, so the integration creates
+no second production loop, inventory, population, combat simulation or save
+owner. City entry, command-target input and drag remain mutually exclusive; the
+inner-city primary action returns to the same campaign theater.
+
+Focused route, resource, four-building, two-resolution graphical and A-J cold
+recovery checks pass. A 56.13-second identified normal-input recording covers
+departure through production, theater command and same-city re-entry. Full
+battlefield presentation, human input feel and player acceptance remain open.
+See the [handoff](docs/milestones/regular-campaign-r1a-theater-entry/HANDOFF.md)
+and [evidence](docs/milestones/regular-campaign-r1a-theater-entry/EVIDENCE.md).
+
+## Regular Campaign R1A spatial correction (2026-09-13)
+
+The R1A city surface now treats its six candidate sites as transient hit areas
+rather than permanent cards. The default camera shows the complete walled city,
+south gate, main roads, lower sites and inhabited scale at both 1280x720 and
+1152x648. Real facilities use city-scale silhouettes and shadows. A disconnected
+facility has a visible entrance gap; the existing connect command alone replaces
+it with a solid spur. Selection, construction, staffing, production and theater
+round trips still project the same R1 records.
+
+Player copy now says `已建成`, converts construction progress to percent and
+names the three-minute production cycle. Internal building IDs and presentation
+limitations are absent from the normal operation surface. R1 gameplay rules,
+capacity, authorities and persistence are unchanged. See the
+[spatial correction handoff](docs/milestones/regular-campaign-r1a-spatial-fix/HANDOFF.md)
+and [evidence](docs/milestones/regular-campaign-r1a-spatial-fix/EVIDENCE.md).
+
+## Regular Campaign R1A operable wartime city slice (2026-09-13)
+
+The isolated R1A candidate restores a city-sized, operable frontline inner-city
+surface on top of the R1 campaign state. Its wall, gate, roads and six spatial
+plots frame the real local project and building records. Farm, logging camp,
+warehouse and clinic use distinct silhouettes; selection exposes the stable
+building ID, progress, road, workers and output. Build, connect and staffing
+continue through the R1 command boundary, and city/theater round trips retain
+the same persisted records and local stock.
+
+R1 pressure, enemy growth, food, training, settlement, save ownership, clock and
+C0 takeover rules are unchanged. The candidate adds no building capacity or
+permanent-city inventory access. Focused logic, cold recovery, 1152x648 and
+1280x720 graphical checks, and one continuous title-to-production input journey
+pass. Full battlefield presentation, human mouse feel, balance and player
+acceptance remain open. See [design](docs/milestones/regular-campaign-r1a/DESIGN.md),
+[handoff](docs/milestones/regular-campaign-r1a/HANDOFF.md), and
+[evidence](docs/milestones/regular-campaign-r1a/EVIDENCE.md).
+
+## Regular Campaign R1 isolated candidate (2026-09-13)
+
+This branch implements the new regular campaign from baseline
+`f1ad13ec62ed57ceb71b089b4fa83b5d9607129b`. The latest task Appendix A U2/U3
+supersedes rescue-only, mandatory later convoys, fixed-day sanctions and old
+macro command locking for this new mode. Historical Blackstone behavior remains
+available outside regular mode.
+
+The title now exposes a fresh regular campaign: real initial asset transfer,
+six finite local construction plots, production and ration forecasting, local
+command changes, finite sourced enemy growth, bounded adaptive pressure,
+retry and one confirmed casualty/resource handover. The permanent city continues
+at the same game time. V5 schema 18 adds scoped inventory and regular metadata
+under the existing state owners. The local launcher always creates an isolated
+save directory and refuses unmarked directories for Continue.
+
+See [design](docs/milestones/regular-campaign-r1/DESIGN.md),
+[handoff](docs/milestones/regular-campaign-r1/HANDOFF.md), and
+[evidence index](docs/milestones/regular-campaign-r1/EVIDENCE.md) for exact
+versions, automated proof and open human/art/balance gates. This local candidate
+has not been pushed, merged, deployed or accepted by a human player. No next
+campaign, global war, trade expansion or mandatory relief loop is implemented.
+
+
 ## Building growth phase closeout and migration baseline (2026-09-13)
 
 The normal-city building growth phase is closed for engineering migration.
@@ -2177,3 +2386,45 @@ acceptance remain `OPEN`.
 
 Disease, seasons, public-order depth, civilian officials, equipment and trade
 remain explicit functional-edition gaps.
+
+## 2026-09-14 - Regular Campaign R1A theater-to-city continuation
+
+The regular campaign now opens its current theater after the first departure.
+The theater uses the existing city-bearing map language and current R1 point,
+route, army, ownership and knowledge projections. In browse state Blackstone
+opens its scoped wartime inner city; ordinary garrisons and enemy cities are
+rejected. Army-command input consumes the same click as a move target and never
+also opens the city.
+
+The existing regular-campaign snapshot optionally owns a small `view_context`,
+so leaving for the permanent city or cold-restoring keeps the same campaign view
+and authorized city identity without adding a save owner. Entering or returning
+does not advance time, repeat the departure transfer or create a second battle.
+The inner-city return explicitly targets the same theater; permanent-city leave
+is labeled separately.
+
+Focused route/persistence checks pass 14/14, strict snapshot validation passes
+15/15, the existing multi-process A-J cold recovery passes, and the 1280x720
+continuous engine-input journey plus the 1152x648 city hit/layout smoke pass.
+Evidence is documented under
+`docs/milestones/regular-campaign-r1a-theater-entry/`. Human input feel, final
+art, complete battlefield presentation, multi-city management, push, merge and
+deployment remain open.
+
+## 2026-09-14 - Qingyuan regular campaign full-battle validation
+
+The current formal entry has an observed complete route from permanent-city
+preparation through scoped farm production, Silverford surrender, Redcliff
+siege, full objective completion, explicit settlement and return to the
+permanent city. Existing rules produced 17 survivors, 1 wounded and 2 fallen,
+with 66 food and 8 wood returned by the settlement transaction.
+
+A narrow read-only projection exposes the authoritative active siege to the
+existing theater overlay: attacking formation, gate state and live attacker /
+defender counts. No new simulator, combat rule, resource owner, save field or
+asset was added. The formal journey passes at 1280x720 and 1152x648; services,
+A-J cold recovery and theater-context recovery also pass. The old standalone
+war-loop runner still has four unreachable assertions after its obsolete
+Redcliff-to-Silverford controller order returns no army receipt. It does not
+cover the current title-to-regular-campaign entry and remains preserved as a
+documented historical mismatch.

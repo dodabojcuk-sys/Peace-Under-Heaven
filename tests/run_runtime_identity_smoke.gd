@@ -10,6 +10,7 @@ func _init() -> void:
 	_test_clean_city_identity()
 	_test_dirty_city_identity()
 	_test_full_commit_identity()
+	_test_r1a_identity()
 	_test_battle_identity()
 	_test_unidentified_identity()
 	_test_release_title()
@@ -70,6 +71,14 @@ func _test_battle_identity() -> void:
 			== "天下无战事 · BATTLE-C0 · main@7654321 · DEBUG",
 		"BATTLE-C0 title cannot be confused with CITY"
 	)
+
+
+func _test_r1a_identity() -> void:
+	var args := _identified_args("TITLE", "codex/txwzs-regular-campaign-r1a", "6796cbd", "0")
+	args[2] = "--txwzs-candidate=REGULAR-CAMPAIGN-R1A"
+	var identity: Dictionary = RUNTIME_IDENTITY_SCRIPT.parse_identity(args, "TITLE")
+	_expect(bool(identity.identified), "R1A launcher candidate is identified")
+	_expect(String(identity.candidate) == "REGULAR-CAMPAIGN-R1A", "R1A candidate identity remains explicit")
 
 
 func _test_unidentified_identity() -> void:

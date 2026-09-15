@@ -1,0 +1,6 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+PASS: 三个独立进程完成受阻、恢复、抵达的隔离磁盘冷恢复链
+PASS: 跨进程实盘验证未伪造军令，状态依次为 BLOCKED、恢复、STATIONED
+MACRO_MARCH_R0_PERSISTENCE_SMOKE PASS
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN

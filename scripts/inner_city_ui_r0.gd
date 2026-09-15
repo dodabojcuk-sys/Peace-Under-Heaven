@@ -52,6 +52,7 @@ var governance_issue_detail: Label
 var governance_catalog_button: Button
 var governance_wood_button: Button
 var governance_food_button: Button
+var governance_hint_label: Label
 var governance_population_summary: Label
 var governance_production_minus: Button
 var governance_production_plus: Button
@@ -146,6 +147,12 @@ func _apply_static_copy() -> void:
 func _refresh_read_model() -> void:
 	if not is_instance_valid(construction_controller):
 		return
+	if (
+		construction_controller.has_method("is_regular_campaign_city_active")
+		and bool(construction_controller.call("is_regular_campaign_city_active"))
+	):
+		_refresh_regular_campaign_read_model()
+		return
 	var nation: Variant = construction_controller.get_nation_state()
 	if nation == null:
 		return
@@ -172,6 +179,13 @@ func _refresh_read_model() -> void:
 	]
 	if construction_controller.is_campaign_pressure_cleared():
 		next_stage_summary.text = "战役目标达成 · 经营继续"
+	var regular_model: Dictionary = {}
+	if construction_controller.has_method("get_regular_campaign_read_model"):
+		regular_model = Dictionary(construction_controller.call("get_regular_campaign_read_model"))
+	if not regular_model.is_empty():
+		var regular_summary := Dictionary(regular_model.get("summary", {}))
+		current_city.text = "%s  ·  永久主城" % city_name
+		next_stage_summary.text = "青原目标：%s" % str(regular_summary.get("objective", "清除前线威胁并确认归队"))
 	var garrison: Dictionary = construction_controller.get_garrison_snapshot()
 	var queue: Dictionary = construction_controller.get_training_queue_snapshot()
 	var population: Dictionary = construction_controller.get_population_recovery_read_model()
@@ -187,6 +201,57 @@ func _refresh_read_model() -> void:
 	]
 	_refresh_governance_workspace(wood, food)
 	_refresh_strategy_workspace()
+	for label in [time_summary, daily_report, alert_summary]:
+		label.add_theme_color_override("font_color", MUTED_TEXT)
+	_schedule_layout_refresh()
+
+
+func _refresh_regular_campaign_read_model() -> void:
+	var model := Dictionary(construction_controller.call("get_regular_campaign_read_model"))
+	var local := Dictionary(model.get("local", {}))
+	var forecast := Dictionary(local.get("forecast", {}))
+	var summary := Dictionary(model.get("summary", {}))
+	resource_summary.text = "前线资源  木材 %d/%d · 粮食 %d/%d" % [
+		int(local.get("wood", 0)),
+		int(local.get("capacity", 0)),
+		int(local.get("food", 0)),
+		int(local.get("capacity", 0)),
+	]
+	current_city.text = "青原前线城  ·  战时内城"
+	minimap_label.text = "部署概览 · 青原前线城"
+	next_stage_summary.text = "本关目标：%s" % str(summary.get("objective", "清除前线威胁并确认归队"))
+	var risk := StringName(forecast.get("risk_id", &"STABLE"))
+	var risk_text: String = {&"STABLE": "供给稳定", &"WARNING": "供给预警", &"SHORTAGE": "实际缺粮"}.get(risk, "供给评估")
+	var deficit_ms := int(forecast.get("deficit_ms", -1))
+	daily_report.text = "%s · 产出 %d / 消耗 %d / 净值 %+d%s" % [
+		risk_text,
+		int(forecast.get("yield", 0)),
+		int(forecast.get("consumption", 0)),
+		int(forecast.get("net", 0)),
+		" · %d:%02d 后缺口" % [deficit_ms / 60000, (deficit_ms / 1000) % 60] if deficit_ms >= 0 else "",
+	]
+	alert_summary.text = str(construction_controller.call("_regular_campaign_status_text"))
+	var project := Dictionary(local.get("project", {}))
+	if not project.is_empty():
+		alert_summary.text = "施工%s · %d%%\n%s" % [
+			"受阻" if not bool(project.get("advancing", true)) else "进行中",
+			floori(float(project.get("progress_ms", 0)) * 100.0 / maxf(float(project.get("required_ms", 1)), 1.0)),
+			"材料或压力门禁已停止推进" if not bool(project.get("advancing", true)) else "材料按实际进度投入",
+		]
+	if risk == &"SHORTAGE" and (project.is_empty() or bool(project.get("advancing", true))):
+		alert_summary.text = "实际缺粮 · 产出 %d / 消耗 %d\n打开本关任务详情查看供给与岗位" % [
+			int(forecast.get("yield", 0)), int(forecast.get("consumption", 0)),
+		]
+	var assigned_workers := 0
+	for value in Array(local.get("buildings", [])):
+		assigned_workers += int(Dictionary(value).get("workers", 0))
+	army_status.text = "驻地可分配 %d · 已用岗位 %d\n本关建筑 %d/6" % [
+		int(local.get("workers_available", 0)),
+		assigned_workers,
+		Array(local.get("buildings", [])).size(),
+	]
+	if is_instance_valid(governance_workspace):
+		governance_workspace.visible = false
 	for label in [time_summary, daily_report, alert_summary]:
 		label.add_theme_color_override("font_color", MUTED_TEXT)
 	_schedule_layout_refresh()
@@ -353,16 +418,26 @@ func _install_governance_workspace() -> void:
 
 	governance_wood_button = _make_governance_button("补充木材 · 伐木场")
 	governance_wood_button.name = "GovernanceWoodButton"
-	governance_wood_button.pressed.connect(_start_governance_definition.bind(&"logging_camp"))
+	# R1B：这里必须是完整的建筑定义 ID。旧的短 ID（logging_camp/farm）在
+	# get_definition() 查不到定义，begin_placing_definition 静默返回 false，
+	# 表现为“点了没反应”。
+	governance_wood_button.pressed.connect(_start_governance_definition.bind(&"building.logging_camp.t1"))
 
 	governance_food_button = _make_governance_button("稳定粮食 · 农田")
 	governance_food_button.name = "GovernanceFoodButton"
-	governance_food_button.pressed.connect(_start_governance_definition.bind(&"farm"))
+	governance_food_button.pressed.connect(_start_governance_definition.bind(&"building.farm.t1"))
 	var production_shortcuts := HBoxContainer.new()
 	production_shortcuts.name = "ProductionShortcuts"
 	production_shortcuts.add_theme_constant_override("separation", 6)
 	production_shortcuts.add_child(governance_wood_button)
 	production_shortcuts.add_child(governance_food_button)
+	governance_hint_label = Label.new()
+	governance_hint_label.name = "GovernanceHint"
+	governance_hint_label.add_theme_color_override("font_color", WARNING)
+	governance_hint_label.add_theme_font_size_override("font_size", 13)
+	governance_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	governance_hint_label.visible = false
+	content.add_child(governance_hint_label)
 	content.add_child(production_shortcuts)
 
 	governance_population_summary = Label.new()
@@ -706,10 +781,20 @@ func _settle_refugee(case_id: StringName) -> void:
 
 
 func _start_governance_definition(definition_id: StringName) -> void:
-	construction_controller.begin_placing_definition(
+	# R1B：失败不再静默——把原因写给玩家，成功时清掉旧提示。
+	if construction_controller.begin_placing_definition(
 		definition_id,
 		get_viewport().get_mouse_position()
-	)
+	):
+		_set_governance_hint("")
+	else:
+		_set_governance_hint("暂时无法开工：材料不足或当前状态不允许。可点「查看设施与道路」查看各项条件。")
+
+
+func _set_governance_hint(text: String) -> void:
+	if is_instance_valid(governance_hint_label):
+		governance_hint_label.text = text
+		governance_hint_label.visible = not text.is_empty()
 
 
 func _layout_governance_workspace(
@@ -748,6 +833,13 @@ func _refresh_governance_workspace(
 	food_override := -1
 ) -> void:
 	if not is_instance_valid(governance_workspace):
+		return
+	if (
+		construction_controller.has_method("is_regular_campaign_city_active")
+		and bool(construction_controller.call("is_regular_campaign_city_active"))
+	):
+		governance_workspace.visible = false
+		_governance_workspace_was_visible = false
 		return
 	var nation: Variant = construction_controller.get_nation_state()
 	if nation == null:
@@ -957,7 +1049,7 @@ func _layout_top_status_regions(width: float, top_height: float, edge: float) ->
 	_layout_top_separator($TopStatusBar/DividerTwo, x - gap * 0.5, separator_y, separator_height)
 
 	time_summary.position = Vector2(x, 8.0)
-	time_summary.size = Vector2(104.0, 20.0)
+	time_summary.size = Vector2(104.0, 40.0)
 	daily_report.position = Vector2(x + 110.0, 8.0)
 	# Date and settlement own two rows: the date and settlement share row one;
 	# next-stage detail receives row two. Trailing settlement detail clips here.

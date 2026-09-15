@@ -1245,7 +1245,8 @@ static func _validate_macro_march(army: Dictionary) -> Dictionary:
 		or not macro.route_world_points is Array
 		or Array(macro.route_world_points).size() < 2
 		or typeof(macro.food_cost) != TYPE_INT
-		or int(macro.food_cost) <= 0
+		or int(macro.food_cost) < 0
+		or (int(macro.food_cost) == 0 and StringName(macro.route_id) not in [&"regular.entry", &"regular.command"])
 		or typeof(macro.progress_millis) != TYPE_INT
 		or typeof(macro.total_millis) != TYPE_INT
 		or int(macro.progress_millis) < 0
@@ -1342,7 +1343,7 @@ static func _validate_macro_order_history(history: Array, current_order_id: Stri
 			return {"valid": false, "error_id": &"INVALID_MACRO_HISTORY"}
 		# Historical orders are immutable records, so validate their shape without
 		# tying their casualties back to the army's current composition.
-		if StringName(order.get("phase", &"")) not in [PHASE_SIEGING, PHASE_STATIONED]:
+		if StringName(order.get("phase", &"")) not in [PHASE_SIEGING, PHASE_STATIONED] and not (order.get("route_id", &"") in [&"regular.entry", &"regular.command"] and order.get("phase", &"") == PHASE_MARCHING):
 			return {"valid": false, "error_id": &"INVALID_MACRO_HISTORY"}
 		if not order.get("formation_snapshots", null) is Array:
 			return {"valid": false, "error_id": &"INVALID_MACRO_HISTORY"}
@@ -1373,3 +1374,47 @@ static func _legacy_macro_route_segments(route_id: StringName) -> Array:
 			segments.append({"road_id": StringName(parts[0]), "forward": parts[1] == "f"})
 		return segments
 	return [{"road_id": route_id, "forward": true}] if route_id != &"" else []
+
+
+## A regular campaign pays for cargo at departure, not for each local order.
+## The zero-cost order is never exposed through the legacy command API.
+func create_regular_force(formation: Dictionary, start: Vector2i, target: Vector2i, strategy: Dictionary) -> Dictionary:
+	var army := create_macro_march(&"player", &"blackstone_city", &"regular_entry", &"blackstone_city", &"regular.entry", [start, target], {StringName(formation.definition_id): int(formation.member_count)}, [formation], 1, 1000, [], strategy)
+	if army.is_empty():
+		return {}
+	_armies_by_id[army.army_id].macro_march.food_cost = 0
+	return get_army(army.army_id)
+
+
+func redirect_regular_force(army_id: StringName, target_id: StringName, points: Array, duration_ms: int, segments: Array = []) -> Dictionary:
+	var army := get_army(army_id)
+	if army.is_empty() or army.phase == PHASE_CLOSED or points.size() < 2 or duration_ms <= 0 or _next_macro_order_sequence >= MAX_EXACT_PERSISTED_SEQUENCE:
+		return {}
+	var previous: Dictionary = army.macro_march
+	var source_id := StringName("regular.position.%s" % army_id)
+	var order_id := _allocate_macro_order_id()
+	var macro := _build_macro_march(order_id, source_id, target_id, &"regular.command", points, previous.formation_snapshots, 0, duration_ms, segments, Dictionary(previous.get("strategy_snapshot", {})))
+	army.macro_order_history.append(previous)
+	army.macro_march = macro
+	army.source_node_id = source_id
+	army.target_node_id = target_id
+	army.route_id = &"regular.command"
+	army.progress_milliseconds = 0
+	army.duration_milliseconds = duration_ms
+	army.phase = PHASE_MARCHING
+	army.transaction_id = order_id
+	_armies_by_id[army_id] = army
+	return get_army(army_id)
+
+
+func close_regular_force(army_id: StringName) -> bool:
+	var army := get_army(army_id)
+	if army.is_empty() or army.phase == PHASE_CLOSED:
+		return false
+	army.phase = PHASE_CLOSED
+	army.macro_march.phase = PHASE_CLOSED
+	army.units_by_definition_id = {}
+	for formation in army.macro_march.formation_snapshots:
+		formation.member_count = 0
+	_armies_by_id[army_id] = army
+	return true

@@ -1,0 +1,27 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+PASS: 生产组合入口只暴露同一个 NationState 和两个稳定城市
+PASS: 两座城市读取同一国家共享余额
+PASS: 城市资源视图是深度隔离快照
+PASS: blackstone 与 riverbend 的可写局部状态实例双向隔离
+PASS: 城市局部状态查询不暴露可写引用
+PASS: NationState 拒绝复制现有驻军 authority
+PASS: blackstone 消费后 riverbend 立即看到同一余额
+PASS: riverbend 变更后 blackstone 立即看到同一余额
+PASS: 无效 city ID 原子拒绝
+PASS: 无效 resource ID 原子拒绝
+PASS: 零数量原子拒绝
+PASS: 负数量原子拒绝
+PASS: 非整数数量原子拒绝
+PASS: 余额不足原子拒绝
+PASS: 局部提交拒绝时资源、队列和全部事件保持零部分写入
+PASS: 施工增量消费经 NationState 事务入口
+PASS: 日结增减经 NationState 原子事务入口
+PASS: 训练消费经 NationState 事务入口
+PASS: 科研消费经 NationState 事务入口
+PASS: P0-01 保持一城接口并从 NationState 读取共享资源
+PASS: V5 blackstone 旧字段只承载 NationState 资源投影
+PASS: V5 临时 DTO 不会成为运行时第二账本
+PASS: 旧 V5 topology 经 codec save-load 后水合回唯一国家账本
+R2C01_NATIONAL_RESOURCE_CONVERGENCE_SMOKE PASS

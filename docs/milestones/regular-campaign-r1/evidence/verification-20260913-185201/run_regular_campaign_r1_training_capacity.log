@@ -1,0 +1,40 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+TRAINING_CAPACITY_SYNTHETIC_FIXTURE farms=8,9 garrison=20 departure=true accepted=true settled=true scoped_food=35
+PASS: a real home farm, settled future residents, and the full original garrison start the capacity boundary journey
+ERROR: V5 campaign snapshot validation failed: CAPACITY_CONSERVATION
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] export_v5_campaign_snapshot (res://scripts/construction_controller.gd:5650)
+       [1] flush_now (res://scripts/state/runtime_campaign_persistence_coordinator.gd:111)
+       [2] persist_macro_march_checkpoint (res://scripts/state/runtime_campaign_persistence_coordinator.gd:193)
+       [3] persist_macro_march_checkpoint (res://scripts/map_pan_controller.gd:150)
+       [4] _persist_macro_march_checkpoint (res://scripts/construction_controller.gd:9499)
+       [5] command (res://scripts/regular_campaign/regular_campaign_runtime.gd:80)
+       [6] _run (res://tests/run_regular_campaign_r1_training_capacity.gd:116)
+ERROR: V5 runtime persistence save failed: EMPTY_SNAPSHOT (canonical CampaignSnapshot export failed)
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _record_save_failure (res://scripts/state/runtime_campaign_persistence_coordinator.gd:313)
+       [1] flush_now (res://scripts/state/runtime_campaign_persistence_coordinator.gd:114)
+       [2] persist_macro_march_checkpoint (res://scripts/state/runtime_campaign_persistence_coordinator.gd:193)
+       [3] persist_macro_march_checkpoint (res://scripts/map_pan_controller.gd:150)
+       [4] _persist_macro_march_checkpoint (res://scripts/construction_controller.gd:9499)
+       [5] command (res://scripts/regular_campaign/regular_campaign_runtime.gd:80)
+       [6] _run (res://tests/run_regular_campaign_r1_training_capacity.gd:116)
+ERROR: REGULAR_CAMPAIGN_R1_TRAINING_CAPACITY FAIL: ordinary home training batch 7 completes on the canonical city boundary
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _finish (res://tests/run_regular_campaign_r1_training_capacity.gd:164)
+       [1] _run (res://tests/run_regular_campaign_r1_training_capacity.gd:124)
+ERROR: REGULAR_CAMPAIGN_R1_TRAINING_CAPACITY FAIL: home training stops at the real 60-member formation capacity minus the 20-member return reservation
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _finish (res://tests/run_regular_campaign_r1_training_capacity.gd:164)
+       [1] _run (res://tests/run_regular_campaign_r1_training_capacity.gd:124)
+ERROR: REGULAR_CAMPAIGN_R1_TRAINING_CAPACITY FAIL: the reserved return capacity lets normal confirmation settle all original soldiers without a permanent queue deadlock
+   at: push_error (core/variant/variant_utility.cpp:1024)
+   GDScript backtrace (most recent call first):
+       [0] _finish (res://tests/run_regular_campaign_r1_training_capacity.gd:164)
+       [1] _run (res://tests/run_regular_campaign_r1_training_capacity.gd:124)

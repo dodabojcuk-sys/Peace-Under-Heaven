@@ -1,0 +1,22 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+PASS: forecast distinguishes an unfinished/unworked farm by actual yield, never nominal farm count
+PASS: invalid negative stock is treated as empty and only fails at the first unpaid meal, not at time zero
+PASS: positive average yield still exposes a meal-before-harvest gap
+PASS: negative average supply stays stable while stocked and warns only at a two-cycle runway
+PASS: history uses unique confirmed settlements only and clamps fast/slow durations to 75-125 percent
+PASS: history helper never mutates its persisted-entry input
+PASS: initial preparation permits a deliberate 25-minute route with the default 30-minute promise
+PASS: dispatching the same force out of home is not interpreted as a weakness or a recovery event
+PASS: late pressure rises in bounded stages and does not reset the promised window
+PASS: only newly observed cumulative combat losses earn finite credit; retries cannot mint it again
+PASS: a new wound may widen the bounded promise between assessments without invalidating the prior raw-late observation
+PASS: recovery credit has a campaign-wide total cap even after earlier credit was consumed
+PASS: the final stage stops nonessential construction while retaining basic growth and training floors
+PASS: calling pure assessment without externally advancing mainline time cannot simulate pause-time pressure
+PASS: 15-second assessments and one equal long advance consume the same finite recovery credit
+PASS: total deployed-inclusive force, wounds, and operational food facts grant only a capped initial preparation buffer
+PASS: unbounded waiting reaches final pressure despite the finite adaptive preparation buffer
+REGULAR_CAMPAIGN_RULES_R1_RESULTS assertions=17
+REGULAR_CAMPAIGN_RULES_R1_SMOKE PASS assertions=17
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN

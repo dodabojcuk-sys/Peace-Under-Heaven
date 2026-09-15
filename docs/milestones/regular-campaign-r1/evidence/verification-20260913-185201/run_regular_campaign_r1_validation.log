@@ -1,0 +1,18 @@
+Godot Engine v4.5.1.stable.official.f62fdbde1 - https://godotengine.org
+
+TXWZS_RUNTIME_IDENTITY 天下无战事 · UNKNOWN · DEBUG · UNKNOWN
+PASS: normal scene provides a controller for validation coverage
+PASS: regular campaign initializes before snapshot validation
+PASS: normal departure produces a canonical active snapshot
+PASS: unmodified active snapshot passes strict cold-restore validation
+PASS: forged departure ledger food cannot detach entry scope from original transfer
+PASS: entry state cannot forge completed construction before the first attempt tick
+PASS: entry WarLoop snapshot must restore through its authoritative probe
+PASS: active cold restore rejects an empty pressure record
+PASS: construction modifier must match the saved pressure stage and food risk
+PASS: finite recovery credit cannot exceed the campaign cap
+PASS: observed recovery losses cannot exceed authoritative combat losses
+PASS: authored reedbank visibility persists as a legal observed point
+PASS: project paid costs must equal its recorded build progress
+PASS: normal zero-progress logging project persists with exact authored costs
+REGULAR_CAMPAIGN_R1_VALIDATION PASS assertions=14
