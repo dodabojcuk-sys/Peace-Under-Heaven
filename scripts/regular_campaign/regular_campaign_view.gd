@@ -52,10 +52,17 @@ var _phase_label: Label
 var _resource_label: Label
 var _time_label: Label
 var _speed_label: Label
-var _message_label: Label
+var _leave_button: Button
+var _backdrop: ColorRect
 var _map_frame: PanelContainer
 var _map: CampaignMapSurface
 var _map_caption: Label
+var _sidebar_panel: PanelContainer
+var _tab_host: HBoxContainer
+var _tab_buttons: Dictionary = {}
+var _prep_action_bar: PanelContainer
+var _prep_summary_label: Label
+var _prep_confirm_button: Button
 var _sidebar: ScrollContainer
 var _sidebar_content: VBoxContainer
 var _tab_row: HBoxContainer
@@ -125,11 +132,11 @@ func _notification(what: int) -> void:
 
 
 func _build_ui() -> void:
-	var backdrop := ColorRect.new()
-	backdrop.color = SURFACE
-	backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
-	add_child(backdrop)
+	_backdrop = ColorRect.new()
+	_backdrop.color = SURFACE
+	_backdrop.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	add_child(_backdrop)
 
 	_top_bar = PanelContainer.new()
 	_top_bar.add_theme_stylebox_override("panel", _panel_style(SURFACE_RAISED, BORDER, 10))
@@ -177,9 +184,9 @@ func _build_ui() -> void:
 	var pause := _button("暂停", _toggle_pause, false)
 	pause.custom_minimum_size = Vector2(62, 32)
 	controls.add_child(pause)
-	var leave := _button("暂离关卡 · 返回永久主城", _hide_campaign, false)
-	leave.custom_minimum_size = Vector2(96, 32)
-	controls.add_child(leave)
+	_leave_button = _button("暂离关卡 · 返回永久主城", _hide_campaign, false)
+	_leave_button.custom_minimum_size = Vector2(96, 32)
+	controls.add_child(_leave_button)
 
 	_map_frame = PanelContainer.new()
 	_map_frame.clip_contents = true
@@ -217,10 +224,30 @@ func _build_ui() -> void:
 	_map_caption.clip_text = true
 	map_stack.add_child(_map_caption)
 
+	# R1C phase-UI：侧栏改为「固定 tab 行 + 滚动正文 + 固定操作区」三段式。
+	# tab 行不再随正文滚到顶栏下面，也不再随 900ms 刷新销毁重建；
+	# 备战表单的"本次投入摘要 + 确认"固定在底部，长内容在上方滚动。
+	_sidebar_panel = PanelContainer.new()
+	_sidebar_panel.add_theme_stylebox_override("panel", _panel_style(SURFACE_RAISED, BORDER, 10))
+	add_child(_sidebar_panel)
+	var side_column := VBoxContainer.new()
+	side_column.add_theme_constant_override("separation", 8)
+	_sidebar_panel.add_child(side_column)
+	_tab_host = HBoxContainer.new()
+	_tab_host.add_theme_constant_override("separation", 5)
+	side_column.add_child(_tab_host)
+	_tab_row = _tab_host
+	for item in [[&"OVERVIEW", "概览"], [&"BUILD", "建设"], [&"ARMIES", "部队"], [&"RESULT", "结算"]]:
+		var tab_id: StringName = item[0]
+		var tab := _button(str(item[1]), func(): _set_tab(tab_id), tab_id == _active_tab)
+		tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		tab.custom_minimum_size.y = 38
+		_tab_row.add_child(tab)
+		_tab_buttons[tab_id] = tab
 	_sidebar = ScrollContainer.new()
 	_sidebar.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	_sidebar.add_theme_stylebox_override("panel", _panel_style(SURFACE_RAISED, BORDER, 10))
-	add_child(_sidebar)
+	_sidebar.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	side_column.add_child(_sidebar)
 	var side_margin := _margin(14, 12, 14, 14)
 	side_margin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_sidebar.add_child(side_margin)
@@ -229,6 +256,20 @@ func _build_ui() -> void:
 	_sidebar_content.custom_minimum_size.x = 1
 	_sidebar_content.add_theme_constant_override("separation", 9)
 	side_margin.add_child(_sidebar_content)
+	_prep_action_bar = PanelContainer.new()
+	_prep_action_bar.add_theme_stylebox_override("panel", _panel_style(SURFACE_SOFT, BORDER, 8))
+	_prep_action_bar.visible = false
+	side_column.add_child(_prep_action_bar)
+	var action_margin := _margin(12, 8, 12, 10)
+	_prep_action_bar.add_child(action_margin)
+	var action_column := VBoxContainer.new()
+	action_column.add_theme_constant_override("separation", 6)
+	action_margin.add_child(action_column)
+	_prep_summary_label = _label("本次投入：尚未选择编队。", 15, TEXT)
+	_prep_summary_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	action_column.add_child(_prep_summary_label)
+	_prep_confirm_button = _button("确认首批投入 · 进入战役", _confirm_departure, true)
+	action_column.add_child(_prep_confirm_button)
 	_layout()
 
 
@@ -246,23 +287,37 @@ func _layout() -> void:
 		maxf(310.0, viewport.x - side_width - edge * 3.0),
 		map_frame_height
 	)
-	_sidebar.position = Vector2(viewport.x - side_width - edge, edge + top_height + 10.0)
-	_sidebar.size = Vector2(side_width, maxf(250.0, viewport.y - top_height - edge * 2.0 - 10.0))
+	_sidebar_panel.position = Vector2(viewport.x - side_width - edge, edge + top_height + 10.0)
+	_sidebar_panel.size = Vector2(side_width, maxf(250.0, viewport.y - top_height - edge * 2.0 - 10.0))
 
 
 func _update_chrome() -> void:
 	var phase := String(_model.get("phase", "PREPARATION"))
 	var local_model := _dict(_model.get("local", {}))
 	var pressure := _dict(_model.get("pressure", {}))
-	var location := str(_point(_inner_city_point_id).get("display_name", _inner_city_point_id)) if _surface_mode == &"CITY" else "本关战区"
-	_city_surface_button.visible = _surface_mode != &"CITY"
-	_theater_surface_button.visible = _surface_mode == &"CITY"
-	_title_label.text = "%s / %s%s" % [str(_model.get("title", "常规关卡")), location, " · 战时内城" if _surface_mode == &"CITY" else ""]
+	var prep := _surface_mode == &"PREP"
+	# R1C phase-UI：备战态显示为"永久主城 · 备战"，资源读数取主城库存，
+	# 不再借用"青原前线城 · 战时内城"的标题和空前线库存。
+	if prep:
+		var home_chrome := _dict(_model.get("home", {}))
+		_title_label.text = "%s · 永久主城 · 备战 / 首批投入" % str(_model.get("title", "常规关卡"))
+		_resource_label.text = "主城  粮食 %d · 木材 %d  |  投入一次性带入" % [
+			int(home_chrome.get("food", 0)), int(home_chrome.get("wood", 0)),
+		]
+	else:
+		var location := str(_point(_inner_city_point_id).get("display_name", _inner_city_point_id)) if _surface_mode == &"CITY" else "本关战区"
+		_title_label.text = "%s / %s%s" % [str(_model.get("title", "常规关卡")), location, " · 战时内城" if _surface_mode == &"CITY" else ""]
+		var risk := _risk_name(str(_dict(local_model.get("forecast", {})).get("risk_id", "STABLE")))
+		_resource_label.text = "前线  粮食 %d · 木材 %d  |  %s" % [
+			int(local_model.get("food", 0)), int(local_model.get("wood", 0)), risk,
+		]
 	_phase_label.text = "目标：%s" % str(_dict(_model.get("summary", {})).get("objective", "清除前线威胁并确认归队"))
-	var risk := _risk_name(str(_dict(local_model.get("forecast", {})).get("risk_id", "STABLE")))
-	_resource_label.text = "前线  粮食 %d · 木材 %d  |  %s" % [
-		int(local_model.get("food", 0)), int(local_model.get("wood", 0)), risk,
-	]
+	_city_surface_button.visible = _surface_mode == &"THEATER"
+	_theater_surface_button.visible = _surface_mode == &"CITY"
+	_map_frame.visible = not prep
+	_tab_host.visible = not prep
+	_prep_action_bar.visible = prep
+	_leave_button.text = "收起备战表单 · 返回主城" if prep else "暂离关卡 · 返回永久主城"
 	_time_label.text = "主线 %s · 本次 %s · 压力 %s" % [
 		_time_text(int(_model.get("mainline_elapsed_ms", 0))),
 		_time_text(int(_model.get("attempt_elapsed_ms", 0))),
@@ -279,36 +334,62 @@ func _update_chrome() -> void:
 	if message.is_empty():
 		message = str(_model.get("feedback", ""))
 	if message.is_empty():
-		message = "点击地块或建筑操作真实内城设施。" if _surface_mode == &"CITY" else "选择一支军队，再点击地点下达调动。"
+		if prep:
+			message = "备战表单：勾选编队并确认首批投入；收起表单即回到同一永久主城。"
+		elif _surface_mode == &"CITY":
+			message = "点击地块或建筑操作真实内城设施。"
+		else:
+			message = "选择一支军队，再点击地点下达调动。"
 	_map_caption.text = message
 	_map.set_model(_model, _selected_army_id, _selected_point_id, _selected_building_id, _selected_plot, _surface_mode)
 
 
 func _rebuild_sidebar() -> void:
-	# 侧栏会随 900ms 周期刷新整体重建；不保留滚动位置的话，确认按钮这类
-	# 折叠线以下的内容会被不断弹回顶部（R1B 首批投入不可达的根因之一）。
+	# 侧栏正文随 900ms 周期刷新整体重建；不保留滚动位置的话，折叠线以下的
+	# 内容会被不断弹回顶部。tab 行已固定在正文之外（_build_ui），此处不再重建。
 	var preserved_scroll := _sidebar.scroll_vertical
 	for child in _sidebar_content.get_children():
 		child.queue_free()
-	_tab_row = HBoxContainer.new()
-	_tab_row.add_theme_constant_override("separation", 5)
-	_sidebar_content.add_child(_tab_row)
-	for item in [[&"OVERVIEW", "概览"], [&"BUILD", "建设"], [&"ARMIES", "部队"], [&"RESULT", "结算"]]:
-		var tab_id: StringName = item[0]
-		var tab := _button(str(item[1]), func(): _set_tab(tab_id), tab_id == _active_tab)
-		tab.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		tab.custom_minimum_size.y = 38
-		_tab_row.add_child(tab)
-	match _active_tab:
-		&"BUILD":
-			_build_build_tab()
-		&"ARMIES":
-			_build_armies_tab()
-		&"RESULT":
-			_build_result_tab()
-		_:
-			_build_overview_tab()
+	if _surface_mode == &"PREP":
+		_build_prep_tab()
+	else:
+		match _active_tab:
+			&"BUILD":
+				_build_build_tab()
+			&"ARMIES":
+				_build_armies_tab()
+			&"RESULT":
+				_build_result_tab()
+			_:
+				_build_overview_tab()
 	_restore_sidebar_scroll.call_deferred(preserved_scroll)
+	if _surface_mode == &"PREP":
+		_refresh_prep_action_bar.call_deferred()
+
+
+func _update_tab_styles() -> void:
+	for tab_id_value in _tab_buttons:
+		var tab_id := StringName(tab_id_value)
+		_style_surface_button(_tab_buttons[tab_id], tab_id == _active_tab)
+
+
+func _refresh_prep_action_bar() -> void:
+	# 固定操作区：投入摘要 + 确认按钮不随长内容滚动，始终可见可点。
+	if _prep_summary_label == null or _prep_confirm_button == null:
+		return
+	var summary := _departure_summary_text()
+	_prep_summary_label.text = "本次投入：%s" % summary
+	_prep_summary_label.add_theme_color_override(
+		"font_color",
+		ACCENT if not _selected_formation_ids.is_empty() else MUTED
+	)
+	_prep_confirm_button.disabled = _selected_formation_ids.is_empty()
+	var home := _dict(_model.get("home", {}))
+	_prep_confirm_button.tooltip_text = "携带粮食 %d · 木材 %d 从主城一次性带入本关。" % [
+		_departure_food_draft, _departure_wood_draft,
+	] if not _selected_formation_ids.is_empty() else "勾选上方至少一个编队后解锁。"
+	if int(home.get("food", 0)) < 8:
+		_prep_confirm_button.tooltip_text += " 主城粮食不足 8，无法满足最低携粮要求。"
 
 
 func _restore_sidebar_scroll(scroll: int) -> void:
@@ -326,18 +407,10 @@ func _build_overview_tab() -> void:
 	var phase := String(_model.get("phase", "PREPARATION"))
 	_add_heading("战役态势")
 	if phase == "PREPARATION":
-		# R1C：备战阶段的状态说明——尚未出征，人在永久主城，不含"已就任前线"的误导。
-		_add_readout(
-			"备战进行中",
-			"当前驻扎黑石城永久主城。在下方「首批投入」勾选编队并确认首批兵粮，"
-			+ "即可进入本关战区；随后可进入青原前线城的战时内城建设生产。",
-			ACCENT
-		)
-	var forecast := (
-		_dict(_dict(_model.get("home", {})).get("food_forecast", {}))
-		if phase == "PREPARATION"
-		else _dict(_dict(_model.get("local", {})).get("forecast", {}))
-	)
+		# R1C phase-UI：备战一律走 _build_prep_tab（PREP 模式）；此分支只防御异常刷新。
+		_build_prep_tab()
+		return
+	var forecast := _dict(_dict(_model.get("local", {})).get("forecast", {}))
 	_add_readout("供给预报", _forecast_text(forecast), _forecast_color(forecast))
 	var pressure := _dict(_model.get("pressure", {}))
 	var pressure_button := _button(
@@ -348,12 +421,9 @@ func _build_overview_tab() -> void:
 	_sidebar_content.add_child(pressure_button)
 	if _pressure_details_expanded:
 		_add_readout("推进压力", _pressure_text(pressure), WARNING if not pressure.is_empty() else MUTED)
-	if phase != "PREPARATION":
-		_add_readout("敌军整备", "第 10 分钟起，每 6 分钟各未占领敌城增加 1 名后备守军；每三轮提高攻击。已整备 %d 轮。攻占来源后停止当地整备，已受损城门不会修复。" % int(_model.get("enemy_growth_events", 0)), MUTED)
+	_add_readout("敌军整备", "第 10 分钟起，每 6 分钟各未占领敌城增加 1 名后备守军；每三轮提高攻击。已整备 %d 轮。攻占来源后停止当地整备，已受损城门不会修复。" % int(_model.get("enemy_growth_events", 0)), MUTED)
 	_add_readout("当前地点", _point_text(_selected_point_id), TEXT)
-	if phase == "PREPARATION":
-		_build_departure_form()
-	elif phase == "PENDING":
+	if phase == "PENDING":
 		_add_readout("待确认", "本次损益已冻结；确认前不会写回永久主城。请在“结算”页核对。", WARNING)
 	elif phase == "COMPLETED":
 		_add_readout("战役完成", "本次战役已经完成。返回永久主城继续经营，伤员可以继续接受治疗。", ACCENT)
@@ -375,10 +445,46 @@ func _build_overview_tab() -> void:
 	_add_feedback_block()
 
 
-func _build_departure_form() -> void:
-	_add_heading("首批投入")
-	_add_readout("规则", "只可从真实主城资产投入一次。进入战役后可在关内改令，但不能再次从主城追加兵粮。", MUTED)
+func _build_prep_tab() -> void:
+	# R1C phase-UI：备战表单页——没有 tab、没有前线城市画布，
+	# 只有与"永久主城 · 首批投入"直接相关的内容；摘要与确认在固定操作区。
+	_add_heading("永久主城 · 备战")
+	_add_readout(
+		"备战进行中",
+		"当前仍在黑石城永久主城。下方勾选编队并确认首批兵粮后，"
+		+ "才从既有战区入口进入本关；确认前不会改变时间、资源或存档。",
+		ACCENT
+	)
+	_add_readout("供给预报", _forecast_text(_dict(_dict(_model.get("home", {})).get("food_forecast", {}))), MUTED)
+	_build_departure_form_body()
+	_add_feedback_block()
+
+
+func _departure_summary_text() -> String:
 	var home := _dict(_model.get("home", {}))
+	var summaries: Array[String] = []
+	for formation_value in _array(home.get("formations", [])):
+		var formation := _dict(formation_value)
+		var summary_id := StringName(formation.get("id", formation.get("formation_id", "")))
+		var summary_count := int(formation.get("member_count", formation.get("count", 0)))
+		if summary_id in _selected_formation_ids and summary_count > 0:
+			summaries.append("%s %d 人" % [str(formation.get("display_name", summary_id)), summary_count])
+	if summaries.is_empty():
+		return "尚未选择编队；勾选上方编队后，这里会显示出征名单。"
+	return "、".join(summaries) + " · 携粮 %d · 携木 %d" % [_departure_food_draft, _departure_wood_draft]
+
+
+func _confirm_departure() -> void:
+	_command(&"depart", {
+		"formation_ids": _selected_formation_ids.duplicate(),
+		"food": _departure_food_draft,
+		"wood": _departure_wood_draft,
+	})
+
+
+func _build_departure_form_body() -> void:
+	var home := _dict(_model.get("home", {}))
+	_add_readout("规则", "只可从真实主城资产投入一次。进入战役后可在关内改令，但不能再次从主城追加兵粮。", MUTED)
 	var formations := _array(home.get("formations", []))
 	if formations.is_empty():
 		_add_readout("可用编队", "主城还没有可投入的编队。回到永久主城，用左上军事区的「征募」补充士兵后，编队会自动出现在这里。", WARNING)
@@ -395,87 +501,55 @@ func _build_departure_form() -> void:
 			check.add_theme_font_size_override("font_size", 16)
 			check.toggled.connect(func(on: bool): _toggle_formation(formation_id, on))
 			_sidebar_content.add_child(check)
-	# R1B.2：一支军队 = 一个被勾选的编队（create_regular_force 每编队一支，军队名沿用编队名）。
-	# 这里把"玩家勾了什么"白纸黑字列出来，避免勾选与出征结果对不上号的困惑。
-	var committed_summaries: Array[String] = []
-	for formation_value in formations:
-		var formation := _dict(formation_value)
-		var summary_id := StringName(formation.get("id", formation.get("formation_id", "")))
-		var summary_count := int(formation.get("member_count", formation.get("count", 0)))
-		if summary_id in _selected_formation_ids and summary_count > 0:
-			committed_summaries.append("%s %d 人" % [str(formation.get("display_name", summary_id)), summary_count])
-	_add_readout(
-		"本次投入",
-		"、".join(committed_summaries) if not committed_summaries.is_empty() else "尚未选择编队；勾选上方编队后，这里会显示出征名单。",
-		ACCENT if not committed_summaries.is_empty() else MUTED
-	)
 	var food := _spin("携带粮食", 0, maxi(int(home.get("food", 0)), 300), _departure_food_draft)
 	var wood := _spin("携带木材", 0, maxi(int(home.get("wood", 0)), 300), _departure_wood_draft)
 	_departure_food_spin = food.get("spin") as SpinBox
 	_departure_wood_spin = wood.get("spin") as SpinBox
-	_departure_food_spin.value_changed.connect(func(value: float): _departure_food_draft = roundi(value))
-	_departure_wood_spin.value_changed.connect(func(value: float): _departure_wood_draft = roundi(value))
+	_departure_food_spin.value_changed.connect(func(value: float):
+		_departure_food_draft = roundi(value)
+		_refresh_prep_action_bar()
+	)
+	_departure_wood_spin.value_changed.connect(func(value: float):
+		_departure_wood_draft = roundi(value)
+		_refresh_prep_action_bar()
+	)
 	_sidebar_content.add_child(food.get("row"))
 	_sidebar_content.add_child(wood.get("row"))
-	var depart := _button("确认首批投入 · 进入战役", func(): _command(&"depart", {
-		"formation_ids": _selected_formation_ids.duplicate(),
-		"food": int((food.get("spin") as SpinBox).value),
-		"wood": int((wood.get("spin") as SpinBox).value),
-	}), true)
-	depart.disabled = _selected_formation_ids.is_empty()
-	_sidebar_content.add_child(depart)
-	if _selected_formation_ids.is_empty():
-		_add_readout(
-			"下一步",
-			"勾选上方至少一个编队，「确认首批投入 · 进入战役」才会解锁；兵粮会从主城一次性带入本关。",
-			WARNING
-		)
+	_add_readout(
+		"确认位置",
+		"「本次投入」摘要与「确认首批投入」按钮固定在侧栏底部，滚动时始终可见。",
+		MUTED
+	)
 
 
 func _build_build_tab() -> void:
 	_add_heading("战时内城建设")
-	if _surface_mode != &"CITY":
-		_sidebar_content.add_child(_button("进入选中城市内城", _enter_selected_city, true))
+	if _surface_mode == &"PREP":
+		_build_prep_tab()
+		return
 	var point := _point(_selected_point_id)
 	if point.is_empty():
 		_add_readout("选择地点", "在地图上选择地点以查看建设权限。", WARNING)
+		_add_feedback_block()
 		return
-	_add_readout(str(point.get("display_name", _selected_point_id)), _point_build_message(point), ACCENT if bool(point.get("allows_build", false)) else MUTED)
+	var phase := String(_model.get("phase", "PREPARATION"))
+	_add_readout(str(point.get("display_name", _selected_point_id)), _point_build_message(point), ACCENT if (bool(point.get("allows_build", false)) and phase == "ACTIVE") else MUTED)
 	var local_model := _dict(_model.get("local", {}))
 	var project := _dict(local_model.get("project", {}))
 	if not project.is_empty():
 		_add_readout("正在施工 · 建设区 %d" % (int(project.get("plot", -1)) + 1), "%s · 进度 %d%%" % [_building_name(StringName(project.get("kind", ""))), roundi(float(_project_progress_permille(project)) / 10.0)], GOLD)
 		_sidebar_content.add_child(_button("取消当前施工", func(): _command(&"cancel_build"), false))
-	if bool(point.get("allows_build", false)):
-		if project.is_empty() and _array(local_model.get("buildings", [])).is_empty():
-			_add_readout(
-				"第一次建设？",
-				"城内带数字的虚线框（1–6）就是可建设空地：直接点击虚线框选中地块，再选下方设施并「开工」。",
-				ACCENT
-			)
-		var occupied := _building_for_plot(_selected_plot)
-		if not occupied.is_empty():
-			_selected_building_id = StringName(occupied.get("id", ""))
-			_add_selected_building_card(occupied)
-		elif _selected_plot >= 0:
-			_add_readout("已选建设空间", "地块 %d · 当前为空。选择设施后由正式战役命令开工。" % (_selected_plot + 1), ACCENT)
-		else:
-			_add_readout("选择建设空间", "请直接点击城内有编号的空地。六个地块是本关候选数据，不代表最终城建容量规则。", WARNING)
-		var kind := OptionButton.new()
-		kind.add_theme_font_size_override("font_size", 16)
-		for item in [["FARM", "农田 · 提高本地有效粮食"], ["LOGGING", "伐木场 · 提供建设材料"], ["WAREHOUSE", "仓储 · 提高本地容量"], ["CLINIC", "医疗点 · 恢复伤员"]]:
-			kind.add_item(str(item[1]))
-			kind.set_item_metadata(kind.item_count - 1, StringName(item[0]))
-		_sidebar_content.add_child(kind)
-		var start_build := _button("在城内选中地块开工", func(): _command(&"build", {
-			"point_id": _selected_point_id,
-			"kind": kind.get_selected_metadata(),
-			"plot": _selected_plot,
-		}), true)
-		start_build.disabled = _selected_plot < 0 or not _building_for_plot(_selected_plot).is_empty() or not project.is_empty()
-		_sidebar_content.add_child(start_build)
-	else:
-		_add_readout("不可建设", "该普通节点可驻军、过路和有限补给，但没有战时内城建设许可。", WARNING)
+	# R1C phase-UI：正式建设入口只有原全屏内城（缩略画布不再承担建设）。
+	# 编号地块、开工与选中反馈都在全屏内城的建设选择状态中出现。
+	if bool(point.get("allows_build", false)) and phase == "ACTIVE":
+		_sidebar_content.add_child(_button("进入选中城市内城", _enter_selected_city, true))
+		_add_readout(
+			"建设操作位置",
+			"地块选择与「开工」在原全屏内城进行：进入后点击带编号的可建设空地，再选设施开工；连路与派工在建筑详情内完成。",
+			MUTED
+		)
+	elif phase != "ACTIVE":
+		_add_readout("阶段未满足", "建设入口在确认首批投入并进入本关后才开放；当前阶段不能开工。", WARNING)
 	_add_heading("工人安排")
 	var buildings := _array(local_model.get("buildings", []))
 	if buildings.is_empty():
@@ -563,6 +637,10 @@ func _build_result_tab() -> void:
 
 func _set_tab(tab: StringName) -> void:
 	_active_tab = tab
+	_update_tab_styles()
+	# 切换页面是一次性导航：滚动回顶；周期刷新仍保留玩家位置。
+	_sidebar_scroll_reset_pending = true
+	_sidebar.scroll_vertical = 0
 	_rebuild_sidebar()
 
 
@@ -570,18 +648,31 @@ func _set_surface_mode(mode: StringName) -> void:
 	_surface_mode = mode
 	_style_surface_button(_city_surface_button, mode == &"CITY")
 	_style_surface_button(_theater_surface_button, mode == &"THEATER")
-	_feedback_override = "已进入前线内城；点击真实建筑或空地操作。" if mode == &"CITY" else "已切换战区总览；这里用于查看线路与调兵。"
+	_feedback_override = (
+		"已进入前线内城；点击真实建筑或空地操作。"
+		if mode == &"CITY"
+		else ("备战表单已打开。" if mode == &"PREP" else "已切换战区总览；这里用于查看线路与调兵。")
+	)
+	_sidebar_scroll_reset_pending = true
+	_sidebar.scroll_vertical = 0
 	_update_chrome()
 	_rebuild_sidebar()
 
 func _apply_persisted_view_context() -> void:
-	var context := _dict(_model.get("view_context", {}))
 	var phase := StringName(_model.get("phase", &"PREPARATION"))
-	var surface := StringName(context.get("surface", &"THEATER" if phase != &"PREPARATION" else &"CITY"))
+	if phase == &"PREPARATION":
+		# R1C phase-UI：备战阶段一律呈现"永久主城 · 备战"表单，
+		# 不再沿用任何持久化的 CITY 表现，避免被显示成前线内城。
+		_surface_mode = &"PREP"
+		_inner_city_point_id = &""
+		_selected_plot = -1
+		return
+	var context := _dict(_model.get("view_context", {}))
+	var surface := StringName(context.get("surface", &"THEATER"))
 	if surface == &"CITY":
 		_inner_city_point_id = StringName(context.get("city_id", &"blackstone_city"))
 		_surface_mode = &"CITY"
-	elif phase != &"PREPARATION":
+	else:
 		_inner_city_point_id = &""
 		_surface_mode = &"THEATER"
 
@@ -592,7 +683,7 @@ func _enter_selected_city() -> void:
 		return
 	var point := _point(_selected_point_id)
 	if not bool(point.get("allows_build", false)):
-		_feedback_override = "%s没有本关战时内城建设权限。" % str(point.get("display_name", _selected_point_id))
+		_feedback_override = "%s仅支持休整与有限补给，没有战时内城建设许可。" % str(point.get("display_name", _selected_point_id))
 		_update_chrome()
 		return
 	_inner_city_point_id = _selected_point_id
@@ -638,6 +729,9 @@ func _toggle_formation(id: StringName, on: bool) -> void:
 		_selected_formation_ids.append(id)
 	elif not on:
 		_selected_formation_ids.erase(id)
+	if _surface_mode == &"PREP":
+		# 固定操作区的摘要与确认状态即时跟随勾选，不等下一次 900ms 刷新。
+		_refresh_prep_action_bar()
 
 
 func _select_army(id: StringName) -> void:
@@ -755,29 +849,6 @@ func _building_for_plot(plot: int) -> Dictionary:
 		if int(building.get("plot", -1)) == plot:
 			return building
 	return {}
-
-
-func _add_selected_building_card(building: Dictionary) -> void:
-	var kind := StringName(building.get("kind", &""))
-	var connected := bool(building.get("connected", false))
-	var workers := int(building.get("workers", 0))
-	var output := "尚无有效产出"
-	if connected and workers > 0:
-		match kind:
-			&"FARM": output = "每 3 分钟最多产粮 22；当前岗位 %d/4" % workers
-			&"LOGGING": output = "每 3 分钟最多产木 18；当前岗位 %d/4" % workers
-			&"WAREHOUSE": output = "本地仓储容量提高 120"
-			&"CLINIC": output = "可处理真实伤员；当前岗位 %d/4" % workers
-	_add_readout(
-		_building_name(kind),
-		"建设区 %d · 已建成 · 道路%s · 人员 %d/4\n%s" % [
-			int(building.get("plot", -1)) + 1,
-			"已接通" if connected else "未接通",
-			workers,
-			output,
-		],
-		ACCENT
-	)
 
 
 func _add_heading(value: String) -> void:
@@ -917,9 +988,17 @@ func _point_text(id: StringName) -> String:
 
 
 func _point_build_message(point: Dictionary) -> String:
-	if bool(point.get("allows_build", false)):
-		return "此地具备战时内城许可。农田、伐木、仓储和医疗都消耗真实本地材料、工人和时间。"
-	return "此地没有建设许可；普通节点仍能作为通行、驻军与有限补给位置。"
+	# R1C phase-UI：资格与阶段分开表达，拒绝话术与权威命令一一对应。
+	if not bool(point.get("allows_build", false)):
+		return "此处仅支持休整与有限补给，没有战时内城建设许可。"
+	match String(_model.get("phase", "")):
+		"PREPARATION":
+			return "此地具备战时内城资格，但首批投入尚未确认：先在永久主城完成备战，确认后才开放建设入口。"
+		"PENDING":
+			return "战时内城资格保留；本关损益待确认期间暂停新建设，请先在结算页处理。"
+		"COMPLETED":
+			return "本关已完成，战时内城不再开放建设；如需继续经营请返回永久主城。"
+	return "此地具备战时内城许可。农田、伐木、仓储和医疗都消耗真实本地材料、工人和时间。"
 
 
 func _army_text(army: Dictionary) -> String:

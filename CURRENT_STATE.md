@@ -1,5 +1,35 @@
 # 当前状态
 
+## R1C phase-UI 一致性修正 (2026-09-16)
+
+备战阶段不再伪装成战时内城；确认投入后的建设走原全屏内城；侧栏操作层级修正。
+验证：`tests/verify_r1c_phase_ui_alignment.gd` 35 项 PASS（headless，隔离沙盒
+`/private/tmp/txwzs-phase-ui-*`）、`tests/verify_save_path_resolution.gd`（case=isolated）
+四路径一致 9 项 PASS、存档门禁反例矩阵通过、1280×720 与 1152×648 两次真人
+点击取证（截图在 `~/Documents/TXWZS_R1B_DELIVERY/phase-ui-alignment-r1c/`）。
+
+- PREPARATION：战役视图进入 PREP 表现——标题"永久主城 · 备战 / 首批投入"、
+  资源口径取主城库存、隐藏前线城市画布与四个长页 tab；编队表单下方新增
+  固定操作区（本次投入摘要 + 确认按钮不随滚动消失）。`_apply_persisted_view_context()`
+  在 PREPARATION 一律映射 PREP，不再沿用持久化 CITY 表现。
+- ACTIVE：确认投入经既有事务（`depart`）自动落战区；战区点许可城市经
+  `show_regular_campaign_city()` 进入原全屏 MapWorld 内城（缩略画布不再承担
+  建设入口，画布建设控件已移除，建设操作集中在全屏内城的建设菜单与详情面板）。
+- 拒绝原因按阶段/资格拆分（runtime `_build`/`_set_view_context` 与视图
+  `_point_build_message` 一一对应）：备战期=尚未确认首批兵粮；普通驻点=仅支持
+  休整与有限补给；PENDING=损益待确认暂停建设。
+- 编号可建设地块只在合法 ACTIVE 内城显示（`ACTIVE 且无施工` 门槛，
+  `show_regular_campaign_city` 与 `open_construction_menu` 两处一致；开工后收起）。
+- 侧栏结构改为「固定 tab 行 + 滚动正文 + 固定操作区」三段式：tab 不再随正文
+  滚走、不再随 900ms 刷新销毁重建；同页刷新保留滚动位置与 SpinBox 焦点，
+  切换 tab/页面一次性回顶。
+- 1152×648 现场核查：主城顶栏无重叠复现（长摘要以省略号截断），未改动。
+
+已知边界（维持开放，不在本轮范围）：`summary.fallen`/`food_return` 冷恢复漂移
+定性；1152 下部分内城详情控件可达性；永久主城手动安置路径（与战时内城建设
+分开，未修）。测试 WIP：`tests/run_regular_campaign_r1b_playable_loop.gd` 本地
++9 行（确认按钮滚动定位）保留未提交。
+
 ## Regular Campaign R1C formal playthrough (2026-09-15)
 
 A fresh regular campaign now walks the full player path through the real

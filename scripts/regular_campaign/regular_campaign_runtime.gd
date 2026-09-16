@@ -135,8 +135,13 @@ func _set_view_context(args: Dictionary) -> Dictionary:
 	var surface := StringName(args.get("surface", &"THEATER"))
 	var city_id := StringName(args.get("city_id", &""))
 	if surface == &"CITY":
-		if data.phase not in [&"ACTIVE", &"PENDING"] or city_id != BASE:
-			return _error("该地点没有本关战时内城建设权限")
+		# R1C phase-UI：拒绝原因按真实阶段拆分，不再把"阶段未到"与"地点无资格"混成一句。
+		if data.phase == &"PREPARATION":
+			return _error("尚未确认首批兵粮：请先在永久主城完成备战，确认后经战区进入许可城市。")
+		if city_id != BASE:
+			return _error("此处仅支持休整与有限补给，没有战时内城建设许可。")
+		if data.phase not in [&"ACTIVE", &"PENDING"]:
+			return _error("本关已结算，战时内城不再开放建设入口。")
 		data.view_context = {"surface": &"CITY", "city_id": city_id}
 		return _ok("已进入本关城市的战时内城")
 	if surface == &"THEATER" and data.phase != &"PREPARATION":
@@ -338,8 +343,15 @@ func _cancel_orders_for(id: StringName) -> void:
 func _build(args: Dictionary) -> Dictionary:
 	var point := StringName(args.get("point_id", BASE))
 	var kind := StringName(args.get("kind", &""))
-	if data.phase != &"ACTIVE" or point != BASE:
-		return _error("此地点没有战时建设许可；普通城仅能休整与有限补给")
+	# R1C phase-UI：阶段未满足与地点无资格分开表达；资格、费用与人数检查保持原样。
+	if data.phase == &"PREPARATION":
+		return _error("尚未确认首批兵粮：请先完成备战，确认后经战区进入许可城市开工。")
+	if data.phase == &"PENDING":
+		return _error("本关损益待确认，暂停新建设；请先在结算页确认本次损益。")
+	if data.phase != &"ACTIVE":
+		return _error("本关已结束，战时内城不再开放新建设。")
+	if point != BASE:
+		return _error("此处仅支持休整与有限补给，没有战时内城建设许可。")
 	if kind not in BUILD_KINDS or not data.project.is_empty() or data.buildings.size() >= 6:
 		return _error("建造位忙碌或已达本关六块可用地上限")
 	if _base_members() - _assigned_workers() < 2:

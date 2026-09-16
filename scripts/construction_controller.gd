@@ -767,8 +767,11 @@ func show_regular_campaign_city() -> bool:
 	_regular_campaign_city_host.visible = true
 	_regular_campaign_city_host.sync(model)
 	_regular_campaign_city_host.set_selected_plot(_regular_campaign_selected_plot)
-	# R1B：可建设空地的编号虚线框在战时内城常显——玩家随时能看到“编号的空地”在哪里。
-	_regular_campaign_city_host.set_buildable_plots_visible(true)
+	# R1C phase-UI：编号可建设空地只在合法 ACTIVE 内城、且没有施工占用时显示；
+	# PENDING/COMPLETED 或施工进行中不再把六个候选框常驻铺在城市里。
+	var campaign_phase := StringName(model.get("phase", &""))
+	var campaign_project := Dictionary(Dictionary(model.get("local", {})).get("project", {}))
+	_regular_campaign_city_host.set_buildable_plots_visible(campaign_phase == &"ACTIVE" and campaign_project.is_empty())
 	_sync_regular_campaign_city_roads(model)
 	var root := get_parent()
 	if root != null and root.has_method("present_regular_campaign_city"):
@@ -1352,7 +1355,12 @@ func open_construction_menu() -> void:
 		_refresh_construction_catalog_ui()
 		_sync_construction_ui()
 		if is_instance_valid(_regular_campaign_city_host):
-			_regular_campaign_city_host.set_buildable_plots_visible(true)
+			# R1C phase-UI：建设选择状态下才显示编号地块；PENDING/有施工时不铺框。
+			var rc_model := _regular_campaign.get_read_model()
+			_regular_campaign_city_host.set_buildable_plots_visible(
+				StringName(rc_model.get("phase", &"")) == &"ACTIVE"
+				and Dictionary(Dictionary(rc_model.get("local", {})).get("project", {})).is_empty()
+			)
 		construction_interaction_started.emit()
 		construction_presentation_changed.emit()
 		return
@@ -15396,7 +15404,8 @@ func _refresh_current_mainline_entry_ui() -> void:
 		var surface := StringName(context.get("surface", &"PREPARATION"))
 		current_mainline_entry_button.disabled = false
 		current_mainline_entry_button.text = {
-			&"PREPARATION": "进入青原战区 · 确认首批投入",
+			# R1C phase-UI：备战入口如实标注位置，不再把玩家引向"青原战区"。
+			&"PREPARATION": "永久主城 · 备战 · 确认首批投入",
 			&"PENDING": "青原战果待确认",
 			&"COMPLETED": "查看青原战役结算",
 		}.get(phase, "返回本关战区" if _regular_campaign_city_active or surface == &"CITY" else "查看青原战区")

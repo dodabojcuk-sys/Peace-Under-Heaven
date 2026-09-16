@@ -113,6 +113,11 @@ func _resolve_save_directory_args() -> Dictionary:
 				result.error = "存档目录参数重复出现"
 				return result
 			result.override = argument.trim_prefix(SAVE_DIRECTORY_ARGUMENT_PREFIX)
+	# 门禁缺口修复：require 携带而缺 save-dir 时必须拒绝，
+	# 否则隔离要求被静默忽略（反例矩阵"缺参"例退化为正常启动）。
+	if result.require and result.override_count == 0:
+		result.error = "缺少 --txwzs-v5-save-dir：隔离要求不能没有显式测试存档目录"
+		return result
 	# 未指定覆盖目录 = 普通默认启动语义（合法，跳过全部路径校验）。
 	if result.override_count == 0:
 		return result
