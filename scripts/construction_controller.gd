@@ -14899,7 +14899,7 @@ func _sync_construction_ui() -> void:
 	build_entry_button.text = (
 		"旧存档施工完成后启用新建造队列"
 		if _has_legacy_construction()
-		else "城市经营"
+		else "建设目录"
 	)
 	build_entry_button.disabled = is_city_action_locked_for_battle()
 	build_mode_status.visible = state == ConstructionState.PLACING

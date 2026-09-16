@@ -157,6 +157,10 @@ func _run() -> void:
 			await _stage_deploy2("facts-a-claimed.json", "facts-a-depart2.json")
 		"A_verify":
 			await _stage_verify("facts-a-depart2.json")
+		"A_place":
+			await _stage_place_valid()
+		"A_place_verify":
+			await _stage_place_verify()
 		"A_deploy2_diag":
 			await _stage_deploy2_diag()
 		"B_deploy1":
@@ -173,6 +177,65 @@ func _run() -> void:
 			push_error("未知 stage：" + stage)
 			quit(2)
 			return
+	_finish()
+
+
+func _stage_place_valid() -> void:
+	# 冷启动后 build_slot 应回到 READY_TO_PLACE（随检查点持久化）；
+	# 程序级扫描"有效且接路"的格并反算全局屏幕坐标，供真实鼠标确认安置。
+	await process_frame
+	var slot_state: StringName = city.call("get_build_slot_state")
+	print("D1_PLACE slot_state=", slot_state)
+	_expect(
+		slot_state == city.BUILD_SLOT_READY_TO_PLACE,
+		"冷启动后工程仍为 READY_TO_PLACE（%s）" % slot_state,
+	)
+	var slot: Dictionary = city.get("_build_slot")
+	var definition = city.get_definition(StringName(slot.get("definition_id", &"")))
+	var orientation := int(slot.get("orientation", 0))
+	var found := Vector2i(-1, -1)
+	for x in range(0, 48):
+		for y in range(0, 48):
+			var check: Dictionary = city.evaluate_origin_cell_for_definition(
+				Vector2i(x, y), definition, true, false, orientation
+			)
+			if bool(check.get("valid", false)) and str(check.get("connection_state", "")) == "connected":
+				found = Vector2i(x, y)
+				break
+		if found.x >= 0:
+			break
+	_expect(found.x >= 0, "扫描到有效且接路的安置格")
+	if found.x < 0:
+		_finish()
+		return
+	var center_local: Vector2 = city.call("cell_to_map_local", found) + Vector2(40, 40)
+	var screen_pos: Vector2 = city.call("map_local_to_screen", center_local)
+	var origin: Vector2 = root.position
+	print("D1_PLACE_RESULT cell=%s global=%d,%d" % [
+		str(found), int(origin.x + screen_pos.x), int(origin.y + screen_pos.y + 28.0),
+	])
+	_finish()
+
+
+func _stage_place_verify() -> void:
+	# 真实鼠标安置后的冷启动校验：slot 归 IDLE、正式建筑记录存在且位置持久。
+	await process_frame
+	var slot_state: StringName = city.call("get_build_slot_state")
+	_expect(slot_state == city.BUILD_SLOT_IDLE, "安置确认后 build_slot 回到 IDLE（%s）" % slot_state)
+	var records: Dictionary = city.get("_building_records_by_id")
+	_expect(records.size() >= 1, "正式建筑记录存在（%d 栋）" % records.size())
+	var record_dump: Dictionary = {}
+	for id_value in records:
+		var record: Dictionary = _dict(records[id_value])
+		record_dump[str(id_value)] = {
+			"definition_id": str(record.get("definition_id", "")),
+			"lifecycle_state": str(record.get("lifecycle_state", "")),
+			"cell": str(record.get("cell", record.get("origin_cell", "?"))),
+		}
+	print("D1_PLACE_RECORDS=", JSON.stringify(record_dump))
+	var totals_now: Dictionary = _dict(runtime.get_read_model().get("totals", {}))
+	print("D1_PLACE_FACTS=", JSON.stringify(_snapshot_facts()))
+	_expect(int(totals_now.get("wood_in", -1)) == 40, "伐木场木料投入 40 保持（不重复扣料）")
 	_finish()
 
 

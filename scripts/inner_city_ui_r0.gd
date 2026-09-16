@@ -45,6 +45,8 @@ const DANGER := Color("df8d7f")
 @onready var noticeboard_panel: Panel = $NoticeboardPanel
 
 var _layout_refresh_pending := false
+var _governance_open := false
+var governance_toggle_button: Button
 var governance_workspace: PanelContainer
 var governance_title: Label
 var governance_summary: Label
@@ -77,6 +79,7 @@ func _ready() -> void:
 	_apply_static_copy()
 	_install_governance_workspace()
 	_install_strategy_workspace()
+	_install_governance_toggle()
 	_layout_for_viewport()
 	get_viewport().size_changed.connect(_layout_for_viewport)
 	construction_controller.city_state_changed.connect(_refresh_read_model)
@@ -85,6 +88,22 @@ func _ready() -> void:
 	)
 	_refresh_read_model()
 	call_deferred("_restore_product_overview")
+
+
+func _install_governance_toggle() -> void:
+	# R2A：城市总览改为按需入口——左下角常驻小按钮，默认不展开经营面板，
+	# 玩家先看见全屏城市。
+	governance_toggle_button = _make_governance_button("城市经营")
+	governance_toggle_button.name = "GovernanceToggle"
+	governance_toggle_button.focus_mode = Control.FOCUS_NONE
+	add_child(governance_toggle_button)
+	governance_toggle_button.pressed.connect(_toggle_governance_workspace)
+
+
+func _toggle_governance_workspace() -> void:
+	_governance_open = not _governance_open
+	governance_toggle_button.text = "收起经营" if _governance_open else "城市经营"
+	_refresh_read_model()
 
 
 func _restore_product_overview() -> void:
@@ -129,7 +148,7 @@ func _apply_static_copy() -> void:
 	city_two.text = "河湾城\n有机花园城 · 可进入"
 	city_three.text = "下一城市\n未解锁"
 	minimap_label.text = "部署概览 · 黑石城"
-	build_entry_button.text = "城市经营"
+	build_entry_button.text = "建设目录"
 	build_mode_status.text = "已选蓝图\n地图左键建造 · R 旋转 · 右键/Esc 取消"
 	$ConstructionMenu/Title.text = "空间设施与道路"
 	$BuildingDetailPanel/PanelTitle.text = "建筑档案"
@@ -317,6 +336,10 @@ func _layout_for_viewport() -> void:
 	minimap_label.position = Vector2(14.0, 8.0)
 	minimap_label.size = Vector2(right_width - 28.0, 20.0)
 	$MinimapPlaceholder/ViewportFrame.visible = false
+	if governance_toggle_button != null:
+		# R2A：城市经营开关常驻左下角，不与顶栏/小地图/右侧面板争位。
+		governance_toggle_button.position = Vector2(edge, height - edge - 36.0)
+		governance_toggle_button.size = Vector2(112.0, 34.0)
 
 	var is_placing: bool = bool(construction_controller.is_placing())
 	var has_build_slot := (
@@ -781,14 +804,11 @@ func _settle_refugee(case_id: StringName) -> void:
 
 
 func _start_governance_definition(definition_id: StringName) -> void:
-	# R1B：失败不再静默——把原因写给玩家，成功时清掉旧提示。
-	if construction_controller.begin_placing_definition(
-		definition_id,
-		get_viewport().get_mouse_position()
-	):
-		_set_governance_hint("")
-	else:
-		_set_governance_hint("暂时无法开工：材料不足或当前状态不允许。可点「查看设施与道路」查看各项条件。")
+	# R2A：推荐不再静默开工——打开建设目录，由玩家确认建筑后开工；
+	# 建筑位置在建造完成后的手动安置中决定，不由推荐代选。
+	var _requested := definition_id
+	construction_controller.open_construction_menu()
+	_set_governance_hint("请在建设目录中选择要开工的建筑；完成后按提示手动安置位置。")
 
 
 func _set_governance_hint(text: String) -> void:
@@ -959,10 +979,22 @@ func _refresh_governance_workspace(
 		issues.push_front(str(governance.active_issue))
 	governance_issue_detail.visible = not issues.is_empty()
 	governance_issue_detail.text = "\n".join(issues)
+	# R2A：经营总览默认收起，仅经左下角入口显式打开；放置/选模板/详情/
+	# 建造工程期间强制收起并记住收起（不与城市空间抢交互）。
+	if (
+		construction_controller.is_placing()
+		or construction_controller.is_choosing_template()
+		or detail_panel.visible
+		or (
+			construction_controller.has_method("has_build_project")
+			and bool(construction_controller.has_build_project())
+		)
+	):
+		_governance_open = false
 	var show_workspace: bool = (
-		not _strategy_workspace_open
-		and
-		not construction_controller.is_placing()
+		_governance_open
+		and not _strategy_workspace_open
+		and not construction_controller.is_placing()
 		and not construction_controller.is_choosing_template()
 		and not detail_panel.visible
 		and not (
