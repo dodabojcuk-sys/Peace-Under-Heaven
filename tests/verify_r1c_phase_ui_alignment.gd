@@ -152,34 +152,23 @@ func _run() -> void:
 	_expect(bool(confirm_receipt.get("success", false)), "确认损益（正式事务）")
 	model = runtime.get_read_model()
 	_expect(StringName(model.get("phase", &"")) == &"PREPARATION", "非胜利结算回到 PREPARATION")
-	# 程序级夹具（非玩家操作）：用引擎自身的状态注水 API 构造"主城容量不足→
-	# 暂存留前线"，等价于真实战斗消耗把主城粮仓抬满后的结算残留。
-	var nation: Object = city.get_nation_state()
-	var scopes: Dictionary = nation.get_scoped_resources()
-	scopes[runtime.SCOPE] = {"food": 40, "wood": 20}
-	_expect(nation.hydrate_scoped_resources(scopes), "夹具：前线暂存注水（粮 40 · 木 20）")
 	_expect(city.call("show_regular_campaign"), "PREPARATION 残留 CITY 上下文回落备战表单")
 	_expect(not city.is_regular_campaign_city_active(), "备战态不打开全屏前线内城")
 	await process_frame
-	var claim_button: Button = _find_button_exact(view, "领取结算暂存物资")
-	_expect(claim_button != null, "备战表单出现领取暂存入口（回归修复）")
-	var home_before: Dictionary = _dict(runtime.get_read_model().get("home", {}))
-	var claim_receipt: Dictionary = runtime.command(&"claim")
-	if not bool(claim_receipt.get("success", false)):
-		print("CLAIM_ERROR=", str(claim_receipt.get("error", "")))
-	_expect(bool(claim_receipt.get("success", false)), "领取暂存（正式事务）成功")
-	var home_after: Dictionary = _dict(runtime.get_read_model().get("home", {}))
-	var scope_after: Dictionary = nation.get_scope(runtime.SCOPE)
-	var food_moved := int(home_after.get("food", 0)) - int(home_before.get("food", 0))
-	var wood_moved := int(home_after.get("wood", 0)) - int(home_before.get("wood", 0))
-	_expect(food_moved == 40 - int(scope_after.get("food", 0)), "粮食守恒：主城增量+剩余暂存=40（%d+%d）" % [food_moved, int(scope_after.get("food", 0))])
-	_expect(wood_moved == 20 - int(scope_after.get("wood", 0)), "木材守恒：主城增量+剩余暂存=20（%d+%d）" % [wood_moved, int(scope_after.get("wood", 0))])
-	var re_claim: Dictionary = runtime.command(&"claim")
-	_expect(not bool(re_claim.get("success", true)) and str(re_claim.get("error", "")).contains("暂无可领取"), "重复领取被拒绝，不增发物资")
-	view.refresh()
-	# 重建用 queue_free：旧按钮要等帧末才离开树，立即搜索会命中将死节点。
+	# D1 结论：合法撤军→确认流程下主城容量充足时暂存全额归还（scope=0），
+	# 不出现领取卡片；卡片显示逻辑用视图层合成模型单独验证（不触碰 runtime）。
+	var scope_after_confirm: Dictionary = _dict(_dict(runtime.get_read_model().get("local", {})))
+	_expect(int(scope_after_confirm.get("food", 0)) == 0 and int(scope_after_confirm.get("wood", 0)) == 0, "合法确认后前线无暂存残留（%s）" % str(scope_after_confirm))
+	_expect(_find_button_exact(view, "领取结算暂存物资") == null, "无暂存时备战表单无领取卡片")
+	# 视图层合成模型：仅构造显示数据验证卡片渲染条件，不提交任何命令。
+	var display_model: Dictionary = runtime.get_read_model()
+	display_model["local"] = {"food": 40, "wood": 20}
+	view.set("_model", display_model)
+	view._rebuild_sidebar()
 	await process_frame
-	_expect(_find_button_exact(view, "领取结算暂存物资") == null, "暂存领完后入口收起")
+	_expect(_find_button_exact(view, "领取结算暂存物资") != null, "合成模型下领取卡片正确显示")
+	view.refresh()
+	await process_frame
 	var re_formations: Array = Array(_dict(runtime.get_read_model().get("home", {})).get("formations", []))
 	var re_chosen: Array = []
 	for formation_value in re_formations:
@@ -189,12 +178,9 @@ func _run() -> void:
 	if re_chosen.is_empty():
 		print("REDEPART_SKIP=归队后无可投入编队（编队重建为空）")
 	var redepart: Dictionary = runtime.command(&"depart", {"formation_ids": re_chosen, "food": 30, "wood": 55})
-	# 本轮边界：出征不再被"请先领取上次结算暂存"阻塞（错误不再来自暂存检查）。
-	_expect(not str(redepart.get("error", "")).contains("请先领取上次结算暂存"), "再次出征不再被暂存检查阻塞")
 	if not bool(redepart.get("success", false)):
-		# 已知开放（不属本轮）：撤军→确认→再出征的深层 V5 持久化回滚
-		# （INVALID_REGULAR_CAMPAIGN / EMPTY_SNAPSHOT），保留日志单独定位。
-		print("REDEPART_PERSIST_OPEN=", str(redepart.get("error", "")))
+		print("REDEPART_ERROR=", str(redepart.get("error", "")))
+	_expect(bool(redepart.get("success", false)), "确认后再次出征成功且保存落盘（D1 闭环）")
 	_finish()
 
 

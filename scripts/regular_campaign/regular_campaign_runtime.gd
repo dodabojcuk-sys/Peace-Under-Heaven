@@ -639,6 +639,10 @@ func _confirm() -> Dictionary:
 		data.entry = {}
 		data.departure_ledger = {}
 		data.settlement_id = &""
+		# R1C-D1：待确认战果摘要属于上一轮尝试；入关初态校验要求
+		# entry.state.summary 为空，残留会让第二次出征的保存被回滚。
+		# 持久信息已在此处写回（归队/阵亡/资源/combat_losses_total 累计）。
+		data.summary = {}
 		data.buildings = []
 		data.project = {}
 		data.training = {}

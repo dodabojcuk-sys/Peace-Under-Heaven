@@ -1,3 +1,20 @@
+# R1C-D1 撤军后再次出征持久化闭环 — 2026-09-16
+
+- 产品缺陷：`_confirm()` 非胜利分支（WITHDRAW/DEFEAT）回 PREPARATION 时漏清
+  `data.summary`。残留的上一轮战果摘要让第二次 `depart` 构建的入关初态快照
+  （`entry.state`）未通过校验规则"入关初态 summary 必须为空"
+  （`validate_snapshot` 内 `_valid_entry_snapshot`），持久化被回滚，
+  玩家在撤军/战败后无法再次出征（每次保存都报"保存未完成，行动已回滚"）。
+- 最小修复：该分支补 `data.summary = {}`。持久信息不受影响：伤员/阵亡在确认时
+  已写入 PopulationRecovery，资源已归还主城，`combat_losses_total` 与
+  `history` 按既有设计跨尝试保留。
+- 新增 `tests/verify_r1c_d1_redeploy_persistence.gd`：分段多进程生命周期短测
+  （WITHDRAW 路径 5 阶段 + DEFEAT 路径 4 阶段），覆盖两次出征、撤军确认、
+  领取守恒、三个节点冷启动恢复、身份字段不重复推进。全部 PASS。
+- `tests/verify_r1c_phase_ui_alignment.gd` 移除非法注水夹具（直接注 40/20
+  前线资源无台账来源，本身会破坏校验器守恒），领取卡片显示逻辑改用视图层
+  合成模型验证；合法流程断言"确认后无暂存残留 + 再次出征落盘成功"。
+
 # Regular Campaign R1C closeout corrections — 2026-09-15
 
 - Save-isolation gate hardening: duplicate `--txwzs-v5-save-dir` arguments are

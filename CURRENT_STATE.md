@@ -1,5 +1,25 @@
 # 当前状态
 
+## R1C-D1 撤军后再次出征持久化闭环 (2026-09-16，0a0cc1b 之后)
+
+合法流程（撤军/战败 → 确认 → 领取 → 再次出征）第二次 depart 的持久化回滚
+为真实产品故障：`_confirm()` 非胜利分支漏清 `data.summary`，残留摘要使
+入关初态快照未通过"summary 必须为空"校验（`_valid_entry_snapshot`）。
+最小修复：该分支补 `data.summary = {}`（持久信息已由确认事务写回：
+PopulationRecovery 伤员/阵亡、主城资源、combat_losses_total 累计）。
+
+验证：新增 `tests/verify_r1c_d1_redeploy_persistence.gd` 分段多进程短测——
+路径 A（WITHDRAW）5 阶段、路径 B（DEFEAT+时间消耗）4 阶段，覆盖三个冷启动
+节点、领取守恒、attempt_sequence 每次出征恰好 +1、settlement 不重复，
+全部 PASS；四路径短测与 phase-UI 定向测试（49 项，已移除非法注水夹具）PASS；
+玩家存档树哨兵前后一致。已知边界：归队士兵确认后全部并入第一编队
+（formation.1=20，2/3 编队清零，属编队重建分布，不阻塞持久化，本轮未动）；
+深层冷恢复漂移定性维持开放。旧整关测试 +9 行 WIP 已导出补丁
+（`TXWZS_BACKUP/r1c-d1-wip/wip_playable_loop_plus9_0a0cc1b.patch`，
+SHA256 ef1d89aa…）并恢复干净树。
+
+# 当前状态
+
 ## R1C phase-UI 有限收尾 (2026-09-16，011a180 之后)
 
 四个边界收口（提交见 git log；延续 011a180，不重做既有系统）：
