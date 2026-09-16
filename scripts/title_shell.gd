@@ -159,6 +159,10 @@ func _focus_primary_action() -> void:
 
 
 func _has_continuable_campaign() -> bool:
+	# R1C 热修复：门禁拒绝态下不回退默认玩家档（quit 延迟生效期间也不读取）。
+	var identity: Node = get_node_or_null("/root/RuntimeIdentity")
+	if identity != null and identity.has_method("is_save_gate_rejected") and identity.is_save_gate_rejected():
+		return false
 	var override: String = get_node("/root/RuntimeIdentity").get_campaign_save_directory_override()
 	if DisplayServer.get_name() == "headless" and override.is_empty():
 		return false

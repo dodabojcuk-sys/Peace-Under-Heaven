@@ -32,6 +32,21 @@ func initialize(
 	if _is_initialized:
 		return get_status()
 	_controller = controller
+	# R1C 热修复：启动门禁拒绝时，存档服务不得初始化、更不得回退默认目录。
+	var identity: Node = get_node_or_null("/root/RuntimeIdentity")
+	if identity != null and identity.has_method("is_save_gate_rejected") and identity.is_save_gate_rejected():
+		_writes_blocked = true
+		_is_initialized = true
+		_status = {
+			"status": "disabled_save_gate_rejected",
+			"loaded": false,
+			"recovered": false,
+			"save_sequence": 0,
+			"save_directory": "",
+			"error_id": &"SAVE_GATE_REJECTED",
+			"error": "save gate rejected this launch",
+		}
+		return get_status()
 	var configured_directory := _configured_save_directory()
 	# Existing headless runners instantiate the real scene for gameplay checks.
 	# They must never read or create a player's default user:// generation; the
@@ -314,6 +329,11 @@ func _record_save_failure(error_id: StringName, error: String) -> void:
 
 
 func _configured_save_directory() -> String:
+	# R1C 热修复：与 RuntimeIdentity 门禁/getter 共用同一解析（重复拒绝、
+	# 规范化、符号链接检测一致），避免检查与实际使用不同目录。
+	var identity: Node = get_node_or_null("/root/RuntimeIdentity")
+	if identity != null and identity.has_method("get_campaign_save_directory_override"):
+		return identity.get_campaign_save_directory_override()
 	for argument in OS.get_cmdline_user_args():
 		if argument.begins_with(SAVE_DIRECTORY_ARGUMENT_PREFIX):
 			var configured := argument.trim_prefix(SAVE_DIRECTORY_ARGUMENT_PREFIX)
