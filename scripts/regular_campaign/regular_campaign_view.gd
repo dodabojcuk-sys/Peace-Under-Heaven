@@ -312,7 +312,17 @@ func _update_chrome() -> void:
 			int(local_model.get("food", 0)), int(local_model.get("wood", 0)), risk,
 		]
 	_phase_label.text = "目标：%s" % str(_dict(_model.get("summary", {})).get("objective", "清除前线威胁并确认归队"))
-	_city_surface_button.visible = _surface_mode == &"THEATER"
+	# R1C phase-UI：备战浮层用半透明遮罩，原主城 MapWorld 仍在下方可见；
+	# 遮罩保留鼠标拦截，防止透过表单误点城内设施。战区/内城恢复原不透明底。
+	_backdrop.color = Color(0.035, 0.082, 0.114, 0.6) if prep else SURFACE
+	# 地图顶部与建设页两个"进内城"入口使用同一可用条件：
+	# 仅战区视图 + 许可地点 + ACTIVE/PENDING；普通驻点与备战态一律不显示。
+	var city_entry_available := (
+		_surface_mode == &"THEATER"
+		and phase in ["ACTIVE", "PENDING"]
+		and bool(_point(_selected_point_id).get("allows_build", false))
+	)
+	_city_surface_button.visible = city_entry_available
 	_theater_surface_button.visible = _surface_mode == &"CITY"
 	_map_frame.visible = not prep
 	_tab_host.visible = not prep
@@ -451,11 +461,23 @@ func _build_prep_tab() -> void:
 	_add_heading("永久主城 · 备战")
 	_add_readout(
 		"备战进行中",
-		"当前仍在黑石城永久主城。下方勾选编队并确认首批兵粮后，"
-		+ "才从既有战区入口进入本关；确认前不会改变时间、资源或存档。",
+		"当前仍在黑石城永久主城，主城经营与时间照常运行。下方勾选编队并确认首批兵粮后，"
+		+ "才从既有战区入口进入本关；编辑草稿不会提交出征、也不会扣除出征物资。",
 		ACCENT
 	)
 	_add_readout("供给预报", _forecast_text(_dict(_dict(_model.get("home", {})).get("food_forecast", {}))), MUTED)
+	# R1C phase-UI：撤军/战败结算后前线可能仍暂存粮木（主城容量不足时留原账），
+	# 而 _depart 要求先领取才能再次出征——备战表单必须保留这个正式领取入口。
+	var retained_stock := _dict(_model.get("local", {}))
+	var retained_food := int(retained_stock.get("food", 0))
+	var retained_wood := int(retained_stock.get("wood", 0))
+	if retained_food > 0 or retained_wood > 0:
+		_add_readout(
+			"上次结算暂存",
+			"前线仍暂存粮 %d · 木 %d。出征前需先领取回主城；主城容量不足时请先腾出空间，暂存物资不会消失。" % [retained_food, retained_wood],
+			WARNING
+		)
+		_sidebar_content.add_child(_button("领取结算暂存物资", func(): _command(&"claim"), false))
 	_build_departure_form_body()
 	_add_feedback_block()
 

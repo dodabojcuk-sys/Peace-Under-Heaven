@@ -722,7 +722,10 @@ func show_regular_campaign() -> bool:
 	if _regular_campaign == null or not _regular_campaign.enabled():
 		return false
 	var context := Dictionary(_regular_campaign.get_read_model().get("view_context", {}))
-	if StringName(context.get("surface", &"THEATER")) == &"CITY":
+	var campaign_phase := StringName(_regular_campaign.get_read_model().get("phase", &""))
+	# R1C phase-UI：CITY 上下文只在合法 ACTIVE/PENDING 生效；
+	# 结算回到 PREPARATION 后残留的 CITY 上下文回落到备战表单，不再打开前线内城。
+	if StringName(context.get("surface", &"THEATER")) == &"CITY" and campaign_phase in [&"ACTIVE", &"PENDING"]:
 		return show_regular_campaign_city()
 	deactivate_regular_campaign_city()
 	if not is_instance_valid(_regular_campaign_canvas):
@@ -767,11 +770,11 @@ func show_regular_campaign_city() -> bool:
 	_regular_campaign_city_host.visible = true
 	_regular_campaign_city_host.sync(model)
 	_regular_campaign_city_host.set_selected_plot(_regular_campaign_selected_plot)
-	# R1C phase-UI：编号可建设空地只在合法 ACTIVE 内城、且没有施工占用时显示；
-	# PENDING/COMPLETED 或施工进行中不再把六个候选框常驻铺在城市里。
-	var campaign_phase := StringName(model.get("phase", &""))
-	var campaign_project := Dictionary(Dictionary(model.get("local", {})).get("project", {}))
-	_regular_campaign_city_host.set_buildable_plots_visible(campaign_phase == &"ACTIVE" and campaign_project.is_empty())
+	# R1C phase-UI：入城默认不铺编号框——正常查看城市只看到建筑与选中反馈；
+	# 打开战时建设菜单（且合法 ACTIVE、无施工占用）才显示可建设位置；
+	# 取消/关闭/开工/离城各自收起（open_construction_menu / cancel_build_interaction /
+	# _regular_campaign_start_build / deactivate_regular_campaign_city）。
+	_regular_campaign_city_host.set_buildable_plots_visible(false)
 	_sync_regular_campaign_city_roads(model)
 	var root := get_parent()
 	if root != null and root.has_method("present_regular_campaign_city"):

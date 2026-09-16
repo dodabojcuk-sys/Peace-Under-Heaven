@@ -1,5 +1,31 @@
 # 当前状态
 
+## R1C phase-UI 有限收尾 (2026-09-16，011a180 之后)
+
+四个边界收口（提交见 git log；延续 011a180，不重做既有系统）：
+
+1. **备战浮层透出原主城**：`_backdrop` 在 PREP 分支使用半透明遮罩
+   （alpha 0.6，仍拦截鼠标），原 MapWorld/道路/建筑可见；战区/内城恢复原底。
+   备战文案收窄为真实保证："编辑草稿不会提交出征、也不会扣除出征物资；
+   主城经营与时间照常运行"。
+2. **进内城入口统一**：地图顶部 `_city_surface_button` 与建设页入口同条件
+   （战区视图 + ACTIVE/PENDING + 许可地点）；普通驻点两处都不再出现进城按钮。
+3. **编号框跟随建设菜单状态**：入城默认不铺框（`show_regular_campaign_city`
+   一律收起）；打开战时建设菜单（ACTIVE 且无施工）才显示；取消/开工/离城各自
+   收起（`cancel_build_interaction`、`_regular_campaign_start_build` 既有逻辑）。
+   另加 `show_regular_campaign()` 阶段守卫：结算回 PREPARATION 后残留的 CITY
+   上下文回落备战表单，不再打开前线内城。
+4. **领取暂存入口回归**：撤军/战败确认回 PREPARATION 且前线有暂存时，备战表单
+   显示"上次结算暂存（粮 X · 木 Y）"+ 领取按钮（复用正式 `claim` 命令）；
+   领取守恒、重复领取拒绝、领完入口收起。无暂存新局不出现卡片。
+
+验证：`tests/verify_r1c_phase_ui_alignment.gd` 53 项 PASS（含上述四边界正反
+断言；`REDEPART_PERSIST_OPEN` 为已记录开放问题——撤军→确认→再出征的深层
+V5 持久化回滚 INVALID_REGULAR_CAMPAIGN/EMPTY_SNAPSHOT，属既有持久化/冷恢复域，
+本轮不扩大）。四路径短测 PASS。GUI 真人点击取证 4 张于
+`~/Documents/TXWZS_R1B_DELIVERY/phase-ui-alignment-r1c/finish-2/`：
+1152 备战浮层透出主城、1280 普通驻点双入口隐藏、内城默认无框、菜单开有框。
+
 ## R1C phase-UI 一致性修正 (2026-09-16)
 
 备战阶段不再伪装成战时内城；确认投入后的建设走原全屏内城；侧栏操作层级修正。
