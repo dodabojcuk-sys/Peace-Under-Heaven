@@ -108,6 +108,9 @@ func _install_governance_group(content: VBoxContainer, title: String, open_by_de
 	body.add_theme_constant_override("separation", 3)
 	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	for control in controls:
+		# 同一控件可能先被直挂到 content（旧安装顺序），先摘下再入组。
+		if control.get_parent() != null:
+			control.get_parent().remove_child(control)
 		body.add_child(control)
 	header.pressed.connect(func():
 		body.visible = not body.visible
