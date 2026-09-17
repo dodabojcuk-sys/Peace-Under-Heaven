@@ -41,11 +41,14 @@ const DANGER := Color("df8d7f")
 @onready var confirm_road_button: Button = $ConstructionEntryPanel/ConfirmRoadButton
 @onready var cancel_placement_button: Button = $ConstructionEntryPanel/CancelPlacementButton
 @onready var construction_menu: Panel = $ConstructionMenu
+@onready var catalog_logging_button: Button = $ConstructionMenu/LoggingCampButton
+@onready var catalog_farm_button: Button = $ConstructionMenu/FarmButton
 @onready var detail_panel: Panel = $BuildingDetailPanel
 @onready var noticeboard_panel: Panel = $NoticeboardPanel
 
 var _layout_refresh_pending := false
 var _governance_open := false
+var _catalog_highlight_button: Button
 var governance_toggle_button: Button
 var governance_workspace: PanelContainer
 var governance_title: Label
@@ -102,8 +105,46 @@ func _install_governance_toggle() -> void:
 
 func _toggle_governance_workspace() -> void:
 	_governance_open = not _governance_open
-	governance_toggle_button.text = "收起经营" if _governance_open else "城市经营"
 	_refresh_read_model()
+
+
+func _sync_governance_chrome() -> void:
+	if _catalog_highlight_button != null and (
+		not is_instance_valid(construction_menu) or not construction_menu.visible
+	):
+		_clear_catalog_highlight()
+	# R2A.1：经营面板可见性、_governance_open 与开关文案的唯一维护点。
+	# 详情/施工/放置/模板选择等状态强制收起并复位 _governance_open，
+	# 按钮文案跟随面板实际可见性立即恢复「城市经营」。
+	var forced_closed: bool = (
+		construction_controller.is_placing()
+		or construction_controller.is_choosing_template()
+		or detail_panel.visible
+		or (
+			construction_controller.has_method("has_build_project")
+			and bool(construction_controller.has_build_project())
+		)
+	)
+	if forced_closed:
+		_governance_open = false
+	var show_workspace: bool = (
+		_governance_open
+		and not _strategy_workspace_open
+		and not forced_closed
+	)
+	governance_workspace.visible = show_workspace
+	_governance_workspace_was_visible = show_workspace
+	if show_workspace:
+		# The legacy entry becomes the modal placement surface only; it must not
+		# compete with the default governance workspace.
+		construction_entry.visible = false
+		if not _governance_workspace_was_visible and is_visible_in_tree():
+			governance_catalog_button.grab_focus.call_deferred()
+	if governance_toggle_button != null:
+		governance_toggle_button.visible = true
+		governance_toggle_button.text = (
+			"收起经营" if show_workspace else "城市经营"
+		)
 
 
 func _restore_product_overview() -> void:
@@ -269,8 +310,14 @@ func _refresh_regular_campaign_read_model() -> void:
 		assigned_workers,
 		Array(local.get("buildings", [])).size(),
 	]
+	# R2A.1：城市经营入口只属于永久主城——战时内城隐藏开关并复位状态，
+	# 返回永久主城后默认关闭经营面板、按钮文案为「城市经营」。
+	_governance_open = false
 	if is_instance_valid(governance_workspace):
 		governance_workspace.visible = false
+	if governance_toggle_button != null:
+		governance_toggle_button.visible = false
+		governance_toggle_button.text = "城市经营"
 	for label in [time_summary, daily_report, alert_summary]:
 		label.add_theme_color_override("font_color", MUTED_TEXT)
 	_schedule_layout_refresh()
@@ -804,11 +851,32 @@ func _settle_refugee(case_id: StringName) -> void:
 
 
 func _start_governance_definition(definition_id: StringName) -> void:
-	# R2A：推荐不再静默开工——打开建设目录，由玩家确认建筑后开工；
-	# 建筑位置在建造完成后的手动安置中决定，不由推荐代选。
-	var _requested := definition_id
+	# R2A.1：推荐不静默开工，但保留各自目标——打开建设目录并聚焦对应建筑；
+	# 开工与最终位置仍由玩家确认。definition_id 不入存档、不新增状态。
 	construction_controller.open_construction_menu()
-	_set_governance_hint("请在建设目录中选择要开工的建筑；完成后按提示手动安置位置。")
+	var focus_target: Button = null
+	var hint := ""
+	match definition_id:
+		&"building.logging_camp.t1":
+			focus_target = catalog_logging_button
+			hint = "推荐伐木场用于补充木材：点击下方「伐木场 L1」确认开工，位置在完成后手动安置。"
+		&"building.farm.t1":
+			focus_target = catalog_farm_button
+			hint = "推荐农田用于稳定粮食：点击下方「农田 L1」确认开工，位置在完成后手动安置。"
+		_:
+			hint = "请在建设目录中选择要开工的建筑；完成后按提示手动安置位置。"
+	if focus_target != null:
+		focus_target.grab_focus.call_deferred()
+		focus_target.modulate = Color(1.35, 1.25, 0.9)
+		_catalog_highlight_button = focus_target
+	_set_governance_hint(hint)
+
+
+func _clear_catalog_highlight() -> void:
+	# R2A.1：目录关闭/取消后清除临时高亮，不留持久强调。
+	if _catalog_highlight_button != null and is_instance_valid(_catalog_highlight_button):
+		_catalog_highlight_button.modulate = Color.WHITE
+	_catalog_highlight_button = null
 
 
 func _set_governance_hint(text: String) -> void:
@@ -979,37 +1047,8 @@ func _refresh_governance_workspace(
 		issues.push_front(str(governance.active_issue))
 	governance_issue_detail.visible = not issues.is_empty()
 	governance_issue_detail.text = "\n".join(issues)
-	# R2A：经营总览默认收起，仅经左下角入口显式打开；放置/选模板/详情/
-	# 建造工程期间强制收起并记住收起（不与城市空间抢交互）。
-	if (
-		construction_controller.is_placing()
-		or construction_controller.is_choosing_template()
-		or detail_panel.visible
-		or (
-			construction_controller.has_method("has_build_project")
-			and bool(construction_controller.has_build_project())
-		)
-	):
-		_governance_open = false
-	var show_workspace: bool = (
-		_governance_open
-		and not _strategy_workspace_open
-		and not construction_controller.is_placing()
-		and not construction_controller.is_choosing_template()
-		and not detail_panel.visible
-		and not (
-			construction_controller.has_method("has_build_project")
-			and bool(construction_controller.has_build_project())
-		)
-	)
-	governance_workspace.visible = show_workspace
-	if show_workspace:
-		# The legacy entry becomes the modal placement surface only; it must not
-		# compete with the default governance workspace.
-		construction_entry.visible = false
-		if not _governance_workspace_was_visible and is_visible_in_tree():
-			governance_catalog_button.grab_focus.call_deferred()
-	_governance_workspace_was_visible = show_workspace
+	# R2A.1：面板可见性、开关状态与按钮文案统一在一个同步点维护。
+	_sync_governance_chrome()
 
 
 func _layout_catalog(width: float) -> void:

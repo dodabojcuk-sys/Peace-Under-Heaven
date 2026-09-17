@@ -1,5 +1,27 @@
 # 当前状态
 
+## R2A.1 有限收尾 (2026-09-17，b265cdc 之后)
+
+三项收口（延续 R2A，只动 `inner_city_ui_r0.gd`）：
+
+1. **城市经营入口只属于永久主城**：`_refresh_regular_campaign_read_model`
+   （战时内城分支）隐藏左下角开关、复位 `_governance_open` 与面板；
+   返回永久主城后开关恢复、文案「城市经营」、面板默认关闭。
+2. **强制收起单一同步点**：新增 `_sync_governance_chrome()`——详情/施工/
+   放置/模板选择强制关闭面板并复位 `_governance_open`，开关文案跟随面板
+   实际可见性（强制收起后立即恢复「城市经营」，关闭详情后不自动重开）。
+3. **推荐按钮保留目标**：`_start_governance_definition(definition_id)` 打开
+   建设目录并 grab_focus + modulate 高亮对应按钮（伐木场/农田），提示文案
+   区分（"推荐伐木场用于补充木材"/"推荐农田用于稳定粮食"）；仍不静默开工；
+   目录关闭时清除高亮（`_clear_catalog_highlight`）；definition_id 不入存档。
+
+验证：新增 `tests/verify_r2a1_governance_entry.gd` 41 项 PASS（默认关/开/文案
+同步/详情与目录强制关闭/推荐聚焦与未扣料未开工/内城隐藏开关/返回不残留）；
+D1 五段、phase-UI 49 项、四路径全绿；玩家存档哨兵前后一致。截图：
+`~/Desktop/TXWZS_R2A1_审阅上传/`（01–10 + 两张联系表）。
+
+# 当前状态
+
 ## R2A 永久主城空间经营重构 (2026-09-17，分支 codex/txwzs-permanent-city-r2a)
 
 基于 f576f0b。核心：主城从"常驻经营大面板"恢复为"城市优先"——

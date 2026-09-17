@@ -1,3 +1,14 @@
+# R2A.1 有限收尾 — 2026-09-17
+
+- 城市经营开关只属于永久主城：战时内城/战区不再显示左下角开关，
+  `_governance_open` 在内城分支复位，返回主城后默认关闭、文案「城市经营」。
+- 面板可见性、`_governance_open`、开关文案统一到 `_sync_governance_chrome()`
+  单一同步点；详情/施工/放置/模板强制收起时按钮文案立即恢复，
+  关闭详情后不自动重开、无周期刷新闪烁。
+- 推荐按钮（伐木场/农田）保留各自目标：打开建设目录并聚焦对应建筑按钮
+  （grab_focus + modulate 强调），提示差异化；仍不静默开工；目录关闭清除高亮。
+- 新增 `tests/verify_r2a1_governance_entry.gd`（41 项 PASS）。
+
 # R1C-D1 撤军后再次出征持久化闭环 — 2026-09-16
 
 - 产品缺陷：`_confirm()` 非胜利分支（WITHDRAW/DEFEAT）回 PREPARATION 时漏清
