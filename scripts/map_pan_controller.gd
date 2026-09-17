@@ -318,6 +318,11 @@ func _handle_road_construction_button(event: InputEventMouseButton) -> void:
 			construction_controller.begin_road_drag(event.position)
 			get_viewport().set_input_as_handled()
 	else:
+		# R2B0.1 根因修复：release 落在建设入口面板（取消道路/确认铺设按钮）上时
+		# 必须放行给 GUI——此前无条件 finish + set_input_as_handled，
+		# 按钮收不到完整 press+release，pressed 永不触发（取消/确认均失效）。
+		if construction_controller.is_construction_ui_point(event.position):
+			return
 		construction_controller.finish_road_drag(event.position)
 		get_viewport().set_input_as_handled()
 
