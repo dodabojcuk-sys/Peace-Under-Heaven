@@ -1,5 +1,32 @@
 # 当前状态
 
+## R2B-0 永久主城操作层级与道路建设可靠性收口 (2026-09-17，1c815fd/badc82f 之后)
+
+1. **主操作层级统一**：常规战役启用期间隐藏 map_pan 的宏行军入口
+   （`_refresh_macro_march_entry` 与 `_refresh_current_mainline_entry_ui` 双写
+   去重）——PREPARATION 只显示「永久主城·备战·确认首批投入」，
+   ACTIVE 只显示「查看青原战区」，不再双战区入口并存。
+2. **经营总览折叠分组**：`_install_governance_group`/`_sync_governance_groups`
+   ——五组（概况/生产与仓储/医疗与民生/治安与事件/军事与战略），
+   默认展开「概况」与存在警报的分组，其余收起为一行摘要；
+   医疗岗位与治理岗位拆分为两行各归其组；
+   提示（hint）移出面板独立显示（目录打开面板收起时仍可见，超时自动消失）。
+3. **道路工具退出根因修复**：`handle_escape()` 在道路模式有预览段时
+   此前只调 `cancel_road_preview()` 就返回 true，不退出放置模式——
+   与按钮/右键（`cancel_placing` 完全退出）不一致。现三入口统一走
+   `cancel_placing`（内部 `_reset_road_draft` 清预览/路径/拖拽）。
+   另：进入任何放置/道路模式时自动关闭建设目录（`_close_construction_catalog`），
+   消除目录面板对 ConstructionEntryPanel 取消/确认按钮的遮挡。
+4. **顶栏精简**：目标文案超 14 字截断；PREPARATION 状态说明缩为一行短句
+   （完整说明保留在战役入口 tooltip）。
+
+验证：`verify_r2a1_governance_entry.gd` 51 项 PASS（含道路模式目录遮挡修复、
+三入口统一取消、不扣资源断言）；D1 五段、phase-UI 49 项、四路径全绿；
+玩家存档哨兵前后一致。截图 `TXWZS_R2B0_DELIVERY/`（01/05/06 已拍，其余复用
+R2A/R2A.1 同分支证据）。
+
+# 当前状态
+
 ## R2A.1 有限收尾 (2026-09-17，b265cdc 之后)
 
 三项收口（延续 R2A，只动 `inner_city_ui_r0.gd`）：

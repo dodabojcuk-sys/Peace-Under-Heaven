@@ -49,6 +49,7 @@ const DANGER := Color("df8d7f")
 var _layout_refresh_pending := false
 var _governance_open := false
 var _catalog_highlight_button: Button
+var _governance_groups: Dictionary = {}
 var governance_toggle_button: Button
 var governance_workspace: PanelContainer
 var governance_title: Label
@@ -91,6 +92,43 @@ func _ready() -> void:
 	)
 	_refresh_read_model()
 	call_deferred("_restore_product_overview")
+
+
+func _install_governance_group(content: VBoxContainer, title: String, open_by_default: bool, controls: Array) -> void:
+	var header := Button.new()
+	header.name = "GovernanceGroup_" + title
+	header.text = ("▾ " if open_by_default else "▸ ") + title
+	header.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	header.focus_mode = Control.FOCUS_NONE
+	header.add_theme_font_size_override("font_size", 15)
+	header.add_theme_color_override("font_color", ACCENT)
+	var body := VBoxContainer.new()
+	body.name = "GovernanceBody_" + title
+	body.visible = open_by_default
+	body.add_theme_constant_override("separation", 3)
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	for control in controls:
+		body.add_child(control)
+	header.pressed.connect(func():
+		body.visible = not body.visible
+		header.text = ("▾ " if body.visible else "▸ ") + title
+	)
+	content.add_child(header)
+	content.add_child(body)
+	_governance_groups[title] = {"header": header, "body": body, "open": open_by_default}
+
+
+func _sync_governance_groups(has_alert: bool) -> void:
+	# R2B0：默认只展开「概况」与存在警报的分组；其余收起为一行摘要。
+	for title_value in _governance_groups:
+		var title := String(title_value)
+		var group: Dictionary = _governance_groups[title_value]
+		var body: VBoxContainer = group.get("body")
+		var header: Button = group.get("header")
+		var should_open: bool = title == "概况" or (has_alert and title in ["生产与仓储", "医疗与民生", "治安与事件"])
+		group["open"] = should_open
+		body.visible = should_open
+		header.text = ("▾ " if should_open else "▸ ") + title
 
 
 func _install_governance_toggle() -> void:
@@ -245,7 +283,10 @@ func _refresh_read_model() -> void:
 	if not regular_model.is_empty():
 		var regular_summary := Dictionary(regular_model.get("summary", {}))
 		current_city.text = "%s  ·  永久主城" % city_name
-		next_stage_summary.text = "青原目标：%s" % str(regular_summary.get("objective", "清除前线威胁并确认归队"))
+		var objective := str(regular_summary.get("objective", "清除前线威胁并确认归队"))
+		if objective.length() > 14:
+			objective = objective.substr(0, 14) + "…"
+		next_stage_summary.text = "青原目标：%s" % objective
 	var garrison: Dictionary = construction_controller.get_garrison_snapshot()
 	var queue: Dictionary = construction_controller.get_training_queue_snapshot()
 	var population: Dictionary = construction_controller.get_population_recovery_read_model()
@@ -484,7 +525,6 @@ func _install_governance_workspace() -> void:
 	governance_catalog_button = _make_governance_button("查看设施与道路")
 	governance_catalog_button.name = "GovernanceCatalogButton"
 	governance_catalog_button.pressed.connect(construction_controller.open_construction_menu)
-	content.add_child(governance_catalog_button)
 
 	governance_wood_button = _make_governance_button("补充木材 · 伐木场")
 	governance_wood_button.name = "GovernanceWoodButton"
@@ -507,8 +547,6 @@ func _install_governance_workspace() -> void:
 	governance_hint_label.add_theme_font_size_override("font_size", 13)
 	governance_hint_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	governance_hint_label.visible = false
-	content.add_child(governance_hint_label)
-	content.add_child(production_shortcuts)
 
 	governance_population_summary = Label.new()
 	governance_population_summary.name = "PopulationRecoverySummary"
@@ -518,7 +556,6 @@ func _install_governance_workspace() -> void:
 	governance_population_summary.gui_input.connect(_on_population_summary_input)
 	governance_population_summary.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	governance_population_summary.add_theme_color_override("font_color", MUTED_TEXT)
-	content.add_child(governance_population_summary)
 
 	var production_row := HBoxContainer.new()
 	production_row.add_child(_make_row_label("生产岗位"))
@@ -539,7 +576,6 @@ func _install_governance_workspace() -> void:
 	governance_construction_plus.name = "ConstructionWorkerPlus"
 	governance_construction_plus.pressed.connect(_adjust_workforce.bind(&"construction", 1))
 	production_row.add_child(governance_construction_plus)
-	content.add_child(production_row)
 
 	var care_row := HBoxContainer.new()
 	care_row.add_child(_make_row_label("医疗岗位"))
@@ -551,16 +587,16 @@ func _install_governance_workspace() -> void:
 	governance_medical_plus.name = "MedicalWorkerPlus"
 	governance_medical_plus.pressed.connect(_adjust_workforce.bind(&"medical", 1))
 	care_row.add_child(governance_medical_plus)
-	care_row.add_child(_make_row_label("治理"))
+
+	var order_row := HBoxContainer.new()
+	order_row.add_child(_make_row_label("治理岗位"))
 	governance_order_minus = _make_small_action("−")
-	governance_order_minus.name = "GovernanceWorkerMinus"
 	governance_order_minus.pressed.connect(_adjust_workforce.bind(&"governance", -1))
-	care_row.add_child(governance_order_minus)
+	order_row.add_child(governance_order_minus)
 	governance_order_plus = _make_small_action("+")
 	governance_order_plus.name = "GovernanceWorkerPlus"
 	governance_order_plus.pressed.connect(_adjust_workforce.bind(&"governance", 1))
-	care_row.add_child(governance_order_plus)
-	content.add_child(care_row)
+	order_row.add_child(governance_order_plus)
 
 	var wellbeing_buildings := HBoxContainer.new()
 	wellbeing_buildings.name = "WellbeingBuildingShortcuts"
@@ -572,25 +608,40 @@ func _install_governance_workspace() -> void:
 	clinic_button.name = "GovernanceClinicButton"
 	clinic_button.pressed.connect(_start_governance_definition.bind(&"building.clinic.t1"))
 	wellbeing_buildings.add_child(clinic_button)
-	content.add_child(wellbeing_buildings)
 
 	governance_refugee_actions = VBoxContainer.new()
 	governance_refugee_actions.name = "RefugeeActions"
 	governance_refugee_actions.add_theme_constant_override("separation", 4)
-	content.add_child(governance_refugee_actions)
 
 	governance_treatment_button = _make_governance_button("治疗伤员")
 	governance_treatment_button.name = "WoundedTreatmentButton"
 	governance_treatment_button.pressed.connect(_begin_wounded_treatment)
-	content.add_child(governance_treatment_button)
 	governance_event_button = _make_governance_button("安排治安处置")
 	governance_event_button.name = "GovernanceEventButton"
 	governance_event_button.pressed.connect(_resolve_governance_event)
-	content.add_child(governance_event_button)
 	var strategy_button := _make_governance_button("战略支持 · 文官 / 装备 / 贸易")
 	strategy_button.name = "CityStrategyEntryButton"
 	strategy_button.pressed.connect(_open_strategy_workspace)
-	content.add_child(strategy_button)
+
+	# R2B0：经营总览重组为五个折叠分组（同一事实只出现一次）；
+	# 默认展开「概况」与存在警报的分组，其余收起为一行摘要。
+	_install_governance_group(content, "概况", true, [
+		governance_issue_detail, governance_population_summary,
+	])
+	_install_governance_group(content, "生产与仓储", false, [
+		governance_summary, production_shortcuts, production_row, governance_catalog_button,
+	])
+	_install_governance_group(content, "医疗与民生", false, [
+		care_row, wellbeing_buildings, governance_treatment_button, governance_refugee_actions,
+	])
+	_install_governance_group(content, "治安与事件", false, [
+		order_row, governance_event_button,
+	])
+	_install_governance_group(content, "军事与战略", false, [strategy_button])
+
+	# 提示独立于面板：目录打开（面板收起）时仍可见，超时自动消失。
+	governance_hint_label.visible = false
+	add_child(governance_hint_label)
 
 
 func _install_strategy_workspace() -> void:
@@ -1047,6 +1098,7 @@ func _refresh_governance_workspace(
 		issues.push_front(str(governance.active_issue))
 	governance_issue_detail.visible = not issues.is_empty()
 	governance_issue_detail.text = "\n".join(issues)
+	_sync_governance_groups(not issues.is_empty())
 	# R2A.1：面板可见性、开关状态与按钮文案统一在一个同步点维护。
 	_sync_governance_chrome()
 

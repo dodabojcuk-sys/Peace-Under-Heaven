@@ -1401,6 +1401,7 @@ func begin_placing_definition(
 ) -> bool:
 	if is_city_action_locked_for_battle():
 		return false
+	_close_construction_catalog()
 	var definition := get_definition(definition_id)
 	if definition == null:
 		return false
@@ -1410,6 +1411,7 @@ func begin_placing_definition(
 
 
 func activate_ready_placement(screen_position: Vector2) -> Dictionary:
+	_close_construction_catalog()
 	var before := get_build_slot_state()
 	if before != BUILD_SLOT_READY_TO_PLACE:
 		return _build_slot_result(false, &"NOT_READY", before, before)
@@ -1440,6 +1442,7 @@ func activate_ready_placement(screen_position: Vector2) -> Dictionary:
 
 
 func begin_road_mode(screen_position: Vector2) -> bool:
+	_close_construction_catalog()
 	if is_city_action_locked_for_battle():
 		return false
 	var definition := get_definition(ROAD_DEFINITION.definition_id)
@@ -1465,6 +1468,18 @@ func begin_road_mode(screen_position: Vector2) -> bool:
 	placing_started.emit()
 	construction_presentation_changed.emit()
 	return true
+
+
+func _close_construction_catalog() -> void:
+	# R2B0：目录是"选择模板"状态；进入任何放置/道路模式时自动关闭，
+	# 避免目录面板遮挡 ConstructionEntryPanel 的取消/确认按钮。
+	if state != ConstructionState.CHOOSING_TEMPLATE:
+		return
+	construction_menu.visible = false
+	state = ConstructionState.IDLE
+	_selected_definition = null
+	_sync_construction_ui()
+	construction_presentation_changed.emit()
 
 
 func cancel_placing() -> void:
@@ -1522,10 +1537,11 @@ func cancel_build_interaction() -> void:
 
 
 func handle_escape() -> bool:
+	# R2B0 根因修复：道路模式下有预览段时此前只清当前段就返回 true，
+	# 仍停留在放置模式——与按钮/右键（cancel_placing 完全退出）不一致，
+	# 表现为“Esc 无法退出道路工具”。三入口统一走 cancel_placing
+	# （其内部 _reset_road_draft 已清预览、路径与拖拽状态）。
 	if is_road_placing():
-		if has_road_preview():
-			cancel_road_preview()
-			return true
 		cancel_placing()
 		return true
 	if is_placing():
@@ -7579,7 +7595,7 @@ func _regular_campaign_status_text() -> String:
 		return "青原战果待确认 · 暂离不会提交永久损失\n返回本关战区核对并确认结算"
 	var pressure: Dictionary = _regular_campaign.data.pressure
 	if phase == &"PREPARATION":
-		return "青原战役 · 常规关卡备战\n首批投入尚未确认，永久主城资产不会自动带入"
+		return "备战中 · 首批投入尚未确认（详情见战役入口提示）"
 	return "青原战役 · 主线 %d 分钟 · 压力 %d/4\n准备缓冲约 %d 分钟，按真实兵力、供粮和恢复调整" % [
 		int(_regular_campaign.data.mainline_elapsed_ms) / 60000,
 		int(pressure.get("stage", 0)),
@@ -15403,6 +15419,11 @@ func _refresh_current_mainline_entry_ui() -> void:
 	if _is_regular_campaign_active():
 		var model := _regular_campaign.get_read_model()
 		var phase := StringName(model.get("phase", &"PREPARATION"))
+		# R2B0：同一阶段不得出现两个语义近似的战区入口——
+		# 常规战役期间隐藏 map_pan 的宏行军按钮，保留唯一主操作按钮。
+		var macro_entry := get_node_or_null("../UI/Shell/MacroMarchButton")
+		if macro_entry != null:
+			macro_entry.visible = false
 		var context := Dictionary(model.get("view_context", {}))
 		var surface := StringName(context.get("surface", &"PREPARATION"))
 		current_mainline_entry_button.disabled = false

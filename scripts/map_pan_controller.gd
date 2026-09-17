@@ -188,6 +188,14 @@ func _input(event: InputEvent) -> void:
 
 	if construction_controller.is_placing():
 		building_selection_controller.clear_hover()
+		# R2B0 根因修复：放置/道路模式下，落在建设入口面板（取消道路、
+		# 确认铺设等按钮）上的鼠标事件必须放行给 GUI 按钮；
+		# 此前被无条件接管，导致「取消道路 · Esc」永远无法点击。
+		if (
+			event is InputEventMouseButton
+			and construction_controller.is_construction_ui_point(event.position)
+		):
+			return
 		_handle_construction_input(event)
 		return
 
@@ -662,7 +670,13 @@ func _refresh_macro_march_entry() -> void:
 	expedition_entry_button.visible = not is_locked
 	expedition_result_status.visible = not is_locked
 	expedition_entry_button.disabled = is_locked
-	macro_march_entry_button.visible = not is_locked
+	# R2B0：常规战役启用时左上宏行军入口整体让位——战役主操作由
+	# current_mainline_entry_button 唯一承担，消除双战区入口。
+	var regular_active: bool = (
+		construction_controller._regular_campaign != null
+		and construction_controller._regular_campaign.enabled()
+	)
+	macro_march_entry_button.visible = not is_locked and not regular_active
 	macro_march_entry_button.disabled = is_locked
 	expedition_entry_button.tooltip_text = (
 		"敌袭待处理，先完成北坡首战"

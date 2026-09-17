@@ -156,6 +156,27 @@ func _run() -> void:
 	await process_frame
 	_expect(root.gui_get_focus_owner() == null or root.gui_get_focus_owner().name != &"LoggingCampButton", "关闭目录后高亮清除")
 
+	# ---- R2B0：道路模式目录遮挡修复 + 三入口统一取消 ----
+	city.call("open_construction_menu")
+	await process_frame
+	_expect(menu.visible, "道路测试：目录打开")
+	city.call("begin_road_mode", Vector2(640, 400))
+	await process_frame
+	_expect(city.call("is_road_placing"), "进入道路绘制模式")
+	_expect(not menu.visible, "进入道路模式时目录自动关闭（不再遮挡取消按钮）")
+	var wood_in_road := int(nation.get_resource(&"wood"))
+	city.call("cancel_placing")
+	_expect(not city.call("is_placing"), "按钮取消：退出道路模式")
+	_expect(int(nation.get_resource(&"wood")) == wood_in_road, "取消道路不扣资源")
+	city.call("begin_road_mode", Vector2(640, 400))
+	_expect(city.call("is_road_placing"), "再次进入道路模式")
+	_expect(city.call("handle_escape"), "Esc 取消：handle_escape 返回 true")
+	_expect(not city.call("is_placing"), "Esc 取消后退出道路模式")
+	city.call("begin_road_mode", Vector2(640, 400))
+	city.call("cancel_build_interaction")
+	_expect(not city.call("is_placing"), "统一取消入口：cancel_build_interaction 退出道路模式")
+	_expect(int(nation.get_resource(&"wood")) == wood_in_road, "道路进出全程不扣资源（未确认铺设）")
+
 	# ---- 验收 5：战时内城不显示城市经营开关 ----
 	var depart_receipt: Dictionary = runtime.command(&"depart", {"formation_ids": _formations_chosen(), "food": 30, "wood": 55})
 	_expect(bool(depart_receipt.get("success", false)), "正式出征（进入 ACTIVE）")
