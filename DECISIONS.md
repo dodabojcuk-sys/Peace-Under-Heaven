@@ -473,3 +473,21 @@ Road-damage checks start at
 - A completion save failure leaves `READY_TO_COMPLETE` on the original level;
   a later world update retries the same transition. V16 migration adds an
   empty target only and never infers or grants an upgrade.
+
+## Save recovery failsafe R1: audit-only, no product change (2026-09-18)
+
+- The controlled recovery matrix (A-G, 15 cold-process cases) proved the
+  existing persistence stack already fails closed on recovery failure:
+  whole-snapshot deep validation rejects invalid regular_campaign data,
+  the store falls back explicitly to the previous valid generation and
+  keeps every damaged file byte-identical, and the coordinator blocks all
+  writes on unrecoverable states (load_blocked).
+- initialize_new remains reachable only through the explicit title
+  "regular campaign new game" double confirmation; no recovery-failure
+  path reaches it. Therefore no product logic was modified this round.
+- The historical verify1280 "silent rebuild" claim was retracted: a full
+  292-generation scan shows the campaign was never deployed and no reset
+  event exists (earlier reading was a regex/UI misattribution).
+- Known accepted gap (recorded, not fixed): the title Continue gate checks
+  generation existence only; a fully corrupt store still shows Continue
+  and only logs load_blocked after scene load.

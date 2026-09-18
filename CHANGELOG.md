@@ -1953,3 +1953,17 @@ contract and verification package for evidence and limits.
   progress through the existing building detail flow.
 - Added focused benefit-chain, cold-process and three-resolution graphical
   evidence. No campaign, battle or balance values changed.
+
+# SAVE_RECOVERY_FAILSAFE_R1 恢复安全审计 — 2026-09-18
+
+- 零产品代码改动。新增定向测试 tests/verify_save_recovery_failsafe_r1.gd：
+  A–G 八类受控恢复用例、15 个真实冷启动子进程、35 项断言全绿
+  （空目录/合法 PREPARATION/合法 ACTIVE/单代损坏回退/校验失败回退与
+  禁写/全损坏禁写/显式新局唯一 initialize_new）。
+- 静态审计确认 initialize_new 唯一产品调用点为标题屏「常规关卡候选·新局」；
+  恢复失败一律 fail closed（INVALID_REGULAR_CAMPAIGN 整体拒绝、
+  recovered_previous_generation 显式回退、load_blocked 禁写）。
+- verify1280 全 292 代扫描：无重置事件（从未出征、时间线连续），
+  推翻 R2B01 轮「静默重建」定性（正则误读 blocked_transfer.phase）。
+- 回归：D1 9 阶段、phase-UI、R2A1 51 项、R1C 门禁矩阵全绿；
+  玩家默认存档树哨兵一致。

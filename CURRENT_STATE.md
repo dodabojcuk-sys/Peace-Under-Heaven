@@ -2614,3 +2614,17 @@ war-loop runner still has four unreachable assertions after its obsolete
 Redcliff-to-Silverford controller order returns no army receipt. It does not
 cover the current title-to-regular-campaign entry and remains preserved as a
 documented historical mismatch.
+
+# SAVE_RECOVERY_FAILSAFE_R1 存档恢复安全审计 (2026-09-18，分支 codex/txwzs-save-recovery-failsafe-r1)
+
+任务 premise「恢复失败后静默战役重建」经静态调用链审计 + 受控恢复矩阵
+（A–G，15 真实冷启动子进程、35 断言）+ verify1280 全 292 代扫描三路取证，
+**不成立**：恢复失败路径全部 fail closed（深度校验整体拒绝 → 显式回退上一
+合法代或 load_blocked 禁写），`initialize_new` 唯一产品调用点是标题屏
+明确的「常规关卡候选·新局」。verify1280 无任何重置事件（从未出征，
+mainline 时钟 0→72.8 分钟连续推进）；R2B01 轮「静默重建」定性系正则
+误读，已勘误。本轮零产品代码改动，仅新增定向测试
+`tests/verify_save_recovery_failsafe_r1.gd` 与审计文档。证据：
+`~/Documents/TXWZS_RECOVERY_FAILSAFE_R1_DELIVERY/`。
+已知剩余风险：标题"继续游戏"只查存在代次不预校验内容，全损坏目录
+进入后仅日志报 load_blocked，UI 无失败表现（本轮未改 UI）。
