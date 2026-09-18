@@ -184,6 +184,43 @@ func has_any_generation() -> bool:
 	return bool(sequences.get("success", false)) and not Array(sequences.get("sequences", [])).is_empty()
 
 
+## Read-only recovery classification for title surfaces. This reuses the exact
+## load_latest decode/validate/generation walk (same validator, same fallback
+## and future-version rules) and never writes, applies, or creates anything.
+func classify_recovery(validator: Callable) -> Dictionary:
+	if not validator.is_valid():
+		return _failure(&"INVALID_VALIDATOR", "快照校验入口无效")
+	var loaded := load_latest(validator)
+	var invalid: Array = Array(loaded.get("invalid_generations", [])).duplicate(true)
+	if bool(loaded.get("success", false)):
+		return {
+			"success": true,
+			"status": (
+				&"RECOVERABLE_PREVIOUS"
+				if bool(loaded.get("recovered", false))
+				else &"RECOVERABLE_LATEST"
+			),
+			"save_sequence": int(loaded.get("save_sequence", 0)),
+			"invalid_generations": invalid,
+			"error_id": &"",
+			"error": "",
+		}
+	var error_id := StringName(loaded.get("error_id", &""))
+	var status := &"RECOVERY_FAILED"
+	if error_id == &"NOT_FOUND":
+		status = &"NO_SAVE"
+	elif error_id in [&"FUTURE_STORAGE_VERSION", &"FUTURE_SCHEMA_VERSION"]:
+		status = &"FUTURE_VERSION"
+	return {
+		"success": false,
+		"status": status,
+		"save_sequence": int(loaded.get("save_sequence", 0)),
+		"invalid_generations": invalid,
+		"error_id": error_id,
+		"error": str(loaded.get("error", "")),
+	}
+
+
 func load_and_restore(controller: Node) -> Dictionary:
 	var loaded := load_latest(
 		Callable(controller, "validate_v5_campaign_snapshot")

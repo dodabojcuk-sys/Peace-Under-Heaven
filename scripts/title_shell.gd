@@ -5,6 +5,10 @@ extends Control
 const CITY_SCENE := preload("res://scenes/blank_map.tscn")
 const SAVE_STORE := preload("res://scripts/state/v5_campaign_save_store.gd")
 const RUNTIME_IDENTITY := preload("res://scripts/runtime_identity.gd")
+# Read-only recovery precheck host: the canonical snapshot validator lives on
+# the city controller, so the title hosts a never-added-to-tree instance whose
+# definitions are registered without any scene node.
+const CONTROLLER_SCRIPT := preload("res://scripts/construction_controller.gd")
 
 @onready var enter_city_button: Button = %EnterCityButton
 @onready var new_game_button: Button = %NewGameButton
@@ -19,6 +23,8 @@ var _city_transition_requested := false
 var _regular_campaign_button: Button
 var _regular_campaign_hint: Label
 var _regular_campaign_confirmation: ConfirmationDialog
+var recovery_status := &"NO_SAVE"
+var recovery_details := ""
 
 
 func _ready() -> void:
@@ -31,13 +37,7 @@ func _ready() -> void:
 	exit_button.pressed.connect(_on_exit_pressed)
 	development_details_button.pressed.connect(_toggle_development_details)
 	_refresh_candidate_identity()
-	var can_continue := _has_continuable_campaign()
-	enter_city_button.disabled = not can_continue
-	status_label.text = (
-		"检测到黑石战役存档，可继续原有军队、战斗与恢复任务。"
-		if can_continue
-		else "尚无可继续的黑石战役存档，请开始新局。"
-	)
+	_refresh_recovery_status()
 	call_deferred("_focus_primary_action")
 
 
@@ -71,7 +71,7 @@ func _install_regular_campaign_entry() -> void:
 	_regular_campaign_button = Button.new()
 	_regular_campaign_button.name = "RegularCampaignNewGameButton"
 	_regular_campaign_button.text = "常规关卡候选 · 新局"
-	_regular_campaign_button.tooltip_text = "从真实主城资产开始常规战役候选；不会加载或改写已有进度。"
+	_regular_campaign_button.tooltip_text = "从真实主城资产开始常规战役候选；旧存档文件保留，但「继续游戏」将默认进入最新进度。"
 	_regular_campaign_button.custom_minimum_size = Vector2(0, 46)
 	_regular_campaign_button.focus_mode = Control.FOCUS_ALL
 	_regular_campaign_button.add_theme_font_size_override("font_size", 17)
@@ -97,7 +97,7 @@ func _install_regular_campaign_entry() -> void:
 	_regular_campaign_hint.name = "RegularCampaignEntryHint"
 	_regular_campaign_hint.text = (
 		"常规战役：创建独立候选进度，从黑石城永久主城开始备战，"
-		+ "逐步派兵支援前线；\n不影响已有存档。"
+		+ "逐步派兵支援前线；\n旧存档文件会保留，但「继续游戏」将默认进入最新进度。"
 	)
 	_regular_campaign_hint.add_theme_font_size_override("font_size", 12)
 	_regular_campaign_hint.add_theme_color_override("font_color", Color(0.72, 0.78, 0.78))
@@ -113,8 +113,9 @@ func _install_regular_campaign_entry() -> void:
 	_regular_campaign_confirmation.name = "RegularCampaignNewGameConfirmation"
 	_regular_campaign_confirmation.title = "开始常规关卡候选新局"
 	_regular_campaign_confirmation.dialog_text = (
-		"这会创建一个新的候选存档代次，并从真实主城资产进入常规战役备战。"
-		+ "不会加载、覆盖或操作已有战役进度。"
+		"这会从真实主城资产进入常规战役备战。\n"
+		+ "将创建新的候选进度。旧存档文件会保留，"
+		+ "但之后「继续游戏」将默认进入新进度。"
 	)
 	_regular_campaign_confirmation.ok_button_text = "开始常规候选"
 	_regular_campaign_confirmation.cancel_button_text = "返回"
@@ -159,17 +160,69 @@ func _focus_primary_action() -> void:
 
 
 func _has_continuable_campaign() -> bool:
-	# R1C 热修复：门禁拒绝态下不回退默认玩家档（quit 延迟生效期间也不读取）。
+	return recovery_status in [&"RECOVERABLE_LATEST", &"RECOVERABLE_PREVIOUS"]
+
+
+## RECOVERY_STATUS_UI_R1：只读恢复预检。复用 save store 的 load_latest
+## 解码/校验/枚举（同一校验器、同一回退与未来版本规则），不写盘、不应用、
+## 不创建代次、不启动城市场景；校验宿主是未入树、仅注册定义的 controller。
+func _refresh_recovery_status() -> void:
 	var identity: Node = get_node_or_null("/root/RuntimeIdentity")
-	if identity != null and identity.has_method("is_save_gate_rejected") and identity.is_save_gate_rejected():
-		return false
-	var override: String = get_node("/root/RuntimeIdentity").get_campaign_save_directory_override()
+	if identity == null or (identity.has_method("is_save_gate_rejected") and identity.is_save_gate_rejected()):
+		recovery_status = &"NO_SAVE"
+		recovery_details = "Recovery: NO_SAVE (save gate rejected or identity unavailable)"
+		_apply_recovery_status_to_title()
+		return
+	var override: String = identity.get_campaign_save_directory_override()
 	if DisplayServer.get_name() == "headless" and override.is_empty():
-		return false
+		recovery_status = &"NO_SAVE"
+		recovery_details = "Recovery: NO_SAVE (headless without isolated store)"
+		_apply_recovery_status_to_title()
+		return
 	var store := SAVE_STORE.new(
 		override if not override.is_empty() else V5CampaignSaveStore.DEFAULT_DIRECTORY
 	)
-	return store.has_any_generation()
+	var host: Node = CONTROLLER_SCRIPT.new()
+	host.ensure_definitions_registered()
+	var classified: Dictionary = store.classify_recovery(
+		Callable(host, "validate_v5_campaign_snapshot")
+	)
+	host.free()
+	recovery_status = StringName(str(classified.get("status", &"RECOVERY_FAILED")))
+	var invalid_lines: Array[String] = []
+	for invalid_value in Array(classified.get("invalid_generations", [])):
+		var invalid: Dictionary = Dictionary(invalid_value)
+		invalid_lines.append(
+			"gen %012d: %s" % [
+				int(invalid.get("save_sequence", 0)),
+				str(invalid.get("error_id", "UNKNOWN")),
+			]
+		)
+	recovery_details = (
+		"Recovery: %s\nRecoveryUsableGeneration: %012d\nRecoveryInvalid: %s" % [
+			str(recovery_status),
+			int(classified.get("save_sequence", 0)),
+			("; ".join(invalid_lines) if not invalid_lines.is_empty() else "none"),
+		]
+	)
+	_apply_recovery_status_to_title()
+
+
+func _apply_recovery_status_to_title() -> void:
+	var can_continue := _has_continuable_campaign()
+	enter_city_button.disabled = not can_continue
+	status_label.text = (
+		"检测到黑石战役存档，可继续原有军队、战斗与恢复任务。"
+		if recovery_status == &"RECOVERABLE_LATEST"
+		else "最新存档不可用，将恢复到上一可用存档。"
+		if recovery_status == &"RECOVERABLE_PREVIOUS"
+		else "所有存档代次均无法恢复，原文件已保留，未进行覆盖。"
+		if recovery_status == &"RECOVERY_FAILED"
+		else "该存档由更新版本创建，当前版本不能安全读取。"
+		if recovery_status == &"FUTURE_VERSION"
+		else "尚无可继续的黑石战役存档，请开始新局。"
+	)
+	development_details_dialog.dialog_text += "\n\n" + recovery_details
 
 
 func _refresh_candidate_identity() -> void:
@@ -179,7 +232,7 @@ func _refresh_candidate_identity() -> void:
 	var candidate_name := "常规关卡候选 R1A" if is_r1a else ("常规关卡候选 R1" if candidate == RUNTIME_IDENTITY.CANDIDATE_VERSION_REGULAR_R1 else "正式试玩候选 R1")
 	if is_r1a and _regular_campaign_button != null:
 		_regular_campaign_button.text = "常规关卡 R1A · 新局"
-		_regular_campaign_button.tooltip_text = "从真实主城资产进入可操作的战时内城空间小样；不会加载或改写已有进度。"
+		_regular_campaign_button.tooltip_text = "从真实主城资产进入可操作的战时内城空间小样；旧存档文件保留，但「继续游戏」将默认进入最新进度。"
 	if is_r1a and _regular_campaign_confirmation != null:
 		_regular_campaign_confirmation.title = "开始常规关卡 R1A 新局"
 		_regular_campaign_confirmation.ok_button_text = "开始 R1A 候选"

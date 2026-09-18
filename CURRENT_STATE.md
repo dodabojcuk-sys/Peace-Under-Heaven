@@ -2628,3 +2628,17 @@ mainline 时钟 0→72.8 分钟连续推进）；R2B01 轮「静默重建」定�
 `~/Documents/TXWZS_RECOVERY_FAILSAFE_R1_DELIVERY/`。
 已知剩余风险：标题"继续游戏"只查存在代次不预校验内容，全损坏目录
 进入后仅日志报 load_blocked，UI 无失败表现（本轮未改 UI）。
+
+# RECOVERY_STATUS_UI_R1 标题页恢复状态显式化 (2026-09-18，分支 codex/txwzs-recovery-status-ui-r1)
+
+标题页新增只读恢复预检（`classify_recovery` 直接映射 `load_latest` 结果，
+同一校验器宿主未入树 controller）：NO_SAVE / RECOVERABLE_LATEST /
+RECOVERABLE_PREVIOUS / RECOVERY_FAILED / FUTURE_VERSION 五状态分别控制
+继续游戏可用性与状态文案；开发详情追加 Recovery 代次号与 error_id
+（不含路径）。新局确认弹窗/提示/tooltip 文案纠正为「旧存档文件会保留，
+但之后「继续游戏」将默认进入新进度」。恢复底层零修改。
+标题测试矩阵 54 断言全绿（含只读 SHA256 哨兵）；D1×9、phase-UI、
+R2A1×51、门禁矩阵、failsafe 矩阵回归全绿。证据：
+`~/Documents/TXWZS_RECOVERY_STATUS_UI_R1_DELIVERY/`。
+旧审计文档 `TXWZS_R2B01_DELIVERY/TIMEOUT_TRANSITION_AUDIT.md` 已在顶部
+标记 SUPERSEDED（当前结论以 RECOVERY_FAILSAFE_R1 包为准）。

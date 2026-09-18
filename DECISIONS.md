@@ -491,3 +491,17 @@ Road-damage checks start at
 - Known accepted gap (recorded, not fixed): the title Continue gate checks
   generation existence only; a fully corrupt store still shows Continue
   and only logs load_blocked after scene load.
+
+## Recovery status UI R1: title-side read-only precheck (2026-09-18)
+
+- The title now classifies save recovery into NO_SAVE / RECOVERABLE_LATEST /
+  RECOVERABLE_PREVIOUS / RECOVERY_FAILED / FUTURE_VERSION by reusing the
+  store's own load_latest walk (same validator; no second rule set) and maps
+  each status to Continue availability plus an explicit status line.
+- The snapshot validator is hosted on a never-added-to-tree controller whose
+  definition registry was extracted into ensure_definitions_registered()
+  (same registration order; preset-building registration stays in _ready).
+- The regular new-game confirmation copy now states the truth: old save
+  files are kept, but Continue defaults to the newest generation afterwards.
+- The legacy TIMEOUT_TRANSITION_AUDIT.md is marked SUPERSEDED at its top;
+  the authoritative conclusions live in the RECOVERY_FAILSAFE_R1 delivery.

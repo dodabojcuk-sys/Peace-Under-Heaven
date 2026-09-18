@@ -1967,3 +1967,17 @@ contract and verification package for evidence and limits.
   推翻 R2B01 轮「静默重建」定性（正则误读 blocked_transfer.phase）。
 - 回归：D1 9 阶段、phase-UI、R2A1 51 项、R1C 门禁矩阵全绿；
   玩家默认存档树哨兵一致。
+
+# RECOVERY_STATUS_UI_R1 标题页恢复状态 — 2026-09-18
+
+- V5CampaignSaveStore 新增只读 classify_recovery（复用 load_latest，无第二套规则）。
+- ConstructionController 抽出 ensure_definitions_registered（顺序不变，
+  预置建筑注册保留在 _ready），使标题可托管同一校验器做只读预检。
+- 标题页按 NO_SAVE / RECOVERABLE_LATEST / RECOVERABLE_PREVIOUS /
+  RECOVERY_FAILED / FUTURE_VERSION 显示状态与控制继续游戏；开发详情
+  显示恢复代次号与失败原因（不含路径）。
+- 新局确认弹窗/提示/tooltip 文案纠正：「旧存档文件会保留，但之后
+  「继续游戏」将默认进入新进度」（替换原「不会影响已有进度」类表述）。
+- 新增 tests/verify_recovery_status_ui_r1.gd：12 项矩阵（五状态、只读
+  SHA256 哨兵、新局确认流程、旧代保留），54 断言全绿；回归 D1×9、
+  phase-UI、R2A1×51、门禁矩阵、failsafe 矩阵全绿。

@@ -585,20 +585,7 @@ func _ready() -> void:
 		_city_governance.initialize_fresh(CITY_GOVERNANCE_RULES)
 	if _city_strategy.unlocked_official_ids.is_empty() and _city_strategy.campaign_energy <= 0:
 		_city_strategy.initialize_fresh(CITY_STRATEGY_RULES)
-	_register_definition(ROAD_DEFINITION)
-	_register_definition(LOGGING_CAMP_DEFINITION)
-	_register_definition(FARM_DEFINITION)
-	_register_definition(WAREHOUSE_DEFINITION)
-	_register_definition(WATCHTOWER_DEFINITION)
-	_register_definition(HOUSING_DEFINITION)
-	_register_definition(CLINIC_DEFINITION)
-	_register_definition(LOGGING_CAMP_T2_DEFINITION)
-	_register_definition(FARM_T2_DEFINITION)
-	_register_definition(WAREHOUSE_T2_DEFINITION)
-	_register_definition(HOUSING_T2_DEFINITION)
-	_register_definition(CLINIC_T2_DEFINITION)
-	_register_strategy_definitions()
-	_register_noticeboard_missions()
+	ensure_definitions_registered()
 	_register_preset_buildings()
 	build_entry_button.pressed.connect(_on_build_entry_pressed)
 	road_button.pressed.connect(
@@ -14727,6 +14714,29 @@ func _get_noticeboard_outcome_text(outcome: StringName) -> String:
 	if outcome == &"RETREAT":
 		return "主动撤退"
 	return "失败"
+
+
+## Registers every persisted-placement definition (roads, resource buildings,
+## watchtower/housing tiers, strategy and noticeboard entries) without touching
+## any scene node, in the same order _ready has always used. The title's
+## read-only recovery precheck calls this on a never-instantiated-scene host so
+## validate_v5_campaign_snapshot can run before a city scene exists. Preset
+## fixed buildings stay in _ready because their registration needs scene nodes.
+func ensure_definitions_registered() -> void:
+	_register_definition(ROAD_DEFINITION)
+	_register_definition(LOGGING_CAMP_DEFINITION)
+	_register_definition(FARM_DEFINITION)
+	_register_definition(WAREHOUSE_DEFINITION)
+	_register_definition(WATCHTOWER_DEFINITION)
+	_register_definition(HOUSING_DEFINITION)
+	_register_definition(CLINIC_DEFINITION)
+	_register_definition(LOGGING_CAMP_T2_DEFINITION)
+	_register_definition(FARM_T2_DEFINITION)
+	_register_definition(WAREHOUSE_T2_DEFINITION)
+	_register_definition(HOUSING_T2_DEFINITION)
+	_register_definition(CLINIC_T2_DEFINITION)
+	_register_strategy_definitions()
+	_register_noticeboard_missions()
 
 
 func _register_preset_buildings() -> void:
