@@ -77,6 +77,11 @@ func _run_matrix() -> void:
 	_run_title_case(4, "RECOVERY_FAILED", dir_single_invalid, [],
 		{"status": "RECOVERY_FAILED", "continue_disabled": true, "label_contains": "所有存档代次均无法恢复"},
 		"4: 唯一代次无效 → RECOVERY_FAILED，继续游戏禁用")
+	var failed_facts := _load_facts(dir_single_invalid, "title")
+	_check(not str(failed_facts.get("details", "")).contains("RecoveryInvalid: none"),
+		"4: RECOVERY_FAILED 的 RecoveryInvalid 不再是 none")
+	_check(str(failed_facts.get("details", "")).contains("gen 000000000001"),
+		"4: 失败详情包含具体代次号")
 	for gen in _campaign_files(dir_all_invalid):
 		_corrupt_file_plain(gen)
 	_run_title_case(5, "RECOVERY_FAILED", dir_all_invalid, [],
@@ -89,17 +94,38 @@ func _run_matrix() -> void:
 	_run_title_case(6, "FUTURE_VERSION", dir_future_schema, [],
 		{"status": "FUTURE_VERSION", "continue_disabled": true, "label_contains": "该存档由更新版本创建"},
 		"6: FUTURE_SCHEMA_VERSION → FUTURE_VERSION，继续游戏禁用")
+	var schema_facts := _load_facts(dir_future_schema, "title")
+	_check(str(schema_facts.get("details", "")).contains("FUTURE_SCHEMA_VERSION"),
+		"6: 失败详情包含 FUTURE_SCHEMA_VERSION 与代次号")
 	_check(_bump_storage_version(_latest_generation_path(dir_future_storage)),
 		"fixture: envelope storage_version 提升到未来值")
 	_run_title_case(7, "FUTURE_VERSION", dir_future_storage, [],
 		{"status": "FUTURE_VERSION", "continue_disabled": true, "label_contains": "该存档由更新版本创建"},
 		"7: FUTURE_STORAGE_VERSION → FUTURE_VERSION，继续游戏禁用")
+	var storage_facts := _load_facts(dir_future_storage, "title")
+	_check(str(storage_facts.get("details", "")).contains("FUTURE_STORAGE_VERSION"),
+		"7: 失败详情包含 FUTURE_STORAGE_VERSION 与代次号")
+
+	# City-scene regression: strategy OptionButtons must still be populated
+	# after the data/UI registration split.
+	var dir_city_options := root_dir + "/city-options"
+	DirAccess.make_dir_recursive_absolute(dir_city_options)
+	_check(_worker("PRODUCE2", dir_city_options).passed, "fixture: city-options 目录产出合法代次")
+	var options_worker := _worker("CITY_OPTIONS", dir_city_options)
+	_check(options_worker.passed, "10b: 城市场景文官/科技 OptionButton 填充完整（拆分不回退）")
+	_assert_clean_log(str(options_worker["output"]), "10b: 城市场景")
+	_case_log.append({
+		"case": "10b-city-options",
+		"worker": options_worker["output"],
+		"facts": _load_facts(dir_city_options, "city_options"),
+	})
 
 	# 10+11 explicit new game over an existing campaign: title must not write,
 	# the confirmed REGULAR boot creates exactly one new generation, old kept.
 	var new_game_before := _hash_dir(dir_new_game)
 	var title_worker := _worker("TITLE_NEWGAME", dir_new_game)
 	_check(title_worker.passed, "10: 标题自身不写档；确认后 REGULAR 启动创建新代（不伪装恢复）")
+	_assert_clean_log(str(title_worker["output"]), "10: 新局流程")
 	var new_game_after := _hash_dir(dir_new_game)
 	var old_kept := true
 	for path in new_game_before:
@@ -114,12 +140,28 @@ func _run_matrix() -> void:
 	_finish()
 
 
+## R1.1 clean-log gate: a passing title worker must run without any runtime
+## script error. Forbidden markers cover the null-node registration failure
+## and duplicate-definition registration, plus any generic push_error.
+func _assert_clean_log(output: String, label: String) -> void:
+	for marker in [
+		"SCRIPT ERROR",
+		"Cannot call method",
+		"Invalid or duplicate building definition",
+		"Invalid or duplicate general definition",
+		"Invalid or duplicate tech definition",
+		"ERROR:",
+	]:
+		_check(not output.contains(marker), "%s → worker 日志无「%s」" % [label, marker])
+
+
 ## Boots the real title scene in a cold subprocess and asserts the mapped
 ## status, button state, status copy and read-only file inventory.
 func _run_title_case(case_id: int, status: String, dir: String, _extra: Array, expect: Dictionary, message: String) -> void:
 	var before := _hash_dir(dir)
 	var before_count := before.size()
 	var worker := _worker("TITLE", dir)
+	_assert_clean_log(str(worker["output"]), message)
 	var facts := _load_facts(dir, "title")
 	var after := _hash_dir(dir)
 	var read_only := after.size() == before_count
@@ -172,6 +214,8 @@ func _run_worker(mode: String) -> void:
 			passed = _stage_title(scene, save_directory)
 		"TITLE_NEWGAME":
 			passed = await _stage_title_newgame(scene, save_directory)
+		"CITY_OPTIONS":
+			passed = _stage_city_options(scene)
 		_:
 			push_error("Unknown recovery-ui stage: %s" % mode)
 	scene.queue_free()
@@ -206,14 +250,16 @@ func _stage_title(scene: Node, save_directory: String) -> bool:
 		"label": label,
 		"continue_disabled": continue_disabled,
 		"button_text": str(scene.get("enter_city_button").text),
-		"dev_details_has_generation": details.contains("RecoveryUsableGeneration"),
+		"dev_details_has_recovery": details.contains("Recovery:"),
+		"dev_details_has_invalid": details.contains("RecoveryInvalid:"),
 	}
 	_store_facts(save_directory, "title", facts)
 	print("RECOVERY_UI_TITLE status=%s disabled=%s label=%s details=%s" % [
 		status, str(continue_disabled), label, details.replace("\n", " | "),
 	])
 	return (
-		facts["dev_details_has_generation"]
+		facts["dev_details_has_recovery"]
+		and facts["dev_details_has_invalid"]
 		and not details.contains("/private/tmp")
 	)
 
@@ -269,6 +315,26 @@ func _stage_title_newgame(scene: Node, save_directory: String) -> bool:
 		and after.size() == facts_before.size() + 1
 		and fresh_campaign
 	)
+
+
+## Regression for the data/UI registration split: the strategy OptionButtons
+## must be populated exactly as before.
+func _stage_city_options(scene: Node) -> bool:
+	var city: Node = scene.get_node_or_null("ConstructionController")
+	if city == null:
+		return false
+	city.set_process(false)
+	var general_option: OptionButton = city.get("general_option")
+	var tech_option: OptionButton = city.get("tech_option")
+	var facts := {
+		"general_items": general_option.item_count if general_option != null else -1,
+		"tech_items": tech_option.item_count if tech_option != null else -1,
+	}
+	_store_facts(_argument_value("--txwzs-v5-save-dir="), "city_options", facts)
+	print("RECOVERY_UI_CITY_OPTIONS generals=%d techs=%d" % [
+		int(facts["general_items"]), int(facts["tech_items"]),
+	])
+	return int(facts["general_items"]) > 1 and int(facts["tech_items"]) >= 1
 
 
 func _campaign_files(dir: String) -> Array[String]:

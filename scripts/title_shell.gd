@@ -198,10 +198,18 @@ func _refresh_recovery_status() -> void:
 				str(invalid.get("error_id", "UNKNOWN")),
 			]
 		)
+	# RECOVERABLE_* report the usable generation; failure states report only
+	# the rejected generations (the store's save_sequence there means "latest
+	# failing", which would read as a misleading "usable" number).
+	var usable_line := ""
+	if bool(classified.get("success", false)):
+		usable_line = "RecoveryUsableGeneration: %012d\n" % int(
+			classified.get("save_sequence", 0)
+		)
 	recovery_details = (
-		"Recovery: %s\nRecoveryUsableGeneration: %012d\nRecoveryInvalid: %s" % [
+		"Recovery: %s\n%sRecoveryInvalid: %s" % [
 			str(recovery_status),
-			int(classified.get("save_sequence", 0)),
+			usable_line,
 			("; ".join(invalid_lines) if not invalid_lines.is_empty() else "none"),
 		]
 	)

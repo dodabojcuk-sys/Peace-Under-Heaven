@@ -165,16 +165,31 @@ func load_latest(validator: Callable) -> Dictionary:
 			&"FUTURE_STORAGE_VERSION",
 			&"FUTURE_SCHEMA_VERSION",
 		]:
-			return _failure(
+			# Safety semantics unchanged: future versions refuse to skip down.
+			# The failing generation is reported for diagnostic surfaces only.
+			invalid.append({
+				"save_sequence": sequence,
+				"error_id": StringName(decoded.error_id),
+				"error": decoded.error,
+			})
+			var future_failure := _failure(
 				StringName(decoded.error_id),
 				"最新代次来自未来版本，拒绝降级跳过"
 			)
+			future_failure["invalid_generations"] = invalid
+			future_failure["save_sequence"] = sequence
+			return future_failure
 		invalid.append({
 			"save_sequence": sequence,
 			"error_id": decoded.error_id,
 			"error": decoded.error,
 		})
-	return _failure(&"ALL_INVALID", "全部 V5 存档代次无效")
+	var all_invalid_failure := _failure(&"ALL_INVALID", "全部 V5 存档代次无效")
+	# Every checked-and-rejected generation, newest first, for diagnostics.
+	all_invalid_failure["invalid_generations"] = invalid
+	if not invalid.is_empty():
+		all_invalid_failure["save_sequence"] = int(invalid[0]["save_sequence"])
+	return all_invalid_failure
 
 
 ## Title/menu code may inspect availability, but only the runtime coordinator

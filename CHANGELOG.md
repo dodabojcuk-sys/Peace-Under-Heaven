@@ -1981,3 +1981,15 @@ contract and verification package for evidence and limits.
 - 新增 tests/verify_recovery_status_ui_r1.gd：12 项矩阵（五状态、只读
   SHA256 哨兵、新局确认流程、旧代保留），54 断言全绿；回归 D1×9、
   phase-UI、R2A1×51、门禁矩阵、failsafe 矩阵全绿。
+
+# RECOVERY_STATUS_UI_R1.1 热修 — 2026-09-18
+
+- 修复标题预检宿主注册脚本错误：数据注册（_register_strategy_definition_data）
+  与 UI 填充（_populate_strategy_options）拆分，ensure_definitions_registered
+  只做纯数据注册并加幂等保护；修复 _tech_by_id 未注册导致的
+  UNKNOWN_TECH 误判风险。
+- load_latest 失败返回补带 invalid_generations 与 save_sequence 诊断字段
+  （FUTURE_* 与 ALL_INVALID），安全语义不变。
+- 标题状态矩阵新增 clean-log 门禁（禁 SCRIPT ERROR / Cannot call method /
+  duplicate-definition / 任何 ERROR: 行）与失败详情断言、城市场景
+  OptionButton 回归用例；重跑 114 断言全绿，零脚本错误。

@@ -505,3 +505,18 @@ Road-damage checks start at
   files are kept, but Continue defaults to the newest generation afterwards.
 - The legacy TIMEOUT_TRANSITION_AUDIT.md is marked SUPERSEDED at its top;
   the authoritative conclusions live in the RECOVERY_FAILSAFE_R1 delivery.
+
+## Recovery status UI R1.1: registration split and diagnostic details (2026-09-18)
+
+- Strategy registration is now split: pure definition data registration
+  (safe on a never-in-tree validator host) versus OptionButton population
+  (only from _ready). ensure_definitions_registered is idempotent per
+  instance. This removes the null-node SCRIPT ERROR and, more importantly,
+  restores full _tech_by_id registration so saves with researched techs can
+  never be misjudged UNKNOWN_TECH by the title precheck.
+- load_latest failure results now carry invalid_generations and the latest
+  failing save_sequence for FUTURE_* and ALL_INVALID, without changing any
+  safety semantics; the title dev-details surface lists every failing
+  generation with its error_id.
+- The status matrix gained a clean-log gate: title/city workers must run
+  without SCRIPT ERROR or ERROR: lines; 114 assertions green.

@@ -2642,3 +2642,16 @@ R2A1×51、门禁矩阵、failsafe 矩阵回归全绿。证据：
 `~/Documents/TXWZS_RECOVERY_STATUS_UI_R1_DELIVERY/`。
 旧审计文档 `TXWZS_R2B01_DELIVERY/TIMEOUT_TRANSITION_AUDIT.md` 已在顶部
 标记 SUPERSEDED（当前结论以 RECOVERY_FAILSAFE_R1 包为准）。
+
+# RECOVERY_STATUS_UI_R1.1 热修 (2026-09-18，同分支)
+
+验收发现标题预检宿主在 `_register_strategy_definitions()` 触发
+`Cannot call method 'clear' on a null value`（数据注册与 UI 填充混杂，
+裸 Controller 上 OptionButton 为 null，且 `_tech_by_id` 未注册——含已研究
+科技的存档会被校验器误判 UNKNOWN_TECH）。已拆分
+`_register_strategy_definition_data()`（纯数据）/`_populate_strategy_options()`
+（仅 _ready 调用），`ensure_definitions_registered()` 加实例级幂等保护。
+另：`load_latest` 的 ALL_INVALID 与 FUTURE_* 失败返回补带
+`invalid_generations`+`save_sequence`（安全语义不变），标题失败详情可
+定位具体代次与 error_id。状态矩阵升级 clean-log 门禁后 114 断言全绿
+（零脚本错误）；回归 D1×9/phase-UI/R2A1×51/门禁/failsafe 全绿。

@@ -528,6 +528,7 @@ var _city_layout_runtime_states: Dictionary = {}
 var _definitions_by_id: Dictionary = {}
 var _mission_definitions_by_id: Dictionary = {}
 var _generals_by_id: Dictionary = {}
+var _strategy_definitions_registered := false
 var _tech_by_id: Dictionary = {}
 var _next_placement_id := 1
 var _detail_panel_active := false
@@ -586,6 +587,7 @@ func _ready() -> void:
 	if _city_strategy.unlocked_official_ids.is_empty() and _city_strategy.campaign_energy <= 0:
 		_city_strategy.initialize_fresh(CITY_STRATEGY_RULES)
 	ensure_definitions_registered()
+	_populate_strategy_options()
 	_register_preset_buildings()
 	build_entry_button.pressed.connect(_on_build_entry_pressed)
 	road_button.pressed.connect(
@@ -14550,44 +14552,6 @@ func _register_definition(definition: BuildingDefinition) -> void:
 	_definitions_by_id[definition.definition_id] = definition
 
 
-func _register_strategy_definitions() -> void:
-	for general in GENERAL_DEFINITIONS:
-		if (
-			general == null
-			or general.archetype_id == &""
-			or _generals_by_id.has(general.archetype_id)
-		):
-			push_error("Invalid or duplicate general definition")
-			continue
-		_generals_by_id[general.archetype_id] = general
-	general_option.clear()
-	general_option.add_item("未任命")
-	general_option.set_item_metadata(0, &"")
-	for general in GENERAL_DEFINITIONS:
-		general_option.add_item(general.display_name)
-		general_option.set_item_metadata(
-			general_option.item_count - 1,
-			general.archetype_id
-		)
-
-	for tech in TECH_DEFINITIONS:
-		if (
-			tech == null
-			or tech.tech_id == &""
-			or _tech_by_id.has(tech.tech_id)
-		):
-			push_error("Invalid or duplicate tech definition")
-			continue
-		_tech_by_id[tech.tech_id] = tech
-	tech_option.clear()
-	for tech in TECH_DEFINITIONS:
-		tech_option.add_item("%s · %d" % [tech.display_name, tech.cost])
-		tech_option.set_item_metadata(
-			tech_option.item_count - 1,
-			tech.tech_id
-		)
-
-
 func _on_general_selected(index: int) -> void:
 	select_general(StringName(general_option.get_item_metadata(index)))
 
@@ -14721,8 +14685,11 @@ func _get_noticeboard_outcome_text(outcome: StringName) -> String:
 ## any scene node, in the same order _ready has always used. The title's
 ## read-only recovery precheck calls this on a never-instantiated-scene host so
 ## validate_v5_campaign_snapshot can run before a city scene exists. Preset
-## fixed buildings stay in _ready because their registration needs scene nodes.
+## fixed buildings stay in _ready because their registration needs scene nodes;
+## UI option population also stays in _ready via _populate_strategy_options.
 func ensure_definitions_registered() -> void:
+	if _strategy_definitions_registered:
+		return
 	_register_definition(ROAD_DEFINITION)
 	_register_definition(LOGGING_CAMP_DEFINITION)
 	_register_definition(FARM_DEFINITION)
@@ -14735,8 +14702,51 @@ func ensure_definitions_registered() -> void:
 	_register_definition(WAREHOUSE_T2_DEFINITION)
 	_register_definition(HOUSING_T2_DEFINITION)
 	_register_definition(CLINIC_T2_DEFINITION)
-	_register_strategy_definitions()
+	_register_strategy_definition_data()
 	_register_noticeboard_missions()
+	_strategy_definitions_registered = true
+
+
+func _register_strategy_definition_data() -> void:
+	for general in GENERAL_DEFINITIONS:
+		if (
+			general == null
+			or general.archetype_id == &""
+			or _generals_by_id.has(general.archetype_id)
+		):
+			push_error("Invalid or duplicate general definition")
+			continue
+		_generals_by_id[general.archetype_id] = general
+	for tech in TECH_DEFINITIONS:
+		if (
+			tech == null
+			or tech.tech_id == &""
+			or _tech_by_id.has(tech.tech_id)
+		):
+			push_error("Invalid or duplicate tech definition")
+			continue
+		_tech_by_id[tech.tech_id] = tech
+
+
+## UI half of the strategy registration: fills the general/tech OptionButtons.
+## Only ever called from _ready once the scene nodes are bound.
+func _populate_strategy_options() -> void:
+	general_option.clear()
+	general_option.add_item("未任命")
+	general_option.set_item_metadata(0, &"")
+	for general in GENERAL_DEFINITIONS:
+		general_option.add_item(general.display_name)
+		general_option.set_item_metadata(
+			general_option.item_count - 1,
+			general.archetype_id
+		)
+	tech_option.clear()
+	for tech in TECH_DEFINITIONS:
+		tech_option.add_item("%s · %d" % [tech.display_name, tech.cost])
+		tech_option.set_item_metadata(
+			tech_option.item_count - 1,
+			tech.tech_id
+		)
 
 
 func _register_preset_buildings() -> void:
