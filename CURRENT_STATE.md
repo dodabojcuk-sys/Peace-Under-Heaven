@@ -40,10 +40,12 @@ Godot 导入解析、`git diff --check`）；玩家存档哨兵前后一致
 ### 证据与交付收口（2026-09-19，docs-only）
 
 - **版本身份**：`7464898`（基线）→ `2bf4d8e`（回执转正 +63）→ `4649b99`（简报与路由 +336/−1）
-  → `a611d24`（工装、取证与文档 +1354）。父子顺序由 `git rev-list --parents` 核对；
-  产品头 = `a611d24`，本轮无 amend/rebase/reset/squash，产品代码零改动。
-  远程在收口轮两次 `git ls-remote` 超时不可达，`REMOTE_HEAD` 计为**未验证**、`PUSHED=NO`。
-- **工装修正已在头提交中逐项复核到位**：冷启动 `view` 空值守卫、双看门狗＋跑批硬超时、
+  → `a611d24`（工装、取证与文档 +1354，产品头）→ `fb5885d`（证据损失说明与版本身份收口，docs-only）。
+  父子顺序由 `git rev-list --parents` 核对；本轮无 amend/rebase/reset/squash，产品代码零改动。
+  远程：收口轮前两次 `git ls-remote` 超时，第三次成功，实测
+  `refs/heads/codex/txwzs-battle-return-r2b1 = a611d24`（三个产品提交已在远端）；
+  本地仅多出 `fb5885d`，按指令未推送（`PUSHED=NO`），等待 Founder 明确授权。
+- **工装修正已在产品头 `a611d24` 中逐项复核到位**：冷启动 `view` 空值守卫、双看门狗＋跑批硬超时、
   按用例/按结算族拆分隔离存档链、假通过修复（面板缺失即中止＋`^SCRIPT ERROR` 锚定）、
   撤军取证改用 `view._leave_button` ＋侧栏滚动。
   修复前结果判为 `PRE_FIX_HARNESS_RESULT=INVALID_FALSE_PASS`，全部结论以修复后完整重跑为准。
