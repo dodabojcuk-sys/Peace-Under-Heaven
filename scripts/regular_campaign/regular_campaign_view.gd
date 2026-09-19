@@ -789,6 +789,10 @@ func _command(action: StringName, args: Dictionary = {}) -> void:
 	var result := _dict(receipt)
 	if bool(result.get("success", false)):
 		_feedback_override = str(result.get("message", "命令已提交。"))
+		# R2B-1：confirm 事务成功（含持久化）后，把只读回执转交主城侧暂存；
+		# 简报要等永久主城重新可见才显示。
+		if action == &"confirm":
+			_forward_settlement_return_receipt()
 	else:
 		_feedback_override = str(result.get("error", "命令未被接受。请核对道路、资源、工位或当前阶段。"))
 	refresh(true)
@@ -802,6 +806,21 @@ func _command(action: StringName, args: Dictionary = {}) -> void:
 		_city.call("show_regular_campaign_city")
 	if bool(result.get("success", false)) and action in [&"depart", &"confirm", &"retry"]:
 		call_deferred("_reset_sidebar_scroll")
+
+
+func _forward_settlement_return_receipt() -> void:
+	if _runtime == null or not _runtime.has_method("take_settlement_receipt"):
+		return
+	var receipt := _dict(_runtime.call("take_settlement_receipt"))
+	if receipt.is_empty():
+		return
+	if _city != null and _city.has_method("stage_campaign_return_brief"):
+		_city.call("stage_campaign_return_brief", receipt)
+
+
+func show_result_tab() -> void:
+	# R2B-1：暂存领取入口路由用——把战役侧栏切到结算页（含领取按钮）。
+	_set_tab(&"RESULT")
 
 
 func _reset_sidebar_scroll() -> void:

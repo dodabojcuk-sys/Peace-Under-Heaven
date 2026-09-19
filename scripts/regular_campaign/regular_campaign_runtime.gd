@@ -16,6 +16,11 @@ var _frame_fraction := 0.0
 var _view: Control
 var _failure_point := &""
 var _last_checkpoint: Dictionary = {}
+# R2B-1：结算呈现回执是 confirm 事务成功后的会话内 UI 投射。
+# 不进入 data / 存档；非胜利分支清理 data.summary 与 settlement_id 后，
+# 回执仍保留本次结算的完整身份与事实。
+var _settlement_receipt_candidate: Dictionary = {}
+var _settlement_receipt: Dictionary = {}
 
 func _init(controller: Node) -> void:
 	city = controller
@@ -86,10 +91,27 @@ func command(action: StringName, args: Dictionary = {}) -> Dictionary:
 		city._apply_validated_v5_campaign_snapshot(before, false)
 	if bool(result.get("success", false)):
 		_last_checkpoint = city.export_v5_campaign_snapshot()
+	# R2B-1：只有持久化成功（含 checkpoint 落盘、未回滚）的 confirm 才转正回执；
+	# 保存失败/回滚/重复确认一律不产生呈现回执。
+	if action == &"confirm":
+		_settlement_receipt = (
+			_settlement_receipt_candidate.duplicate(true)
+			if bool(result.get("success", false))
+			else {}
+		)
+		_settlement_receipt_candidate = {}
 	feedback = str(result.get("error", result.get("message", "行动已确认")))
 	city._refresh_city_ui()
 	city.city_state_changed.emit()
 	return result
+
+func take_settlement_receipt() -> Dictionary:
+	var receipt := _settlement_receipt.duplicate(true)
+	_settlement_receipt = {}
+	return receipt
+
+func has_settlement_receipt() -> bool:
+	return not _settlement_receipt.is_empty()
 
 func _depart(args: Dictionary) -> Dictionary:
 	if data.phase != &"PREPARATION":
@@ -628,6 +650,28 @@ func _confirm() -> Dictionary:
 
 	data.settlement_id = StringName("regular.settlement.%d" % int(data.attempt_sequence))
 	var won: bool = data.summary.kind == &"VICTORY"
+	# R2B-1：回执候选只引用 _confirm() 内已确认事实的深拷贝。
+	# 此处之后非胜利分支会清空 data.summary / settlement_id，回执不受影响；
+	# 是否转正由 command() 在持久化成功后决定。
+	_settlement_receipt_candidate = {
+		"receipt_version": 1,
+		"result_key": "regular.settlement.%d.%s" % [int(data.attempt_sequence), String(data.summary.kind)],
+		"campaign_id": String(SCOPE),
+		"settlement_id": String(data.settlement_id),
+		"attempt_sequence": int(data.attempt_sequence),
+		"kind": String(data.summary.kind),
+		"survivors": int(data.summary.survivors),
+		"wounded": int(data.summary.wounded),
+		"fallen": int(data.summary.fallen),
+		"local_people": int(data.summary.local_people),
+		"food_return_actual": int(data.summary.food_return_actual),
+		"wood_return_actual": int(data.summary.wood_return_actual),
+		"retained_food": int(data.summary.retained_food),
+		"retained_wood": int(data.summary.retained_wood),
+		"elapsed_ms": int(data.attempt_elapsed_ms),
+		"mainline_elapsed_ms": int(data.mainline_elapsed_ms),
+		"totals": data.totals.duplicate(true),
+	}
 	if won:
 		data.history.append({"confirmed": true, "settlement_id": data.settlement_id, "elapsed_ms": int(data.mainline_elapsed_ms), "baseline_ms": 1800000})
 		data.phase = &"COMPLETED"
