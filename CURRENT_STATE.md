@@ -45,7 +45,12 @@ Godot 导入解析、`git diff --check`）；玩家存档哨兵前后一致
   本轮无 amend/rebase/reset/squash，产品代码零改动，`git diff --name-only a611d24..HEAD` 全为 `.md`。
   远程：收口轮前两次 `git ls-remote` 超时，第三次成功，实测
   `refs/heads/codex/txwzs-battle-return-r2b1 = a611d24`（三个产品提交已在远端）；
-  本地领先的收口文档提交按指令未推送（`PUSHED=NO`），等待 Founder 明确授权。
+  当时本地领先的收口文档提交按该轮指令未推送（`PUSHED=NO`）。
+  **该表述已被复验轮取代**：复验轮开工时实测 `ls-remote` 已等于本地 HEAD
+  `7b3b3c145bb3f6bae380833f46154889ffa66476`，即收口文档在 `PUSHED=NO` 记录之后已被推送
+  （推送动作不在收口轮记录范围内）。复验轮按 Founder 授权继续 commit + push，
+  故本节的 `PUSHED` 不再写死：以 `git ls-remote origin refs/heads/codex/txwzs-battle-return-r2b1`
+  与 `git rev-parse HEAD` 是否相等为准。
   **偏离声明**：指令要求只做一个 docs-only commit，实际为多个，因为首个提交写下的
   「远程不可达／`REMOTE_HEAD` 未验证」在同轮第三次探测后即被证伪，而 amend/reset/rebase
   均在禁止之列，只能追加勘误提交；为避免记录自我过时，本节改用不含提交计数与自身哈希的表述。
@@ -73,7 +78,50 @@ Godot 导入解析、`git diff --check`）；玩家存档哨兵前后一致
 - **后续清理规则（强制）**：禁止 keep-list 式 shell 删除；只允许逐条绝对路径 allowlist
   ＋ dry-run 核对条目数后执行，执行后立刻确认 allowlist 外同级目录仍在；
   一次性记录（日志/facts/被拒证据）须在清理前落入受版本控制路径。
-  R2B-2 未启动，等待 Founder 指令。
+
+### R2B-1 复验（2026-09-19，HEAD `7b3b3c1`，产品代码零改动）
+
+Founder 授权本轮连续完成审查→测试→取证→回归→自审→commit→push。
+产品实现与既有提交逐字节相同（`git diff` 产品文件为空），本轮只做**现场复验与证据回查**：
+
+- **定向矩阵**：11 段全绿、115 项断言、`^SCRIPT ERROR` = 0；各段断言数与原表逐格相符
+  （`4/41/4/6`、`4/7/4/9`、`4/12`、`20`）。两分辨率矩形实测复现：
+  1280×720 `[422.4,216.0] 435.2×460.0`；1152×648 `[380.16,194.4] 391.68×409.6`。
+- **取证矩阵**：5 用例全绿、10 张图，`SHOT`/`EVIDENCE_MODE` 与原记录相符
+  （withdraw 4 / retained 1(ui_render) / victory 2 / defeat 2 / food_risk 1）。
+- **§10 回归**：`RECOVERY_STATUS_UI_R1` 114、`SAVE_RECOVERY_FAILSAFE_R1` 35、
+  `R1C_PHASE_UI` 49、`R2A1` 51、道路 smoke 26、D1 九阶段 `8/11/3/8/12 + 8/7/11/12`、
+  `R1C_GATE_MATRIX failures=0`、`--headless --import` 无脚本/解析错误、`git diff --check` 干净，
+  合计 `REGRESSION_MATRIX failed=0`。
+- **玩家存档哨兵**：跑前跑后均 `deb4f150c1a12f7f248ef566425af0e18b04d8be49b61faf015c456e8ccfe167`
+  （3201 文件），且 saves 树内 mtime 晚于 2026-09-15 12:00 的文件数为 0。
+- **证据回查已落地**：本轮 33 个日志 + 2 个跑批 stdout + 13 个 facts JSON + 10 张重拍图 +
+  回归驱动脚本（59 个文件）保存在交付包
+  `~/Documents/TXWZS_R2B1_DELIVERY/RERUN_20260919_AT_7b3b3c1/`，
+  说明见同目录 `RERUN_RESULTS.md`。此前「数字只剩文档一份」的限制就此解除
+  （`a611d24` 当轮日志仍为已丢失状态，历史结论不改写）。
+- **发现 1（既有缺陷，未修）**：10 张图中 9 张逐字节可复现，`08` 不同
+  （交付 64672 B / 复跑 63359 B）。差异只在顶栏资源与时间两段文案，
+  同一标签存在多个写者（`inner_city_ui_r0.gd:277/333`、
+  `construction_controller.gd:15242/15272/15279/15586`），**全部早于基线 `7464898`**
+  （基线内分别位于 262/318 与 15198/15505），R2B-1 的分块不覆盖这些行。
+  08 的断言语义（暂离期间简报不出现）在两版图像中都成立。
+  呈现层写者收敛属另一议题，按 §12 不在本轮扩大修改。
+- **发现 2（门禁缺口，未修）**：`tests/run_r1c_save_gate_matrix.sh` 的保护目录判定是
+  「跑前/跑后哨兵相等」。第三个保护根 `~/Documents/TXWZS_SAVE_SNAPSHOT_PRE_PLAYTEST_20260915`
+  当前不存在（`TXWZS_HOME/BACKUP_MANIFEST.md:89`：作为 `TXWZS_BACKUP` 的重复副本已被授权删除），
+  `find` 对空目录集返回空串，跑前跑后相同 → 仍打印 `PASS 保护目录原样未变（旧试玩快照）`。
+  该门禁无法区分「未变」与「已消失」，建议追加存在性断言；本轮不改测试脚本，仅记录。
+  另两处保护根为真实比较：玩家存档 `deb4f150…`、`TXWZS_BACKUP`
+  `a9dbd94826d9749efaa8ef211157c667b96b2ea102113b55e070da992a6fa26a`（52 文件）。
+- **仍未闭合**：§7.4 的「详情可滚动」「不遮挡倍速/主战役按钮」没有程序断言
+  （定向断言的是「面板完整不出屏 + 两按钮可达」，滚动与不遮挡仅在 09/10 图目视核对）；
+  04 仍是 `ui_render`；无真人试玩；未生成短视频（指令列为可选）。
+- **驱动入库判定**：本轮回归驱动仍是一次性脚本（存放于交付包而非 `tests/`），
+  因为把它加进仓库会超出本轮「简报/提示/路由」的范围；
+  复现所需的确切命令与标记已写在 `RERUN_RESULTS.md`。
+
+R2B-2 未启动，等待 Founder 指令。
 
 # 当前状态
 

@@ -545,3 +545,23 @@ Road-damage checks start at
   city ticks — silently reverted the layout the player had just asked for.
   Manual group or panel toggling hands layout control back to the default
   alert rules.
+
+## Battle return R2B-1 re-verification: three deliberate non-fixes (2026-09-19)
+
+- Evidence `08` does not reproduce byte-for-byte. Its only difference is two
+  top-bar labels, and those labels have several writers that all predate the
+  `7464898` baseline, so which one is visible depends on refresh ordering at
+  screenshot time. The assertion 08 carries (no brief during temporary leave)
+  holds in both images. Converging the presentation writers is a separate
+  change and was left out of this round's scope.
+- The save-isolation gate compares a before/after sentinel per protected
+  root, which is vacuously true for a root that no longer exists — the
+  pre-playtest snapshot directory is such a case, deleted earlier as a
+  duplicate of `TXWZS_BACKUP`. An existence assertion belongs in that gate,
+  but editing a regression harness mid-feature-round would blur what this
+  round changed, so it is recorded instead.
+- The regression driver used for re-verification stays out of `tests/`. Only
+  the two R2B-1 matrices are committed entry points; the driver, its logs,
+  facts and re-shot evidence were copied into the delivery package before the
+  temporary directories were removed, which is what the evidence-loss note
+  requires and keeps the numbers line-comparable with a real run.
