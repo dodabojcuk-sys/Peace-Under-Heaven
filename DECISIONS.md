@@ -565,3 +565,36 @@ Road-damage checks start at
   facts and re-shot evidence were copied into the delivery package before the
   temporary directories were removed, which is what the evidence-loss note
   requires and keeps the numbers line-comparable with a real run.
+
+## Formation return identity R1: identity-addressed returns, no schema (2026-09-19)
+
+- The audit came back "the facts already exist", so the design constraint held:
+  `departure_ledger.formations` carries the original `formation_id`, every regular
+  army carries exactly one origin in `macro_march.formation_snapshots`, home/local/
+  wounded/fallen are already separable per army, and V5 schema 18 persists both
+  `garrison` and `army_registry`. No persistence field was added and no save
+  migration was needed, so the instruction's stop branch never applied.
+- Returns are addressed by identity rather than by slot. `apply_formation_survivors()`
+  was not reused because it is a SET operation gated by `selection_matches()`, which
+  compares the submitted snapshots against the current roster — at confirm time the
+  origin formations read zero members, so that check can never pass. The new
+  `try_return_members_by_formation()` lives on the same authoritative owner and
+  validates every entry before applying any, which is what lets a foreign formation
+  id be rejected without half-mutating the roster.
+- The fallback is a hard reject for unknown ids and a deterministic, reported spill
+  only for a full origin formation. Aggregate capacity is already reserved by
+  `home_return_capacity_reservation()` for the whole ACTIVE/PENDING window, so a
+  rejection at that point could only soft-lock the player, while silently dumping
+  survivors into formation 1 is the defect this round removed.
+- Three second-departure defects were fixed inside the same transaction boundary
+  rather than around it: carried-over `totals`, an `entry.state` that recorded
+  `combat_losses_total` outside what `_valid_entry_snapshot` accepts, and a
+  `starvation_cycles` counter left in the PREPARATION save. Resetting all three at
+  the single "new attempt begins" point in `_depart()` also heals saves written by
+  earlier builds without a migration.
+- Two graphical harnesses failed this round and were left failing. Their first
+  divergence is the missing `进入青原战区` top-bar entry, before any changed code can
+  run, and the identical failure list reproduces with `git show HEAD:` versions of
+  both production files installed temporarily. Proving that with a hash-verified
+  file swap was preferred over `git stash` or a second worktree, since this disk has
+  concurrent-agent exposure and the save gate is the thing that must never drift.

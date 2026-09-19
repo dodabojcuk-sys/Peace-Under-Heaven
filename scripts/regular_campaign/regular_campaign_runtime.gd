@@ -143,13 +143,24 @@ func _depart(args: Dictionary) -> Dictionary:
 	data.phase = &"ACTIVE"
 	data.view_context = {"surface": &"THEATER", "city_id": &""}
 	data.attempt_sequence = int(data.attempt_sequence) + 1
+	# totals 是本关资源守恒的口径：in + produced − used 必须等于 SCOPE 现有量。
+	# SCOPE 每次出征重新注入，上一尝试的产出/消耗若留在此处，第二次出征的
+	# 入关快照永远无法通过同一条守恒校验。
+	data.totals = {"food_in": 0, "wood_in": 0, "food_produced": 0, "wood_produced": 0, "food_used": 0, "wood_used": 0}
 	data.totals.food_in = food_amount
 	data.totals.wood_in = wood_amount
+	# 断粮连击数只在本次尝试内有意义（任一次足额供粮即归零），而入关初态校验
+	# 要求它为 0。旧版结算会把它留在 PREPARATION 存档里，所以归零放在"新尝试
+	# 开始"这个唯一入口：既修好本版本的二次出征，也让既有存档无需迁移即可恢复。
+	data.starvation_cycles = 0
 	data.entry = {"army_registry": city._army_registry.get_snapshot(), "war_loop": city._war_loop_state.get_snapshot(), "resources": _stock(), "formations": formations.duplicate(true), "state": {}}
 	var initial := data.duplicate(true)
 	initial.entry = {}
 	initial.pressure = {}
 	initial.history = []
+	# combat_losses_total 是跨尝试累计量，_retry() 显式把它带回来；入关初态
+	# 必须按 _valid_entry_snapshot 的口径记 0，否则第二次出征的初态自相矛盾。
+	initial.combat_losses_total = 0
 	data.entry.state = initial
 	return _ok("首批兵粮已转入本关；家中不再供给关内军令")
 
@@ -629,8 +640,15 @@ func _confirm() -> Dictionary:
 	var living := _home_alive()
 	var wounded := _wounded(true)
 	var fallen := int(data.fallen_home)
-	if living > 0 and not city._garrison_state.try_add_units(city.INFANTRY_ROLE.role_id, living):
-		return _error("归队容量不足，请保留待确认战果")
+	if living > 0:
+		var returns := _home_returns_by_formation()
+		if returns.is_empty():
+			return _error("编队身份不一致，无法确认战果")
+		var handoff: Dictionary = city._garrison_state.try_return_members_by_formation(returns)
+		if not bool(handoff.get("ok", false)):
+			if StringName(handoff.get("reason", &"")) == &"INSUFFICIENT_CAPACITY":
+				return _error("归队容量不足，请保留待确认战果")
+			return _error("编队身份不一致，无法确认战果")
 	if fallen > 0 and not city._population_recovery.record_fallen(fallen):
 		return _error("阵亡人员来源不一致")
 	if wounded > 0 and city._population_recovery.record_casualties(wounded, 1000).is_empty():
@@ -817,6 +835,59 @@ func _home_alive() -> int:
 	for id in data.army_ids:
 		total += _members(city._army_registry.get_army(id)) - int(data.local_by_army.get(id, 0))
 	return total
+
+
+## Home-origin survivors keep the formation identity they departed with. Each
+## army carries its own origin formation in the macro march, so the return is
+## joined on that identity instead of on the position of an id inside
+## `army_ids`; a reordered or restored registry therefore cannot reassign a
+## survivor to another unit. Anything that does not map one-to-one back onto
+## the departure ledger is reported as inconsistent and settled as an error,
+## never absorbed into whichever formation still has room.
+func _home_returns_by_formation() -> Dictionary:
+	var ledger_formations: Array = Array(data.departure_ledger.get("formations", []))
+	if ledger_formations.is_empty() or ledger_formations.size() != Array(data.army_ids).size():
+		return {}
+	var departed_by_formation_id: Dictionary = {}
+	for value in ledger_formations:
+		if not value is Dictionary:
+			return {}
+		var ledger: Dictionary = value
+		var formation_id = ledger.get("formation_id", &"")
+		if (
+			not formation_id is StringName
+			or StringName(formation_id) == &""
+			or departed_by_formation_id.has(formation_id)
+			or int(ledger.get("member_count", -1)) < 0
+		):
+			return {}
+		departed_by_formation_id[formation_id] = int(ledger.member_count)
+	var returns: Dictionary = {}
+	var seen_army_ids: Dictionary = {}
+	for army_id_value in Array(data.army_ids):
+		if not army_id_value is StringName:
+			return {}
+		var army_id := StringName(army_id_value)
+		if seen_army_ids.has(army_id):
+			return {}
+		seen_army_ids[army_id] = true
+		var army: Dictionary = city._army_registry.get_army(army_id)
+		var snapshots: Array = Array(
+			Dictionary(army.get("macro_march", {})).get("formation_snapshots", [])
+		)
+		if snapshots.size() != 1:
+			return {}
+		var origin := StringName(Dictionary(snapshots[0]).get("formation_id", &""))
+		if not departed_by_formation_id.has(origin):
+			return {}
+		var survivors := _members(army) - int(data.local_by_army.get(army_id, 0))
+		if survivors < 0 or survivors > int(departed_by_formation_id[origin]):
+			return {}
+		returns[origin] = int(returns.get(origin, 0)) + survivors
+	if returns.size() != departed_by_formation_id.size():
+		return {}
+	return returns
+
 
 ## Home-origin living members return at confirmation. Home-origin wounded are
 ## recorded in PopulationRecoveryState at confirmation and later join the same

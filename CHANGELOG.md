@@ -1,3 +1,39 @@
+# FORMATION_RETURN_IDENTITY_R1 战后编队身份归队 — 2026-09-19
+
+- 战后归队不再按「先填哪个坑」分布：`GarrisonState.try_return_members_by_formation()`
+  以 `{formation_id: 幸存人数}` 为入参，先让每个原编队取回自己的份额，全部条目校验通过
+  才一次性落账。`_confirm()` 用 `_home_returns_by_formation()` 按每支军队自己的
+  `macro_march.formation_snapshots[0].formation_id` JOIN，而不是按 `army_ids` 下标；
+  与 `departure_ledger` 非一比一（重复、外来、越界人数）整笔失败并回滚。
+  三编队无伤亡归队后仍是原来的三编队与原有人数（新局 7/7/6 不再变成 20/0/0）。
+- 未新增 schema、未新增第二份编队权威：`departure_ledger` 已存原 `formation_id`，
+  军队已存来源编队，本国/当地/伤员/阵亡已可分，V5 `SCHEMA_VERSION 18` 已同时持久化
+  `garrison` 与 `army_registry`。`apply_formation_survivors()` 是 SET 语义且要求提交快照
+  与当前花名册逐字相等，确认时点不可用，故新增接口挂在同一权威所有者上。
+- 后备处理明确且可测：不在册／外来编队 ID → 硬拒绝（`INVALID_RETURN`，花名册零改动），
+  绝不塞第一编队；只有原编队满员才按花名册顺序溢出并回报 `displaced`，
+  因为 `home_return_capacity_reservation()` 已预留本国存活＋伤员容量，再拒绝即软锁玩家。
+  伤员照旧进 PopulationRecovery，阵亡永久移除，当地人员不带回主城。
+- 修出三个二次出征缺陷（同一提交，属「第二次出征看到结算后真实编队结构」的必要条件）：
+  `data.totals` 跨尝试残留使第二次入关快照永远过不了 `in + produced − used == SCOPE`；
+  `entry.state.combat_losses_total` 未按 `_valid_entry_snapshot` 口径记 0；
+  `starvation_cycles` 结算后残留使断过粮的关卡再也无法出征。
+  统一在 `_depart()`「新尝试开始」唯一入口归零，既有存档无需迁移即可自愈。
+- 新增定向测试：`tests/verify_formation_return_identity_garrison.gd`（花名册 66 项，含旧口径
+  对照：`try_add_units(12)` → `[12,0,0]` vs 新接口 → `[5,4,3]`）与
+  `tests/verify_formation_return_identity_r1.gd` ＋ `tests/run_formation_return_identity_matrix.sh`
+  （4 结算族 19 段，撤军/失败/胜利、部分阵亡、不同伤亡、一队全灭、有伤员未归队、
+  有当地加入、重复 confirm 幂等、确认后冷启动、第二次出征、资源/人口/军队身份守恒，
+  332 项断言，每段独立进程 ＋ 真实冷启动 ＋ 独立隔离存档链）。
+- 回归：批次 A 15 步 422 项 0 失败（D1 九段、v5 单兵种花名册、phase-UI、恢复状态 UI、
+  存档兜底、R2A1 治理入口）、道路三条 smoke、R1C 存档门禁矩阵 failures=0、
+  R2B-1 归来简报矩阵 11/11、Godot 导入解析 0 错、`git diff --check` 干净；
+  玩家存档与 `TXWZS_BACKUP` 哨兵跑前跑后一致。
+- 记录两项既有问题（本轮不改）：主线 `complete_returned_army_to_garrison()` 仍以
+  `try_add_units` 并入第一编队（同根因、不同事务）；两个真实窗口 UI 用例
+  （R1B 可玩链生产者→冷恢复对、R1C 出征草稿两尺寸）因顶栏入口按钮缺失而失败，
+  在基线 `ba84d58` 上失败列表逐字相同，故非本轮引入。
+
 # R2B-1 战役归来简报与永久主城经营回流 — 2026-09-19
 
 - 结算回执成为 confirm 事务成功后的只读呈现投射：`_confirm()` 深拷贝已确认事实

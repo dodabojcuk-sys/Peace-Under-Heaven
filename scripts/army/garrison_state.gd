@@ -86,6 +86,87 @@ func try_add_units(
 	return remaining == 0
 
 
+## Post-battle returns are addressed by formation identity: the caller states
+## how many members come back to each departed formation, so a campaign that
+## left three formations cannot collapse into whichever index happens to be
+## filled first. Nothing is applied until every entry is accepted, so a plan
+## carrying a foreign formation id cannot half-mutate the roster. Only a full
+## home formation spills, and it spills in roster order *after* every origin
+## formation has taken its own share, which keeps the placement deterministic
+## and reproducible across a cold boot.
+func try_return_members_by_formation(
+	returns_by_formation_id: Dictionary
+) -> Dictionary:
+	if returns_by_formation_id.is_empty():
+		return _return_failure(&"INVALID_RETURN")
+	var requested: Dictionary = {}
+	for formation_id_value in returns_by_formation_id:
+		if (
+			not formation_id_value is StringName
+			or not _formations_by_id.has(formation_id_value)
+		):
+			return _return_failure(&"INVALID_RETURN")
+		var count = returns_by_formation_id[formation_id_value]
+		if typeof(count) != TYPE_INT or int(count) < 0:
+			return _return_failure(&"INVALID_RETURN")
+		requested[formation_id_value] = int(count)
+	var total := 0
+	for formation_id in requested:
+		total += int(requested[formation_id])
+	if total <= 0:
+		return _return_failure(&"INVALID_RETURN")
+	var free := 0
+	for formation_id in FORMATION_IDS:
+		var current: Dictionary = _formations_by_id.get(formation_id, {})
+		if not current.is_empty():
+			free += maxi(0, int(current.max_members) - int(current.member_count))
+	if total > free:
+		return _return_failure(&"INSUFFICIENT_CAPACITY")
+	var adds: Dictionary = {}
+	var overflow: Dictionary = {}
+	for formation_id in FORMATION_IDS:
+		var wanted := int(requested.get(formation_id, 0))
+		if wanted <= 0:
+			continue
+		var home: Dictionary = _formations_by_id[formation_id]
+		var fits := mini(wanted, maxi(0, int(home.max_members) - int(home.member_count)))
+		adds[formation_id] = fits
+		if fits < wanted:
+			overflow[formation_id] = wanted - fits
+	var displaced := 0
+	for origin_id in FORMATION_IDS:
+		var remaining := int(overflow.get(origin_id, 0))
+		if remaining <= 0:
+			continue
+		for host_id in FORMATION_IDS:
+			if remaining <= 0:
+				break
+			# 花名册允许只登记部分编队（持久化按现有键写出），所以这里必须
+			# 按存在性取用，而不是假定 FORMATION_IDS 三项都在册。
+			var host: Dictionary = _formations_by_id.get(host_id, {})
+			if host.is_empty():
+				continue
+			var available := maxi(
+				0,
+				int(host.max_members) - int(host.member_count) - int(adds.get(host_id, 0))
+			)
+			var accepted := mini(remaining, available)
+			if accepted <= 0:
+				continue
+			adds[host_id] = int(adds.get(host_id, 0)) + accepted
+			remaining -= accepted
+			displaced += accepted
+	for formation_id in adds:
+		var formation: Dictionary = _formations_by_id[formation_id]
+		formation.member_count = int(formation.member_count) + int(adds[formation_id])
+		_formations_by_id[formation_id] = formation
+	return {"ok": true, "reason": &"", "returned": total, "displaced": displaced}
+
+
+func _return_failure(reason: StringName) -> Dictionary:
+	return {"ok": false, "reason": reason, "returned": 0, "displaced": 0}
+
+
 func try_remove_units(
 	definition_id: StringName,
 	count: int

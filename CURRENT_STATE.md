@@ -1,5 +1,56 @@
 # 当前状态
 
+## FORMATION_RETURN_IDENTITY_R1 战后编队身份归队 (2026-09-19，基线 ba84d58)
+
+1. **审计结论：现有事实已足够，不动 schema**。`departure_ledger.formations` 原样保存
+   `formation_id`＋`member_count`；每支关内军队的来源编队在 `macro_march.formation_snapshots[0]`
+   且恰好一条；本国/当地/伤员/阵亡按 `local_by_army`＋`wounded_by_army`＋`fallen_home` 可分，
+   每编队阵亡数由「出征人数 − 幸存人数」逐项推出；V5 `SCHEMA_VERSION 18` 已同时持久化
+   `garrison` 与 `army_registry`。指令中「需新增持久化字段／迁移旧存档」的停止分支不成立。
+2. **归队改为按身份寻址**：`GarrisonState.try_return_members_by_formation()` 接受
+   `{formation_id: 幸存人数}`，先让每个原编队取回自己的份额，全量校验通过后才落账；
+   `_confirm()` 经 `_home_returns_by_formation()` 把每支军队 JOIN 到**它自己**的来源编队
+   （不按 `army_ids` 下标），与 ledger 非一比一即整笔失败并回滚。
+   未复用 `apply_formation_survivors()`：它是 SET 语义，且 `selection_matches()` 要求提交快照
+   与当前花名册逐字相等——确认时原编队人数已随军队归零，语义不可用；新接口挂在同一权威所有者上。
+3. **后备处理可测试且不塞第一编队**：外来的／不在册的 `formation_id` → 硬拒绝 `INVALID_RETURN`，
+   确认端报「编队身份不一致」，花名册一律不动；只有原编队满员才按花名册顺序溢出补位并回报
+   `displaced`。依据：`home_return_capacity_reservation()` 在 ACTIVE/PENDING 期间已预留本国存活＋伤员
+   容量，此时再拒绝归队只会把玩家软锁死。溢出为确定顺序，冷启动重放结果一致（Layer-1 复测证明）。
+4. **修出三个二次出征缺陷**（达成「第二次出征看到结算后真实编队结构」的必要条件）：
+   `data.totals` 跨尝试残留 → 第二次入关快照永远过不了 `in + produced − used == SCOPE` 守恒；
+   `entry.state.combat_losses_total` 未按 `_valid_entry_snapshot` 口径记 0；
+   `starvation_cycles` 结算后残留 → 断过粮的关卡再也无法出征（`_valid_entry_snapshot` 要求为 0）。
+   三者统一在 `_depart()` 这一「新尝试开始」唯一入口归零，故既有存档无需迁移即可自愈。
+5. **本轮闭环的旧记录**：R1C-D1 一节写下「已知边界：归队士兵确认后全部并入第一编队
+   （formation.1=20，2/3 编队清零……本轮未动）」——即本项。新局 7/7/6 三编队无伤亡归队后仍为
+   7/7/6；单编队部分阵亡、多编队不同伤亡、一队全灭、有伤员未归队、有当地加入（不带回主城）、
+   撤军/失败/胜利三结果、重复 confirm 幂等、确认后冷启动、第二次出征账本等于结算后结构、
+   资源/人口/军队身份守恒全部通过。
+
+验证：`tests/run_formation_return_identity_matrix.sh` 4 用例 19 段 ＋ 花名册 1 段（共 20 次独立进程、
+每次真实 `load_latest` 冷启动）398 项断言 `failures=0`（Layer-2 332＋Layer-1 66）；
+回归批次 A 15 步 422 项 0 失败（D1 九段、v5 单兵种花名册 27、phase-UI 49、恢复状态 114、
+存档兜底 35、R2A1 51）；道路三条 smoke 15/29/26 全绿；`run_r1c_save_gate_matrix.sh` failures=0；
+`run_r2b1_battle_return_brief_matrix.sh` 11/11（115 项，归来简报保持正确）；
+Godot `--import` 解析 0 错、`git diff --check` 干净；玩家存档哨兵跑后仍
+`deb4f150c1a12f7f248ef566425af0e18b04d8be49b61faf015c456e8ccfe167`（3201 文件）、
+`TXWZS_BACKUP` 仍 `a9dbd94826d9749efaa8ef211157c667b96b2ea102113b55e070da992a6fa26a`（52 文件）。
+全部使用 `/private/tmp` 下新建隔离存档链，未接触真实玩家档。
+
+### 既有问题（本轮不改，仅留证据）
+
+- 主线归队 `complete_returned_army_to_garrison()`（`construction_controller.gd:11990`，
+  内部 `try_add_units` 约 :12012）仍把幸存者并入第一编队：同一根因、不同事务，
+  不属常规战役结算，建议列为下一项。
+- 两个真实窗口 UI 用例在本轮失败，且**在基线上失败列表逐字相同**，非本轮引入：
+  `run_regular_campaign_r1b_playable_loop.gd` 取不到顶栏入口按钮 `进入青原战区` → `view` 为空
+  → 5 处 SCRIPT ERROR → 看门狗 exit 137，`verify_r1c_cold_restore.gd` 因缺 `facts-completed.json`
+  连带失败；`verify_r1c_departure_draft.gd` 两尺寸各 10 项失败，首条即 `STEP3 entry=false text=nil`
+  之后的取消勾选链。基线证明方式：把两份生产文件临时换成 `git show HEAD:` 的内容跑同一用例，
+  再按哈希还原（`02512aea…`／`9cb1d186…`），未用 `git stash`、未新建 worktree。
+- R1C-D1 记录的「深层冷恢复漂移定性维持开放」本轮未触碰。
+
 ## R2B-1 战役归来简报与永久主城经营回流 (2026-09-19，基线 7464898)
 
 1. **权威回执只跟随事务成功**：`_confirm()` 内把已确认事实深拷贝为
