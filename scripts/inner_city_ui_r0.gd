@@ -50,6 +50,13 @@ var _layout_refresh_pending := false
 var _governance_open := false
 var _catalog_highlight_button: Button
 var _governance_groups: Dictionary = {}
+# R2B-1：玩家显式路由到的分组。经营面板每帧刷新都会按告警规则重排开合，
+# 未记这个意图的话「查看城市影响」打开的分组会在下一次刷新被收回。
+var _governance_group_directive := ""
+# R2B-1：战役归来简报（会话内一次性呈现；不进存档）。
+var _campaign_return_panel: PanelContainer
+var _campaign_return_route_group := ""
+var _campaign_return_route_focus := ""
 var governance_toggle_button: Button
 var governance_workspace: PanelContainer
 var governance_title: Label
@@ -113,6 +120,7 @@ func _install_governance_group(content: VBoxContainer, title: String, open_by_de
 			control.get_parent().remove_child(control)
 		body.add_child(control)
 	header.pressed.connect(func():
+		_governance_group_directive = ""
 		body.visible = not body.visible
 		header.text = ("▾ " if body.visible else "▸ ") + title
 	)
@@ -123,12 +131,17 @@ func _install_governance_group(content: VBoxContainer, title: String, open_by_de
 
 func _sync_governance_groups(has_alert: bool) -> void:
 	# R2B0：默认只展开「概况」与存在警报的分组；其余收起为一行摘要。
+	# R2B1：玩家显式路由过的分组优先于默认规则，直到他自己点开合或收起面板。
 	for title_value in _governance_groups:
 		var title := String(title_value)
 		var group: Dictionary = _governance_groups[title_value]
 		var body: VBoxContainer = group.get("body")
 		var header: Button = group.get("header")
-		var should_open: bool = title == "概况" or (has_alert and title in ["生产与仓储", "医疗与民生", "治安与事件"])
+		var should_open: bool
+		if not _governance_group_directive.is_empty():
+			should_open = title == _governance_group_directive
+		else:
+			should_open = title == "概况" or (has_alert and title in ["生产与仓储", "医疗与民生", "治安与事件"])
 		group["open"] = should_open
 		body.visible = should_open
 		header.text = ("▾ " if should_open else "▸ ") + title
@@ -145,6 +158,8 @@ func _install_governance_toggle() -> void:
 
 
 func _toggle_governance_workspace() -> void:
+	# 玩家自己开合面板 = 接管布局，路由指令到此为止。
+	_governance_group_directive = ""
 	_governance_open = not _governance_open
 	_refresh_read_model()
 
@@ -362,6 +377,8 @@ func _refresh_regular_campaign_read_model() -> void:
 	if governance_toggle_button != null:
 		governance_toggle_button.visible = false
 		governance_toggle_button.text = "城市经营"
+	# R2B-1：归来简报只属于永久主城；进入战时内城时收起。
+	hide_campaign_return_brief()
 	for label in [time_summary, daily_report, alert_summary]:
 		label.add_theme_color_override("font_color", MUTED_TEXT)
 	_schedule_layout_refresh()
@@ -475,6 +492,7 @@ func _layout_for_viewport() -> void:
 	_layout_governance_workspace(width, height, right_width, edge, rail_top)
 	_layout_strategy_workspace(width, height, right_width, edge, rail_top)
 	_refresh_governance_workspace()
+	_layout_campaign_return_panel()
 
 
 
@@ -1279,3 +1297,239 @@ func _button_style(color: Color, outline: Color) -> StyleBoxFlat:
 	style.content_margin_left = 10.0
 	style.content_margin_right = 10.0
 	return style
+
+# ── R2B-1 战役归来简报 ────────────────────────────────────────────────
+# 简报是 confirm 事务成功后的会话内一次性 UI 投射：不写存档、不新增 schema、
+# 冷启动不重放、刷新与反复进出主城不重复。数据来源是控制器转交的只读回执
+# 与消费时刻的主城权威读模型，本 UI 不重新推算损益。
+
+func _campaign_return_title(kind: String) -> Dictionary:
+	if kind == "VICTORY":
+		return {"text": "青原战役 · 凯旋归城", "color": ACCENT, "outcome": "本次战役目标完成。"}
+	if kind == "DEFEAT":
+		return {"text": "青原战役 · 战损归城", "color": WARNING, "outcome": "本次行动未能达成目标，损益已入账。"}
+	return {"text": "青原战役 · 部队归城", "color": TEXT, "outcome": "部队按命令撤回，损益已入账。"}
+
+
+func show_campaign_return_brief(receipt: Dictionary, advice: Dictionary = {}) -> void:
+	if receipt.is_empty():
+		return
+	hide_campaign_return_brief()
+	var kind := str(receipt.get("kind", "WITHDRAW"))
+	var title := _campaign_return_title(kind)
+	var panel := PanelContainer.new()
+	panel.name = "CampaignReturnBrief"
+	panel.mouse_filter = Control.MOUSE_FILTER_STOP
+	panel.add_theme_stylebox_override("panel", _panel_style())
+	var margin := MarginContainer.new()
+	for side in ["margin_left", "margin_right", "margin_top", "margin_bottom"]:
+		margin.add_theme_constant_override(side, 12)
+	panel.add_child(margin)
+	var box := VBoxContainer.new()
+	box.add_theme_constant_override("separation", 6)
+	margin.add_child(box)
+
+	var title_label := Label.new()
+	title_label.name = "CampaignReturnTitle"
+	title_label.text = str(title.text)
+	title_label.add_theme_font_size_override("font_size", 19)
+	title_label.add_theme_color_override("font_color", title.color)
+	box.add_child(title_label)
+
+	var outcome := Label.new()
+	outcome.name = "CampaignReturnOutcome"
+	outcome.text = str(title.outcome)
+	outcome.add_theme_font_size_override("font_size", 14)
+	outcome.add_theme_color_override("font_color", MUTED_TEXT)
+	outcome.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	box.add_child(outcome)
+
+	var grid := GridContainer.new()
+	grid.name = "CampaignReturnMetrics"
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", 18)
+	grid.add_theme_constant_override("v_separation", 2)
+	box.add_child(grid)
+	var metrics := [
+		["幸存者", "%d" % int(receipt.get("survivors", 0)), TEXT],
+		["伤员", "%d" % int(receipt.get("wounded", 0)), WARNING if int(receipt.get("wounded", 0)) > 0 else TEXT],
+		["阵亡", "%d" % int(receipt.get("fallen", 0)), DANGER if int(receipt.get("fallen", 0)) > 0 else TEXT],
+		["返还粮食", "%d" % int(receipt.get("food_return_actual", 0)), TEXT],
+		["返还木材", "%d" % int(receipt.get("wood_return_actual", 0)), TEXT],
+	]
+	for metric in metrics:
+		var name_label := Label.new()
+		name_label.text = str(metric[0])
+		name_label.add_theme_font_size_override("font_size", 14)
+		name_label.add_theme_color_override("font_color", MUTED_TEXT)
+		grid.add_child(name_label)
+		var value_label := Label.new()
+		value_label.name = "CampaignReturnMetric_" + str(metric[0])
+		value_label.text = str(metric[1])
+		value_label.add_theme_font_size_override("font_size", 15)
+		value_label.add_theme_color_override("font_color", metric[2])
+		grid.add_child(value_label)
+	var retained_food := int(receipt.get("retained_food", 0))
+	var retained_wood := int(receipt.get("retained_wood", 0))
+	if retained_food > 0 or retained_wood > 0:
+		var retained_label := Label.new()
+		retained_label.name = "CampaignReturnRetainedWarning"
+		retained_label.text = "前线暂存：粮 %d / 木 %d（主城满仓部分留在原账）" % [retained_food, retained_wood]
+		retained_label.add_theme_font_size_override("font_size", 13)
+		retained_label.add_theme_color_override("font_color", WARNING)
+		retained_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(retained_label)
+
+	var advice_text := str(Dictionary(advice).get("text", ""))
+	if not advice_text.is_empty():
+		var advice_label := Label.new()
+		advice_label.name = "CampaignReturnAdvice"
+		advice_label.text = advice_text
+		advice_label.add_theme_font_size_override("font_size", 13)
+		advice_label.add_theme_color_override(
+			"font_color", ACCENT if str(Dictionary(advice).get("priority", "")) == "stable" else WARNING
+		)
+		advice_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		box.add_child(advice_label)
+
+	var details_body := _build_campaign_return_details(receipt)
+	var toggle := Button.new()
+	toggle.name = "CampaignReturnDetailsToggle"
+	toggle.text = "展开详情"
+	toggle.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	toggle.focus_mode = Control.FOCUS_NONE
+	toggle.flat = true
+	toggle.add_theme_font_size_override("font_size", 13)
+	toggle.add_theme_color_override("font_color", ACCENT)
+	toggle.pressed.connect(func():
+		var body := panel.find_child("CampaignReturnDetails", true, false) as ScrollContainer
+		if body == null:
+			return
+		body.visible = not body.visible
+		toggle.text = "收起详情" if body.visible else "展开详情"
+		_layout_campaign_return_panel()
+	)
+	box.add_child(toggle)
+	box.add_child(details_body)
+
+	var actions := HBoxContainer.new()
+	actions.name = "CampaignReturnActions"
+	actions.add_theme_constant_override("separation", 10)
+	var dismiss := Button.new()
+	dismiss.name = "CampaignReturnDismissButton"
+	dismiss.text = "知道了"
+	dismiss.custom_minimum_size = Vector2(96, 32)
+	_apply_button_tokens(dismiss)
+	dismiss.pressed.connect(_on_campaign_return_dismissed)
+	actions.add_child(dismiss)
+	var route := Button.new()
+	route.name = "CampaignReturnRouteButton"
+	route.text = "查看城市影响"
+	route.custom_minimum_size = Vector2(128, 32)
+	_apply_button_tokens(route)
+	route.pressed.connect(_on_campaign_return_route_pressed)
+	actions.add_child(route)
+	box.add_child(actions)
+
+	add_child(panel)
+	_campaign_return_panel = panel
+	_campaign_return_route_group = str(Dictionary(advice).get("group", ""))
+	_campaign_return_route_focus = str(Dictionary(advice).get("focus", ""))
+	_layout_campaign_return_panel()
+
+
+func _build_campaign_return_details(receipt: Dictionary) -> ScrollContainer:
+	var scroll := ScrollContainer.new()
+	scroll.name = "CampaignReturnDetails"
+	scroll.visible = false
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	var viewport_height := get_viewport_rect().size.y
+	scroll.custom_minimum_size = Vector2(0, minf(220.0, viewport_height * 0.35))
+	var box := VBoxContainer.new()
+	box.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	box.add_theme_constant_override("separation", 2)
+	scroll.add_child(box)
+	var totals := Dictionary(receipt.get("totals", {}))
+	var lines := [
+		"携入粮食 %d · 携入木材 %d" % [int(totals.get("food_in", 0)), int(totals.get("wood_in", 0))],
+		"前线产出 粮 %d · 木 %d" % [int(totals.get("food_produced", 0)), int(totals.get("wood_produced", 0))],
+		"前线消耗 粮 %d · 木 %d" % [int(totals.get("food_used", 0)), int(totals.get("wood_used", 0))],
+		"实际返还 粮 %d · 木 %d" % [int(receipt.get("food_return_actual", 0)), int(receipt.get("wood_return_actual", 0))],
+		"当地人员 %d 名留在当地（结算交接完成，非路线运输）" % int(receipt.get("local_people", 0)),
+		"结算身份 %s · 第 %d 次尝试 · 本关耗时 %d:%02d" % [
+			str(receipt.get("result_key", "-")),
+			int(receipt.get("attempt_sequence", 0)),
+			int(receipt.get("elapsed_ms", 0)) / 60000, (int(receipt.get("elapsed_ms", 0)) / 1000) % 60,
+		],
+	]
+	for line in lines:
+		var label := Label.new()
+		label.text = line
+		label.add_theme_font_size_override("font_size", 13)
+		label.add_theme_color_override("font_color", MUTED_TEXT)
+		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		box.add_child(label)
+	return scroll
+
+
+func _layout_campaign_return_panel() -> void:
+	if _campaign_return_panel == null or not is_instance_valid(_campaign_return_panel):
+		return
+	var viewport := get_viewport_rect().size
+	var width := clampf(viewport.x * 0.34, 360.0, 460.0)
+	_campaign_return_panel.anchor_left = 0.5
+	_campaign_return_panel.anchor_right = 0.5
+	_campaign_return_panel.anchor_top = 1.0
+	_campaign_return_panel.anchor_bottom = 1.0
+	_campaign_return_panel.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	_campaign_return_panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	_campaign_return_panel.offset_left = -width * 0.5
+	_campaign_return_panel.offset_right = width * 0.5
+	_campaign_return_panel.offset_bottom = -44.0
+	_campaign_return_panel.offset_top = -viewport.y * 0.7
+
+
+func _on_campaign_return_dismissed() -> void:
+	# 「知道了」：只关闭简报；不改游戏事实、不暂停、不触发保存。
+	hide_campaign_return_brief()
+
+
+func _on_campaign_return_route_pressed() -> void:
+	# 「查看城市影响」：只切换 UI 到既有人口；不领取、不治疗、不建造、不调岗。
+	var group := _campaign_return_route_group
+	var focus := _campaign_return_route_focus
+	hide_campaign_return_brief()
+	if group.is_empty():
+		if construction_controller.has_method("open_campaign_claim_entry"):
+			construction_controller.open_campaign_claim_entry()
+		return
+	open_governance_group(group, focus)
+
+
+func hide_campaign_return_brief() -> void:
+	if _campaign_return_panel != null and is_instance_valid(_campaign_return_panel):
+		_campaign_return_panel.queue_free()
+	_campaign_return_panel = null
+	_campaign_return_route_group = ""
+	_campaign_return_route_focus = ""
+
+
+## R2B-1：经营回流路由——复用 R2B-0 五分组，不复制面板实现。
+## 无对应分组时安全回退到「概况」。
+func open_governance_group(group_title: String, focus_control_name: String = "") -> bool:
+	var title := group_title
+	if not _governance_groups.has(title):
+		title = "概况"
+	_governance_group_directive = title
+	_governance_open = true
+	# 开合由 _sync_governance_groups 按指令统一应用；这里只负责刷新与聚焦。
+	_refresh_read_model()
+	if focus_control_name != "":
+		var group: Dictionary = _governance_groups.get(title, {})
+		var body: VBoxContainer = group.get("body")
+		if body != null:
+			var target := body.find_child(focus_control_name, true, false)
+			if target is Control:
+				(target as Control).grab_focus.call_deferred()
+	return true

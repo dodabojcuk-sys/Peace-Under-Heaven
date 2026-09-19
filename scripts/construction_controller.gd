@@ -567,6 +567,9 @@ var _regular_campaign_selected_plot := -1
 var _permanent_placed_buildings_visible := true
 var _regular_campaign_host_refresh_accum := 0.0
 var _regular_campaign_road_cells: Dictionary = {}
+# R2B-1：确认成功后的呈现回执暂存（内存态，不进存档）。
+# 永久主城重新可见时消费一次，交给 InnerCityUIR0 显示一次性归来简报。
+var _pending_campaign_return_brief: Dictionary = {}
 # Test-only fault seams verify Field transaction rollback after an existing
 # NationState commit. They are never serialized and production code has no caller.
 var _field_supply_fault_for_test: StringName = &""
@@ -818,11 +821,87 @@ func show_regular_campaign_home_entry() -> bool:
 		root.call("present_regular_campaign_home_entry")
 	_refresh_city_ui()
 	city_state_changed.emit()
+	# R2B-1：该路径同样回到永久主城；简报只在有已确认回执时出现一次。
+	_consume_pending_campaign_return_brief()
 	return true
 
 
 func is_regular_campaign_city_active() -> bool:
 	return _regular_campaign_city_active
+
+
+## R2B-1：战役视图在 confirm 事务成功后把只读回执暂存到这里。
+## 回执是内存呈现状态，不是存档事实；重复调用以最新一次为准。
+func stage_campaign_return_brief(receipt: Dictionary) -> void:
+	_pending_campaign_return_brief = receipt.duplicate(true)
+
+
+## R2B-1：永久主城恢复可见时消费一次；建议在消费时刻按主城权威读模型计算。
+func _consume_pending_campaign_return_brief() -> void:
+	if _pending_campaign_return_brief.is_empty() and _is_regular_campaign_active() \
+			and _regular_campaign.has_method("has_settlement_receipt") \
+			and bool(_regular_campaign.call("has_settlement_receipt")):
+		# 兜底：确认命令未经战役视图发起时，回执仍在 runtime，这里一次性领取。
+		_pending_campaign_return_brief = _regular_campaign.call("take_settlement_receipt") as Dictionary
+	if _pending_campaign_return_brief.is_empty():
+		return
+	if not _is_regular_campaign_active():
+		_pending_campaign_return_brief = {}
+		return
+	var shell := get_node_or_null("../UI/Shell")
+	if shell == null or not shell.has_method("show_campaign_return_brief"):
+		return
+	var receipt: Dictionary = _pending_campaign_return_brief
+	_pending_campaign_return_brief = {}
+	var advice := _campaign_return_advice(receipt)
+	shell.show_campaign_return_brief(receipt, advice)
+
+
+## R2B-1：经营优先级只读现有主城权威事实：
+## 前线暂存 > 伤员 > 实际粮食风险 > 城市概况。
+func _campaign_return_advice(receipt: Dictionary) -> Dictionary:
+	var retained_food := int(receipt.get("retained_food", 0))
+	var retained_wood := int(receipt.get("retained_wood", 0))
+	if retained_food > 0 or retained_wood > 0:
+		return {
+			"priority": "retained",
+			"group": "",
+			"focus": "",
+			"text": "主城仓储不足，前线仍暂存粮 %d、木 %d。\n先消耗库存或扩建仓储，再领取并重新出征。" % [retained_food, retained_wood],
+		}
+	var recovery := get_population_recovery_read_model()
+	var wounded := int(Dictionary(recovery).get("wounded", 0))
+	if wounded > 0:
+		return {
+			"priority": "wounded",
+			"group": "医疗与民生",
+			"focus": "WoundedTreatmentButton",
+			"text": "现有 %d 名伤员进入恢复系统。\n查看医疗与民生，确认医舍和医疗岗位。" % wounded,
+		}
+	var forecast := get_city_food_forecast()
+	if int(Dictionary(forecast).get("net", 0)) < 0:
+		return {
+			"priority": "food",
+			"group": "生产与仓储",
+			"focus": "GovernanceFoodButton",
+			"text": "主城粮食净额为 %+d/日。\n优先检查农田、道路和生产岗位。" % int(Dictionary(forecast).get("net", 0)),
+		}
+	return {
+		"priority": "stable",
+		"group": "概况",
+		"focus": "",
+		"text": "部队已归城，主城当前无紧急风险。\n可以继续建设、升级或准备下一次出征。",
+	}
+
+
+## R2B-1：前线暂存优先级的现有入口——打开战役侧栏结算页（含领取按钮）。
+## 只路由，不自动 claim。
+func open_campaign_claim_entry() -> bool:
+	if not show_regular_campaign():
+		return false
+	if is_instance_valid(_regular_campaign_view) and _regular_campaign_view.has_method("show_result_tab"):
+		_regular_campaign_view.show_result_tab()
+	return true
 
 
 func get_regular_campaign_read_model() -> Dictionary:
@@ -871,6 +950,8 @@ func is_regular_campaign_view_visible() -> bool:
 
 func _on_regular_campaign_view_closed() -> void:
 	_refresh_city_ui()
+	# R2B-1：战役覆盖层关闭、永久主城恢复可见——此刻才消费归来简报。
+	_consume_pending_campaign_return_brief()
 
 
 func _is_regular_campaign_active() -> bool:
