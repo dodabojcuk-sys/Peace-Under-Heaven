@@ -37,6 +37,38 @@ Godot 导入解析、`git diff --check`）；玩家存档哨兵前后一致
 （`deb4f150c1a12f7f248ef566425af0e18b04d8be49b61faf015c456e8ccfe167`，3201 文件）。
 证据：`TXWZS_R2B1_DELIVERY/`（10 图 + 联系表 + `R2B1_RESULTS.md` + `TEST_RESULTS.md`）。
 
+### 证据与交付收口（2026-09-19，docs-only）
+
+- **版本身份**：`7464898`（基线）→ `2bf4d8e`（回执转正 +63）→ `4649b99`（简报与路由 +336/−1）
+  → `a611d24`（工装、取证与文档 +1354）。父子顺序由 `git rev-list --parents` 核对；
+  产品头 = `a611d24`，本轮无 amend/rebase/reset/squash，产品代码零改动。
+  远程在收口轮两次 `git ls-remote` 超时不可达，`REMOTE_HEAD` 计为**未验证**、`PUSHED=NO`。
+- **工装修正已在头提交中逐项复核到位**：冷启动 `view` 空值守卫、双看门狗＋跑批硬超时、
+  按用例/按结算族拆分隔离存档链、假通过修复（面板缺失即中止＋`^SCRIPT ERROR` 锚定）、
+  撤军取证改用 `view._leave_button` ＋侧栏滚动。
+  修复前结果判为 `PRE_FIX_HARNESS_RESULT=INVALID_FALSE_PASS`，全部结论以修复后完整重跑为准。
+- **证据损失（EVIDENCE_LOSS=YES）**：收尾清理时 zsh 无引号变量不词分割，keep-list 判定恒不命中，
+  `/private/tmp/txwzs-r2b1-*` 全部跑批日志、facts 与三张修复前被拒截图一并删除，
+  `DELETED_TEMP_LOGS_RECOVERABLE=NO`。断言计数、回执字段实测值、两分辨率矩形等数字
+  **现在只剩本文件、`TEST_RESULTS.md` 与当次会话汇报这一份**，不可再与原始日志逐行比对；
+  玩家存档哨兵不依赖已删日志，收口轮已就地重算并再次一致。
+  详见 `docs/reports/TXWZS_R2B1_EVIDENCE_LOSS_NOTE.md`（交付包内有同内容副本）。
+- **fixture 与自然游玩边界**：`04-retained-resources-warning.png` 为
+  `FIXTURE_PRESENTATION_EVIDENCE`（图内 62/41 与暂存 18/6 是展示数值，非该次真实损益；
+  同一次真实撤军为 30/55，见 01），暂存的事务事实由定向断言承担，
+  `NATURAL_PLAYTHROUGH_STAGING=NOT_CAPTURED`；04 像素内无 `ui_render` 水印字样，
+  标注仅存在于联系表图注与文档，本轮不重拍（重拍会改动已记录数值）。
+- **交付判定 `DELIVERY_VERDICT=CONDITIONAL_PASS`**：`PRODUCT_IMPLEMENTATION=PASS`、
+  `TRANSACTION_CONTRACT=PASS`、`PRODUCT_IMPACT=NO`、`GIT_IMPACT=NO`、
+  `DELIVERY_ARTIFACT_IMPACT=NO`（交付包 14 个文件逐项复核仍在位可打开）。
+  条件仅为证据形态（暂存呈现为 fixture 级 + 原始日志不可回查），不指向产品实现。
+- **可复现性缺口**：§10 回归跑批驱动当时位于 `/private/tmp/run_r2b1_regression.sh`，
+  未纳入版本控制；仓库内已提交的可复现入口只有两个 R2B-1 跑批脚本。
+- **后续清理规则（强制）**：禁止 keep-list 式 shell 删除；只允许逐条绝对路径 allowlist
+  ＋ dry-run 核对条目数后执行，执行后立刻确认 allowlist 外同级目录仍在；
+  一次性记录（日志/facts/被拒证据）须在清理前落入受版本控制路径。
+  R2B-2 未启动，等待 Founder 指令。
+
 # 当前状态
 
 ## R2B-0 永久主城操作层级与道路建设可靠性收口 (2026-09-17，1c815fd/badc82f 之后)
