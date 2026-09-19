@@ -520,3 +520,28 @@ Road-damage checks start at
   generation with its error_id.
 - The status matrix gained a clean-log gate: title/city workers must run
   without SCRIPT ERROR or ERROR: lines; 114 assertions green.
+
+## Battle return R2B-1: presentation receipt and one-shot main-city brief (2026-09-19)
+
+- The settlement receipt is a session-scoped projection built inside
+  `_confirm()` from facts that are already committed, and promoted by
+  `command()` only after the checkpoint persists without rollback. Rollback,
+  save failure and duplicate confirm therefore cannot produce a brief, and the
+  non-victory branch that clears `data.summary`/`settlement_id` no longer
+  destroys the identity of the settlement it just recorded.
+- Nothing new is serialized: no schema field, no second settlement pass, and
+  the UI never recomputes casualties or resources. The brief is staged on the
+  controller and consumed at exactly the two points where the permanent main
+  city becomes visible again, which is what makes "show once, never replay on
+  cold boot" provable instead of incidental.
+- Governance priority is read from the authoritative city read models at
+  consume time (retained > wounded > food risk > stable) rather than from
+  receipt fields. A receipt can only prove the retained branch; wounded comes
+  from the recovery model, so the medical route is verified with real combat
+  casualties and the synthetic-evidence shot is labelled as such.
+- Routed governance groups now carry an explicit directive applied by
+  `_sync_governance_groups()`. The previous code applied the target group
+  after the refresh, so the next `city_state_changed` — which fires on normal
+  city ticks — silently reverted the layout the player had just asked for.
+  Manual group or panel toggling hands layout control back to the default
+  alert rules.

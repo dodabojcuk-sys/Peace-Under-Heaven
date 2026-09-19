@@ -1,5 +1,44 @@
 # 当前状态
 
+## R2B-1 战役归来简报与永久主城经营回流 (2026-09-19，基线 7464898)
+
+1. **权威回执只跟随事务成功**：`_confirm()` 内把已确认事实深拷贝为
+   `_settlement_receipt_candidate`（含 `result_key`/`settlement_id`/`attempt_sequence`
+   与 survivors/wounded/fallen/返还/暂存/totals）；`command()` 仅在持久化成功、
+   未回滚时转正，保存失败/回滚/重复确认一律丢弃。非胜利分支随后清空
+   `data.summary` 与 `settlement_id`，回执独立保留本次结算身份。
+   回执不进 `data`、不进存档、不改 schema，冷启动不重放。
+2. **一次性主城简报**：视图在 confirm 成功后把回执转交控制器暂存，
+   永久主城重新可见（`_on_regular_campaign_view_closed` /
+   `show_regular_campaign_home_entry`）时才消费一次；
+   三态标题（凯旋归城/部队归城/战损归城）、首屏五项指标、暂存警示带、
+   折叠详情、`知道了` 与 `查看城市影响` 两个动作。
+   战时内城强制收起，UI 刷新×10 与经营面板往返不重复。
+3. **经营回流路由**：优先级 前线暂存 > 伤员 > 实际粮食风险 > 城市概况，
+   判据取自主城权威读模型（`retained_*`、`get_population_recovery_read_model()`、
+   `get_city_food_forecast()`），复用 R2B-0 五分组，未知分组安全回退「概况」。
+4. **修出并守卫的缺陷**：`open_governance_group()` 的路由结果此前会被下一次
+   `city_state_changed` → `_refresh_read_model()` → `_sync_governance_groups()`
+   按默认告警规则收回（分组闪一下即收起）。新增 `_governance_group_directive`
+   由同步点单点应用；玩家点分组开合或开合面板即交还布局控制权。
+5. **取证口径**：真实窗口 + 合成鼠标事件（`push_input`），5 用例各独立进程
+   与独立隔离存档链；10 张证据图中 9 张 playthrough，
+   `04-retained-resources-warning.png` 明确标注 **ui_render**
+   （默认新局粮食净额 −7/日、自由容量 ≥ 单次携出上限，
+   有界合法流程内填不满仓储，暂存无法自然产生；
+   R1C-D1 同样记录「合法流程下主城容量充足，无暂存可领」）。
+
+验证：`tests/run_r2b1_battle_return_brief_matrix.sh` 11 段 115 项断言全绿
+（§7 十五场景全覆盖，含两分辨率矩形实测）；
+`tests/run_r2b1_evidence_matrix.sh` 5 用例全绿；
+§10 回归全绿（RECOVERY_STATUS_UI_R1.1 114、FAILSAFE_R1 35、phase-UI 49、
+R2A1 51、道路 smoke 26、D1 九阶段、存档门禁矩阵 failures=0、
+Godot 导入解析、`git diff --check`）；玩家存档哨兵前后一致
+（`deb4f150c1a12f7f248ef566425af0e18b04d8be49b61faf015c456e8ccfe167`，3201 文件）。
+证据：`TXWZS_R2B1_DELIVERY/`（10 图 + 联系表 + `R2B1_RESULTS.md` + `TEST_RESULTS.md`）。
+
+# 当前状态
+
 ## R2B-0 永久主城操作层级与道路建设可靠性收口 (2026-09-17，1c815fd/badc82f 之后)
 
 1. **主操作层级统一**：常规战役启用期间隐藏 map_pan 的宏行军入口
